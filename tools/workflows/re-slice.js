@@ -11,14 +11,34 @@ export const meta = {
 }
 
 // args: { slice, root, subsystem, sharedHeaders: [..], functions: [{address, name, known, questions}],
-//         model?: 'opus', effort?: 'medium' }
+//         stages?: { <stage>: {model, effort} } overriding STAGES below }
 const slice = args.slice
 const root = args.root
 const subsystem = args.subsystem
 const sharedHeaders = args.sharedHeaders || []
-const opts = (label, phase, schema) => ({
-  label, phase, schema, model: args.model || 'opus', effort: args.effort || 'medium',
-})
+
+// Model and effort per stage. The money sits where a mistake costs the most
+// downstream work: a wrong map costs three refuters and a fix round, a weak
+// instruction-fidelity refuter lets a plausible wrong reading through to the
+// rebuild. The consistency lens and the tests review are search- and
+// checklist-shaped and run on a different model on purpose, so the skeptics
+// do not share one blind spot. The build is mechanical. See docs/re-workflow.md.
+const STAGES = Object.assign({
+  map:               { model: 'opus',   effort: 'high' },
+  refuteFidelity:    { model: 'opus',   effort: 'high' },
+  refuteConsistency: { model: 'sonnet', effort: 'medium' },
+  refuteBehaviour:   { model: 'opus',   effort: 'medium' },
+  fix:               { model: 'opus',   effort: 'high' },
+  rebuild:           { model: 'opus',   effort: 'high' },
+  reviewCorrectness: { model: 'opus',   effort: 'high' },
+  reviewTests:       { model: 'sonnet', effort: 'medium' },
+  build:             { model: 'haiku',  effort: 'low' },
+  buildFix:          { model: 'opus',   effort: 'high' },
+}, args.stages || {})
+const opts = (stage, label, phase, schema) => ({ label, phase, schema, ...STAGES[stage] })
+
+const LENS_STAGE = { fidelity: 'refuteFidelity', consistency: 'refuteConsistency', behaviour: 'refuteBehaviour' }
+const REVIEW_STAGE = { correctness: 'reviewCorrectness', tests: 'reviewTests' }
 
 const exportDir = (f) => `${root}/re/export/${slice}/${f.address}`
 const mdPath = (f) => `${root}/re/functions/${f.address}.md`
@@ -190,13 +210,13 @@ ${RULES}`
 
 // ---- the run ----
 
-log(`slice ${slice}: ${args.functions.length} functions`)
+log(`slice ${slice}: ${args.functions.length} functions; stages ${JSON.stringify(STAGES)}`)
 
 const entries = await pipeline(
   args.functions,
   // Stage 1: map
   async (f) => {
-    const map = await agent(mapPrompt(f), opts(`map ${f.address}`, 'Map', MAP_SCHEMA))
+    const map = await agent(mapPrompt(f), opts('map', `map ${f.address}`, 'Map', MAP_SCHEMA))
     if (!map) return { f, state: 'map-failed' }
     return { f, map }
   },
@@ -205,15 +225,15 @@ const entries = await pipeline(
     if (!e.map) return e
     const { f } = e
     const round1 = (await parallel(Object.keys(LENSES).map(lens => () =>
-      agent(refutePrompt(f, lens, e.map), opts(`refute:${lens} ${f.address}`, 'Refute', VERDICT_SCHEMA))
+      agent(refutePrompt(f, lens, e.map), opts(LENS_STAGE[lens], `refute:${lens} ${f.address}`, 'Refute', VERDICT_SCHEMA))
         .then(v => v && { lens, ...v })))).filter(Boolean)
     const refuted1 = round1.filter(v => v.refuted)
     if (refuted1.length < 2) return { ...e, state: 'confirmed', refutations: [round1] }
 
-    const fixed = await agent(fixPrompt(f, e.map, refuted1), opts(`fix ${f.address}`, 'Refute', MAP_SCHEMA))
+    const fixed = await agent(fixPrompt(f, e.map, refuted1), opts('fix', `fix ${f.address}`, 'Refute', MAP_SCHEMA))
     if (!fixed) return { ...e, state: 'disputed', refutations: [round1] }
     const round2 = (await parallel(['fidelity', 'consistency'].map(lens => () =>
-      agent(refutePrompt(f, lens, fixed), opts(`re-refute:${lens} ${f.address}`, 'Refute', VERDICT_SCHEMA))
+      agent(refutePrompt(f, lens, fixed), opts(LENS_STAGE[lens], `re-refute:${lens} ${f.address}`, 'Refute', VERDICT_SCHEMA))
         .then(v => v && { lens, ...v })))).filter(Boolean)
     const state = round2.some(v => v.refuted) ? 'disputed' : 'confirmed'
     return { ...e, map: fixed, state, refutations: [round1, round2] }
@@ -221,7 +241,7 @@ const entries = await pipeline(
   // Stage 3: rebuild
   async (e) => {
     if (e.state !== 'confirmed') return e
-    const rebuild = await agent(rebuildPrompt(e.f, e.map), opts(`rebuild ${e.f.address}`, 'Rebuild', REBUILD_SCHEMA))
+    const rebuild = await agent(rebuildPrompt(e.f, e.map), opts('rebuild', `rebuild ${e.f.address}`, 'Rebuild', REBUILD_SCHEMA))
     if (!rebuild) return { ...e, state: 'rebuild-failed' }
     return { ...e, rebuild }
   },
@@ -230,14 +250,14 @@ const entries = await pipeline(
     if (!e.rebuild) return e
     const { f, map, rebuild } = e
     const round1 = (await parallel(Object.keys(REVIEW_LENSES).map(lens => () =>
-      agent(reviewPrompt(f, map, rebuild, lens), opts(`review:${lens} ${f.address}`, 'Review', REVIEW_SCHEMA))
+      agent(reviewPrompt(f, map, rebuild, lens), opts(REVIEW_STAGE[lens], `review:${lens} ${f.address}`, 'Review', REVIEW_SCHEMA))
         .then(r => r && { lens, ...r })))).filter(Boolean)
     const rejected = round1.filter(r => !r.approved)
     if (!rejected.length) return { ...e, state: 'reconstructed', reviews: [round1] }
 
-    await agent(reviewFixPrompt(f, map, rebuild, rejected), opts(`review-fix ${f.address}`, 'Review'))
+    await agent(reviewFixPrompt(f, map, rebuild, rejected), opts('fix', `review-fix ${f.address}`, 'Review'))
     const round2 = (await parallel(rejected.map(r => () =>
-      agent(reviewPrompt(f, map, rebuild, r.lens), opts(`re-review:${r.lens} ${f.address}`, 'Review', REVIEW_SCHEMA))
+      agent(reviewPrompt(f, map, rebuild, r.lens), opts(REVIEW_STAGE[r.lens], `re-review:${r.lens} ${f.address}`, 'Review', REVIEW_SCHEMA))
         .then(x => x && { lens: r.lens, ...x })))).filter(Boolean)
     const state = round2.every(r => r.approved) ? 'reconstructed' : 'review-failed'
     return { ...e, state, reviews: [round1, round2] }
@@ -248,11 +268,11 @@ const entries = await pipeline(
 const rebuilt = entries.filter(Boolean).filter(e => e.rebuild)
 let build = null
 if (rebuilt.length) {
-  build = await agent(buildPrompt(), opts('build+ctest', 'Build', BUILD_SCHEMA))
+  build = await agent(buildPrompt(), opts('build', 'build+ctest', 'Build', BUILD_SCHEMA))
   if (build && !build.ok) {
     const files = rebuilt.flatMap(e => e.rebuild.files)
-    await agent(buildFixPrompt(build, files), opts('build-fix', 'Build'))
-    build = await agent(buildPrompt(), opts('build+ctest (after fix)', 'Build', BUILD_SCHEMA))
+    await agent(buildFixPrompt(build, files), opts('buildFix', 'build-fix', 'Build'))
+    build = await agent(buildPrompt(), opts('build', 'build+ctest (after fix)', 'Build', BUILD_SCHEMA))
   }
 } else {
   log('nothing was rebuilt; build stage skipped')

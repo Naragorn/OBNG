@@ -24,9 +24,29 @@ Why slices, and why this shape:
 - **Architect** (the main session, Fable 5.1): chooses the slice, seeds the
   names, exports, writes the manifest and the shared layout headers, runs the
   workflow, merges the result, writes the ledger and the knowledge file.
-- **Workers, refuters, reviewers** (Opus 5.5, medium effort): the stages
-  below, one agent per function and stage. They read the export and the
-  repository; they do not call REA or Ghidra.
+- **Workers, refuters, reviewers**: the stages below, one agent per function
+  and stage. They read the export and the repository; they do not call REA or
+  Ghidra. Model and effort differ by stage (the `STAGES` table in
+  `tools/workflows/re-slice.js`, overridable through `args.stages`): the
+  money sits where a mistake costs the most downstream work.
+
+| Stage | Model, effort | Why |
+|---|---|---|
+| map | Opus 5.5, high | a wrong map costs three refuters and a fix round |
+| refute: instruction fidelity | Opus 5.5, high | the gate everything else rests on |
+| refute: consistency | Sonnet 5.5, medium | search-shaped; a different model so the skeptics do not share one blind spot |
+| refute: behaviour | Opus 5.5, medium | judgement over callers and strings |
+| fix | Opus 5.5, high | must read the cited instructions |
+| rebuild | Opus 5.5, high | code plus one test flow per branch |
+| review: correctness | Opus 5.5, high | must find an input where rebuild and original differ |
+| review: tests and code | Sonnet 5.5, medium | coverage and style, runs the test |
+| build | Haiku 5.5, low | mechanical |
+| build fix | Opus 5.5, high | fixes at the cause |
+
+  These are the starting values (reasoning in the pilot's notes, not
+  measured). The pilot's journal gives tokens and refutation rate per stage;
+  a stage whose high-effort skeptics find nothing the medium ones miss goes
+  down a level.
 
 ## Phase 0 - scope (architect, before the run)
 
