@@ -1,0 +1,60 @@
+{
+  "slice": "frame-clock",
+  "subsystem": "time",
+  "sharedHeaders": ["src/engine/time/TimeInfo.h"],
+  "purpose": "The pilot slice: how Oblivion measures a frame and who consumes the measurement. Mostly known from OBVR (knowledge/frame-clock.md), so the run measures the workflow more than the engine.",
+  "functions": [
+    {
+      "address": "0x0047D170",
+      "name": "TimeInfo update (seed: OBVR)",
+      "known": "read (knowledge/frame-clock.md, OBVR src/game/FrameClockLogic.h): thiscall on the TimeInfo at 0x00B33E90, argument = GetTickCount of this frame, ret 4. Takes the frame's length as integer milliseconds (tick minus +0x10), a zero reads as 1, over 166.67 (float at 0x00A3D14C) reads as 166 (0xA6), stores ms*0.001*multiplier (float at 0x00B06704, fmul at 0x0047D247) into +0x0C. +0x00 frozen flag writes zero; +0x04 nonzero = iFPSClamp fixed step with its carry at +0x08. measured (OBVR 2026-10-23): 13.33 ms frames read as 13 or 14 under Proton at 75 Hz.",
+      "questions": [
+        "What do the two globals 0x00B39DB0 and 0x00B39DB4 written at the top hold (this tick and the previous one?), and who reads them?",
+        "What exactly happens on the iFPSClamp path (+0x04 nonzero): how is the carry at +0x08 used?",
+        "What does the negative-delta path (iVar3 < 0, the add of 0x00A2FC78) compute?"
+      ]
+    },
+    {
+      "address": "0x0040D800",
+      "name": "update step (seed: OBVR)",
+      "known": "read (OBVR GameAddresses.h:811, docs/vr-modding/engine-behavior.md:142): the per-frame update step with fourteen IsMenuMode calls gating Havok pause (0x0040D809), animations (0x0040DB5B), sound (0x0040DBAB), actors (0x0040DBFB), physics step (0x0040DE3F), weather (0x0040DE76); calls GetTickCount around 0x0040D89F and the TimeInfo update at 0x0040D8AB. Ghidra's analysis had no function here; it was created from the OBVR entry (tools/ghidra/CreateFunction.java), so the body range is Ghidra's guess after that.",
+      "questions": [
+        "Which systems are advanced by this function in which order, and which read TimeInfo.frameSeconds?",
+        "Is the TimeInfo update the only clock source in the step, or is GetTickCount read elsewhere in it too?"
+      ]
+    },
+    {
+      "address": "0x005AD980",
+      "name": "caller of the TimeInfo update (seed: Ghidra xref)",
+      "known": "Ghidra: calls 0x0047D170 at 0x005AD9C2. Nothing else known.",
+      "questions": ["Why does this path update the clock outside the update step - loading, menus, a reset?"]
+    },
+    {
+      "address": "0x005AD0D0",
+      "name": "caller of the TimeInfo update (seed: Ghidra xref)",
+      "known": "Ghidra: calls 0x0047D170 at 0x005AD327. Nothing else known.",
+      "questions": ["Same as 0x005AD980: which situation calls the clock from here?"]
+    },
+    {
+      "address": "0x004949E0",
+      "name": "reader of g_timeInfo (seed: Ghidra xref)",
+      "known": "Ghidra: references 0x00B33E90 at 0x00494A13 and 0x00494E59. Nothing else known.",
+      "questions": ["Which field does it read, and what does it drive?"]
+    },
+    {
+      "address": "0x004E1580",
+      "name": "reader of g_timeInfo (seed: Ghidra xref)",
+      "known": "Ghidra: references 0x00B33E90 at 0x004E15CF and 0x004E18C1. Nothing else known.",
+      "questions": ["Which field does it read, and what does it drive?"]
+    },
+    {
+      "address": "0x009DC2D0",
+      "name": "touches the time multiplier (seed: Ghidra xref)",
+      "known": "Ghidra: references 0x00B06704 at 0x009DC2F0 and writes g_timeInfo at 0x009DC2B6 (the write lies outside any Ghidra function; the function's body may be cut). 19 lines of pseudocode.",
+      "questions": ["Is this the initialiser of the multiplier and the TimeInfo (static init, 0x009D.... is late in .text)?"]
+    }
+  ],
+  "openOutsideThisSlice": [
+    "0x00406169 and 0x004061AA read g_timeInfo but lie in no Ghidra function; the entry is unknown. Find the function (CreateFunction needs an entry from an independent source)."
+  ]
+}

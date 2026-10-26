@@ -1,0 +1,7 @@
+0x0047D170 # TimeInfo update (OBVR knowledge/frame-clock.md, FrameClockLogic.h)
+0x005AD980 # caller of 0x0047D170 (Ghidra ReferencesTo)
+0x005AD0D0 # caller of 0x0047D170 (Ghidra ReferencesTo)
+0x004949E0 # reads g_timeInfo 0x00B33E90 (Ghidra ReferencesTo)
+0x004E1580 # reads g_timeInfo 0x00B33E90 (Ghidra ReferencesTo)
+0x009DC2D0 # references the time multiplier 0x00B06704 (Ghidra ReferencesTo)
+0x0040D800 # the update step (OBVR GameAddresses.h:811, engine-behavior.md:142); contains the GetTickCount site 0x0040D89F; Ghidra had no function here
