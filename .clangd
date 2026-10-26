@@ -1,0 +1,5 @@
+# The rebuilt code mirrors a 32-bit binary; its static_asserts on sizes and
+# offsets only hold at -m32, and the tests are built that way. This keeps the
+# editor's clangd on the same footing as the build.
+CompileFlags:
+  Add: [-m32, -std=c++20, -Isrc, -Itests]

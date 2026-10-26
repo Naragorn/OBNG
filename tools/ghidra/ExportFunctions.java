@@ -172,7 +172,9 @@ public class ExportFunctions extends GhidraScript {
 		if (s == null) {
 			return "";
 		}
-		return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
+		// Keep every byte of a string visible: a CR in the binary is a fact a
+		// rebuild must reproduce (the LoadingMenu warning ends in CR LF).
+		return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
 	}
 
 	private static void write(File f, String text) throws Exception {

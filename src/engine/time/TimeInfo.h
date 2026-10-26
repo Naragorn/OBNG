@@ -5,8 +5,16 @@
 //
 // Layout read in Oblivion.exe 1.2.0.416 (knowledge/frame-clock.md; OBVR's
 // src/game/FrameClockLogic.h carries the same reading and runs against it in
-// the game). Field names are proposals until the frame-clock slice confirms
-// them; the offsets are read.
+// the game). The offsets are read; the field names are proposals that the
+// frame-clock slice (re/ledger.md, 2026-10-26) left standing.
+//
+// Not a singleton: the LoadingMenu allocates its own instance (0x18 bytes,
+// FormHeap_Allocate at 0x005AD2E7) and constructs it through 0x0047D150; the
+// global below is the main loop's. The update 0x0047D170 writes this frame's
+// tick to 0x00B39DB0 and the previous one to 0x00B39DB4 for every instance.
+// The pair 0x0047D120 / 0x0047D0F0 brackets work that must not count as
+// frame time (GameMessageBoxA, TESObjectREFR::LoadBaseFormModels); what the
+// pair writes is not read yet.
 
 #include <cstddef>
 #include <cstdint>
@@ -26,9 +34,17 @@ static_assert(sizeof(TimeInfo) == 0x18, "TimeInfo is 0x18 bytes in Oblivion.exe 
 static_assert(offsetof(TimeInfo, frameSeconds) == 0x0C, "frameSeconds at +0x0C");
 static_assert(offsetof(TimeInfo, startTick) == 0x14, "startTick at +0x14");
 
-// Globals the update reads (read, knowledge/frame-clock.md).
-inline constexpr std::uint32_t kTimeInfoAddress = 0x00B33E90;        // the TimeInfo
-inline constexpr std::uint32_t kTimeMultiplierAddress = 0x00B06704;  // float, the global time multiplier
-inline constexpr std::uint32_t kFrameCeilingMsAddress = 0x00A3D14C;  // float 166.67 (1000/6)
+// Globals the update reads and writes (read, knowledge/frame-clock.md).
+inline constexpr std::uint32_t kTimeInfoAddress = 0x00B33E90;        // the main loop's TimeInfo
+inline constexpr std::uint32_t kTimeMultiplierAddress = 0x00B06704;  // float, the value of an INI SettingInfo (name pointer at +0x04)
+inline constexpr std::uint32_t kFrameCeilingMsAddress = 0x00A3D14C;  // float 166.67 (1000/6); value unverified in the export
+inline constexpr std::uint32_t kCurrentTickAddress = 0x00B39DB0;     // this frame's tick, written by every instance's update
+inline constexpr std::uint32_t kPreviousTickAddress = 0x00B39DB4;    // the previous value of the above
+
+// The class's functions (read: call sites in the slice; bodies not yet mapped).
+inline constexpr std::uint32_t kTimeInfoConstruct = 0x0047D150;  // thiscall(tick), ret 4 - derived from 0x005AD0D0
+inline constexpr std::uint32_t kTimeInfoUpdate = 0x0047D170;     // thiscall(tick), ret 4
+inline constexpr std::uint32_t kTimeInfoFreeze = 0x0047D120;     // thiscall, the bracket's first half - name is a proposal
+inline constexpr std::uint32_t kTimeInfoUnfreeze = 0x0047D0F0;   // thiscall, the bracket's second half - name is a proposal
 
 } // namespace obng::engine::time
