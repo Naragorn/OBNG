@@ -28,6 +28,8 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 endif()
 
 set(CMAKE_CXX_STANDARD 20)
+# For clangd: build-tests/compile_commands.json, linked from the repository root.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 enable_testing()

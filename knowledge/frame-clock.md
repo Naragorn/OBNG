@@ -91,3 +91,52 @@ The clock is coarse in two ways.
 - For OBNG (derived): feeding the frame's seconds from the counter is the
   smallest correct change. A fixed simulation step with interpolation is the
   larger one, and it touches every time-driven system.
+
+## From the frame-clock slice (2026-10-26, run wf_b24db2af-f80)
+
+Seven functions mapped from the Ghidra export, each tried by three skeptics;
+details per function in `re/functions/<address>.md`, states in
+`re/ledger.md`. What the slice added to the above:
+
+- **TimeInfo is a class with several instances, not a singleton** (read).
+  The LoadingMenu constructor 0x005AD0D0 allocates one with
+  `FormHeap_Allocate(0x18)` at 0x005AD2E7, constructs it through 0x0047D150
+  (thiscall, the start tick as argument) and keeps it at LoadingMenu+0x54;
+  LoadingMenu::Tick 0x005AD980 calls the update 0x0047D170 on that private
+  instance at 0x005AD9C2. The global at 0x00B33E90 is the main loop's
+  instance, updated at 0x0040D8AB inside the update step 0x0040D800.
+- **Two globals shared by every instance** (read): the update writes this
+  frame's tick to 0x00B39DB0 and the previous value to 0x00B39DB4 before the
+  frozen test (0x0047D179..0x0047D186), whichever instance it runs on. Who
+  reads them is open.
+- **The update's exact paths** (read, confirmed by all skeptics): frozen
+  (+0x00 nonzero) writes 0 seconds; fixed step (+0x04 nonzero) ignores the
+  tick and advances +0x10 by the step with the carry at +0x08, the sum
+  rounded to float every frame (FSTP at 0x0047D1A5) - so the advance is
+  approximate, not "exactly the step"; variable mode takes tick - +0x10, a
+  zero reads as 1, above the ceiling at 0x00A3D14C reads as 0xA6. The
+  "first unfrozen frame reads as 166 ms" only holds in variable mode and
+  only when the frozen stretch plus the frame exceeds the ceiling
+  (derived). The three constants 0x00A2FC78, 0x00A30E40, 0x00A3D14C were
+  not in the export; their values (2^32, 0.001, 166.67) are unverified
+  here.
+- **The clock is frozen by a bracket pair** (read): 0x0047D120 / 0x0047D0F0
+  are called on g_timeInfo around work that must not count as frame time -
+  by GameMessageBoxA 0x004949E0 (`__stdcall(text, caption, type)`, ret 0xC)
+  and by TESObjectREFR::LoadBaseFormModels 0x004E1580 while a reference's
+  models load. Whether the pair is a flag or a nesting counter is open.
+- **The time multiplier at 0x00B06704 is an INI setting object** (read):
+  the static initialiser 0x009DC2D0 registers the SettingInfo (value +0x00
+  float, name pointer +0x04 = 0x00B06708) with the IniSettingCollection at
+  0x00B07BF0 through 0x004040E0. Which setting: not in the export.
+- **x87 precision matters for a rebuild** (derived, from the correctness
+  review of LoadingMenu::Tick): the countdown arithmetic gives different
+  results at 24-bit and 53-bit precision control for some inputs (timer
+  5.0, sinceLast -100). Which control word the game runs under is
+  unverified; it decides how rebuilt float code must be compiled or
+  tested.
+- **The update step 0x0040D800** (read): 524 instructions, 106 calls, 14
+  calls to IsMenuMode 0x00578F60; 0x00889810 at 0x0040D8C2 is a direct
+  callee in the Havok address range that receives the frame's seconds. No
+  caller in the export; OBVR's master frame call 0x0040D6F7 is the
+  candidate (unverified).
