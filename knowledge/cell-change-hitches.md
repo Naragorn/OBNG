@@ -120,8 +120,16 @@ the only free found).
 - **Correctness:** 800,001 lookups compared with the walk, 0 mismatches
   (measured).
 - **So the lookup was about three quarters of MOO's cost** (derived).
-  The rest is MOO's own work plus an RTTI cast per token (xOBSE's
-  `EventListFromForm`, about 11 % of the remaining frame's samples).
+  The rest is MOO's own work plus RTTI casts, about 11 % of the remaining
+  frame's samples (measured). They are **not** the casts of xOBSE's
+  `EventListFromForm`: a cache for exactly those (2026-10-26, 400,001 casts
+  checked, 0 mismatches) changed MOO's frames by about a millisecond, inside
+  the spread (measured). Who casts instead is unverified - xOBSE's command
+  handlers cast their arguments at 523 sites.
+- **The engine's own variable walk** (0x004FA110, a one-entry cache that
+  xOBSE switches off, then a list walk): 14 of 57 samples of a 65 ms MOO
+  outpost frame (measured once, 2026-10-25); the engine's command path
+  calls it, xOBSE's index does not cover it.
 - **Derived for an engine:** resolve a cross-script variable to a slot once
   when the script loads, and never cast or search per token. Then the 30 ms
   would shrink further, to the arithmetic MOO actually asks for.
