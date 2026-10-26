@@ -8,6 +8,7 @@
 // the game). Field names are proposals until the frame-clock slice confirms
 // them; the offsets are read.
 
+#include <cstddef>
 #include <cstdint>
 
 namespace obng::engine::time {

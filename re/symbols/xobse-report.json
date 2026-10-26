@@ -1,0 +1,1209 @@
+{
+ "commit": "5ad9b4a287a27801e6d01f22769e84d851509595",
+ "files_scanned": 211,
+ "rows": 2004,
+ "unique_addresses": 1980,
+ "raw_in_range_literal_occurrences": 2209,
+ "live_literal_occurrences_classified": 2002,
+ "rows_added_from_symbolic_DEFINE_MEMBER_FN": 8,
+ "live_in_unknown_branch": 0,
+ "leftover_unclassified": [
+  {
+   "address": 4881004,
+   "source": "obse/obse/Hooks_Script.cpp:217",
+   "text": "MessageHandler_HandleMessage = (int(__cdecl*)(int, char*, va_list)) (*(UInt32*)(0x004A7A6C + 1) + 0x004A7A6C + 1 + 4);"
+  },
+  {
+   "address": 4881004,
+   "source": "obse/obse/Hooks_Script.cpp:217",
+   "text": "MessageHandler_HandleMessage = (int(__cdecl*)(int, char*, va_list)) (*(UInt32*)(0x004A7A6C + 1) + 0x004A7A6C + 1 + 4);"
+  },
+  {
+   "address": 4881004,
+   "source": "obse/obse/Hooks_Script.cpp:218",
+   "text": "if (*(UInt8*)0x004A7A6C == 0xE9) {"
+  }
+ ],
+ "dead_code_occurrences": [
+  {
+   "address": 5204416,
+   "source": "obse/obse/CommandElements.cpp:19",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "static const Cmd_Parse g_defaultParseCommand = (Cmd_Parse)0x004F69C0;"
+  },
+  {
+   "address": 5246960,
+   "source": "obse/obse/CommandElements.cpp:21",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "static const Cmd_Parse g_defaultParseCommand = (Cmd_Parse)0x00500FF0;"
+  },
+  {
+   "address": 4542105,
+   "source": "obse/obse/CommandTable.cpp:850",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00454E99 + 1,\t0 },"
+  },
+  {
+   "address": 4550691,
+   "source": "obse/obse/CommandTable.cpp:852",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00457023 + 3,\t0 },"
+  },
+  {
+   "address": 4552172,
+   "source": "obse/obse/CommandTable.cpp:853",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004575EC + 3,\t0 },"
+  },
+  {
+   "address": 4552690,
+   "source": "obse/obse/CommandTable.cpp:854",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004577F2 + 3,\t0 },"
+  },
+  {
+   "address": 4553121,
+   "source": "obse/obse/CommandTable.cpp:855",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004579A1 + 4,\t0x12 },"
+  },
+  {
+   "address": 4553161,
+   "source": "obse/obse/CommandTable.cpp:856",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004579C9 + 3,\t0x12 },"
+  },
+  {
+   "address": 4553173,
+   "source": "obse/obse/CommandTable.cpp:857",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004579D5 + 2,\t0x14 },"
+  },
+  {
+   "address": 4553225,
+   "source": "obse/obse/CommandTable.cpp:858",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00457A09 + 3, 0x12 },"
+  },
+  {
+   "address": 4553237,
+   "source": "obse/obse/CommandTable.cpp:859",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00457A15 + 2, 0x14 },"
+  },
+  {
+   "address": 4553296,
+   "source": "obse/obse/CommandTable.cpp:860",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00457A50 + 3,\t0x12 },"
+  },
+  {
+   "address": 4553307,
+   "source": "obse/obse/CommandTable.cpp:861",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00457A5B + 2,\t0x14 },"
+  },
+  {
+   "address": 4553478,
+   "source": "obse/obse/CommandTable.cpp:862",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00457B06 + 4, 0x12 },"
+  },
+  {
+   "address": 4553521,
+   "source": "obse/obse/CommandTable.cpp:863",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00457B31 + 3,\t0x12 },"
+  },
+  {
+   "address": 4553532,
+   "source": "obse/obse/CommandTable.cpp:864",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00457B3C + 2,\t0x14 },"
+  },
+  {
+   "address": 4553614,
+   "source": "obse/obse/CommandTable.cpp:865",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00457B8E + 4,\t0x12 },"
+  },
+  {
+   "address": 4553652,
+   "source": "obse/obse/CommandTable.cpp:866",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00457BB4 + 3,\t0x12 },"
+  },
+  {
+   "address": 4553663,
+   "source": "obse/obse/CommandTable.cpp:867",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00457BBF + 2,\t0x14 },"
+  },
+  {
+   "address": 4555693,
+   "source": "obse/obse/CommandTable.cpp:869",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004583AD + 4,\t0x12 },"
+  },
+  {
+   "address": 4555747,
+   "source": "obse/obse/CommandTable.cpp:870",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004583E3 + 3,\t0x12 },"
+  },
+  {
+   "address": 4555758,
+   "source": "obse/obse/CommandTable.cpp:871",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004583EE + 2,\t0x14 },"
+  },
+  {
+   "address": 4555926,
+   "source": "obse/obse/CommandTable.cpp:872",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458496 + 4,\t0x12 },"
+  },
+  {
+   "address": 4555988,
+   "source": "obse/obse/CommandTable.cpp:874",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004584D4 + 3,\t0x12 },"
+  },
+  {
+   "address": 4555999,
+   "source": "obse/obse/CommandTable.cpp:875",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004584DF + 2,\t0x14 },"
+  },
+  {
+   "address": 4556246,
+   "source": "obse/obse/CommandTable.cpp:876",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004585D6 + 4, 0x12 },"
+  },
+  {
+   "address": 4556328,
+   "source": "obse/obse/CommandTable.cpp:877",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458628 + 3,\t0x12 },"
+  },
+  {
+   "address": 4556347,
+   "source": "obse/obse/CommandTable.cpp:878",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x0045863B + 2,\t0x14 },"
+  },
+  {
+   "address": 4556812,
+   "source": "obse/obse/CommandTable.cpp:880",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x0045880C + 3,\t0x12 },"
+  },
+  {
+   "address": 4556827,
+   "source": "obse/obse/CommandTable.cpp:881",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x0045881B + 2,\t0x14 },"
+  },
+  {
+   "address": 4557428,
+   "source": "obse/obse/CommandTable.cpp:882",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458A74 + 4,\t0x12 },"
+  },
+  {
+   "address": 4557790,
+   "source": "obse/obse/CommandTable.cpp:883",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458BDE + 3,\t0x14 },"
+  },
+  {
+   "address": 4557856,
+   "source": "obse/obse/CommandTable.cpp:884",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458C20 + 3,\t0x14 },"
+  },
+  {
+   "address": 4558343,
+   "source": "obse/obse/CommandTable.cpp:886",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458E07 + 4,\t0x12 },"
+  },
+  {
+   "address": 4558611,
+   "source": "obse/obse/CommandTable.cpp:887",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458F13 + 4,\t0x12 },"
+  },
+  {
+   "address": 4558687,
+   "source": "obse/obse/CommandTable.cpp:888",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458F5F + 3,\t0x14 },"
+  },
+  {
+   "address": 4558854,
+   "source": "obse/obse/CommandTable.cpp:889",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00459006 + 3,\t0x14 },"
+  },
+  {
+   "address": 4559087,
+   "source": "obse/obse/CommandTable.cpp:890",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004590EF + 4,\t0x12 },"
+  },
+  {
+   "address": 4559548,
+   "source": "obse/obse/CommandTable.cpp:891",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004592BC + 3,\t0x14 },"
+  },
+  {
+   "address": 5199516,
+   "source": "obse/obse/CommandTable.cpp:893",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004F569C + 3,\t0 },"
+  },
+  {
+   "address": 5199603,
+   "source": "obse/obse/CommandTable.cpp:894",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004F56F3 + 1,\t4 },"
+  },
+  {
+   "address": 5199754,
+   "source": "obse/obse/CommandTable.cpp:895",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004F578A + 3,\t8 },"
+  },
+  {
+   "address": 5214192,
+   "source": "obse/obse/CommandTable.cpp:896",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004F8FF0 + 3,\t0 },"
+  },
+  {
+   "address": 4542138,
+   "source": "obse/obse/CommandTable.cpp:903",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00454EBA + 2,\t0 },"
+  },
+  {
+   "address": 5199645,
+   "source": "obse/obse/CommandTable.cpp:904",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004F571D + 2,\t4 },"
+  },
+  {
+   "address": 4549165,
+   "source": "obse/obse/CommandTable.cpp:911",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00456A2D + 1, 1 },"
+  },
+  {
+   "address": 4549188,
+   "source": "obse/obse/CommandTable.cpp:912",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00456A44 + 1, (UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4549208,
+   "source": "obse/obse/CommandTable.cpp:913",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00456A58 + 2, (UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4553110,
+   "source": "obse/obse/CommandTable.cpp:915",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00457996 + 2,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4553142,
+   "source": "obse/obse/CommandTable.cpp:916",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004579B6 + 2, (UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4553206,
+   "source": "obse/obse/CommandTable.cpp:917",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004579F6 + 2, (UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4553275,
+   "source": "obse/obse/CommandTable.cpp:918",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00457A3B + 1, (UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4553468,
+   "source": "obse/obse/CommandTable.cpp:919",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00457AFC + 1,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4553508,
+   "source": "obse/obse/CommandTable.cpp:920",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00457B24 + 1,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4553604,
+   "source": "obse/obse/CommandTable.cpp:921",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00457B84 + 1,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4553639,
+   "source": "obse/obse/CommandTable.cpp:922",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00457BA7 + 1,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4555679,
+   "source": "obse/obse/CommandTable.cpp:924",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x0045839F + 1,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4555734,
+   "source": "obse/obse/CommandTable.cpp:925",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004583D6 + 1,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4555912,
+   "source": "obse/obse/CommandTable.cpp:926",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458488 + 1,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4555971,
+   "source": "obse/obse/CommandTable.cpp:927",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004584C3 + 1,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4556232,
+   "source": "obse/obse/CommandTable.cpp:928",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004585C8 + 1,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4556311,
+   "source": "obse/obse/CommandTable.cpp:929",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458617 + 1,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4556795,
+   "source": "obse/obse/CommandTable.cpp:930",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004587FB + 1,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4557412,
+   "source": "obse/obse/CommandTable.cpp:931",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458A64 + 2,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4558333,
+   "source": "obse/obse/CommandTable.cpp:932",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458DFD + 1,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4558597,
+   "source": "obse/obse/CommandTable.cpp:933",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458F05 + 1,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4559077,
+   "source": "obse/obse/CommandTable.cpp:934",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004590E5 + 1,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 5173321,
+   "source": "obse/obse/CommandTable.cpp:936",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004EF049 + 3,\t1, 1 },"
+  },
+  {
+   "address": 5199501,
+   "source": "obse/obse/CommandTable.cpp:937",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004F568D + 2,\t1 },"
+  },
+  {
+   "address": 5214178,
+   "source": "obse/obse/CommandTable.cpp:938",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004F8FE2 + 1,\t1 },"
+  },
+  {
+   "address": 4546569,
+   "source": "obse/obse/CommandTable.cpp:948",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00456009 + 1,\t0x00 },"
+  },
+  {
+   "address": 4552965,
+   "source": "obse/obse/CommandTable.cpp:951",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00457905 + 3,\t0x20 },"
+  },
+  {
+   "address": 4552982,
+   "source": "obse/obse/CommandTable.cpp:952",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00457916 + 2,\t0x10 },"
+  },
+  {
+   "address": 4555282,
+   "source": "obse/obse/CommandTable.cpp:955",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458212 + 3,\t0x20 },"
+  },
+  {
+   "address": 4555558,
+   "source": "obse/obse/CommandTable.cpp:956",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458326 + 3,\t0x00 },"
+  },
+  {
+   "address": 4557099,
+   "source": "obse/obse/CommandTable.cpp:959",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x0045892B + 3,\t0x00 },"
+  },
+  {
+   "address": 4557644,
+   "source": "obse/obse/CommandTable.cpp:962",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458B4C + 3,\t0x00 },"
+  },
+  {
+   "address": 4558081,
+   "source": "obse/obse/CommandTable.cpp:965",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458D01 + 4,\t0x12 },"
+  },
+  {
+   "address": 4558131,
+   "source": "obse/obse/CommandTable.cpp:968",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458D33 + 3,\t0x14 },"
+  },
+  {
+   "address": 4558195,
+   "source": "obse/obse/CommandTable.cpp:971",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458D73 + 3,\t0x14 },"
+  },
+  {
+   "address": 4558275,
+   "source": "obse/obse/CommandTable.cpp:974",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458DC3 + 3,\t0x14 },"
+  },
+  {
+   "address": 4559568,
+   "source": "obse/obse/CommandTable.cpp:977",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004592D0 + 3,\t0x14 },"
+  },
+  {
+   "address": 4560388,
+   "source": "obse/obse/CommandTable.cpp:978",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00459604 + 3,\t0x14 },"
+  },
+  {
+   "address": 4562485,
+   "source": "obse/obse/CommandTable.cpp:981",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00459E35 + 3,\t0x14 },"
+  },
+  {
+   "address": 4562551,
+   "source": "obse/obse/CommandTable.cpp:982",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00459E77 + 3,\t0x14 },"
+  },
+  {
+   "address": 4563392,
+   "source": "obse/obse/CommandTable.cpp:985",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x0045A1C0 + 3,\t0x14 },"
+  },
+  {
+   "address": 4563573,
+   "source": "obse/obse/CommandTable.cpp:986",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x0045A275 + 3,\t0x14 },"
+  },
+  {
+   "address": 4564265,
+   "source": "obse/obse/CommandTable.cpp:989",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x0045A529 + 3,\t0x14 },"
+  },
+  {
+   "address": 5200439,
+   "source": "obse/obse/CommandTable.cpp:992",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004F5A37 + 1,\t0x24 },"
+  },
+  {
+   "address": 5241880,
+   "source": "obse/obse/CommandTable.cpp:995",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004FFC18 + 3,\t0x00 },"
+  },
+  {
+   "address": 5241961,
+   "source": "obse/obse/CommandTable.cpp:998",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004FFC69 + 1,\t0x04 },"
+  },
+  {
+   "address": 5242114,
+   "source": "obse/obse/CommandTable.cpp:999",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004FFD02 + 3,\t0x08 },"
+  },
+  {
+   "address": 4546603,
+   "source": "obse/obse/CommandTable.cpp:1008",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x0045602B + 2,\t0x00 },"
+  },
+  {
+   "address": 5200484,
+   "source": "obse/obse/CommandTable.cpp:1011",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004F5A64 + 2,\t0x24 },"
+  },
+  {
+   "address": 5242007,
+   "source": "obse/obse/CommandTable.cpp:1016",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004FFC97 + 2,\t0x04 },"
+  },
+  {
+   "address": 4558070,
+   "source": "obse/obse/CommandTable.cpp:1027",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458CF6 + 2,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4558103,
+   "source": "obse/obse/CommandTable.cpp:1030",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458D17 + 2,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4558167,
+   "source": "obse/obse/CommandTable.cpp:1033",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458D57 + 2,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 4558247,
+   "source": "obse/obse/CommandTable.cpp:1036",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x00458DA7 + 2,\t(UInt32)(-0x1000) + 1 },"
+  },
+  {
+   "address": 5215012,
+   "source": "obse/obse/CommandTable.cpp:1039",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004F9324 + 3,\t1, 1 },"
+  },
+  {
+   "address": 5241865,
+   "source": "obse/obse/CommandTable.cpp:1042",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "{\t0x004FFC09 + 2,\t(UInt32)(-0x1000) },"
+  },
+  {
+   "address": 10339360,
+   "source": "obse/obse/CommandTable.cpp:1119",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "g_consoleCommands.Read((CommandInfo *)0x009DC420, (CommandInfo *)0x009DD898);"
+  },
+  {
+   "address": 10344600,
+   "source": "obse/obse/CommandTable.cpp:1119",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "g_consoleCommands.Read((CommandInfo *)0x009DC420, (CommandInfo *)0x009DD898);"
+  },
+  {
+   "address": 10344640,
+   "source": "obse/obse/CommandTable.cpp:1120",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "g_scriptCommands.Read((CommandInfo *)0x009DD8C0, (CommandInfo *)0x009E1178);"
+  },
+  {
+   "address": 10359160,
+   "source": "obse/obse/CommandTable.cpp:1120",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "g_scriptCommands.Read((CommandInfo *)0x009DD8C0, (CommandInfo *)0x009E1178);"
+  },
+  {
+   "address": 10338400,
+   "source": "obse/obse/CommandTable.cpp:1132",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "kCmdInfo_OnYield = (CommandInfo*)0x009DC060;"
+  },
+  {
+   "address": 10428784,
+   "source": "obse/obse/CommandTable.cpp:1135",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "g_consoleCommands.Read((CommandInfo *)0x009F2170, (CommandInfo *)0x009F35E8);"
+  },
+  {
+   "address": 10434024,
+   "source": "obse/obse/CommandTable.cpp:1135",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "g_consoleCommands.Read((CommandInfo *)0x009F2170, (CommandInfo *)0x009F35E8);"
+  },
+  {
+   "address": 10434064,
+   "source": "obse/obse/CommandTable.cpp:1136",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "g_scriptCommands.Read((CommandInfo *)0x009F3610, (CommandInfo *)0x009F6FB8);"
+  },
+  {
+   "address": 10448824,
+   "source": "obse/obse/CommandTable.cpp:1136",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "g_scriptCommands.Read((CommandInfo *)0x009F3610, (CommandInfo *)0x009F6FB8);"
+  },
+  {
+   "address": 10427824,
+   "source": "obse/obse/CommandTable.cpp:1138",
+   "why": "dead:#else of #ifdef OBLIVION",
+   "text": "kCmdInfo_OnYield = (CommandInfo*)0x009F1DB0;"
+  },
+  {
+   "address": 4758793,
+   "source": "obse/obse/EventManager.cpp:251",
+   "why": "dead:#if 0",
+   "text": "static const UInt32 jzAddr = 0x00489D09;"
+  },
+  {
+   "address": 4758644,
+   "source": "obse/obse/EventManager.cpp:252",
+   "why": "dead:#if 0",
+   "text": "static const UInt32 jnzAddr = 0x00489C74;"
+  },
+  {
+   "address": 6483673,
+   "source": "obse/obse/Hooks_Gameplay.cpp:1187",
+   "why": "dead:#if 0",
+   "text": "DEFINE_REFHOOKFN(0x0062EED9, DoRefActivationCallSiteHook)\t\t\t\t\t\t// something to do with trespassing"
+  },
+  {
+   "address": 6494690,
+   "source": "obse/obse/Hooks_Gameplay.cpp:1188",
+   "why": "dead:#if 0",
+   "text": "DEFINE_REFHOOKFN(0x006319E2, DoRefActivationCallSiteHook)"
+  },
+  {
+   "address": 6494951,
+   "source": "obse/obse/Hooks_Gameplay.cpp:1189",
+   "why": "dead:#if 0",
+   "text": "DEFINE_REFHOOKFN(0x00631AE7, DoRefActivationCallSiteHook)"
+  },
+  {
+   "address": 6520145,
+   "source": "obse/obse/Hooks_Gameplay.cpp:1190",
+   "why": "dead:#if 0",
+   "text": "DEFINE_REFHOOKFN(0x00637D51, DoRefActivationCallSiteHook)\t\t\t\t\t\t// called when handling Find packages"
+  },
+  {
+   "address": 6520874,
+   "source": "obse/obse/Hooks_Gameplay.cpp:1191",
+   "why": "dead:#if 0",
+   "text": "DEFINE_REFHOOKFN(0x0063802A, DoRefActivationCallSiteHook)"
+  },
+  {
+   "address": 6521478,
+   "source": "obse/obse/Hooks_Gameplay.cpp:1192",
+   "why": "dead:#if 0",
+   "text": "DEFINE_REFHOOKFN(0x00638286, DoRefActivationCallSiteHook)"
+  },
+  {
+   "address": 6578033,
+   "source": "obse/obse/Hooks_Gameplay.cpp:1193",
+   "why": "dead:#if 0",
+   "text": "DEFINE_REFHOOKFN(0x00645F71, DoRefActivationCallSiteHook)"
+  },
+  {
+   "address": 6618425,
+   "source": "obse/obse/Hooks_Gameplay.cpp:1194",
+   "why": "dead:#if 0",
+   "text": "DEFINE_REFHOOKFN(0x0064FD39, DoRefActivationCallSiteHook)"
+  },
+  {
+   "address": 6629794,
+   "source": "obse/obse/Hooks_Gameplay.cpp:1195",
+   "why": "dead:#if 0",
+   "text": "DEFINE_REFHOOKFN(0x006529A2, DoRefActivationCallSiteHook)"
+  },
+  {
+   "address": 6483673,
+   "source": "obse/obse/Hooks_Gameplay.cpp:1204",
+   "why": "dead:#if 0",
+   "text": "PATCH_REFHOOKFN(0x0062EED9);"
+  },
+  {
+   "address": 6494690,
+   "source": "obse/obse/Hooks_Gameplay.cpp:1205",
+   "why": "dead:#if 0",
+   "text": "PATCH_REFHOOKFN(0x006319E2);"
+  },
+  {
+   "address": 6494951,
+   "source": "obse/obse/Hooks_Gameplay.cpp:1206",
+   "why": "dead:#if 0",
+   "text": "PATCH_REFHOOKFN(0x00631AE7);"
+  },
+  {
+   "address": 6520145,
+   "source": "obse/obse/Hooks_Gameplay.cpp:1207",
+   "why": "dead:#if 0",
+   "text": "PATCH_REFHOOKFN(0x00637D51);"
+  },
+  {
+   "address": 6520874,
+   "source": "obse/obse/Hooks_Gameplay.cpp:1208",
+   "why": "dead:#if 0",
+   "text": "PATCH_REFHOOKFN(0x0063802A);"
+  },
+  {
+   "address": 6521478,
+   "source": "obse/obse/Hooks_Gameplay.cpp:1209",
+   "why": "dead:#if 0",
+   "text": "PATCH_REFHOOKFN(0x00638286);"
+  },
+  {
+   "address": 6578033,
+   "source": "obse/obse/Hooks_Gameplay.cpp:1210",
+   "why": "dead:#if 0",
+   "text": "PATCH_REFHOOKFN(0x00645F71);"
+  },
+  {
+   "address": 6618425,
+   "source": "obse/obse/Hooks_Gameplay.cpp:1211",
+   "why": "dead:#if 0",
+   "text": "PATCH_REFHOOKFN(0x0064FD39);"
+  },
+  {
+   "address": 6629794,
+   "source": "obse/obse/Hooks_Gameplay.cpp:1212",
+   "why": "dead:#if 0",
+   "text": "PATCH_REFHOOKFN(0x006529A2);"
+  },
+  {
+   "address": 4201120,
+   "source": "obse/obse/Hooks_Memory.cpp:306",
+   "why": "dead:#if ENABLE_MEMORY_DEBUG",
+   "text": "WriteRelJump(0x00401AA0, (UInt32)MemoryHeap_Allocate_Hook);"
+  },
+  {
+   "address": 4201792,
+   "source": "obse/obse/Hooks_Memory.cpp:307",
+   "why": "dead:#if ENABLE_MEMORY_DEBUG",
+   "text": "WriteRelJump(0x00401D40, (UInt32)MemoryHeap_Free_Hook);"
+  },
+  {
+   "address": 12239360,
+   "source": "obse/obse/Hooks_NetImmerse.cpp:89",
+   "why": "dead:#if ENABLE_CTOR_HOOKS",
+   "text": "((UInt32)obj) < 0x00BAC200 ? \" static_alloc\" : \"\","
+  },
+  {
+   "address": 7339315,
+   "source": "obse/obse/Hooks_NetImmerse.cpp:178",
+   "why": "dead:#if ENABLE_NETIMMERSE_DEBUG",
+   "text": "WriteRelCall(0x006FFD33, (UInt32)&_NiObjectNET_ctor_Hook);"
+  },
+  {
+   "address": 7339376,
+   "source": "obse/obse/Hooks_NetImmerse.cpp:179",
+   "why": "dead:#if ENABLE_NETIMMERSE_DEBUG",
+   "text": "WriteRelJump(0x006FFD70, (UInt32)&_NiObjectNET_dtor_Hook);"
+  },
+  {
+   "address": 10649720,
+   "source": "obse/obse/Hooks_NetImmerse.cpp:180",
+   "why": "dead:#if ENABLE_NETIMMERSE_DEBUG",
+   "text": "SafeWrite32(0x00A28078, (UInt32)&InterlockedIncrement_Hook);"
+  },
+  {
+   "address": 10649724,
+   "source": "obse/obse/Hooks_NetImmerse.cpp:181",
+   "why": "dead:#if ENABLE_NETIMMERSE_DEBUG",
+   "text": "SafeWrite32(0x00A2807C, (UInt32)&InterlockedDecrement_Hook);"
+  },
+  {
+   "address": 5250594,
+   "source": "obse/obse/Hooks_Script.cpp:235",
+   "why": "dead:#else of #if OBLIVION",
+   "text": "static const UInt32 kEndOfLineCheckPatchAddr = 0x00501E22;"
+  },
+  {
+   "address": 5249674,
+   "source": "obse/obse/Hooks_Script.cpp:236",
+   "why": "dead:#else of #if OBLIVION",
+   "text": "static const UInt32 kCopyStringArgHookAddr\t\t = 0x00501A8A;"
+  },
+  {
+   "address": 5256361,
+   "source": "obse/obse/Hooks_Script.cpp:238",
+   "why": "dead:#else of #if OBLIVION",
+   "text": "static const UInt32 kBeginScriptCompilePatchAddr = 0x005034A9;\t// calls CompileScript()"
+  },
+  {
+   "address": 5255984,
+   "source": "obse/obse/Hooks_Script.cpp:239",
+   "why": "dead:#else of #if OBLIVION",
+   "text": "static const UInt32 kBeginScriptCompileCallAddr  = 0x00503330;\t// bool __fastcall CompileScript(unk, unk, Script*, ScriptBuffer*)"
+  },
+  {
+   "address": 5256366,
+   "source": "obse/obse/Hooks_Script.cpp:240",
+   "why": "dead:#else of #if OBLIVION",
+   "text": "static const UInt32 kBeginScriptCompileRetnAddr\t = 0x005034AE;"
+  },
+  {
+   "address": 5216018,
+   "source": "obse/obse/Hooks_Script.cpp:242",
+   "why": "dead:#else of #if OBLIVION",
+   "text": "static const UInt32 kExpressionParserBufferOverflowHookAddr_1 = 0x004F9712;"
+  },
+  {
+   "address": 5216023,
+   "source": "obse/obse/Hooks_Script.cpp:243",
+   "why": "dead:#else of #if OBLIVION",
+   "text": "static const UInt32 kExpressionParserBufferOverflowRetnAddr_1 = 0x004F9717;"
+  },
+  {
+   "address": 5216355,
+   "source": "obse/obse/Hooks_Script.cpp:245",
+   "why": "dead:#else of #if OBLIVION",
+   "text": "static const UInt32 kExpressionParserBufferOverflowHookAddr_2 = 0x004F9863;"
+  },
+  {
+   "address": 5216362,
+   "source": "obse/obse/Hooks_Script.cpp:246",
+   "why": "dead:#else of #if OBLIVION",
+   "text": "static const UInt32 kExpressionParserBufferOverflowRetnAddr_2 = 0x004F986A;"
+  },
+  {
+   "address": 5255449,
+   "source": "obse/obse/Hooks_Script.cpp:248",
+   "why": "dead:#else of #if OBLIVION",
+   "text": "static const UInt32 kWarnForDeprecatedCommandsHook = 0x00503119;"
+  },
+  {
+   "address": 5255454,
+   "source": "obse/obse/Hooks_Script.cpp:249",
+   "why": "dead:#else of #if OBLIVION",
+   "text": "static const UInt32 kWarnForDeprecatedCommandsReturn = 0x0050311E;"
+  },
+  {
+   "address": 5250894,
+   "source": "obse/obse/Hooks_Script.cpp:251",
+   "why": "dead:#else of #if OBLIVION",
+   "text": "static const UInt32 kDefaultCompilerHook = 0x00501F4E;"
+  },
+  {
+   "address": 5250908,
+   "source": "obse/obse/Hooks_Script.cpp:252",
+   "why": "dead:#else of #if OBLIVION",
+   "text": "static const UInt32 kDefaultCompilerRetn = 0x00501F5C;"
+  },
+  {
+   "address": 5246960,
+   "source": "obse/obse/Hooks_Script.cpp:385",
+   "why": "dead:#if !OBLIVION",
+   "text": "static const UInt32 patchLoc = 0x00500FF0;\t// editor default parse routine"
+  },
+  {
+   "address": 8966062,
+   "source": "obse/obse/Hooks_Script.cpp:402",
+   "why": "dead:#if !OBLIVION",
+   "text": "static const UInt32 stricmpAddr = 0x0088CFAE;\t\t\t// doesn't clean stack"
+  },
+  {
+   "address": 5253596,
+   "source": "obse/obse/Hooks_Script.cpp:403",
+   "why": "dead:#if !OBLIVION",
+   "text": "static const UInt32 stricmpPatchAddr_1 = 0x005029DC;\t// stricmp(cmdInfo->longName, blockName)"
+  },
+  {
+   "address": 5253620,
+   "source": "obse/obse/Hooks_Script.cpp:404",
+   "why": "dead:#if !OBLIVION",
+   "text": "static const UInt32 stricmpPatchAddr_2 = 0x005029F4;\t// stricmp(cmdInfo->altName, blockName)"
+  },
+  {
+   "address": 10555448,
+   "source": "obse/obse/Hooks_Script.cpp:406",
+   "why": "dead:#if !OBLIVION",
+   "text": "static const UInt32* kBeginBlockDataOffsetPtr = (const UInt32*)0x00A11038;"
+  },
+  {
+   "address": 5255593,
+   "source": "obse/obse/Hooks_Script.cpp:410",
+   "why": "dead:#if !OBLIVION",
+   "text": "static const UInt32 kCopyBlockArgsAddr = 0x005031A9;"
+  },
+  {
+   "address": 5255804,
+   "source": "obse/obse/Hooks_Script.cpp:414",
+   "why": "dead:#if !OBLIVION",
+   "text": "static const UInt32 nullCallAddr = 0x0050327C;"
+  },
+  {
+   "address": 5254187,
+   "source": "obse/obse/Hooks_Script.cpp:417",
+   "why": "dead:#if !OBLIVION",
+   "text": "static const UInt32 storeBlockLenHookAddr = 0x00502C2B;"
+  },
+  {
+   "address": 5254193,
+   "source": "obse/obse/Hooks_Script.cpp:418",
+   "why": "dead:#if !OBLIVION",
+   "text": "static const UInt32 storeBlockLenRetnAddr = 0x00502C31;"
+  },
+  {
+   "address": 5242688,
+   "source": "obse/obse/Hooks_Script.cpp:751",
+   "why": "dead:#if !OBLIVION",
+   "text": "static const UInt32 kReportScriptError = 0x004FFF40;"
+  },
+  {
+   "address": 5249562,
+   "source": "obse/obse/Hooks_Script.cpp:752",
+   "why": "dead:#if !OBLIVION",
+   "text": "static const UInt32 kDefaultCompilerCompileFormsArg = 0x00501A1A;"
+  },
+  {
+   "address": 5228224,
+   "source": "obse/obse/Script.h:19",
+   "why": "dead:#else of #if OBLIVION",
+   "text": "static const UInt32 kScript_SetTextFnAddr = 0x004FC6C0;"
+  }
+ ],
+ "commented_out_occurrences": 41,
+ "unresolved": [
+  {
+   "what": "WriteRelJump(lastHook, ...)",
+   "arg": "lastHook",
+   "source": "obse/obse/Hooks_Input.cpp:584",
+   "why": "patch-site argument is a symbol/parameter not bound to an in-range literal in live runtime code",
+   "definitions_seen": []
+  },
+  {
+   "what": "SafeWrite8(kEndOfLineCheckPatchAddr, ...)",
+   "arg": "kEndOfLineCheckPatchAddr",
+   "source": "obse/obse/Hooks_Script.cpp:279",
+   "why": "patch-site argument is a symbol/parameter not bound to an in-range literal in live runtime code",
+   "definitions_seen": [
+    [
+     "0",
+     "obse/obse/Hooks_Script.cpp:23",
+     "active"
+    ],
+    [
+     "0x00501E22",
+     "obse/obse/Hooks_Script.cpp:235",
+     "dead:#else of #if OBLIVION"
+    ]
+   ]
+  },
+  {
+   "what": "SafeWrite8(kEndOfLineCheckPatchAddr, ...)",
+   "arg": "kEndOfLineCheckPatchAddr",
+   "source": "obse/obse/Hooks_Script.cpp:281",
+   "why": "patch-site argument is a symbol/parameter not bound to an in-range literal in live runtime code",
+   "definitions_seen": [
+    [
+     "0",
+     "obse/obse/Hooks_Script.cpp:23",
+     "active"
+    ],
+    [
+     "0x00501E22",
+     "obse/obse/Hooks_Script.cpp:235",
+     "dead:#else of #if OBLIVION"
+    ]
+   ]
+  }
+ ],
+ "undefined_macros_in_conditions": {
+  "CS_VERSION": [
+   "CommandElements.cpp:18",
+   "CommandElements.cpp:20",
+   "CommandTable.cpp:829",
+   "CommandTable.cpp:942",
+   "CommandTable.cpp:1117",
+   "CommandTable.cpp:1133",
+   "Script.h:18"
+  ],
+  "U": [
+   "Hooks_Gameplay.cpp:1414"
+  ]
+ },
+ "reclassified": [
+  {
+   "address": 10959984,
+   "name": "EventManager::InstallOnVampireFeedHook::vtblEntry",
+   "kind": "hook_site",
+   "confidence": "named",
+   "const_name": "vtblEntry",
+   "source": "obse/obse/EventManager.cpp:369",
+   "state": "active",
+   "kind_note": "reclassified function->hook_site by SafeWrite32 at obse/obse/EventManager.cpp:370"
+  },
+  {
+   "address": 4324953,
+   "name": "kExtraOwnershipDefaultSetting",
+   "kind": "hook_site",
+   "confidence": "named",
+   "const_name": "kExtraOwnershipDefaultSetting",
+   "source": "obse/obse/Hooks_Gameplay.cpp:81",
+   "state": "active",
+   "kind_note": "reclassified global->hook_site by SafeWrite8 at obse/obse/Hooks_Gameplay.cpp:1512"
+  },
+  {
+   "address": 4324877,
+   "name": "kExtraOwnershipDefaultSetting2",
+   "kind": "hook_site",
+   "confidence": "named",
+   "const_name": "kExtraOwnershipDefaultSetting2",
+   "source": "obse/obse/Hooks_Gameplay.cpp:82",
+   "state": "active",
+   "kind_note": "reclassified global->hook_site by SafeWrite8 at obse/obse/Hooks_Gameplay.cpp:1513"
+  },
+  {
+   "address": 5790864,
+   "name": "kConsoleManager_PrintAddr",
+   "kind": "hook_site",
+   "confidence": "named",
+   "const_name": "kConsoleManager_PrintAddr",
+   "source": "obse/obse/Hooks_Gameplay.cpp:84",
+   "state": "active",
+   "kind_note": "reclassified function->hook_site by SafeWrite8 at obse/obse/Hooks_Gameplay.cpp:440"
+  },
+  {
+   "address": 10960016,
+   "name": "kPlayer_GetActorValueVtblAddr",
+   "kind": "hook_site",
+   "confidence": "named",
+   "const_name": "kPlayer_GetActorValueVtblAddr",
+   "source": "obse/obse/Hooks_Gameplay.cpp:660",
+   "state": "active",
+   "kind_note": "reclassified function->hook_site by SafeWrite32 at obse/obse/Hooks_Gameplay.cpp:709"
+  },
+  {
+   "address": 4630288,
+   "name": "kTESDescription_GetText_Addr",
+   "kind": "hook_site",
+   "confidence": "named",
+   "const_name": "kTESDescription_GetText_Addr",
+   "source": "obse/obse/Hooks_Gameplay.cpp:1421",
+   "state": "active",
+   "kind_note": "reclassified function->hook_site by WriteRelJump at obse/obse/Hooks_Gameplay.cpp:1468"
+  },
+  {
+   "address": 6249575,
+   "name": "ToggleBlockPerk::kJMPatchAddr",
+   "kind": "hook_site",
+   "confidence": "named",
+   "const_name": "kJMPatchAddr",
+   "source": "obse/obse/Hooks_Gameplay.cpp:1517",
+   "state": "active",
+   "kind_note": "reclassified code_ref->hook_site by SafeWrite16 at obse/obse/Hooks_Gameplay.cpp:1524"
+  },
+  {
+   "address": 4740647,
+   "name": "ToggleMercantilePerk::kJMPatchAddr",
+   "kind": "hook_site",
+   "confidence": "named",
+   "const_name": "kJMPatchAddr",
+   "source": "obse/obse/Hooks_Gameplay.cpp:1537",
+   "state": "active",
+   "kind_note": "reclassified code_ref->hook_site by SafeWrite8 at obse/obse/Hooks_Gameplay.cpp:1544"
+  },
+  {
+   "address": 4213367,
+   "name": "kInputGlobalAllocSize",
+   "kind": "hook_site",
+   "confidence": "named",
+   "const_name": "kInputGlobalAllocSize",
+   "source": "obse/obse/Hooks_Input.h:14",
+   "state": "active",
+   "kind_note": "reclassified function->hook_site by SafeWrite32 at obse/obse/Hooks_Input.cpp:561"
+  },
+  {
+   "address": 4213394,
+   "name": "kInputInitializeCallAddr",
+   "kind": "hook_site",
+   "confidence": "named",
+   "const_name": "kInputInitializeCallAddr",
+   "source": "obse/obse/Hooks_Input.h:15",
+   "state": "active",
+   "kind_note": "reclassified function->hook_site by WriteRelCall at obse/obse/Hooks_Input.cpp:563"
+  },
+  {
+   "address": 4212789,
+   "name": "kInputObjaHook1Loc",
+   "kind": "hook_site",
+   "confidence": "named",
+   "const_name": "kInputObjaHook1Loc",
+   "source": "obse/obse/Hooks_Input.h:17",
+   "state": "active",
+   "kind_note": "reclassified code_ref->hook_site by WriteRelJump at obse/obse/Hooks_Input.cpp:579"
+  },
+  {
+   "address": 4212750,
+   "name": "kInputObjaHook2Loc",
+   "kind": "hook_site",
+   "confidence": "named",
+   "const_name": "kInputObjaHook2Loc",
+   "source": "obse/obse/Hooks_Input.h:18",
+   "state": "active",
+   "kind_note": "reclassified code_ref->hook_site by WriteRelJump at obse/obse/Hooks_Input.cpp:580"
+  },
+  {
+   "address": 4614851,
+   "name": "kPostLoadGameFinishedAddr",
+   "kind": "hook_site",
+   "confidence": "named",
+   "const_name": "kPostLoadGameFinishedAddr",
+   "source": "obse/obse/Hooks_SaveLoad.cpp:34",
+   "state": "active",
+   "kind_note": "reclassified function->hook_site by WriteRelJump at obse/obse/Hooks_SaveLoad.cpp:214"
+  },
+  {
+   "address": 5335470,
+   "name": "kReturnCmdHook",
+   "kind": "hook_site",
+   "confidence": "named",
+   "const_name": "kReturnCmdHook",
+   "source": "obse/obse/Hooks_Script.cpp:45",
+   "state": "active",
+   "kind_note": "reclassified code_ref->hook_site by WriteRelJump at obse/obse/Hooks_Script.cpp:224"
+  }
+ ]
+}
