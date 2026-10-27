@@ -151,12 +151,18 @@ details per function in `re/functions/<address>.md`, states in
   to one step, 10 = smoothed, else the frame split into equal steps; at
   most 3 steps, 2 when the flag 0x00B333B8 is set. It compares the frame
   seconds against the same 166.67 constant 0x00A3D14C the clock uses as
-  milliseconds (why is unverified). Conflict to resolve: OBVR measured "60
-  Hz physics at 90 fps, one frame in three without a step"
-  (docs/hand-weapon-collision-spec.md:636-646); the static reading says a
-  90 fps frame of 11 ms under type 0 runs one step every frame. One of the
-  two is wrong or the update type differs at runtime - an in-game read of
-  0x00BA7918 and 0x00BA7914 settles it.
+  milliseconds (why is unverified).
+  **Measured** (2026-10-27, OBNG.dll's probe sampling 0x00BA7918 and
+  0x00BA7914 every frame, Linux, 75 Hz, headless): update type 0 the whole
+  run; in play one step on 99.5 % of the frames, two on the rest, never
+  zero, and the step length 0x00BA790C reads 0.013333 s - the frame's
+  length, not 1/60. So under type 0 at 75 Hz the planner hands out one
+  step of the frame's length per frame; the static reading "fixed 1/60
+  step with carry" describes the branch wrongly or 0x00B2E2E8 is not the
+  step it uses at runtime - the function needs a second mapping pass with
+  these numbers. OBVR's "60 Hz at 90 fps, one frame in three without a
+  step" (hand-weapon-collision-spec.md:636-646) is not what this run shows
+  at 75 Hz; whether 90 Hz behaves differently is unverified.
 - **The time multiplier at 0x00B06704 is the INI setting
   `fGlobalTimeMultiplier` ([General])** (read, 2026-10-27): the static
   initialiser 0x009DC2D0 registers the SettingInfo (value +0x00 = 1.0f,
@@ -178,12 +184,22 @@ details per function in `re/functions/<address>.md`, states in
   to +0x0C (the first write at 0x0047D241 is the unscaled value); the tick
   globals 0x00B39DB0/4 are written in every mode. The 24-bit x87 precision
   control gave the same result as 64-bit for 13 ms.
-- **x87 precision matters for a rebuild** (derived, from the correctness
-  review of LoadingMenu::Tick): the countdown arithmetic gives different
-  results at 24-bit and 53-bit precision control for some inputs (timer
-  5.0, sinceLast -100). Which control word the game runs under is
-  unverified; it decides how rebuilt float code must be compiled or
-  tested.
+- **The game runs the x87 at 24-bit precision control, rounding to
+  nearest** (measured 2026-10-27, OBNG.dll's probe at the first
+  TimeInfo::Update under Proton: `_control87` 0x000A001F). So rebuilt
+  float code must reproduce 24-bit x87 semantics, and the correctness
+  review of LoadingMenu::Tick (results differ between 24- and 53-bit for
+  timer 5.0, sinceLast -100) names the case that matters. Whether
+  Windows runs the same word is unverified (D3D9 sets it the same way
+  unless the device is created with FPU_PRESERVE; not checked).
+- **The TimeInfo class verified in the game** (measured 2026-10-27,
+  tools/shadow-run.sh, artifacts/shadow/obng-shadow/20261027-082656):
+  Update 108,574 calls, Init 4, Freeze 31, Unfreeze 32 - 0 mismatches
+  between the original and the rebuild, on the main loop's instance and
+  the LoadingMenu's. The LoadingMenu ticks its Update thousands of times a
+  second while loading (67,735 calls in the first ten seconds, against ~750
+  a window in play at 75 Hz). One Unfreeze more than Freeze: an unbalanced
+  call took the counter-zero flow, as the mapping has it.
 - **The update step 0x0040D800** (read): 524 instructions, 106 calls, 14
   calls to IsMenuMode 0x00578F60; 0x00889810 at 0x0040D8C2 is a direct
   callee in the Havok address range that receives the frame's seconds. No
