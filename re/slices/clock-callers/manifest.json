@@ -1,0 +1,43 @@
+{
+  "slice": "clock-callers",
+  "subsystem": "time",
+  "sharedHeaders": ["src/engine/time/TimeInfo.h"],
+  "purpose": "Map only: close the pilot's two disputed mappings under the current criterion and with the complete export, and map the three functions around the global clock that the time-info slice left open - who writes the fixed step, and who calls the freeze bracket unbalanced.",
+  "functions": [
+    {
+      "address": "0x0040D800",
+      "name": "OSGlobals::UpdateStep (proposal; second pass)",
+      "mapOnly": true,
+      "known": "Mapping exists: re/functions/0x0040D800.md (pilot, revision 2) - start from it. The pilot's skeptics refuted it on: 0x00889810 at 0x0040D8C2 is a direct callee receiving dt (now mapped: PlanHavokSteps, re/functions/0x00889810.md - the step planner, calls nothing); g_worldSceneGraph+0xDC is the camera (OBVR GameAddresses.h:1056, xOBSE NiObjects.h); InterfaceManager+0x08 is UInt32 currentMode (xOBSE GameAPI.h:498), read as a byte at 0x0040D9EC. TimeInfo field names are now freezeDepth/fixedStepMs/fixedStepCarryMs/frameSeconds/clockMs/startTick; the update at 0x0040D8AB is TimeInfo::Update (verified in the game). This function has no callers in Ghidra's export; OBVR's master frame call 0x0040D6F7 (inside 0x0040D4D0, also in this slice) is the candidate - check it in that export. 524 instructions, 56 callees: map at the level of which subsystem is advanced where, in what order, and which read frameSeconds (six read sites of 0x00B33E9C: 0x0040D8B0, 0x0040DB8B, 0x0040DC8E, 0x0040DE62, 0x0040DE89, 0x0040DEAF).",
+      "questions": ["Who calls 0x0040D800 - is it 0x0040D6F7 in 0x0040D4D0?", "Which subsystems take frameSeconds at the six read sites, in order?"]
+    },
+    {
+      "address": "0x004949E0",
+      "name": "GameMessageBoxA (proposal; second pass)",
+      "mapOnly": true,
+      "known": "Mapping exists: re/functions/0x004949E0.md (pilot) - start from it. It was disputed only because the choice-to-result mapping (jump table at 0x00494E70, cases 0x00494D90..0x00494DC2) lay outside the pilot's export; data.json now carries the table with its six cases. __stdcall(text, caption, type), ret 0xC; brackets the clock with TimeInfo::Freeze 0x0047D120 at 0x00494A18 and TimeInfo::Unfreeze 0x0047D0F0 at 0x00494E5E (both verified in the game as a nesting counter that shifts clockMs/startTick by the frozen stretch).",
+      "questions": ["The choice index to result mapping from the jump table, and what the six cases return.", "Does the function pump messages or wait inside the bracket - how long can the clock stay frozen here?"]
+    },
+    {
+      "address": "0x004060F0",
+      "name": "caller of the freeze bracket on g_timeInfo (seed: 0x0040616E Unfreeze, 0x004061AF Freeze)",
+      "mapOnly": true,
+      "known": "read: calls TimeInfo::Unfreeze on g_timeInfo (MOV ECX,0xB33E90; CALL 0x0047D0F0 at 0x0040616E) and TimeInfo::Freeze at 0x004061AF; the shadow runs counted one Unfreeze more than Freeze over a run, the surplus taking the counter-zero flow. Ghidra had no function here (it follows the jump table of 0x00405D60 at 0x004060AC..0x004060EC); created 2026-10-27 at 0x004060F0, body to 0x004062F4, 98 instructions, 2 callees (0x00403160, 0x004046A0 - OBVR's GameAddresses.h names 0x00403160 kMouseAxisRead / xOBSE OSInputGlobals::GetMouseAxisMovement).",
+      "questions": ["What is this function (input handling? the window's focus/activation?), and under which condition does it call Unfreeze without a matching Freeze - the unbalanced call the shadow counted?", "What does it write at [EDI+2] = 1 at 0x00406173?"]
+    },
+    {
+      "address": "0x0040D4D0",
+      "name": "writer of g_timeInfo.fixedStepMs (seed: Ghidra xrefs 0x0040D7A3, 0x0040D7AD, 0x0040D7B7)",
+      "mapOnly": true,
+      "known": "read: writes 0x00B33E94 (fixedStepMs of the global TimeInfo) at three sites; OBVR's docs name 0x0040D6F7 inside it 'the master frame call'. 235 instructions, 30 callees. TimeInfo::Update reads fixedStepMs as the fixed step in ms (nonzero = fixed-step mode, the tick ignored); whether the value is 1000/iFPSClamp is unverified - the setting's name would be in data.json if it is read here.",
+      "questions": ["What does it write to fixedStepMs at the three sites - 1000/iFPSClamp, 0, something else - and on what condition?", "Is 0x0040D6F7 the call of 0x0040D800, i.e. is this the frame function around the update step?"]
+    },
+    {
+      "address": "0x00406360",
+      "name": "writer of g_timeInfo.fixedStepMs (seed: Ghidra xref 0x0040692B)",
+      "mapOnly": true,
+      "known": "read: writes 0x00B33E94 at 0x0040692B. 436 instructions, 34 callees. Also reads the 2^32 constant at 0x0040691B.",
+      "questions": ["What is this function and what does it write to fixedStepMs, on what condition?"]
+    }
+  ]
+}

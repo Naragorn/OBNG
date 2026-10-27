@@ -1,0 +1,5 @@
+0x004060F0 # calls the freeze bracket on g_timeInfo at 0x0040616E/0x004061AF; function created 2026-10-27 after the jump table of 0x00405D60
+0x0040D4D0 # writes g_timeInfo.fixedStepMs at 0x0040D7A3/AD/B7 - the function before the update step (OBVR: 0x0040D4D0)
+0x00406360 # writes g_timeInfo.fixedStepMs at 0x0040692B
+0x0040D800 # OSGlobals::UpdateStep - second pass (disputed in the pilot under the old criterion; callee now known as PlanHavokSteps)
+0x004949E0 # GameMessageBoxA - second pass (disputed in the pilot: the jump table is in data.json now)

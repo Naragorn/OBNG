@@ -202,6 +202,18 @@ details per function in `re/functions/<address>.md`, states in
   timer 5.0, sinceLast -100) names the case that matters. Whether
   Windows runs the same word is unverified (D3D9 sets it the same way
   unless the device is created with FPU_PRESERVE; not checked).
+- **Who writes the fixed step** (read 2026-10-27, Ghidra references to
+  0x00B33E94): 0x0040D4D0, the function before the update step, writes
+  g_timeInfo.fixedStepMs at three sites (0x0040D7A3, 0x0040D7AD,
+  0x0040D7B7), and 0x00406360 at 0x0040692B; both unmapped, so whether the
+  value is 1000/iFPSClamp is still unverified. Nothing else writes +0x04 of
+  the global; the carry +0x08 is written only by the builder 0x009DC2A0.
+- **The global's builder is a CRT initialiser** (read 2026-10-27): the
+  dword 0x009DC2A0 sits at 0x00A2884C in .rdata, directly followed by
+  0x009DC2D0 (the fGlobalTimeMultiplier registration) at 0x00A28850 - two
+  entries of the initialiser table, so g_timeInfo is built at startup
+  before any plugin loads (which also means its builder can never be
+  shadowed in the game; the emulator is its gate).
 - **The TimeInfo class verified in the game** (measured 2026-10-27,
   tools/shadow-run.sh, artifacts/shadow/obng-shadow/20261027-082656):
   Update 108,574 calls, Init 4, Freeze 31, Unfreeze 32 - 0 mismatches

@@ -156,6 +156,7 @@ int DescribeTickFields(const tick::MenuFields& original, const tick::MenuFields&
 }
 
 UInt32 __cdecl ShadowTick(UInt32 forceRefreshArg) {
+	LogFpuControlWordOnce("LoadingMenu::Tick");
 	const UInt8 forceRefresh = static_cast<UInt8>(forceRefreshArg);
 	// The lookups the original makes first, made here first as well: getters.
 	void* tile = reinterpret_cast<TileMenuForTypeFn>(kTileMenuForType)(tick::kLoadingMenuType);

@@ -34,6 +34,11 @@ UInt32 InstallShadowTimeInfo(const ShadowSettings& settings, LogFn log);
 // (ShadowLoadingMenu.cpp). Call after InstallShadowTimeInfo.
 UInt32 InstallShadowLoadingMenu(const ShadowSettings& settings, LogFn log);
 
+// The x87 control word logged once, from whichever shadow runs first with
+// the probe on (Update is off in play because of OBVR's clock, so Tick,
+// which runs every frame, carries the probe there).
+void LogFpuControlWordOnce(const char* where);
+
 // One entry detour: the bytes checked, the trampoline built, the patch
 // written; the original reachable through *original afterwards. Shared by
 // the two installers.

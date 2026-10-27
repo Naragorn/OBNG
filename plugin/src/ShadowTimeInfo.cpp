@@ -81,17 +81,7 @@ void Report(Shadowed which, bool mismatch, const State& before, const State& ori
 }
 
 void LogControlWordOnce() {
-	if (g_controlWordLogged || !g_settings.fpuControlWord) {
-		return;
-	}
-	g_controlWordLogged = true;
-	const unsigned int cw = _control87(0, 0);
-	const unsigned int pc = cw & _MCW_PC;
-	const char* precision = pc == _PC_24 ? "24-bit" : pc == _PC_53 ? "53-bit" : pc == _PC_64 ? "64-bit" : "?";
-	const unsigned int rc = cw & _MCW_RC;
-	const char* rounding = rc == _RC_NEAR ? "nearest" : rc == _RC_DOWN ? "down" : rc == _RC_UP ? "up" : "chop";
-	g_log("Probe: x87 control word at the first TimeInfo::Update - precision %s, rounding %s (_control87 %08X)",
-	      precision, rounding, cw);
+	LogFpuControlWordOnce("TimeInfo::Update");
 }
 
 void SamplePlanner() {
@@ -189,6 +179,20 @@ UInt32 __fastcall ShadowUnfreeze(TimeInfo* self, void* /*edx*/) {
 }
 
 }  // namespace
+
+void LogFpuControlWordOnce(const char* where) {
+	if (g_controlWordLogged || !g_settings.fpuControlWord) {
+		return;
+	}
+	g_controlWordLogged = true;
+	const unsigned int cw = _control87(0, 0);
+	const unsigned int pc = cw & _MCW_PC;
+	const char* precision = pc == _PC_24 ? "24-bit" : pc == _PC_53 ? "53-bit" : pc == _PC_64 ? "64-bit" : "?";
+	const unsigned int rc = cw & _MCW_RC;
+	const char* rounding = rc == _RC_NEAR ? "nearest" : rc == _RC_DOWN ? "down" : rc == _RC_UP ? "up" : "chop";
+	g_log("Probe: x87 control word at the first %s - precision %s, rounding %s (_control87 %08X)", where, precision,
+	      rounding, cw);
+}
 
 bool InstallEntryDetour(const char* name, UInt32 address, const UInt8* bytes, UInt32 length, const void* replacement,
                         void** original, LogFn log) {

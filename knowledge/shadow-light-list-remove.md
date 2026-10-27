@@ -189,8 +189,8 @@ BSShaderAccumulator vtable (0xA8CC5C) has `FUN_007AD270` at slot +0x58.
   equality means nothing but lights hold P); then for every light in `prop.lights`
   with `light+0xF4 == 0`: `light->RemoveGeometry(P)`. Returns `alive`. Only caller:
   `FUN_007C6100`.
-- `FUN_007C6100` **ShadowSceneNode::RelightGeometry(P, nodeOverride)**, `ret 8`
-  (asm: `this` in ECX, `[esp+0x24]` = P, `[esp+0x28]` = override): if no override, the
+- `FUN_007C6100` **ShadowSceneNode::RelightGeometry(P, nodeOverride)**, **__cdecl** (corrected 2026-10-27 after a crash: the body ends in `add esp, 0xC; ret`, the caller cleans the two stack arguments, ecx is never read - a `ret 8` hook killed the load)
+  (asm: ecx unread, `[esp+0x24]` = P, `[esp+0x28]` = override): if no override, the
   node comes from `FUN_007B4280(prop+0x1C >> 28)` when `GetShaderType != -1`; `if
   (!DetachGeometryFromItsLights(P)) return 0`; for every light in `node.lights`
   (+0xE8): `if (light->IsInRange(P, light+0x100)) light->AddGeometry(P)`; return 1.
