@@ -11,3 +11,5 @@ re/export/
 .claude/worktrees/
 
 *.log
+artifacts/shadow/*/*/*.png
+artifacts/shadow/*/*/player-*

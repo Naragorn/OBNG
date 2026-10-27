@@ -1,0 +1,60 @@
+#pragma once
+
+#include <cstdint>
+
+#include "ShadowTimeInfo.h"
+
+// What the plugin does when xOBSE queries and loads it - with the side
+// effects behind a Host so every flow runs in a test. The shape is
+// OblivionFrameFixes' (the same author); the content is OBNG's shadow mode.
+
+namespace obng::plugin {
+
+// First fields of xOBSE's OBSEInterface (obse/obse/PluginAPI.h); nothing
+// past isEditor is read.
+struct ExtenderInterfaceHead {
+	uint32_t obseVersion;
+	uint32_t oblivionVersion;
+	uint32_t editorVersion;
+	uint32_t isEditor;
+};
+
+// PluginAPI.h PluginInfo; kInfoVersion is 3 in xOBSE 22.
+struct PluginInfo {
+	uint32_t infoVersion;
+	const char* name;
+	uint32_t version;
+};
+
+constexpr const char* kPluginName = "OBNG";
+constexpr uint32_t kPluginVersion = 1;
+constexpr uint32_t kInfoVersion = 3;
+
+// obse_common/obse_version.h: MAKE_OBLIVION_VERSION(1, 2, 416). Every
+// address here is of this build and of no other.
+constexpr uint32_t kOblivionVersion_1_2_416 = 0x010201A0;
+
+struct Settings {
+	ShadowSettings shadow;  // [Shadow] and [Probe]
+};
+
+struct Host {
+	void (*resetLog)();
+	void (*log)(const char* format, ...);
+	// Reads the INI next to the DLL into *settings; false if there is no INI
+	// (the defaults then stand).
+	bool (*readSettings)(Settings* settings);
+	// The shadow detours; returns how many were made.
+	uint32_t (*installShadowTimeInfo)(const ShadowSettings& settings);
+};
+
+bool Query(const ExtenderInterfaceHead& xse, PluginInfo* info, const Host& host);
+// Puts the shadows the settings ask for. Always true: refusing to load would
+// make nothing safer, and the log says what was skipped.
+bool Load(const ExtenderInterfaceHead& xse, const Host& host);
+
+// The state Load left; exposed for tests.
+const Settings& LoadedSettings();
+void ResetForTest();
+
+}  // namespace obng::plugin

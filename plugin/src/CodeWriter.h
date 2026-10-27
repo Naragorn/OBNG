@@ -1,0 +1,100 @@
+#pragma once
+
+#include "Types.h"
+
+namespace obng::plugin {
+
+// Assembles x86 machine code. Deliberately tiny: the plugin needs a handful of
+// opcodes, not an assembler.
+//
+// Emitting the bytes here instead of using __declspec(naked) with an __asm
+// block is intentional. MSVC inline assembly ties the project to MSVC, while
+// this route builds with MSVC, clang-cl and clang-cross alike - and it can be
+// tested without a running Oblivion.
+//
+// Deliberately free of Windows dependencies.
+class CodeWriter {
+public:
+	// baseAddress is the address at which the code will later execute. It is
+	// passed in rather than derived from the buffer, so that byte generation
+	// can be checked outside the game process.
+	CodeWriter(UInt8* buffer, UInt32 capacity, UInt32 baseAddress);
+
+	void Byte(UInt8 value);
+	void Bytes(const UInt8* data, UInt32 size);
+	void DWord(UInt32 value);
+
+	// pushad / popad save all eight general purpose registers.
+	void PushAllRegisters();
+	void PopAllRegisters();
+	void PushFlags();
+	void PopFlags();
+
+	// push dword ptr [esp + offset]
+	void PushStackValue(UInt8 offset);
+
+	// add esp, amount
+	void AddStackPointer(UInt8 amount);
+
+	// call / jmp with a 32-bit relative target, from the current position.
+	void CallRelative(UInt32 target);
+	void JumpRelative(UInt32 target);
+
+	// ja (jump if above) with a 32-bit relative target.
+	void JumpAboveRelative(UInt32 target);
+
+	// push ecx, to hand a thiscall's `this` to a cdecl callback.
+	void PushEcx();
+	void PushEax();
+	void PushEdx();
+
+	// Small stack-relative moves used by call-site stubs.  The offsets are
+	// deliberately byte-sized: the generated frames are fixed and local.
+	void MoveEcxFromStack(UInt8 offset);
+	void MoveEdxFromStack(UInt8 offset);
+	void MoveStackFromEax(UInt8 offset);
+	void LoadEffectiveAddressEax(UInt8 offset);
+
+	// sub esp, amount
+	void SubStackPointer(UInt8 amount);
+
+	// movzx ecx, word ptr [ebp + offset] - a 16-bit argument or local.
+	void MoveZeroExtendEcxFromEbpWord(UInt8 offset);
+
+	// mov edx, eax - a callback's result where the patched code expects it.
+	void MoveEdxFromEax();
+
+	// xor ecx, ecx
+	void ClearEcx();
+
+	// nop, to pad out a partially overwritten instruction.
+	void Nop(UInt32 count);
+
+	// pop dword ptr [address] - takes the top of the stack into memory.
+	void PopToMemory(UInt32 address);
+
+	// push dword ptr [address] - puts a memory value on the stack.
+	void PushFromMemory(UInt32 address);
+
+	// mov dword ptr [address], esp - records where the stack stands.
+	void StoreStackPointer(UInt32 address);
+
+	// ret, with nothing popped beyond the return address.
+	void Return();
+	void ReturnAndPop(UInt16 bytes);
+
+	UInt32 Size() const { return m_size; }
+	bool Overflowed() const { return m_overflowed; }
+
+	// The address this code would have at the given position.
+	UInt32 AddressAt(UInt32 offset) const { return m_baseAddress + offset; }
+
+private:
+	UInt8* m_buffer;
+	UInt32 m_capacity;
+	UInt32 m_baseAddress;
+	UInt32 m_size;
+	bool m_overflowed;
+};
+
+}  // namespace obng::plugin
