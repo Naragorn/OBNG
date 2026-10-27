@@ -1,0 +1,173 @@
+[
+ {
+  "name": "tick 0x12345678",
+  "regs": {
+   "eax": "12345678",
+   "ebx": "00000000",
+   "ecx": "00000000",
+   "edx": "00000000",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 0,
+  "writes": [
+   {
+    "at": "009dc2a8",
+    "address": "00b33e94",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "at": "009dc2b0",
+    "address": "00b33e98",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "at": "009dc2b6",
+    "address": "00b33e90",
+    "size": 1,
+    "value": 0
+   },
+   {
+    "at": "009dc2bc",
+    "address": "00b33e9c",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "at": "009dc2c2",
+    "address": "00b33ea0",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "at": "009dc2c8",
+    "address": "00b33ea4",
+    "size": 4,
+    "value": 305419896
+   }
+  ],
+  "readback": {
+   "00b33e90": "00 ff ff ff 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 78 56 34 12"
+  },
+  "errors": []
+ },
+ {
+  "name": "tick 0 (the start)",
+  "regs": {
+   "eax": "00000000",
+   "ebx": "00000000",
+   "ecx": "00000000",
+   "edx": "00000000",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 0,
+  "writes": [
+   {
+    "at": "009dc2a8",
+    "address": "00b33e94",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "at": "009dc2b0",
+    "address": "00b33e98",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "at": "009dc2b6",
+    "address": "00b33e90",
+    "size": 1,
+    "value": 0
+   },
+   {
+    "at": "009dc2bc",
+    "address": "00b33e9c",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "at": "009dc2c2",
+    "address": "00b33ea0",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "at": "009dc2c8",
+    "address": "00b33ea4",
+    "size": 4,
+    "value": 0
+   }
+  ],
+  "readback": {
+   "00b33e90": "00 ff ff ff 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "tick 0xFFFFFFFF (about to wrap)",
+  "regs": {
+   "eax": "ffffffff",
+   "ebx": "00000000",
+   "ecx": "00000000",
+   "edx": "00000000",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 0,
+  "writes": [
+   {
+    "at": "009dc2a8",
+    "address": "00b33e94",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "at": "009dc2b0",
+    "address": "00b33e98",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "at": "009dc2b6",
+    "address": "00b33e90",
+    "size": 1,
+    "value": 0
+   },
+   {
+    "at": "009dc2bc",
+    "address": "00b33e9c",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "at": "009dc2c2",
+    "address": "00b33ea0",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "at": "009dc2c8",
+    "address": "00b33ea4",
+    "size": 4,
+    "value": 4294967295
+   }
+  ],
+  "readback": {
+   "00b33e90": "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff ff ff ff"
+  },
+  "errors": []
+ }
+]

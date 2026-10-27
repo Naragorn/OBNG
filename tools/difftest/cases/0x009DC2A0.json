@@ -1,0 +1,24 @@
+{
+  "function": "0x009DC2A0",
+  "note": "The CRT initialiser that builds g_timeInfo at 0x00B33E90: GetTickCount through the import slot 0x00A280D0, then Init's stores inlined. The slot is pointed at a stub that returns the chosen tick in EAX. Expected: +0x00 = 0, +0x04/+0x08/+0x0C = 0.0f, +0x10 = 0, +0x14 = tick; nothing else written.",
+  "cases": [
+    {
+      "name": "tick 0x12345678",
+      "memory": {"0x00A280D0": "00 00 00 7d", "0x00B33E90": "ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff"},
+      "stubs": {"0x7D000000": {"ret": 0, "eax": "0x12345678"}},
+      "readback": [{"address": "0x00B33E90", "size": 24}]
+    },
+    {
+      "name": "tick 0 (the start)",
+      "memory": {"0x00A280D0": "00 00 00 7d", "0x00B33E90": "ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff"},
+      "stubs": {"0x7D000000": {"ret": 0, "eax": "0x0"}},
+      "readback": [{"address": "0x00B33E90", "size": 24}]
+    },
+    {
+      "name": "tick 0xFFFFFFFF (about to wrap)",
+      "memory": {"0x00A280D0": "00 00 00 7d", "0x00B33E90": "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"},
+      "stubs": {"0x7D000000": {"ret": 0, "eax": "0xFFFFFFFF"}},
+      "readback": [{"address": "0x00B33E90", "size": 24}]
+    }
+  ]
+}
