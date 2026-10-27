@@ -1,0 +1,3 @@
+0x00889810 # PlanHavokSteps - second pass with the measured planner data (map only)
+0x005AD980 # LoadingMenu::Tick - rebuild again with 24-bit x87 known
+0x005AD0D0 # LoadingMenu::LoadingMenu - rebuild again, the export now keeps CR

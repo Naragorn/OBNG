@@ -1,0 +1,37 @@
+{
+  "slice": "loading-menu",
+  "subsystem": "time",
+  "sharedHeaders": ["src/engine/time/TimeInfo.h"],
+  "purpose": "Close the pilot's two review-failed rebuilds now that the game's x87 precision control is measured and the export keeps CR, and give the Havok step planner a second mapping pass against the measured run.",
+  "functions": [
+    {
+      "address": "0x00889810",
+      "name": "PlanHavokSteps (proposal from time-info; second pass)",
+      "mapOnly": true,
+      "known": "A mapping exists: re/functions/0x00889810.md (time-info slice) - start from it. It reads the function as a scheduler over globals: frame seconds + carry 0x00BA7910 -> step count 0x00BA7914 and step length 0x00BA790C, dispatched on the update type 0x00BA7918 as 0 = fixed step 0x00B2E2E8 with carry, 10 = smoothed 0x00B2E2EC, else the whole time split into equal steps; cap 3 or 2 steps. MEASURED in the game (2026-10-27, Linux, 75 Hz = 13.33 ms frames, OBNG.dll sampling 0x00BA7918 and 0x00BA7914 once a frame and reading 0x00BA790C at the summary): update type 0 the whole run; in play 1 step on 99.5 % of the frames, 2 on the rest, never 0; the step length read 0.013333 s = the frame's length, not 0.016667. The image values from data.json: 0x00B2E2E8 = 0.016666668f, 0x00B2E2E4 = 0.016f, 0x00B2E2E0 = 0.016f, 0x00B2E2EC = 0.032f, 0x00B2E2F0 = 0.05f, 0x00A95CA8 = 0.008333334f; runtime values of the writable ones unverified (OBVR: 0x00B2E2E8 is the runtime copy of fMaxTime:HAVOK). The static reading of the type-0 branch does not produce these numbers (a fixed 1/60 step with carry would give 0 steps on some frames and a step of 16.67 ms). Re-read the dispatch and the type-0 branch against asm.s with these measurements as the ground truth: which branch gives one step of the frame's own length at 13.33 ms, and under what condition that branch is reached with type 0. Also read the 2-step frames: which input makes them.",
+      "questions": [
+        "Which branch of the planner runs under update type 0 at 13.33 ms frames, and why does it give one step of the frame's length?",
+        "What is the role of 0x00B2E2E8 (1/60 in the image) in that branch - a cap on the step, a divisor, or unused?",
+        "What makes a 2-step frame (0.5 % of the frames at 75 Hz)?",
+        "Would a 90 Hz frame (11.1 ms) under the same branch give one step of 11.1 ms, or does something else apply?"
+      ]
+    },
+    {
+      "address": "0x005AD980",
+      "name": "LoadingMenu::Tick (confirmed in frame-clock; rebuild rejected in review)",
+      "known": "Mapping: re/functions/0x005AD980.md (confirmed in the pilot's second round) - start from it; the TimeInfo field names are now freezeDepth, fixedStepMs, fixedStepCarryMs, frameSeconds, clockMs, startTick (src/engine/time/TimeInfo.h), the menu's private TimeInfo at Menu+0x54. A rebuild exists: src/engine/time/LoadingMenu_TickLogic.h, LoadingMenu_Tick.h, tests/LoadingMenu_TickTest.cpp (20 flows, green) - REVISE THESE FILES IN PLACE. It was rejected by the correctness review because the countdown arithmetic matched the original only at x87 precision control 53-bit, with inputs that differ at 24-bit (timer 5.0, sinceLast -100). MEASURED 2026-10-27: the game runs the x87 at 24-bit precision control, rounding to nearest (_control87 0x000A001F, read at the first TimeInfo::Update under Proton). The rebuild must therefore reproduce the 24-bit x87 arithmetic of the instructions (every intermediate rounded to float where the x87 would at PC=24; note that loads of doubles from memory still hold their double value in the register but every arithmetic result is rounded to 24-bit mantissa), and the tests must include the review's inputs. Constants now in data.json (0x00A2FC70 etc.). The export's strings keep CR LF.",
+      "questions": [
+        "Which x87 operations in the countdown round at 24-bit, and what does the rebuild have to do to match (float intermediates, or explicit rounding of double results)?",
+        "What is the double at 0x00A2FC70 (the timer's unit)?"
+      ]
+    },
+    {
+      "address": "0x005AD0D0",
+      "name": "LoadingMenu::LoadingMenu (confirmed in frame-clock; rebuild rejected in review)",
+      "known": "Mapping: re/functions/0x005AD0D0.md (confirmed in the pilot's first round, this+0x68 signed) - start from it; TimeInfo names as above; the TimeInfo is allocated with FormHeap_Allocate(0x18) (PUSH at 0x005AD2E7, call at 0x005AD2E9) and initialised through TimeInfo::Init 0x0047D150 (thiscall(tick), ret 4; verified in the game), and may be NULL after a failed allocation (XOR EDI,EDI at 0x005AD315). The previous rebuild was removed (it was named LoadingMenu_LoadingMenu_005AD0D0); build it anew as src/engine/time/LoadingMenu_LoadingMenuLogic.h, LoadingMenu_LoadingMenu.h, tests/LoadingMenu_LoadingMenuTest.cpp. The review's blocker: the warning string in the binary ends in CR LF and the rebuild wrote LF - the export now keeps the CR (meta.json strings, \\r\\n). The other issues were in the Logic header (one major, three minor) - read the asm again rather than the old rebuild.",
+      "questions": [
+        "Which settings are summed in the constructor's loop (names at 0x00B14158/60/68/70, now in data.json or via the name pointers), and what does the 'Missing' warning say exactly, bytes included?"
+      ]
+    }
+  ]
+}
