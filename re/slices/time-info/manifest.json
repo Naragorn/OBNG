@@ -1,0 +1,58 @@
+{
+  "slice": "time-info",
+  "subsystem": "time",
+  "sharedHeaders": ["src/engine/time/TimeInfo.h"],
+  "purpose": "The TimeInfo class complete: constructor, update, the freeze bracket, the static initialiser of the global, and the two larger consumers of the tick globals and the frame seconds (map only). Second run of the workflow, with the pilot's process fixes.",
+  "functions": [
+    {
+      "address": "0x0047D170",
+      "name": "TimeInfo::Update (frame-clock: instruction reading held with every skeptic)",
+      "known": "Mapped in the frame-clock slice: re/functions/0x0047D170.md revision 2 exists - start from it, keep what held, correct what knowledge/frame-clock.md ('From the frame-clock slice' and the emulator paragraph) settled. read: thiscall on a TimeInfo, argument = this frame's GetTickCount, ret 4; writes this tick to 0x00B39DB0 and the previous value to 0x00B39DB4 in every mode; frozen (+0x00) writes 0.0f to +0x0C and leaves +0x10; fixed step (+0x04 != 0) advances +0x10 by the float step with the carry at +0x08 (rounded to float each frame) and stores step*0.001*multiplier; variable mode: tick - +0x10, zero reads as 1, above 166.66667f (0x00A3D14C) reads as 166, seconds = ms*0.001 (double at 0x00A30E40) * fGlobalTimeMultiplier (0x00B06704), written to +0x0C twice (unscaled at 0x0047D241, scaled at 0x0047D24D). measured in the emulator (tools/difftest/expected/0x0047D170.json, cases in tools/difftest/cases/0x0047D170.json): the exact float bit patterns the original produces for seven inputs. The rebuild's tests must reproduce those bit patterns exactly (compare the 32-bit patterns, not approximate floats).",
+      "questions": [
+        "The negative-delta path (tick below +0x10): what does the add of 2^32 (0x00A2FC78) produce, and is the third fix-up at 0x0047D231 reachable?",
+        "Is the carry at +0x08 ever read outside this function?"
+      ]
+    },
+    {
+      "address": "0x0047D150",
+      "name": "TimeInfo::TimeInfo (seed: constructor, derived from 0x005AD0D0)",
+      "known": "derived (re/functions/0x005AD0D0.md): called right after FormHeap_Allocate(0x18) at 0x005AD30E with the start tick as argument; the LoadingMenu keeps the result at this+0x54. 9 instructions.",
+      "questions": ["Which fields does it initialise to what - does it zero +0x00..+0x10 and set +0x14 = tick? Does +0x04 get the iFPSClamp step here or elsewhere?"]
+    },
+    {
+      "address": "0x0047D120",
+      "name": "first half of the freeze bracket (seed: call sites)",
+      "known": "read (frame-clock): called on g_timeInfo by GameMessageBoxA 0x004949E0 at 0x00494A18 before the box shows, and by TESObjectREFR::LoadBaseFormModels 0x004E1580 at 0x004E15D6 before loading; one callee. 16 instructions.",
+      "questions": ["Flag or nesting counter? Which TimeInfo fields does it write, and what is the callee?"]
+    },
+    {
+      "address": "0x0047D0F0",
+      "name": "second half of the freeze bracket (seed: call sites)",
+      "known": "read (frame-clock): called on g_timeInfo by GameMessageBoxA at 0x00494E5E after the box, and by LoadBaseFormModels at 0x004E18C6 after loading; one callee. 16 instructions.",
+      "questions": ["Does it restore +0x10 or +0x14 so the frozen stretch does not count as a frame, or does it only clear the flag?"]
+    },
+    {
+      "address": "0x009DC2A0",
+      "name": "static initialiser that writes g_timeInfo (seed: Ghidra xref at 0x009DC2B6)",
+      "known": "read: writes 0x00B33E90 at 0x009DC2B6; 10 instructions, one callee; lies in the static-initialiser region (0x009DC240.. holds a row of small initialisers, the one at 0x009DC2D0 registers fGlobalTimeMultiplier).",
+      "questions": ["Is this the construction of the global TimeInfo at startup (GetTickCount into +0x14)? What is the callee?"]
+    },
+    {
+      "address": "0x0055D4C0",
+      "name": "reader of the tick globals (seed: Ghidra xrefs at 0x0055D615, 0x0055D6D8, 0x0055D790)",
+      "mapOnly": true,
+      "known": "read: reads g_currentTickMs 0x00B39DB0 and g_previousTickMs 0x00B39DB4 at three sites, and the 0.001 double 0x00A30E40. 300 instructions, 9 callees; Ghidra had no function here, created 2026-10-27 from the gap after 0x0055D1B0.",
+      "questions": ["What is this function, and what does it compute from the tick delta - a frame-rate display, a profiler, the console's timing?", "Which of its callees are worth their own slice?"]
+    },
+    {
+      "address": "0x00889810",
+      "name": "callee of the update step receiving the frame seconds (seed: 0x0040D8C2)",
+      "mapOnly": true,
+      "known": "read (frame-clock): direct callee of OSGlobals::UpdateStep at 0x0040D8C2, right after the TimeInfo update; receives the frame's seconds from +0x0C; lies in the Havok address range; reads the 166.67 ceiling 0x00A3D14C at 0x00889829. 143 instructions, no callees in the export. Ghidra had no function here, created 2026-10-27.",
+      "questions": ["Is this the Havok world step or its driver - where does the physics time step come from, is it clamped by the same 166.67 ceiling, and is there a fixed-step accumulator?"]
+    }
+  ],
+  "openOutsideThisSlice": [
+    "0x00406169 / 0x004061AA read g_timeInfo and call the bracket pair; the containing function could not be created from the gap after 0x00405D60 (0x004060AC is not code). Needs an entry from another source."
+  ]
+}

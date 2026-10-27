@@ -1,0 +1,355 @@
+[
+ {
+  "name": "variable mode: tick 1013, lastMs 1000, start 0 -> 13 ms -> 0.013 s at multiplier 1.0",
+  "regs": {
+   "eax": "00000100",
+   "ebx": "00000000",
+   "ecx": "00b33e90",
+   "edx": "000003f5",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [
+   {
+    "at": "0047d181",
+    "address": "00b39db4",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "at": "0047d186",
+    "address": "00b39db0",
+    "size": 4,
+    "value": 1013
+   },
+   {
+    "at": "0047d23e",
+    "address": "00b33ea0",
+    "size": 4,
+    "value": 1013
+   },
+   {
+    "at": "0047d241",
+    "address": "00b33e9c",
+    "size": 4,
+    "value": 1012202996
+   },
+   {
+    "at": "0047d24d",
+    "address": "00b33e9c",
+    "size": 4,
+    "value": 1012202996
+   }
+  ],
+  "readback": {
+   "00b33e90": "00 00 00 00 00 00 00 00 00 00 00 00 f4 fd 54 3c f5 03 00 00 00 00 00 00",
+   "00b39db0": "f5 03 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "variable mode: zero delta reads as 1 ms",
+  "regs": {
+   "eax": "00004000",
+   "ebx": "00000000",
+   "ecx": "00b33e90",
+   "edx": "000003e8",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [
+   {
+    "at": "0047d181",
+    "address": "00b39db4",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "at": "0047d186",
+    "address": "00b39db0",
+    "size": 4,
+    "value": 1000
+   },
+   {
+    "at": "0047d23e",
+    "address": "00b33ea0",
+    "size": 4,
+    "value": 1000
+   },
+   {
+    "at": "0047d241",
+    "address": "00b33e9c",
+    "size": 4,
+    "value": 981668463
+   },
+   {
+    "at": "0047d24d",
+    "address": "00b33e9c",
+    "size": 4,
+    "value": 981668463
+   }
+  ],
+  "readback": {
+   "00b33e90": "00 00 00 00 00 00 00 00 00 00 00 00 6f 12 83 3a e8 03 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "variable mode: 500 ms delta clamps to 166 ms",
+  "regs": {
+   "eax": "00000000",
+   "ebx": "00000000",
+   "ecx": "00b33e90",
+   "edx": "000005dc",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [
+   {
+    "at": "0047d181",
+    "address": "00b39db4",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "at": "0047d186",
+    "address": "00b39db0",
+    "size": 4,
+    "value": 1500
+   },
+   {
+    "at": "0047d23e",
+    "address": "00b33ea0",
+    "size": 4,
+    "value": 1500
+   },
+   {
+    "at": "0047d241",
+    "address": "00b33e9c",
+    "size": 4,
+    "value": 1042938856
+   },
+   {
+    "at": "0047d24d",
+    "address": "00b33e9c",
+    "size": 4,
+    "value": 1042938856
+   }
+  ],
+  "readback": {
+   "00b33e90": "00 00 00 00 00 00 00 00 00 00 00 00 e8 fb 29 3e dc 05 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "frozen: +0x00 nonzero writes 0 seconds, tick globals still written",
+  "regs": {
+   "eax": "00000000",
+   "ebx": "00000000",
+   "ecx": "00b33e90",
+   "edx": "000003f5",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [
+   {
+    "at": "0047d181",
+    "address": "00b39db4",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "at": "0047d186",
+    "address": "00b39db0",
+    "size": 4,
+    "value": 1013
+   },
+   {
+    "at": "0047d24d",
+    "address": "00b33e9c",
+    "size": 4,
+    "value": 0
+   }
+  ],
+  "readback": {
+   "00b33e90": "01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 e8 03 00 00 00 00 00 00",
+   "00b39db0": "f5 03 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "fixed step 1000/60 ms (iFPSClamp 60), carry 0: the tick is ignored",
+  "regs": {
+   "eax": "00000010",
+   "ebx": "00000000",
+   "ecx": "00b33e90",
+   "edx": "000003f8",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [
+   {
+    "at": "0047d181",
+    "address": "00b39db4",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "at": "0047d186",
+    "address": "00b39db0",
+    "size": 4,
+    "value": 305419896
+   },
+   {
+    "at": "0047d1e8",
+    "address": "00b33e98",
+    "size": 4,
+    "value": 1060459872
+   },
+   {
+    "at": "0047d23e",
+    "address": "00b33ea0",
+    "size": 4,
+    "value": 1016
+   },
+   {
+    "at": "0047d241",
+    "address": "00b33e9c",
+    "size": 4,
+    "value": 1015603179
+   },
+   {
+    "at": "0047d24d",
+    "address": "00b33e9c",
+    "size": 4,
+    "value": 1015603179
+   }
+  ],
+  "readback": {
+   "00b33e90": "00 00 00 00 ab aa 85 41 60 55 35 3f eb df 88 3c f8 03 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "variable mode, 13 ms, multiplier 0.5",
+  "regs": {
+   "eax": "00000100",
+   "ebx": "00000000",
+   "ecx": "00b33e90",
+   "edx": "000003f5",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [
+   {
+    "at": "0047d181",
+    "address": "00b39db4",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "at": "0047d186",
+    "address": "00b39db0",
+    "size": 4,
+    "value": 1013
+   },
+   {
+    "at": "0047d23e",
+    "address": "00b33ea0",
+    "size": 4,
+    "value": 1013
+   },
+   {
+    "at": "0047d241",
+    "address": "00b33e9c",
+    "size": 4,
+    "value": 1012202996
+   },
+   {
+    "at": "0047d24d",
+    "address": "00b33e9c",
+    "size": 4,
+    "value": 1003814388
+   }
+  ],
+  "readback": {
+   "00b33e90": "00 00 00 00 00 00 00 00 00 00 00 00 f4 fd d4 3b f5 03 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "variable mode, 13 ms, x87 precision control 24-bit (fpcw 0x007F)",
+  "regs": {
+   "eax": "00000100",
+   "ebx": "00000000",
+   "ecx": "00b33e90",
+   "edx": "000003f5",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [
+   {
+    "at": "0047d181",
+    "address": "00b39db4",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "at": "0047d186",
+    "address": "00b39db0",
+    "size": 4,
+    "value": 1013
+   },
+   {
+    "at": "0047d23e",
+    "address": "00b33ea0",
+    "size": 4,
+    "value": 1013
+   },
+   {
+    "at": "0047d241",
+    "address": "00b33e9c",
+    "size": 4,
+    "value": 1012202996
+   },
+   {
+    "at": "0047d24d",
+    "address": "00b33e9c",
+    "size": 4,
+    "value": 1012202996
+   }
+  ],
+  "readback": {
+   "00b33e90": "00 00 00 00 00 00 00 00 00 00 00 00 f4 fd 54 3c f5 03 00 00 00 00 00 00"
+  },
+  "errors": []
+ }
+]
