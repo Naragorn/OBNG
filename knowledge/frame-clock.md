@@ -125,10 +125,26 @@ details per function in `re/functions/<address>.md`, states in
   by GameMessageBoxA 0x004949E0 (`__stdcall(text, caption, type)`, ret 0xC)
   and by TESObjectREFR::LoadBaseFormModels 0x004E1580 while a reference's
   models load. Whether the pair is a flag or a nesting counter is open.
-- **The time multiplier at 0x00B06704 is an INI setting object** (read):
-  the static initialiser 0x009DC2D0 registers the SettingInfo (value +0x00
-  float, name pointer +0x04 = 0x00B06708) with the IniSettingCollection at
-  0x00B07BF0 through 0x004040E0. Which setting: not in the export.
+- **The time multiplier at 0x00B06704 is the INI setting
+  `fGlobalTimeMultiplier` ([General])** (read, 2026-10-27): the static
+  initialiser 0x009DC2D0 registers the SettingInfo (value +0x00 = 1.0f,
+  name pointer +0x04 = 0x00A3D150, the string "fGlobalTimeMultiplier:General")
+  with the IniSettingCollection at 0x00B07BF0 through 0x004040E0. The
+  constants of the update, read from the image with the data export:
+  0x00A3D14C = 166.66667f (the ceiling), 0x00A30E40 = 0.001 (double),
+  0x00A2FC78 = 4294967296.0f (2^32, the unsigned-to-float fix-up; 469
+  references in the image).
+- **The update, executed** (measured in the emulator, 2026-10-27,
+  `tools/difftest/emulate.py` on the exported bytes with the image's
+  constants, `tools/difftest/cases/0x0047D170.json`): 13 ms at multiplier
+  1.0 gives +0x0C = 0.013f and +0x10 = this tick; a zero delta gives 0.001f;
+  500 ms gives 0.166f; frozen writes 0.0f and leaves +0x10 alone (so the
+  next unfrozen frame sees the whole frozen stretch, clamped); the fixed
+  step uses the float step at +0x04 for the seconds and carries the
+  fraction at +0x08; multiplier 0.5 halves the seconds in a second write
+  to +0x0C (the first write at 0x0047D241 is the unscaled value); the tick
+  globals 0x00B39DB0/4 are written in every mode. The 24-bit x87 precision
+  control gave the same result as 64-bit for 13 ms.
 - **x87 precision matters for a rebuild** (derived, from the correctness
   review of LoadingMenu::Tick): the countdown arithmetic gives different
   results at 24-bit and 53-bit precision control for some inputs (timer

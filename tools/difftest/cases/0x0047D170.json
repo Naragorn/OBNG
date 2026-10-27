@@ -1,0 +1,57 @@
+{
+  "function": "0x0047D170",
+  "note": "TimeInfo update. this = ECX, stack = this frame's GetTickCount. Memory: the TimeInfo (0x18 bytes) at g_timeInfo 0x00B33E90; fGlobalTimeMultiplier 0x00B06704 and the constants come from data.json. Expectations from re/functions/0x0047D170.md revision 2; the emulator decides.",
+  "cases": [
+    {
+      "name": "variable mode: tick 1013, lastMs 1000, start 0 -> 13 ms -> 0.013 s at multiplier 1.0",
+      "regs": {"ecx": "0x00B33E90"},
+      "stack": ["0x000003F5"],
+      "memory": {"0x00B33E90": "00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00  e8 03 00 00  00 00 00 00"},
+      "readback": [{"address": "0x00B33E90", "size": 24}, {"address": "0x00B39DB0", "size": 8}]
+    },
+    {
+      "name": "variable mode: zero delta reads as 1 ms",
+      "regs": {"ecx": "0x00B33E90"},
+      "stack": ["0x000003E8"],
+      "memory": {"0x00B33E90": "00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00  e8 03 00 00  00 00 00 00"},
+      "readback": [{"address": "0x00B33E90", "size": 24}]
+    },
+    {
+      "name": "variable mode: 500 ms delta clamps to 166 ms",
+      "regs": {"ecx": "0x00B33E90"},
+      "stack": ["0x000005DC"],
+      "memory": {"0x00B33E90": "00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00  e8 03 00 00  00 00 00 00"},
+      "readback": [{"address": "0x00B33E90", "size": 24}]
+    },
+    {
+      "name": "frozen: +0x00 nonzero writes 0 seconds, tick globals still written",
+      "regs": {"ecx": "0x00B33E90"},
+      "stack": ["0x000003F5"],
+      "memory": {"0x00B33E90": "01 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00  e8 03 00 00  00 00 00 00"},
+      "readback": [{"address": "0x00B33E90", "size": 24}, {"address": "0x00B39DB0", "size": 8}]
+    },
+    {
+      "name": "fixed step 1000/60 ms (iFPSClamp 60), carry 0: the tick is ignored",
+      "regs": {"ecx": "0x00B33E90"},
+      "stack": ["0x12345678"],
+      "memory": {"0x00B33E90": "00 00 00 00  ab aa 85 41  00 00 00 00  00 00 00 00  e8 03 00 00  00 00 00 00"},
+      "readback": [{"address": "0x00B33E90", "size": 24}]
+    },
+    {
+      "name": "variable mode, 13 ms, multiplier 0.5",
+      "regs": {"ecx": "0x00B33E90"},
+      "stack": ["0x000003F5"],
+      "memory": {"0x00B33E90": "00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00  e8 03 00 00  00 00 00 00",
+                 "0x00B06704": "00 00 00 3f"},
+      "readback": [{"address": "0x00B33E90", "size": 24}]
+    },
+    {
+      "name": "variable mode, 13 ms, x87 precision control 24-bit (fpcw 0x007F)",
+      "regs": {"ecx": "0x00B33E90"},
+      "stack": ["0x000003F5"],
+      "fpcw": "0x007F",
+      "memory": {"0x00B33E90": "00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00  e8 03 00 00  00 00 00 00"},
+      "readback": [{"address": "0x00B33E90", "size": 24}]
+    }
+  ]
+}

@@ -91,10 +91,29 @@ Three lenses, so the three do not fail the same way:
 - **behaviour**: do the callers, callees, strings and constants carry the
   purpose claim, or does it rest on the name alone?
 
-A function is **refuted** when two of three skeptics refute it. Then one
-fix round: the worker gets the refutations and rewrites the file; two
-skeptics check again. If one still refutes, the function is **disputed** in
-the ledger and goes no further in this run. Nothing is dropped silently.
+A skeptic's verdict per claim is one of four: **core-refuted** (the
+convention, a parameter, a struct access, a branch or a read-claim is wrong
+against the instructions or a settled source), **overstated** (a derived
+claim says more than the evidence carries; the skeptic gives the
+correction), **unverifiable** (the evidence is not in the export; the
+skeptic says what would settle it), or holds. A function is **refuted**
+only when two of three skeptics find something core-refuted. Then one fix
+round: the worker gets the refutations and rewrites the file; two skeptics
+check again. If one still finds a core refutation, the function is
+**disputed** in the ledger and goes no further in this run. A function whose
+core held but whose derived claims were overstated gets one trim pass
+(demote, no second refutation) and counts as **confirmed**. Naming
+differences between two files of the slice are a decision for the
+architect (`needsDecision` in the result), never a refutation of the
+function. Nothing is dropped silently.
+
+The map stage is a barrier: every function is mapped before any skeptic
+runs, so the consistency lens reads finished files. (The pilot's second
+round refuted a conflict that another worker had already resolved.)
+
+Functions flagged `mapOnly` in the manifest (large ones like the update
+step, 500+ instructions) stop after the refutation: state **mapped**, no
+rebuild attempt.
 
 ## Stage 3 - rebuild (one worker per confirmed function)
 

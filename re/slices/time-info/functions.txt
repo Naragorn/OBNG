@@ -1,0 +1,8 @@
+0x0047D170 # TimeInfo::Update - mapped in frame-clock (re/functions/0x0047D170.md rev 2), to be rebuilt now
+0x0047D150 # TimeInfo::TimeInfo - constructor, called after FormHeap_Allocate(0x18) in 0x005AD0D0
+0x0047D120 # first half of the freeze bracket (GameMessageBoxA, LoadBaseFormModels)
+0x0047D0F0 # second half of the freeze bracket
+0x0055D615 # reads g_currentTickMs/g_previousTickMs 0x00B39DB0/4 (function created 2026-10-27 at 0x0055D4C0)
+0x00406169 # reads g_timeInfo and calls the freeze pair (0x004061AF, 0x0040616E); function created 2026-10-27
+0x009DC2B6 # writes g_timeInfo (static initialiser); function created 2026-10-27
+0x00889810 # direct callee of the update step at 0x0040D8C2, Havok range, receives the frame seconds; map only
