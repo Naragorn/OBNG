@@ -73,14 +73,17 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	s.init = GetPrivateProfileIntA("Shadow", "TimeInfoInit", 1, path) != 0;
 	s.freeze = GetPrivateProfileIntA("Shadow", "TimeInfoFreeze", 1, path) != 0;
 	s.unfreeze = GetPrivateProfileIntA("Shadow", "TimeInfoUnfreeze", 1, path) != 0;
+	s.loadingMenuTick = GetPrivateProfileIntA("Shadow", "LoadingMenuTick", 1, path) != 0;
+	s.loadingMenuCtor = GetPrivateProfileIntA("Shadow", "LoadingMenuCtor", 1, path) != 0;
 	s.fpuControlWord = GetPrivateProfileIntA("Probe", "FpuControlWord", 1, path) != 0;
 	s.havokPlanner = GetPrivateProfileIntA("Probe", "HavokPlanner", 1, path) != 0;
 	s.mismatchLines = GetPrivateProfileIntA("Log", "MismatchLines", 20, path);
 	s.summaryEverySeconds = GetPrivateProfileIntA("Log", "SummaryEverySeconds", 10, path);
-	Log("Settings from %s: TimeInfoUpdate=%d TimeInfoInit=%d TimeInfoFreeze=%d TimeInfoUnfreeze=%d FpuControlWord=%d "
-	    "HavokPlanner=%d MismatchLines=%u SummaryEverySeconds=%u",
-	    path, s.update ? 1 : 0, s.init ? 1 : 0, s.freeze ? 1 : 0, s.unfreeze ? 1 : 0, s.fpuControlWord ? 1 : 0,
-	    s.havokPlanner ? 1 : 0, s.mismatchLines, s.summaryEverySeconds);
+	Log("Settings from %s: TimeInfoUpdate=%d TimeInfoInit=%d TimeInfoFreeze=%d TimeInfoUnfreeze=%d LoadingMenuTick=%d "
+	    "LoadingMenuCtor=%d FpuControlWord=%d HavokPlanner=%d MismatchLines=%u SummaryEverySeconds=%u",
+	    path, s.update ? 1 : 0, s.init ? 1 : 0, s.freeze ? 1 : 0, s.unfreeze ? 1 : 0, s.loadingMenuTick ? 1 : 0,
+	    s.loadingMenuCtor ? 1 : 0, s.fpuControlWord ? 1 : 0, s.havokPlanner ? 1 : 0, s.mismatchLines,
+	    s.summaryEverySeconds);
 	return true;
 }
 
@@ -88,7 +91,12 @@ uint32_t InstallShadowSideEffect(const obng::plugin::ShadowSettings& settings) {
 	return obng::plugin::InstallShadowTimeInfo(settings, &Log);
 }
 
-const obng::plugin::Host kHost{&ResetLog, &Log, &ReadSettings, &InstallShadowSideEffect};
+uint32_t InstallShadowLoadingMenuSideEffect(const obng::plugin::ShadowSettings& settings) {
+	return obng::plugin::InstallShadowLoadingMenu(settings, &Log);
+}
+
+const obng::plugin::Host kHost{&ResetLog, &Log, &ReadSettings, &InstallShadowSideEffect,
+                               &InstallShadowLoadingMenuSideEffect};
 
 }  // namespace
 

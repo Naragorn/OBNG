@@ -29,6 +29,8 @@ TimeInfoUpdate=1
 TimeInfoInit=1
 TimeInfoFreeze=1
 TimeInfoUnfreeze=1
+LoadingMenuTick=1
+LoadingMenuCtor=1
 [Probe]
 FpuControlWord=1
 HavokPlanner=1

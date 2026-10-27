@@ -24,7 +24,7 @@ add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
 add_library(detour STATIC src/CodeWriter.cpp src/EntryDetour.cpp)
 target_include_directories(detour PUBLIC src)
 
-add_library(shadow STATIC src/Memory.cpp src/ShadowTimeInfo.cpp)
+add_library(shadow STATIC src/Memory.cpp src/ShadowRecorder.cpp src/ShadowTimeInfo.cpp src/ShadowLoadingMenu.cpp)
 target_include_directories(shadow PUBLIC src ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 target_link_libraries(shadow PUBLIC detour)
 

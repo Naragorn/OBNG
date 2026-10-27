@@ -34,13 +34,12 @@ bool Load(const ExtenderInterfaceHead& xse, const Host& host) {
 		         "lines a function, a summary every 10 seconds");
 	}
 	const ShadowSettings& s = g_settings.shadow;
-	if (!s.update && !s.init && !s.freeze && !s.unfreeze) {
-		host.log("Shadow: every TimeInfo switch is 0, nothing shadowed");
+	if (s.Asked() == 0) {
+		host.log("Shadow: every switch is 0, nothing shadowed");
 		return true;
 	}
-	const uint32_t made = host.installShadowTimeInfo(s);
-	host.log("Shadow: %u of %u TimeInfo detours made", made,
-	         (s.update ? 1u : 0u) + (s.init ? 1u : 0u) + (s.freeze ? 1u : 0u) + (s.unfreeze ? 1u : 0u));
+	const uint32_t made = host.installShadowTimeInfo(s) + host.installShadowLoadingMenu(s);
+	host.log("Shadow: %u of %u detours made", made, s.Asked());
 	return true;
 }
 

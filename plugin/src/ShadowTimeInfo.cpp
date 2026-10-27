@@ -3,7 +3,7 @@
 // rebuild's result; then it runs the rebuilt logic on a copy of the state
 // as it was before, and compares what the two left, bit for bit. A
 // difference is counted and, within the log budget, written with every
-// field of both sides.
+// field of both sides (ShadowRecorder).
 
 #include "ShadowTimeInfo.h"
 
@@ -16,6 +16,7 @@
 #include "EntryDetour.h"
 #include "Memory.h"
 #include "ShadowLogic.h"
+#include "ShadowRecorder.h"
 #include "engine/time/TimeInfo_FreezeLogic.h"
 #include "engine/time/TimeInfo_TimeInfoLogic.h"
 #include "engine/time/TimeInfo_UnfreezeLogic.h"
@@ -42,10 +43,9 @@ constexpr UInt32 kClockMs = 0x00B39DB0;
 constexpr UInt32 kPreviousClockMs = 0x00B39DB4;
 constexpr UInt32 kTimeMultiplier = 0x00B06704;
 
-// The Havok planner's outputs (re/functions/0x00889810.md, proposals).
+// The Havok planner's outputs (re/functions/0x00889810.md).
 constexpr UInt32 kHavokUpdateType = 0x00BA7918;
 constexpr UInt32 kHavokStepCount = 0x00BA7914;
-constexpr UInt32 kHavokStepSeconds = 0x00BA790C;
 
 // __fastcall with a dummy edx mirrors __thiscall: ECX is this, a stack
 // argument is cleaned by the callee in both. The originals return nothing
@@ -61,11 +61,6 @@ BracketFn g_unfreeze = nullptr;
 
 LogFn g_log = nullptr;
 ShadowSettings g_settings;
-SRWLOCK g_lock = SRWLOCK_INIT;
-shadow::Counter g_counters[4];  // Update, Init, Freeze, Unfreeze
-const char* const kNames[4] = {"TimeInfo::Update", "TimeInfo::Init", "TimeInfo::Freeze", "TimeInfo::Unfreeze"};
-shadow::SummaryClock g_summary;
-shadow::PlannerSample g_planner;
 bool g_controlWordLogged = false;
 
 State Capture(const TimeInfo* self) {
@@ -76,30 +71,13 @@ State Capture(const TimeInfo* self) {
 	return s;
 }
 
-void LogMismatch(const char* name, const State& before, const State& original, const State& rebuild, UInt32 mask,
-                 const char* inputs) {
-	char fields[512];
-	int at = 0;
-	for (std::uint8_t i = 0; i < static_cast<std::uint8_t>(shadow::Field::Count) && at < 480; ++i) {
-		if ((mask & (1u << i)) == 0) {
-			continue;
-		}
-		const auto f = static_cast<shadow::Field>(i);
-		at += std::snprintf(fields + at, sizeof(fields) - at, " %s before %08X original %08X rebuild %08X;",
-		                    shadow::FieldName(f), shadow::Bits(before, f), shadow::Bits(original, f),
-		                    shadow::Bits(rebuild, f));
+void Report(Shadowed which, bool mismatch, const State& before, const State& original, const State& rebuild, UInt32 mask,
+            const char* inputs) {
+	char detail[512] = {};
+	if (mismatch) {
+		DescribeStateDifferences(before, original, rebuild, mask, detail, sizeof(detail));
 	}
-	g_log("Shadow MISMATCH %s (%s):%s", name, inputs, fields);
-}
-
-void Record(int which, bool mismatch, const char* name, const State& before, const State& original,
-            const State& rebuild, UInt32 mask, const char* inputs) {
-	AcquireSRWLockExclusive(&g_lock);
-	const bool write = g_counters[which].Record(mismatch, g_settings.mismatchLines);
-	ReleaseSRWLockExclusive(&g_lock);
-	if (write) {
-		LogMismatch(name, before, original, rebuild, mask, inputs);
-	}
+	RecordCall(which, mismatch, detail, inputs);
 }
 
 void LogControlWordOnce() {
@@ -122,34 +100,7 @@ void SamplePlanner() {
 	}
 	const UInt32 type = *reinterpret_cast<volatile UInt32*>(kHavokUpdateType);
 	const UInt32 steps = *reinterpret_cast<volatile UInt32*>(kHavokStepCount);
-	g_planner.Add(type, steps);
-}
-
-void SummaryIfDue(UInt32 tick) {
-	AcquireSRWLockExclusive(&g_lock);
-	const bool due = g_summary.Due(tick, g_settings.summaryEverySeconds * 1000);
-	shadow::Counter counters[4];
-	shadow::PlannerSample planner;
-	if (due) {
-		for (int i = 0; i < 4; ++i) counters[i] = g_counters[i];
-		planner = g_planner;
-		g_planner.Reset();
-	}
-	ReleaseSRWLockExclusive(&g_lock);
-	if (!due) {
-		return;
-	}
-	g_log("Shadow: %s %llu calls %llu mismatches; %s %llu/%llu; %s %llu/%llu; %s %llu/%llu", kNames[0],
-	      static_cast<unsigned long long>(counters[0].calls), static_cast<unsigned long long>(counters[0].mismatches),
-	      kNames[1], static_cast<unsigned long long>(counters[1].calls), static_cast<unsigned long long>(counters[1].mismatches),
-	      kNames[2], static_cast<unsigned long long>(counters[2].calls), static_cast<unsigned long long>(counters[2].mismatches),
-	      kNames[3], static_cast<unsigned long long>(counters[3].calls), static_cast<unsigned long long>(counters[3].mismatches));
-	if (g_settings.havokPlanner && planner.frames != 0) {
-		const float stepSeconds = *reinterpret_cast<volatile float*>(kHavokStepSeconds);
-		g_log("Probe: Havok planner over %u frames - update type %u, steps per frame 0:%u 1:%u 2:%u 3+:%u, last step %.6f s",
-		      planner.frames, planner.lastType, planner.stepCounts[0], planner.stepCounts[1], planner.stepCounts[2],
-		      planner.stepCounts[3], stepSeconds);
-	}
+	Planner().Add(type, steps);
 }
 
 UInt32 __fastcall ShadowUpdate(TimeInfo* self, void* /*edx*/, UInt32 tick) {
@@ -169,9 +120,9 @@ UInt32 __fastcall ShadowUpdate(TimeInfo* self, void* /*edx*/, UInt32 tick) {
 	char inputs[96];
 	std::snprintf(inputs, sizeof(inputs), "this %08X tick %08X multiplier %08X", reinterpret_cast<UInt32>(self), tick,
 	              *reinterpret_cast<const UInt32*>(&multiplier));
-	Record(0, mask != 0, kNames[0], before, original, rebuild, mask, inputs);
+	Report(Shadowed::TimeInfoUpdate, mask != 0, before, original, rebuild, mask, inputs);
 	SamplePlanner();
-	SummaryIfDue(tick);
+	SummaryIfDue(tick, &Planner(), true);
 	return eax;
 }
 
@@ -186,7 +137,7 @@ UInt32 __fastcall ShadowInit(TimeInfo* self, void* /*edx*/, UInt32 startTick) {
 	const UInt32 mask = shadow::Differences(original, rebuild);
 	char inputs[64];
 	std::snprintf(inputs, sizeof(inputs), "this %08X startTick %08X", reinterpret_cast<UInt32>(self), startTick);
-	Record(1, mask != 0, kNames[1], before, original, rebuild, mask, inputs);
+	Report(Shadowed::TimeInfoInit, mask != 0, before, original, rebuild, mask, inputs);
 	return eax;
 }
 
@@ -210,7 +161,7 @@ UInt32 __fastcall ShadowFreeze(TimeInfo* self, void* /*edx*/) {
 	char inputs[96];
 	std::snprintf(inputs, sizeof(inputs), "this %08X depth %u%s", reinterpret_cast<UInt32>(self), before.info.freezeDepth,
 	              tick.transition ? (tick.consistent ? ", outermost" : ", outermost, the two fields disagree on now") : "");
-	Record(2, mask != 0 || !tick.consistent, kNames[2], before, original, rebuild, mask, inputs);
+	Report(Shadowed::TimeInfoFreeze, mask != 0 || !tick.consistent, before, original, rebuild, mask, inputs);
 	return eax;
 }
 
@@ -233,48 +184,47 @@ UInt32 __fastcall ShadowUnfreeze(TimeInfo* self, void* /*edx*/) {
 	char inputs[96];
 	std::snprintf(inputs, sizeof(inputs), "this %08X depth %u%s", reinterpret_cast<UInt32>(self), before.info.freezeDepth,
 	              tick.transition ? (tick.consistent ? ", outermost" : ", outermost, the two fields disagree on now") : "");
-	Record(3, mask != 0 || !tick.consistent, kNames[3], before, original, rebuild, mask, inputs);
+	Report(Shadowed::TimeInfoUnfreeze, mask != 0 || !tick.consistent, before, original, rebuild, mask, inputs);
 	return eax;
 }
 
-// One entry detour: the bytes checked, the trampoline built, the patch
-// written; the original reachable through *original afterwards.
-bool Detour(const char* name, UInt32 address, const UInt8* bytes, UInt32 length, const void* replacement, void** original) {
+}  // namespace
+
+bool InstallEntryDetour(const char* name, UInt32 address, const UInt8* bytes, UInt32 length, const void* replacement,
+                        void** original, LogFn log) {
 	if (!Verify(address, bytes, length)) {
 		char have[32];
 		DescribeBytes(address, have, sizeof(have));
-		g_log("Shadow %s: the entry at %08X reads %s, not the game's own bytes - another plugin's patch (OBVR's "
-		      "PreciseFrameClock?) or another game version; not shadowed",
-		      name, address, have);
+		log("Shadow %s: the entry at %08X reads %s, not the game's own bytes - another plugin's patch (OBVR's "
+		    "PreciseFrameClock?) or another game version; not shadowed",
+		    name, address, have);
 		return false;
 	}
 	constexpr UInt32 capacity = 32;
 	auto* trampoline = static_cast<UInt8*>(AllocExecutable(capacity));
 	if (trampoline == nullptr) {
-		g_log("Shadow %s: no executable memory; not shadowed", name);
+		log("Shadow %s: no executable memory; not shadowed", name);
 		return false;
 	}
 	if (BuildEntryTrampoline(trampoline, capacity, reinterpret_cast<UInt32>(trampoline), address, bytes, length) == 0) {
-		g_log("Shadow %s: trampoline did not fit; not shadowed", name);
+		log("Shadow %s: trampoline did not fit; not shadowed", name);
 		return false;
 	}
 	UInt8 patch[16];
 	if (BuildEntryPatch(patch, sizeof(patch), address, reinterpret_cast<UInt32>(replacement), length) == 0) {
-		g_log("Shadow %s: patch did not fit; not shadowed", name);
+		log("Shadow %s: patch did not fit; not shadowed", name);
 		return false;
 	}
 	*original = trampoline;
 	if (!SafeWrite(address, patch, length)) {
 		*original = nullptr;
-		g_log("Shadow %s: could not write the patch; not shadowed", name);
+		log("Shadow %s: could not write the patch; not shadowed", name);
 		return false;
 	}
-	g_log("Shadow %s: on at %08X - the original runs, the rebuild runs on a copy, both compared bit for bit", name,
-	      address);
+	log("Shadow %s: on at %08X - the original runs, the rebuild runs on a copy, both compared bit for bit", name,
+	    address);
 	return true;
 }
-
-}  // namespace
 
 UInt32 InstallShadowTimeInfo(const ShadowSettings& settings, LogFn log) {
 	static bool s_done = false;
@@ -284,22 +234,23 @@ UInt32 InstallShadowTimeInfo(const ShadowSettings& settings, LogFn log) {
 	s_done = true;
 	g_log = log;
 	g_settings = settings;
+	InitRecorder(settings, log);
 	UInt32 made = 0;
 	if (settings.update) {
-		made += Detour(kNames[0], kUpdate, kUpdateBytes, sizeof(kUpdateBytes), reinterpret_cast<const void*>(&ShadowUpdate),
-		               reinterpret_cast<void**>(&g_update)) ? 1 : 0;
+		made += InstallEntryDetour(ShadowName(Shadowed::TimeInfoUpdate), kUpdate, kUpdateBytes, sizeof(kUpdateBytes),
+		                           reinterpret_cast<const void*>(&ShadowUpdate), reinterpret_cast<void**>(&g_update), log) ? 1 : 0;
 	}
 	if (settings.init) {
-		made += Detour(kNames[1], kInit, kInitBytes, sizeof(kInitBytes), reinterpret_cast<const void*>(&ShadowInit),
-		               reinterpret_cast<void**>(&g_init)) ? 1 : 0;
+		made += InstallEntryDetour(ShadowName(Shadowed::TimeInfoInit), kInit, kInitBytes, sizeof(kInitBytes),
+		                           reinterpret_cast<const void*>(&ShadowInit), reinterpret_cast<void**>(&g_init), log) ? 1 : 0;
 	}
 	if (settings.freeze) {
-		made += Detour(kNames[2], kFreeze, kFreezeBytes, sizeof(kFreezeBytes), reinterpret_cast<const void*>(&ShadowFreeze),
-		               reinterpret_cast<void**>(&g_freeze)) ? 1 : 0;
+		made += InstallEntryDetour(ShadowName(Shadowed::TimeInfoFreeze), kFreeze, kFreezeBytes, sizeof(kFreezeBytes),
+		                           reinterpret_cast<const void*>(&ShadowFreeze), reinterpret_cast<void**>(&g_freeze), log) ? 1 : 0;
 	}
 	if (settings.unfreeze) {
-		made += Detour(kNames[3], kUnfreeze, kUnfreezeBytes, sizeof(kUnfreezeBytes),
-		               reinterpret_cast<const void*>(&ShadowUnfreeze), reinterpret_cast<void**>(&g_unfreeze)) ? 1 : 0;
+		made += InstallEntryDetour(ShadowName(Shadowed::TimeInfoUnfreeze), kUnfreeze, kUnfreezeBytes, sizeof(kUnfreezeBytes),
+		                           reinterpret_cast<const void*>(&ShadowUnfreeze), reinterpret_cast<void**>(&g_unfreeze), log) ? 1 : 0;
 	}
 	return made;
 }

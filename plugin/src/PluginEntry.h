@@ -44,8 +44,9 @@ struct Host {
 	// Reads the INI next to the DLL into *settings; false if there is no INI
 	// (the defaults then stand).
 	bool (*readSettings)(Settings* settings);
-	// The shadow detours; returns how many were made.
+	// The shadow detours; each returns how many were made.
 	uint32_t (*installShadowTimeInfo)(const ShadowSettings& settings);
+	uint32_t (*installShadowLoadingMenu)(const ShadowSettings& settings);
 };
 
 bool Query(const ExtenderInterfaceHead& xse, PluginInfo* info, const Host& host);

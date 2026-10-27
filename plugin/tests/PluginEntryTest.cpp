@@ -17,8 +17,10 @@ struct Fake {
 	bool iniExists = true;
 	Settings iniSettings;
 	int installs = 0;
+	int menuInstalls = 0;
 	ShadowSettings installed;
 	uint32_t made = 4;
+	uint32_t menuMade = 2;
 	std::vector<std::string> lines;
 
 	bool Logged(const char* text) const {
@@ -53,8 +55,13 @@ uint32_t FakeInstall(const ShadowSettings& settings) {
 	g_fake->installed = settings;
 	return g_fake->made;
 }
+uint32_t FakeInstallMenu(const ShadowSettings& settings) {
+	++g_fake->menuInstalls;
+	g_fake->installed = settings;
+	return g_fake->menuMade;
+}
 
-const Host kHost{&FakeReset, &FakeLog, &FakeReadSettings, &FakeInstall};
+const Host kHost{&FakeReset, &FakeLog, &FakeReadSettings, &FakeInstall, &FakeInstallMenu};
 
 ExtenderInterfaceHead Game() {
 	return ExtenderInterfaceHead{22, kOblivionVersion_1_2_416, 0, 0};
@@ -102,10 +109,11 @@ void TestLoadDefaults() {
 	Check(Load(Game(), kHost), "loads");
 	Check(fake.Logged("No OBNG.ini"), "says the defaults stand");
 	Check(fake.installs == 1 && fake.installed.update && fake.installed.init && fake.installed.freeze &&
-	          fake.installed.unfreeze && fake.installed.fpuControlWord && fake.installed.havokPlanner &&
+	          fake.installed.unfreeze && fake.installed.loadingMenuTick && fake.installed.loadingMenuCtor &&
+	          fake.installed.fpuControlWord && fake.installed.havokPlanner &&
 	          fake.installed.mismatchLines == 20 && fake.installed.summaryEverySeconds == 10,
 	      "every shadow and probe on by default, 20 lines, 10 s");
-	Check(fake.Logged("Shadow: 4 of 4 TimeInfo detours made"), "the count of detours logged");
+	Check(fake.menuInstalls == 1 && fake.Logged("Shadow: 6 of 6 detours made"), "both installers called, the count of detours logged");
 }
 
 void TestLoadSwitches() {
@@ -115,13 +123,14 @@ void TestLoadSwitches() {
 	fake.iniSettings.shadow.unfreeze = false;
 	fake.iniSettings.shadow.mismatchLines = 3;
 	fake.made = 2;
+	fake.menuMade = 2;
 	g_fake = &fake;
 	ResetForTest();
 	Check(Load(Game(), kHost), "loads");
 	Check(fake.installs == 1 && fake.installed.update && !fake.installed.init && fake.installed.freeze &&
 	          !fake.installed.unfreeze && fake.installed.mismatchLines == 3,
 	      "the settings reach the installer as read");
-	Check(fake.Logged("Shadow: 2 of 2 TimeInfo detours made"), "two asked, two made");
+	Check(fake.Logged("Shadow: 4 of 4 detours made"), "four asked (two TimeInfo, two LoadingMenu), four made");
 	Check(LoadedSettings().shadow.mismatchLines == 3, "LoadedSettings shows what Load read");
 }
 
@@ -132,20 +141,23 @@ void TestLoadAllOff() {
 	fake.iniSettings.shadow.init = false;
 	fake.iniSettings.shadow.freeze = false;
 	fake.iniSettings.shadow.unfreeze = false;
+	fake.iniSettings.shadow.loadingMenuTick = false;
+	fake.iniSettings.shadow.loadingMenuCtor = false;
 	g_fake = &fake;
 	ResetForTest();
 	Check(Load(Game(), kHost), "loads");
-	Check(fake.installs == 0 && fake.Logged("nothing shadowed"), "the installer is not called, said so");
+	Check(fake.installs == 0 && fake.menuInstalls == 0 && fake.Logged("nothing shadowed"), "no installer is called, said so");
 }
 
 void TestLoadPartialFailure() {
 	Section("Load when a detour cannot be made");
 	Fake fake;
 	fake.made = 3;
+	fake.menuMade = 1;
 	g_fake = &fake;
 	ResetForTest();
 	Check(Load(Game(), kHost), "loads - a missed detour makes nothing safer");
-	Check(fake.Logged("Shadow: 3 of 4 TimeInfo detours made"), "the shortfall is in the log");
+	Check(fake.Logged("Shadow: 4 of 6 detours made"), "the shortfall is in the log");
 }
 
 }  // namespace
