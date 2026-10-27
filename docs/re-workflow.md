@@ -150,11 +150,35 @@ knowledge file of the topic, update `re/ledger.md`, commit.
 ## The gate outside the workflow
 
 A rebuilt function is **reconstructed** when its tests are green. It is
-**verified** only after the in-game differential check: a detour runs the
-original and the rebuild side by side and compares (OBVR's check mode for
-the stream copy did 202,000 copies with 0 mismatches). The workflow builds
-the comparison; the harness or Nadi runs it. The ledger keeps the two states
-apart.
+**verified** only after the differential checks against the original. Two
+layers exist (both since 2026-10-27):
+
+1. **Emulator** (`tools/difftest/emulate.py`): the function's exported bytes
+   run in Unicorn with the image's constants (`data.json`), every memory
+   write recorded; the cases in `tools/difftest/cases/<address>.json` give
+   the inputs, `tools/difftest/expected/` holds what the original produced,
+   and the rebuild's tests assert those bit patterns. No game needed; runs
+   in CI.
+2. **Shadow mode in the game** (`plugin/`, `OBNG.dll`, an xOBSE plugin):
+   an entry detour per function runs the original on the game's state and
+   the rebuild on a copy, compares bit for bit, and lets the game continue
+   with the original's result. Mismatches go to `OBNG.log` with every
+   field of both sides, a summary every ten seconds. Rebuilds written over
+   ports (LoadingMenu::Tick, the constructor) run with ports that read the
+   game's memory, recover the original's `GetTickCount` readings from what
+   it wrote, and count instead of perform the calls that would change the
+   game. `tools/build-plugin.sh` builds, tests and deploys;
+   `tools/shadow-run.sh` drives OBVR's hand-script harness with
+   `tools/hand-scripts/obng-shadow.txt` and reads `OBNG.log` for the
+   verdict. OBVR's `PreciseFrameClock` patches the same entry as the
+   TimeInfo::Update shadow, so the shipped `OBNG.ini` keeps that shadow off
+   and the harness turns it on with OBVR's clock off for the run.
+
+The ledger keeps **reconstructed** and **verified** apart; verified names
+the run (date, calls, mismatches). A shadow run needs the Linux game free:
+the sessions working on it announce "busy" and "free" to each other, and
+SteamVR allows one scene application at a time (a second one kills the
+first - that cut the run of 2026-10-27 09:16).
 
 ## Cost
 

@@ -33,6 +33,15 @@ ImageBase 0x00400000. Nothing here modifies it on disk.
   Needs Ghidra 12.1.4 and a JDK 21; paths in `tools/ghidra/headless.sh`.
 - `tools/workflows/re-slice.js` - the agent workflow that works one slice;
   `docs/re-workflow.md` is its contract.
+- `tools/difftest/` - the emulator side of the differential test: the
+  original's exported bytes run in Unicorn on the image's constants, the
+  results become the rebuild's expected bit patterns.
+- `plugin/` - `OBNG.dll`, the xOBSE plugin for shadow mode: the original and
+  the rebuild run side by side in the game, compared bit for bit, the game
+  keeps the original's result. `tools/build-plugin.sh` builds, tests and
+  deploys it; `tools/shadow-run.sh` runs the scenario through OBVR's
+  harness and reads `OBNG.log`. Needs clang-cl with an xwin winsysroot
+  (`plugin/cmake/toolchain-linux-clang-cl.cmake`).
 - `AGENTS.md` - the rules: evidence marks, two sources per address, what
   stays out of Git.
 
