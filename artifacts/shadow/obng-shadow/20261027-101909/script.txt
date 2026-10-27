@@ -1,0 +1,43 @@
+# OBNG.dll's shadow mode in the game, driven by OBVR's hand-script harness
+# (../OBVR/tools/hand-script-run.py; the expect/reject lines below read
+# OBVR.log, OBNG.log is read by tools/shadow-run.sh afterwards). OBVR's
+# precise frame clock is off for the run so that OBNG's shadow of
+# TimeInfo::Update 0x0047D170 gets the entry; OBNG-test.ini (written by
+# shadow-run.sh) turns every shadow and probe on.
+#
+# What the run exercises: the main loop's TimeInfo every frame (Update), two
+# loads (coc) with the LoadingMenu's private TimeInfo (Init, Update on a
+# second instance), model loads of placed people (LoadBaseFormModels'
+# Freeze/Unfreeze bracket), and the Havok planner's outputs sampled every
+# frame. Run with:
+#   tools/shadow-run.sh
+
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Render PreciseFrameClock=0
+console-at placed coc ImperialDungeon01
+console-at prison tcl
+console-at prison player.setrestrained 1
+console-at prison SetNumericINISetting "fVanityModeAutoDelay:Camera" 100000
+console-at people player.placeatme 00023F2A 1
+console-at people player.placeatme 00023F2B 1
+console-at people player.placeatme 0002349F 1
+console-at second coc WeynonPrioryHouse
+
+expect HandScript: finished
+reject Frame clock: precise
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 22
+mark placed
+wait 16
+mark prison
+wait 10
+mark people
+wait 20
+mark people-watched
+mark second
+wait 25
+mark done
