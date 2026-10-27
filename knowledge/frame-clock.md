@@ -202,12 +202,34 @@ details per function in `re/functions/<address>.md`, states in
   timer 5.0, sinceLast -100) names the case that matters. Whether
   Windows runs the same word is unverified (D3D9 sets it the same way
   unless the device is created with FPU_PRESERVE; not checked).
-- **Who writes the fixed step** (read 2026-10-27, Ghidra references to
-  0x00B33E94): 0x0040D4D0, the function before the update step, writes
-  g_timeInfo.fixedStepMs at three sites (0x0040D7A3, 0x0040D7AD,
-  0x0040D7B7), and 0x00406360 at 0x0040692B; both unmapped, so whether the
-  value is 1000/iFPSClamp is still unverified. Nothing else writes +0x04 of
-  the global; the carry +0x08 is written only by the builder 0x009DC2A0.
+- **Who writes the fixed step** (read 2026-10-27, clock-callers slice):
+  two writers of g_timeInfo.fixedStepMs, nothing else. (1) The start-up
+  sequence 0x00406360 (InitializeGame, proposal) reads the dword at
+  0x00B02D10 and, when 1 <= v <= 199, stores 1000/v as float at 0x0040692B
+  (FDIVR double 1000.0 at 0x00A2FC70); otherwise the builder's 0 stays and
+  the clock runs in variable mode. That 0x00B02D10 is iFPSClamp (OBVR's
+  reading) is unverified - its name pointer would settle it. (2) The
+  render-and-present routine 0x0040D4D0 (OSGlobals::RenderFrame, proposal)
+  writes it only inside the camera-path capture toggle (QueryControlState
+  0x1F): 1000/N when the capture turns on with N != 0, 0.0f otherwise
+  (0x0040D7A3 / 0x0040D7AD / 0x0040D7B7) - a debug recording feature. The
+  carry +0x08 is written only by the builder 0x009DC2A0.
+- **The clock stops while the window is inactive** (read 2026-10-27): the
+  game window's WNDPROC 0x004060F0 (MainWindowProc, proposal) handles
+  WM_ACTIVATE by calling TimeInfo::Unfreeze on g_timeInfo when the window
+  becomes active and TimeInfo::Freeze when it goes inactive, the state in
+  OSGlobals+0x02. The first activation at start is an Unfreeze without a
+  Freeze (the counter-zero flow the shadow runs counted). Together with
+  GameMessageBoxA's bracket around its modal loop, these are the three
+  users of the bracket found so far (the third: LoadBaseFormModels).
+- **The frame body** (read 2026-10-27): 0x0040D800 (OSGlobals::UpdateStep,
+  OBVR's name kept) is the whole frame: GetTickCount once into
+  TimeInfo::Update at 0x0040D8AB, six reads of frameSeconds (the first
+  into PlanHavokSteps at 0x0040D8B0), the subsystems gated by fourteen
+  IsMenuMode calls, and at its end the render-and-present routine
+  0x0040D4D0 at 0x0040DF54. OBVR's "master frame call" 0x0040D6F7 is the
+  interface pass 0x00579260 inside 0x0040D4D0. Who calls 0x0040D800 is still
+  unread (candidate: the main loop near xOBSE's main-loop hook 0x0040F19D).
 - **The global's builder is a CRT initialiser** (read 2026-10-27): the
   dword 0x009DC2A0 sits at 0x00A2884C in .rdata, directly followed by
   0x009DC2D0 (the fGlobalTimeMultiplier registration) at 0x00A28850 - two

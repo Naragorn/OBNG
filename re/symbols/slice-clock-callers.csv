@@ -1,0 +1,8 @@
+address,name,kind,confidence,conflict,source
+0x004060F0,MainWindowProc,function,named,0,re/ledger.md clock-callers (WNDPROC: RET 0x10, DefWindowProcA default, WM_ACTIVATE freezes/unfreezes g_timeInfo)
+0x00406360,InitializeGame,function,inferred,0,re/ledger.md clock-callers (start-up sequence: Sky, TES, TreeManager, Menus, the clock's fixed step; no callers in the export)
+0x0040D4D0,OSGlobals::RenderFrame,function,inferred,0,re/ledger.md clock-callers (render-and-present with five callers; the name covers the render part only)
+0x0040D800,OSGlobals::UpdateStep,function,named,0,re/ledger.md clock-callers (second pass held; the whole frame body ending in the render call; OBVR's name kept)
+0x004949E0,GameMessageBoxA,function,named,0,re/ledger.md clock-callers (second pass held; results 6 7 2 3 4 5 from the table at 0x00494E70)
+0x00B02D10,iFPSClamp_candidate,global,inferred,0,InitializeGame reads it for the fixed step (1000/v when 1..199); the setting's name is unread
+0x00B333F5,g_ncDeactivated,global,inferred,0,re/functions/0x004060F0.md (set on WM_NCACTIVATE with wParam 0)
