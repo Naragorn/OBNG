@@ -73,7 +73,7 @@ static_assert(offsetof(LoadingMenuLayout, fastStepEnabled) == 0x70, "+0x70");
 static_assert(sizeof(float) == 4 && sizeof(TimeInfo*) == 4, "a 32-bit build");
 
 // The clock is the shared TimeInfo; only +0x10 is read here (C10, read).
-static_assert(offsetof(TimeInfo, lastMs) == 0x10, "lastMs at +0x10 (0x005AD9CA, 0x005ADA6F)");
+static_assert(offsetof(TimeInfo, clockMs) == 0x10, "clockMs at +0x10 (0x005AD9CA, 0x005ADA6F)");
 
 // g_osGlobals: only +0x10 is read here (0x005ADB1B, read); the name is
 // xOBSE's (GameOSDepend.h:351).

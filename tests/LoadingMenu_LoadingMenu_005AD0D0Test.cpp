@@ -121,7 +121,7 @@ struct FakePorts {
 	std::uint32_t countdownSource = kInitialCountdownBits;
 	std::uint32_t allocationResult = kClockBlock;
 	std::vector<std::uint32_t> ticks{kFirstTick, kSecondTick};
-	std::uint32_t lastMs = kPrimedLastMs;
+	std::uint32_t clockMs = kPrimedLastMs;
 
 	// Writes the callees make, applied when they run.
 	std::optional<std::uint32_t> hookObjectWrittenByBase;
@@ -207,7 +207,7 @@ struct FakePorts {
 
 	std::uint32_t ReadClockLastMs(std::uint32_t /*clock*/) {
 		events.push_back(Event::ReadClockLastMs);
-		return lastMs;
+		return clockMs;
 	}
 
 	std::uint32_t ReadInitialCountdown() {

@@ -624,9 +624,9 @@ Outcome RunConstructor(Ports& ports, const SumCheckConstants& constants, MenuFie
 	if (ClockReadFaults(fields.clock)) {
 		return Outcome::FaultNullClockRead;
 	}
-	std::uint32_t lastMs = ports.ReadClockLastMs(fields.clock);
-	fields.lastStepMs = lastMs;                                             // 0x005AD332
-	fields.startMs = lastMs;                                                // 0x005AD335
+	std::uint32_t clockMs = ports.ReadClockLastMs(fields.clock);
+	fields.lastStepMs = clockMs;                                             // 0x005AD332
+	fields.startMs = clockMs;                                                // 0x005AD335
 	fields.countdownBits = X87FloatThroughStack(ports.ReadInitialCountdown());  // 0x005AD338-0x005AD33E
 	return Outcome::Completed;
 }

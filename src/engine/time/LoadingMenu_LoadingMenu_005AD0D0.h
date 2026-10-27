@@ -70,7 +70,7 @@ static_assert(offsetof(LoadingMenuLayout, flag71) == 0x71, "+0x71");
 
 // The allocation is sized for the shared TimeInfo (0x005AD2E7 PUSH 0x18).
 static_assert(sizeof(TimeInfo) == kClockSize, "the private clock is a TimeInfo");
-static_assert(offsetof(TimeInfo, lastMs) == 0x10, "the baselines copy +0x10 (0x005AD32F)");
+static_assert(offsetof(TimeInfo, clockMs) == 0x10, "the baselines copy +0x10 (0x005AD32F)");
 
 // 0x005AD0D0 itself: thiscall, no stack parameters, plain RET, returns this
 // in EAX (read: 0x005AD110, 0x005AD341, 0x005AD366).

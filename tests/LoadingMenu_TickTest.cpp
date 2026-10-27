@@ -141,7 +141,7 @@ struct FakePorts {
 	std::optional<std::uint32_t> clockAfterUpdate;  // the update replaces [menu+0x54]
 	std::optional<std::pair<std::uint32_t, std::uint32_t>> updated;  // (clock, tick)
 	std::vector<std::uint32_t> lastMsReadsFrom;
-	std::vector<std::uint32_t> lastMs{kBaselineNow, kBaselineNow};
+	std::vector<std::uint32_t> clockMs{kBaselineNow, kBaselineNow};
 	std::size_t lastMsCalls = 0;
 	logic::StepThresholds thresholds = kThresholds;
 
@@ -198,7 +198,7 @@ struct FakePorts {
 	std::uint32_t ReadClockLastMs(std::uint32_t clock) {
 		events.push_back(Event::ReadClockLastMs);
 		lastMsReadsFrom.push_back(clock);
-		return lastMs.at(lastMsCalls++);
+		return clockMs.at(lastMsCalls++);
 	}
 
 	logic::StepThresholds StepThresholds() {
@@ -350,7 +350,7 @@ void B2ContainingMenu() {
 	ports.clockAfterUpdate = kOtherClock;
 	static_cast<void>(logic::RunTick(ports, ExpectedInputs()));
 	Check(ports.updated && ports.updated->first == kClock, "the update ran on the first read");
-	Check(ports.lastMsReadsFrom.size() == 1 && ports.lastMsReadsFrom[0] == kOtherClock, "lastMs is read through the second read");
+	Check(ports.lastMsReadsFrom.size() == 1 && ports.lastMsReadsFrom[0] == kOtherClock, "clockMs is read through the second read");
 
 	Section("B2 refusal: the second lookup returns null - the original reads [0+0x54] at 0x005AD9B6");
 	ports = FakePorts{};
@@ -389,7 +389,7 @@ void B3AlwaysAdvance() {
 	Section("B3 in the run: +0x64 goes 3 -> 4; the increment wraps at 32 bits");
 	FakePorts ports;
 	ports.fields.stepChangedMs = 0;
-	ports.lastMs = {3001u, 3001u};
+	ports.clockMs = {3001u, 3001u};
 	static_cast<void>(logic::RunTick(ports, ExpectedInputs()));
 	Check(ports.fields.targetStep == 4 && ports.fields.shownStep == 4, "target advanced, shown caught up");
 	Check(logic::NextStep(std::numeric_limits<std::int32_t>::max()) == std::numeric_limits<std::int32_t>::min(),
@@ -1056,7 +1056,7 @@ void B12CatchUp() {
 	Section("B12 taken: shownStep != targetStep - stepChangedMs = clock+0x10 (read again), shownStep = target");
 	Check(logic::ShownStepCatchesUp(3, 4), "decision: 3 != 4");
 	FakePorts ports = RedrawingPorts();
-	ports.lastMs = {kBaselineNow, 2222u};  // the second read is a separate read (0x005ADA6F)
+	ports.clockMs = {kBaselineNow, 2222u};  // the second read is a separate read (0x005ADA6F)
 	static_cast<void>(logic::RunTick(ports, ExpectedInputs()));
 	Check(ports.lastMsReadsFrom == std::vector<std::uint32_t>{kClock, kClock}, "clock+0x10 read twice, same clock");
 	Check(ports.fields.stepChangedMs == 2222u, "+0x68 = the second read");
@@ -1230,8 +1230,8 @@ struct LayoutPorts {
 	engine::LoadingMenuLayout& Fields(std::uint32_t) { return menu; }
 	std::uint32_t TickCount() { return kTick; }
 	// A stand-in for 0x0047D170: only its +0x10 result matters here.
-	void UpdateClock(obng::engine::time::TimeInfo* self, std::uint32_t tick) { self->lastMs = tick - self->startTick; }
-	std::uint32_t ReadClockLastMs(obng::engine::time::TimeInfo* self) { return self->lastMs; }
+	void UpdateClock(obng::engine::time::TimeInfo* self, std::uint32_t tick) { self->clockMs = tick - self->startTick; }
+	std::uint32_t ReadClockLastMs(obng::engine::time::TimeInfo* self) { return self->clockMs; }
 	logic::StepThresholds StepThresholds() { return kThresholds; }
 	void SetTileFloat(std::uint32_t, std::uint32_t, float value) { tileValue = value; }
 	void RefreshScreen(std::uint32_t, std::uint32_t) {}
@@ -1259,7 +1259,7 @@ T ReadAt(const void* base, std::size_t offset) {
 void EngineShape() {
 	Section("Engine shape: the run writes the layout at the read offsets");
 	LayoutPorts ports;
-	ports.clock.startTick = kTick - 5000u;  // lastMs after the update: 5000
+	ports.clock.startTick = kTick - 5000u;  // clockMs after the update: 5000
 	ports.menu.clock = &ports.clock;
 	ports.menu.slowStepCap = 10;
 	ports.menu.screenTimeLeft = 3.0f;
@@ -1274,7 +1274,7 @@ void EngineShape() {
 	Check(ReadAt<std::uint32_t>(&ports.menu, 0x68) == 5000u, "+0x68 stepChangedMs = clock+0x10");
 	Check(ReadAt<std::uint32_t>(&ports.menu, 0x6C) == 5000u, "+0x6C lastTickMs = now");
 	Check(ReadAt<float>(&ports.menu, 0x40) == 2.0f, "+0x40 screenTimeLeft = 2.0");
-	Check(ReadAt<std::uint32_t>(&ports.clock, 0x10) == 5000u, "TimeInfo+0x10 lastMs");
+	Check(ReadAt<std::uint32_t>(&ports.clock, 0x10) == 5000u, "TimeInfo+0x10 clockMs");
 	Check(ports.tileValue == 4.0f, "the tile got 4.0");
 
 	Section("Engine shape: addresses with two sources, and 32-bit function pointers");

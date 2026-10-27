@@ -1,0 +1,15 @@
+address,name,kind,confidence,conflict,source
+0x0047D170,TimeInfo::Update,function,named,0,re/ledger.md time-info (held with every skeptic in both slices; rebuilt against the emulator's bit patterns)
+0x0047D150,TimeInfo::Init,function,named,0,re/ledger.md time-info (constructor or init method open: EAX returns the tick)
+0x0047D120,TimeInfo::Freeze,function,named,0,re/ledger.md time-info (nesting counter at +0x00)
+0x0047D0F0,TimeInfo::Unfreeze,function,named,0,re/ledger.md time-info
+0x009DC2A0,TimeInfo_BuildGlobal,function,named,0,re/ledger.md time-info (Init's stores inlined on 0x00B33E90 with GetTickCount; static-initialiser reading unverified)
+0x00B39DB0,g_timeInfoClockMs,global,named,0,written at 0x0047D186 by every instance's Update: tick - startTick
+0x00B39DB4,g_timeInfoPreviousClockMs,global,named,0,written at 0x0047D181: the previous value of 0x00B39DB0
+0x0055D4C0,BSFaceGenNiNode::UpdateDownwardPass,function,inferred,0,re/functions/0x0055D4C0.md (map only; xOBSE NiObjects.h BSFaceGenNiNode layout agrees; vtable slot unverified)
+0x00889810,PlanHavokSteps,function,inferred,0,re/functions/0x00889810.md (map only; a scheduler over 0x00BA790C/10/14/18, calls nothing)
+0x00BA7918,g_havokUpdateType,global,inferred,0,re/functions/0x00889810.md (0 fixed step with carry; 10 smoothed; else equal split)
+0x00BA7914,g_havokStepCount,global,inferred,0,re/functions/0x00889810.md
+0x00BA790C,g_havokStepSeconds,global,inferred,0,re/functions/0x00889810.md
+0x00BA7910,g_havokCarrySeconds,global,inferred,0,re/functions/0x00889810.md
+0x00B2E2E8,g_havokFixedStepSeconds,global,inferred,0,re/functions/0x00889810.md (image value 1/60; OBVR: runtime copy of fMaxTime:HAVOK)

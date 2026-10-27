@@ -28,12 +28,12 @@ Marks: **read** = read in Oblivion.exe 1.2.0.416 (Ghidra/REA),
 
 | Offset | Field |
 |---|---|
-| +0x00 | frozen flag (nonzero: the frame's seconds are written as 0) |
-| +0x04 | `1000 / iFPSClamp` or 0, the fixed step when iFPSClamp is set |
-| +0x08 | the fixed step's carried fraction |
-| +0x0C | the frame's seconds |
-| +0x10 | the previous frame's milliseconds since the start |
-| +0x14 | `GetTickCount` at the start |
+| +0x00 | `freezeDepth`: a nesting counter, not a flag (read 2026-10-27: ADD CL,1 at 0x0047D127, SUB AL,1 at 0x0047D0F9); nonzero: the frame's seconds are written as 0 |
+| +0x04 | `fixedStepMs`: the fixed step in ms or 0 for variable mode; that iFPSClamp writes it is unverified (no writer found yet) |
+| +0x08 | `fixedStepCarryMs`: the fixed step's carried fraction |
+| +0x0C | `frameSeconds`: the frame's seconds |
+| +0x10 | `clockMs`: in variable mode tick - startTick at the last update; in fixed mode a counter advanced by the step |
+| +0x14 | `startTick`: `GetTickCount` at construction, shifted by Freeze/Unfreeze |
 
 ## What that costs (measured, derived)
 
@@ -120,20 +120,53 @@ details per function in `re/functions/<address>.md`, states in
   (derived). The three constants 0x00A2FC78, 0x00A30E40, 0x00A3D14C were
   not in the export; their values (2^32, 0.001, 166.67) are unverified
   here.
-- **The clock is frozen by a bracket pair** (read): 0x0047D120 / 0x0047D0F0
-  are called on g_timeInfo around work that must not count as frame time -
-  by GameMessageBoxA 0x004949E0 (`__stdcall(text, caption, type)`, ret 0xC)
-  and by TESObjectREFR::LoadBaseFormModels 0x004E1580 while a reference's
-  models load. Whether the pair is a flag or a nesting counter is open.
+- **The clock is frozen by a bracket pair** (read): TimeInfo::Freeze
+  0x0047D120 / TimeInfo::Unfreeze 0x0047D0F0 are called on g_timeInfo
+  around work that must not count as frame time - by GameMessageBoxA
+  0x004949E0 (`__stdcall(text, caption, type)`, ret 0xC) and by
+  TESObjectREFR::LoadBaseFormModels 0x004E1580 while a reference's models
+  load. The pair is a nesting counter at +0x00 (time-info slice,
+  2026-10-27): Freeze increments it and, on the 0->1 transition only, reads
+  GetTickCount once and rewrites +0x10 := now - +0x10 and +0x14 := now -
+  +0x14; Unfreeze decrements it and, on 1->0, applies the same rewrite. So
+  across one outermost bracket both fields come out shifted forward by the
+  frozen stretch D, and the next update's delta is the real delta minus D
+  (derived from the two bodies; whether an update ever runs inside a
+  bracket, which would change this, is unverified). The earlier wording
+  "the next unfrozen frame sees the whole frozen stretch, clamped" was the
+  emulator run of Update alone, without the bracket; with the bracket the
+  stretch is shifted out.
+- **What the clock globals hold** (read, corrected 2026-10-27): 0x00B39DB0
+  is tick - startTick of the instance last updated (its clockMs), not a raw
+  tick, and 0x00B39DB4 the previous value. Their one reader found so far is
+  BSFaceGenNiNode::UpdateDownwardPass 0x0055D4C0 (proposal), which hands
+  the difference of the two, times (double)0.001f, to the FaceGen animation
+  as its time step - without the ceiling and without fGlobalTimeMultiplier.
+- **The physics step planner** (read, 2026-10-27, map only): 0x00889810,
+  the update step's callee right after the clock update, calls nothing and
+  schedules the Havok steps from the frame seconds plus a carry
+  (0x00BA7910): step count 0x00BA7914, step length 0x00BA790C, by the
+  update type 0x00BA7918 - 0 = fixed step of 1/60 s (0x00B2E2E8, OBVR: the
+  runtime copy of fMaxTime:HAVOK, unverified here) with the carry clamped
+  to one step, 10 = smoothed, else the frame split into equal steps; at
+  most 3 steps, 2 when the flag 0x00B333B8 is set. It compares the frame
+  seconds against the same 166.67 constant 0x00A3D14C the clock uses as
+  milliseconds (why is unverified). Conflict to resolve: OBVR measured "60
+  Hz physics at 90 fps, one frame in three without a step"
+  (docs/hand-weapon-collision-spec.md:636-646); the static reading says a
+  90 fps frame of 11 ms under type 0 runs one step every frame. One of the
+  two is wrong or the update type differs at runtime - an in-game read of
+  0x00BA7918 and 0x00BA7914 settles it.
 - **The time multiplier at 0x00B06704 is the INI setting
   `fGlobalTimeMultiplier` ([General])** (read, 2026-10-27): the static
   initialiser 0x009DC2D0 registers the SettingInfo (value +0x00 = 1.0f,
   name pointer +0x04 = 0x00A3D150, the string "fGlobalTimeMultiplier:General")
   with the IniSettingCollection at 0x00B07BF0 through 0x004040E0. The
   constants of the update, read from the image with the data export:
-  0x00A3D14C = 166.66667f (the ceiling), 0x00A30E40 = 0.001 (double),
-  0x00A2FC78 = 4294967296.0f (2^32, the unsigned-to-float fix-up; 469
-  references in the image).
+  0x00A3D14C = 166.66667f (the ceiling), 0x00A30E40 = 0.0010000000474974513
+  (the double of the float 0.001f, so the seconds carry the float's
+  rounding), 0x00A2FC78 = 4294967296.0f (2^32, the unsigned-to-float
+  fix-up; 469 references in the image).
 - **The update, executed** (measured in the emulator, 2026-10-27,
   `tools/difftest/emulate.py` on the exported bytes with the image's
   constants, `tools/difftest/cases/0x0047D170.json`): 13 ms at multiplier
