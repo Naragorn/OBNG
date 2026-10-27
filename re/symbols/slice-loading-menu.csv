@@ -1,0 +1,9 @@
+address,name,kind,confidence,conflict,source
+0x005AD980,LoadingMenu::Tick,function,named,0,re/ledger.md loading-menu (rebuilt again at 24-bit x87, both reviews approved)
+0x005AD0D0,LoadingMenu::LoadingMenu,function,named,0,re/ledger.md loading-menu (rebuilt again, both reviews approved)
+0x00889810,PlanHavokSteps,function,named,0,re/ledger.md loading-menu (second pass held with all three skeptics; the Havok identity rests on OBVR's reading)
+0x00BA7914,g_havokStepCount,global,named,0,re/functions/0x00889810.md
+0x00BA790C,g_havokStepSeconds,global,named,0,re/functions/0x00889810.md
+0x00BA7910,g_havokCarrySeconds,global,named,0,re/functions/0x00889810.md
+0x00A2FC70,kMillisecondsPerSecond,global,named,0,double 1000.0 read by LoadingMenu::Tick for the countdown (data.json of 0x005AD980)
+0x00B14158,fLoadingMenuTimerSetting,global,inferred,0,the SettingInfo the loading menu re-arms its timer from (re/functions/0x005AD980.md, 0x005AD0D0.md; name string unread)

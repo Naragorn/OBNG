@@ -1,20 +1,20 @@
 #pragma once
 
-// The engine-facing shape of 0x005AD980 (proposed LoadingMenu_Tick): the
+// The engine-facing shape of 0x005AD980 (proposed LoadingMenu::Tick): the
 // layouts it reads and writes, and the calling conventions of it and its
 // callees as called here. The decisions and the call sequence live in
 // LoadingMenu_TickLogic.h.
 //
-// Evidence: re/functions/0x005AD980.md, re/export/frame-clock/0x005AD980/asm.s;
-// the menu field offsets are read here and again in the constructor 0x005AD0D0
-// (re/functions/0x005AD0D0.md, a second code path in the same binary). Names
-// are proposals until the frame-clock slice's refutation round.
+// Evidence: re/functions/0x005AD980.md, re/export/loading-menu/0x005AD980/asm.s;
+// the menu offsets +0x3C, +0x40, +0x54, +0x68, +0x6C and +0x70 are written
+// again by the constructor 0x005AD0D0 (re/functions/0x005AD0D0.md, a second
+// code path in the same binary). Names are proposals until the loading-menu
+// slice's refutation round.
 //
-// LoadingMenuLayout duplicates the view in LoadingMenu_LoadingMenu_005AD0D0.h
-// under the names re/functions/0x005AD980.md proposes; both belong in one
-// shared LoadingMenu header that does not exist yet (layout request in the
-// worker report). The offsets agree field for field (derived: same static
-// asserts in both headers).
+// LoadingMenuLayout is this function's view of the menu; it belongs in a
+// shared LoadingMenu header together with the constructor's view (layout
+// request in the worker report). The TimeInfo at +0x54 is the shared one
+// (TimeInfo.h) and is not redefined here.
 //
 // Only addresses with two sources are constants here (AGENTS.md):
 //   0x00582160 InterfaceManager_GetSingleton - called at 0x005ADAC6/0x005ADAE5
@@ -26,11 +26,12 @@
 //              obse/GameOSDepend.cpp:3 (xobse.csv:1532)
 //   0x00B33A10 g_ioManager - read at 0x005ADAD2/0x005ADB03 and xOBSE
 //              obse/GameTasks.cpp:7 (xobse.csv:1549)
+//   0x0047D170 TimeInfo::Update - TimeInfo.h kTimeInfoUpdate (time-info slice)
 // The function itself, 0x00589B70, 0x005898F0 (xOBSE "inferred" only),
-// 0x0047D170, 0x005AD780, 0x00403C00, 0x00583F40, 0x00579260, 0x005792B0,
-// 0x00432860, 0x00432890, 0x0060D0A0, the settings 0x00B14158/60/68/70 and the
-// constants 0x00A2FC78/0x00A2FC70/0x00A6C4C8 have one source so far (this
-// body) and stay in comments until a second one agrees.
+// 0x005AD780, 0x00403C00, 0x00583F40, 0x00579260, 0x005792B0, 0x00432860,
+// 0x00432890, 0x0060D0A0 and the settings 0x00B14158/60/68/70 have one source
+// so far (this body) and stay in comments until a second one agrees. The
+// constants 0x00A2FC70 and 0x00A6C4C8 are values in the logic header.
 
 #include "engine/time/LoadingMenu_TickLogic.h"
 #include "engine/time/TimeInfo.h"
@@ -45,22 +46,30 @@ inline constexpr std::uint32_t kTileUpdateFloatAddress = 0x0058CEB0;
 inline constexpr std::uint32_t kOsGlobalsAddress = 0x00B33398;
 inline constexpr std::uint32_t kIoManagerAddress = 0x00B33A10;
 
+// The x87 precision control the game runs this at: 24 bits, round to
+// nearest, all exceptions masked (measured, knowledge/frame-clock.md,
+// _control87 0x000A001F = hardware word 0x007F under Proton; whether Windows
+// gives the same is open question 2). A binding should still read the
+// caller's word (FNSTCW) and pass PrecisionOfControlWord of it; when that
+// gives none the rebuild does not model the call and the original 0x005AD980
+// has to run.
+inline constexpr Precision kGamePrecision = Precision::Single;
+
 // The fields of the loading menu this function touches. The object size is
 // not visible here; sizeof of this struct is not the object's size and is not
-// asserted. +0x00..+0x27 is the Menu base per xOBSE GameMenus.h (unverified
-// against this binary).
+// asserted. +0x00..+0x3B is the Menu base and fields not touched here.
 struct LoadingMenuLayout {
-	std::uint8_t unknown00[0x3C];      // +0x00  not touched here
-	std::int32_t slowStepCap;          // +0x3C  CMP EDX,[ESI+0x3C] 0x005AD9E8 (read)
-	float screenTimeLeft;              // +0x40  FLD 0x005ADA0B, FST 0x005ADA2E, FSTP 0x005ADABF (read; unit unverified)
-	std::uint8_t unknown44[0x10];      // +0x44  not touched here
-	TimeInfo* clock;                   // +0x54  MOV EDI,[ESI+0x54] 0x005AD9B6, 0x005AD9C7 (read)
-	std::uint8_t unknown58[0x08];      // +0x58  not touched here
-	std::int32_t shownStep;            // +0x60  0x005ADA50, 0x005ADA75, FILD 0x005ADA78 (read)
-	std::int32_t targetStep;           // +0x64  ADD 0x005AD9DF, MOV 0x005ADA06, read 0x005ADA4D (read)
-	std::uint32_t stepChangedMs;       // +0x68  SUB 0x005AD9CF, MOV 0x005ADA72 (read)
-	std::uint32_t lastTickMs;          // +0x6C  SUB 0x005AD9D4, MOV 0x005ADB12 (read)
-	std::uint8_t fastStepEnabled;      // +0x70  CMP byte ptr [ESI+0x70],0 0x005AD9F5 (read)
+	std::uint8_t unknown00[0x3C];  // +0x00  not touched here
+	std::int32_t slowStepCap;      // +0x3C  CMP EDX,[ESI+0x3C] 0x005AD9E8 (read); := -1 in 0x005AD0D0
+	float screenTimeLeft;          // +0x40  FLD 0x005ADA0B, FST 0x005ADA2E, FSTP 0x005ADABF (read); seconds (C16, derived)
+	std::uint8_t unknown44[0x10];  // +0x44  not touched here
+	TimeInfo* clock;               // +0x54  MOV EDI,[ESI+0x54] 0x005AD9B6, 0x005AD9C7 (read)
+	std::uint8_t unknown58[0x08];  // +0x58  not touched here
+	std::int32_t shownStep;        // +0x60  MOV ECX 0x005ADA50, MOV 0x005ADA75, FILD 0x005ADA78 (read)
+	std::int32_t targetStep;       // +0x64  ADD 0x005AD9DF, MOV 0x005ADA06, MOV EAX 0x005ADA4D (read)
+	std::uint32_t stepChangedMs;   // +0x68  SUB 0x005AD9CF, MOV 0x005ADA72 (read)
+	std::uint32_t lastTickMs;      // +0x6C  SUB 0x005AD9D4, MOV 0x005ADB12 (read)
+	std::uint8_t fastStepEnabled;  // +0x70  CMP byte ptr [ESI+0x70],0 0x005AD9F5 (read)
 };
 static_assert(offsetof(LoadingMenuLayout, slowStepCap) == 0x3C, "+0x3C");
 static_assert(offsetof(LoadingMenuLayout, screenTimeLeft) == 0x40, "+0x40");
@@ -70,13 +79,20 @@ static_assert(offsetof(LoadingMenuLayout, targetStep) == 0x64, "+0x64");
 static_assert(offsetof(LoadingMenuLayout, stepChangedMs) == 0x68, "+0x68");
 static_assert(offsetof(LoadingMenuLayout, lastTickMs) == 0x6C, "+0x6C");
 static_assert(offsetof(LoadingMenuLayout, fastStepEnabled) == 0x70, "+0x70");
-static_assert(sizeof(float) == 4 && sizeof(TimeInfo*) == 4, "a 32-bit build");
+static_assert(sizeof(LoadingMenuLayout::slowStepCap) == 4 && sizeof(LoadingMenuLayout::shownStep) == 4 &&
+                  sizeof(LoadingMenuLayout::targetStep) == 4 && sizeof(LoadingMenuLayout::stepChangedMs) == 4 &&
+                  sizeof(LoadingMenuLayout::lastTickMs) == 4,
+              "dword fields (CMP/SUB/MOV/ADD dword)");
+static_assert(sizeof(LoadingMenuLayout::screenTimeLeft) == 4, "+0x40 is a float (FLD/FST float ptr)");
+static_assert(sizeof(LoadingMenuLayout::fastStepEnabled) == 1, "+0x70 is a byte (CMP byte ptr)");
+static_assert(sizeof(TimeInfo*) == 4, "a 32-bit build");
 
 // The clock is the shared TimeInfo; only +0x10 is read here (C10, read).
 static_assert(offsetof(TimeInfo, clockMs) == 0x10, "clockMs at +0x10 (0x005AD9CA, 0x005ADA6F)");
+static_assert(sizeof(TimeInfo::clockMs) == 4, "clockMs is a dword");
 
 // g_osGlobals: only +0x10 is read here (0x005ADB1B, read); the name is
-// xOBSE's (GameOSDepend.h:351).
+// xOBSE's (GameOSDepend.h).
 struct OsGlobalsView {
 	std::uint8_t unknown00[0x10];  // +0x00  not touched here
 	std::uint32_t mainThreadId;    // +0x10
@@ -84,18 +100,9 @@ struct OsGlobalsView {
 static_assert(offsetof(OsGlobalsView, mainThreadId) == 0x10, "mainThreadID at +0x10");
 
 // 0x005AD980 itself: cdecl, one stack argument read as a byte at
-// [entry ESP+4] (0x005ADA3C), RET without immediate at 0x005ADB3E (read); EAX
-// at exit is not a defined result (re/functions/0x005AD980.md, calling
-// convention), so void.
-//
-// The original's countdown (0x005ADA18-0x005ADA26) rounds to the x87
-// precision control of the thread that calls it, which the rebuild takes as
-// Inputs::precision (LoadingMenu_TickLogic.h). A binding has to read the
-// caller's control word at the call (FNSTCW) and pass
-// x87::SupportedPrecision of it; when that gives none (another rounding
-// control, an unmasked exception, the reserved precision 01B) the rebuild does
-// not model the call and the original 0x005AD980 has to run. No binding
-// exists yet (read: nothing under src/ includes this header).
+// [entry ESP+4] (CMP byte ptr [ESP+0x1C],0 0x005ADA3C), RET without immediate
+// at 0x005ADB3E (read); EAX at exit is not a defined result
+// (re/functions/0x005AD980.md, calling convention), so void.
 using TickFn = void(__cdecl*)(std::uint8_t forceRefresh);
 
 // 0x00589B70: one pushed argument, caller cleans (ADD ESP,4 at 0x005AD990,
@@ -110,8 +117,8 @@ using GetContainingMenuFn = LoadingMenuLayout*(__thiscall*)(void* tile);
 using GetTickCountFn = std::uint32_t(__stdcall*)();
 using GetCurrentThreadIdFn = std::uint32_t(__stdcall*)();
 
-// 0x0047D170, the TimeInfo update: ECX = clock, one pushed tick, callee cleans
-// (no ADD ESP after 0x005AD9C2, read; RET 4 per OBVR FrameClock.cpp:13).
+// 0x0047D170 TimeInfo::Update: ECX = clock, one pushed tick, callee cleans
+// (no ADD ESP after 0x005AD9C2, read; RET 4, TimeInfo.h kTimeInfoUpdate).
 using TimeInfoUpdateFn = void(__thiscall*)(TimeInfo* self, std::uint32_t tick);
 
 // 0x0058CEB0 Tile::UpdateFloat: ECX = tile, (trait, value) pushed, callee

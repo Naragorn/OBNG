@@ -8,8 +8,8 @@ address,name,kind,confidence,conflict,source
 0x00B39DB4,g_timeInfoPreviousClockMs,global,named,0,written at 0x0047D181: the previous value of 0x00B39DB0
 0x0055D4C0,BSFaceGenNiNode::UpdateDownwardPass,function,inferred,0,re/functions/0x0055D4C0.md (map only; xOBSE NiObjects.h BSFaceGenNiNode layout agrees; vtable slot unverified)
 0x00889810,PlanHavokSteps,function,inferred,0,re/functions/0x00889810.md (map only; a scheduler over 0x00BA790C/10/14/18, calls nothing)
-0x00BA7918,g_havokUpdateType,global,inferred,0,re/functions/0x00889810.md (0 fixed step with carry; 10 smoothed; else equal split)
+0x00BA7918,g_havokUpdateType,global,inferred,0,re/functions/0x00889810.md (0: steps of at most g_havokMaxStepSeconds with a carry - one full step, a half step or none; 10 smoothed; else equal split)
 0x00BA7914,g_havokStepCount,global,inferred,0,re/functions/0x00889810.md
 0x00BA790C,g_havokStepSeconds,global,inferred,0,re/functions/0x00889810.md
 0x00BA7910,g_havokCarrySeconds,global,inferred,0,re/functions/0x00889810.md
-0x00B2E2E8,g_havokFixedStepSeconds,global,inferred,0,re/functions/0x00889810.md (image value 1/60; OBVR: runtime copy of fMaxTime:HAVOK)
+0x00B2E2E8,g_havokMaxStepSeconds,global,named,0,re/functions/0x00889810.md second pass: the maximum step under type 0 (image value 1/60; OBVR's StepPhysicsRate writes 1/rate into it at runtime, HandBodies.cpp:342-360)

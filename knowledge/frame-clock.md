@@ -153,16 +153,26 @@ details per function in `re/functions/<address>.md`, states in
   seconds against the same 166.67 constant 0x00A3D14C the clock uses as
   milliseconds (why is unverified).
   **Measured** (2026-10-27, OBNG.dll's probe sampling 0x00BA7918 and
-  0x00BA7914 every frame, Linux, 75 Hz, headless): update type 0 the whole
-  run; in play one step on 99.5 % of the frames, two on the rest, never
-  zero, and the step length 0x00BA790C reads 0.013333 s - the frame's
-  length, not 1/60. So under type 0 at 75 Hz the planner hands out one
-  step of the frame's length per frame; the static reading "fixed 1/60
-  step with carry" describes the branch wrongly or 0x00B2E2E8 is not the
-  step it uses at runtime - the function needs a second mapping pass with
-  these numbers. OBVR's "60 Hz at 90 fps, one frame in three without a
-  step" (hand-weapon-collision-spec.md:636-646) is not what this run shows
-  at 75 Hz; whether 90 Hz behaves differently is unverified.
+  0x00BA7914 every frame, Linux, 75 Hz, headless, OBVR loaded): update
+  type 0 the whole run; in play one step on 99.5 % of the frames, two on
+  the rest, never zero, and the step length 0x00BA790C read 0.013333 s.
+  **Second mapping pass** (re/functions/0x00889810.md, loading-menu slice,
+  held with all three skeptics): that 0.013333 is not the frame's length
+  but OBVR's own STEP - OBVR's `StepPhysicsRate` (OBVR
+  src/game/HandBodies.cpp:342-360) writes 1/rate = 1/75 into 0x00B2E2E8 at
+  runtime, so the probe measured the planner under OBVR's setting. Under
+  type 0 the global at 0x00B2E2E8 is a **maximum** step, not a fixed one
+  (`g_havokMaxStepSeconds`): with T = frame seconds + carry, T >= STEP gives
+  one step of STEP (P2) and the rest into the carry, STEP/2 <= T < STEP a
+  half-step path (P4), smaller T no step; the carry is clamped to one
+  step; a float32 model of the branch reproduces the run (P2 on 7498 of
+  7500 frames, 2 on two) and, with STEP = 1/60 at 90 Hz, the alternation
+  OBVR measured as "60 Hz physics, one frame in three without a step"
+  (hand-weapon-collision-spec.md:636-646) - the two readings agree once
+  OBVR's rewrite of STEP is known. A 2-step frame comes from a carry near
+  STEP (a hitch frame drained over the following ones) or from a frame of
+  two display periods. Not run through the emulator; the 90 Hz numbers are
+  the model's (derived).
 - **The time multiplier at 0x00B06704 is the INI setting
   `fGlobalTimeMultiplier` ([General])** (read, 2026-10-27): the static
   initialiser 0x009DC2D0 registers the SettingInfo (value +0x00 = 1.0f,
