@@ -10,6 +10,10 @@
 - Do not hide unexpected failures or claim coverage that was not run.
 - Code, comments, documentation, and Git commit messages must be in English.
 
+## Reading Oblivion.exe
+
+Every function of the EXE is already decompiled in `re/export/rea-all/functions/0x<address>.c` (see `re/README.md`; on the shared disk only, not in Git). Grep it before starting a Ghidra or REA session; start one only for what the files do not answer (assembly, cross-references, data).
+
 ## What OBNG is
 
 OBNG (Oblivion Next Generation) reverse engineers Oblivion.exe 1.2.0.416 (the
