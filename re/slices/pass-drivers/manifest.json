@@ -1,0 +1,73 @@
+{
+  "slice": "pass-drivers",
+  "subsystem": "render",
+  "sharedHeaders": [],
+  "purpose": "Map only: the unnamed functions that sit on the stack in 20-27 % of the in-pass samples of the fixed Walkers scene (OBVR's render sampler over artifacts/shadow/obng-walkers-original/20261030-172648, phase settled to watched, 22 477 in-pass samples; knowledge/culling-and-draw-setup.md 'Where a scene pass goes'). They are the frames between the scene's draw dispatch (Do_RenderShape 0x007693E0 44 % inclusive, DrawSkinnedPrimitive 0x00767520 36 %, re/functions/0x007693E0.md) and the D3D calls, and the next subsystem replacement has to be chosen by their measured share: what each one is, what it does per pass / per geometry / per draw, what it reads and writes (globals, the shader's constant map, the device), and which part of its inclusive cost is its own, its engine callees', or D3D9's. Name every callee worth its own slice. No rebuild in this run.",
+  "functions": [
+    {
+      "address": "0x009A56D0",
+      "name": "the per-draw matrix update of the shader constant map (proposal from the string 'NDL_UpdateTime' and the D3DX matrix calls; unverified)",
+      "mapOnly": true,
+      "known": "26.1 % inclusive (5870 of 22 477 in-pass samples; the sampler's own exclusive share is in the run's perf-functions output). Ghidra: thiscall-shaped (in_ECX) with eight stack arguments, 652 pseudocode lines, x87 code (float10 locals), no direct callers (reached through a pointer or vtable - unverified), callees D3DX9_27.DLL::D3DXMatrixMultiply, D3DXMatrixInverse, D3DXMatrixTranspose (imports, read in meta.json), 0x0076C710 (called eight times; 23 pseudocode lines, int (void)), 0x009A5510 (three times; (dst, src, char, char)), the lock 0x006FF9C0, 0x00560920, 0x00775F60, 0x006D1920, 0x00983AF0 / 0x00986000 / 0x00986300 (CRT-region addresses, probably float conversions - unverified), the global 0x00B40224; the string 'NDL_UpdateTime' referenced at 0x009A5F56. 0x009A8E30 (10.8 % inclusive, unmapped) lies in the same address region. The sampler also shows 0x00718A80 (an inverse, 4.9 % inclusive, 16 % of the D3D9.DLL samples called from it) and the light-constant upload 0x007C9140 (17.9 % inclusive, 30 % of the D3D9.DLL samples) in this pass - say how they relate to this function.",
+      "questions": [
+        "What is this function: who calls it (find the pointer/vtable that holds 0x009A56D0 and the class), with which arguments, and once per draw, per geometry or per pass?",
+        "Which matrices does it build (world, view, projection, their products, inverses, transposes - from which inputs, in which order) and where do they go: the shader constant map (which object, which offsets), the device, or a per-shader record? Which of those are per draw and which could be per pass (derived from what changes between draws)?",
+        "Is the x87 math here the cost, or the D3DX calls, or its callees (0x0076C710 x 8, 0x009A5510 x 3)? Read what 0x0076C710 and 0x009A5510 do.",
+        "What is 'NDL_UpdateTime' (a time constant for shaders? a profiling marker?) and what is read through 0x006FF9C0's lock?"
+      ]
+    },
+    {
+      "address": "0x007A9820",
+      "name": "render a geometry in a pass: sets the pass id and calls the geometry's render slot (proposal; unverified)",
+      "mapOnly": true,
+      "known": "25.6 % inclusive (5764 samples). Ghidra: (geometry-like param_1, ushort pass), 42 pseudocode lines: writes the globals 0x00B42E90 (the pass id named in re/slices/scene-pass/manifest.json) and 0x00B42EB8 (param_1), reads 0x00B3F928 once, gets an object from 0x00707530(4) and tests its vtable slot +0x54 result to be in 1..10, then unless the pass is 6..9 or 0x154/0x155 calls 0x007ECB20(), then loops over a byte count at param_1+0x08 calling 0x007EE390(i, [param_1+0x0C][i], obj+0x94) per entry, and finally calls param_1's vtable slot +0x84 with the saved 0x00B3F928 value (pseudocode reading, unverified at instruction level). Slot +0x84 is NiTriShape's render entry 0x00717690 / NiTriStrips' 0x00719B60 (read, re/functions/0x007693E0.md C4), which reach Do_RenderShape under their gate - so this function is the step above the geometry's render entry. Callers (meta.json): 0x007AA130, 0x007ABAC0, 0x007ACF40, 0x007AD270, 0x007AC9A0 - the pass drivers.",
+      "questions": [
+        "Confirm at instruction level: the pass id write, the object from 0x00707530(4) and its slot +0x54 (what is it: the renderer? a shader package?), the 0x007ECB20 call and its gate on the pass numbers (what are passes 6..9 and 0x154/0x155?), the loop over [param_1+0x0C] (lights of the geometry? what does 0x007EE390 do with them), and the final slot +0x84 call.",
+        "Which of the five callers run in the scene pass of the fixed Walkers scene, and what do they iterate (the visible array of NiDrawScene 0x0070C0B0 per OBVR's reading: re/functions/0x0070C000.md C2 calls slot 33 directly - how does this function fit beside that path)?"
+      ]
+    },
+    {
+      "address": "0x007830C0",
+      "name": "upload one shader constant to the device: SetVertexShaderConstantF / I / B by the constant's type (proposal; the slot offsets +0x178 / +0x180 / +0x188 of the object at [this+0x24]+0xFF8 are unverified as IDirect3DDevice9 slots)",
+      "mapOnly": true,
+      "known": "21.9 % inclusive (4924 samples) - this is where the D3D9.DLL constant uploads (16.7 % of the pass in the 15:17 run) are reached, if the proposal holds. Ghidra: thiscall (in_ECX) with (record, data, count): data defaults to [record+0x30], count to [record+0x20] or 1; a type byte at [record+0x14] indexes the table 0x00B428D8 (filled by 0x00783C70 when the byte 0x00B4295B is clear): table value 1 -> slot +0x188 of the device-like object, 3 -> +0x180, else +0x178 with (device, [record+0x1C], data, count); returns HRESULT >= 0 (pseudocode reading, unverified). No direct callers in Ghidra (virtual or through a pointer - unverified). OBVR measured its own detour on the vertex-constant upload ('SetVsConstantF' 4.96 -> 3.60 % of in-pass samples, 2026-10-30 17:xx) - the relation of this function to OBVR's hook point is to be stated.",
+      "questions": [
+        "Confirm the three device slots against the IDirect3DDevice9 vtable (an independent source: OBVR's code or d3d9.h slot order) and the record layout (+0x14 type, +0x1C start register, +0x20 count, +0x30 data).",
+        "Who calls it, how many times per draw, and from which per-draw or per-pass step (the shader's slot 13 SetupTransformations 0x007C9230, the light constants 0x007C9140, the palette 0x007655F0)? Which constants are uploaded every draw although their value did not change (the lever OBVR's SetVsConstantF cache found) - derived from the callers' loops.",
+        "What is the table at 0x00B428D8 and the byte 0x00B4295B (a capability detection?)."
+      ]
+    },
+    {
+      "address": "0x007AC9A0",
+      "name": "a pass driver (proposal; unverified)",
+      "mapOnly": true,
+      "known": "21.0 % inclusive (4713 samples). Ghidra: 183 pseudocode lines, no direct callers (virtual - unverified), callees 0x007AA550 (x5, 102 lines, takes a function pointer), 0x007ABDE0 (x4, 40 lines), 0x007A9820 (x2, the geometry render step above), 0x007A9C30, 0x007B4290, 0x007D1320, 0x007D1800, 0x007F6FC0, 0x007F7EE0, 0x007F86C0, 0x007F8DB0, 0x007FD260. It shares callees with 0x007AD270 (0x007ABDE0, 0x007A9820, 0x007D1320).",
+      "questions": [
+        "What is this: a pass (which pass ids does it set through 0x007A9820?), what does it iterate (a geometry list? a light list?), and what are 0x007AA550 (called with a function pointer: a 'for each' over a list?) and 0x007ABDE0?",
+        "Who calls it (vtable owner or caller) and in which order with 0x007AD270 within RenderScene 0x0040C830 / NiDrawScene 0x0070C0B0?",
+        "Which of its callees carry the cost (the sampler's inclusive table of the run names them), and which engine step is per geometry here?"
+      ]
+    },
+    {
+      "address": "0x007AD270",
+      "name": "a pass driver with list building (proposal; unverified)",
+      "mapOnly": true,
+      "known": "19.7 % inclusive (4419 samples). Ghidra: 618 pseudocode lines, no direct callers (virtual - unverified), callees kListAddTail 0x005B1E20 (x11, seed name), 0x007ABDE0 (x9), 0x007AD1C0 (x3), 0x007ABC40 (x2), 0x007AA6C0 (x2), 0x007A9820 (x2), FormHeap_Allocate 0x00401F00 (x2, seed name), 0x00405760 (x2), 0x00404C90, 0x00405650, 0x006AA320, 0x007AB6F0, 0x007A9CC0, 0x007E24C0, 0x007D1320, 0x007C7050, 0x007B4280 (the shadow scene object getter, re/slices/scene-pass manifest). Eleven list appends and heap allocations in a render-path function: it sorts or buckets geometries into lists before drawing them (derived from the callees; unverified).",
+      "questions": [
+        "What lists does it build (keyed by what: shader, pass, alpha, distance?), from which input (the visible array, the shadow scene object from 0x007B4280?), and does it allocate per pass (FormHeap_Allocate x2 - per frame allocations are a cost by themselves)?",
+        "Which passes does it drive through 0x007A9820 (the pass ids), in what order, and where do 0x007AC9A0 and this function sit relative to each other?",
+        "Which part of its 19.7 % is list building and which is the draws underneath (derived from the sampler's callee attribution in the run)?"
+      ]
+    },
+    {
+      "address": "0x00773330",
+      "name": "bind up to five vertex streams (proposal; unverified)",
+      "mapOnly": true,
+      "known": "15.9 % inclusive (3581 samples), more than its only direct caller 0x00773440 (5.4 %), so it has callers Ghidra does not see (virtual - unverified). Ghidra: thiscall (in_ECX) with one argument, 36 pseudocode lines: for i in 0..4, if the byte [this+0xA4+i] is set it calls the object 0x00B42834's vtable slot +0xD0 with (arg, 0x00B427CC[i], [this+0x6C+9*4+... see pseudo.c: puVar2[9]], 0), else if the byte [this+0x80+i] is set the same with [this+0x6C+4*i]; returns 0. OBVR's performance-profiling.md:486 names 0x00771790 / 0x00773330 as callers of the packer 0x0076FE20 ('AUSSERHALB des Packers (0x00771790/0x00773330 -> 0x0076FE20)') - the Ghidra body shows no such call, so either OBVR's note means a different relation or the call is through the vtable slot; settle it.",
+      "questions": [
+        "What is 0x00B42834 and its slot +0xD0 (the D3D device's SetStreamSource would be slot 100 / +0x190, so this is an engine object - which?), what are the five entries of 0x00B427CC, and what are the two byte arrays at this+0x80 and this+0xA4 (stream present / stream dynamic?).",
+        "Who calls it besides 0x00773440 and per what (per draw? per partition?), and how does it relate to the packer 0x0076FE20 (OBVR's note) and to the unlock 0x00776D80?"
+      ]
+    }
+  ]
+}
