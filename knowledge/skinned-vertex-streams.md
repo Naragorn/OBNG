@@ -38,7 +38,7 @@ on (run of 2026-10-23 14:59).
 | 2.5 % | 0x0076F3B0, the copier's memset loop |
 | 13.1 % | DXVK: draws, constants, the unlock |
 | 4.6 % | OBVR.dll |
-| 3.8 % | 0x0047DA70, plane against sphere (culling, from 0x007D2EA0) |
+| 3.8 % | 0x0047DA70, a sphere against a plane (culling, from 0x007D2EA0; the roles corrected 2026-10-30, knowledge/bone-palettes.md) |
 | 40 % | the rest of the engine's render walk: 0x0077A1F0 on the stack in 49 % of samples, 0x00767520 in 40 % |
 | 4 % | ntdll and kernel32: locks (0x006FF9C0), file reads |
 
@@ -66,6 +66,40 @@ CPU is unverified (see the end). These figures are for five people (measured):
     reads the partition's index, computes the source and **calls `memcpy`
     once per vertex for 8 or 12 bytes**. That loop is the single largest
     item in the table above.
+- **The stream copy 0x0076E610 at instruction level** (read 2026-10-30,
+  `re/functions/0x0076E610.md`, held by three skeptics; proposed
+  `CopyVertexStreamElements`): cdecl with one argument, the copier's 0x28-byte
+  descriptor (OBVR's `StreamCopyDesc` layout confirmed field for field; the
+  type code at +0x00 is never read; `count` and `sourceWords` are words);
+  ECX is not an input; six plain `RET`; returns the running total. Path
+  order: a null source (+0x10) takes the zero-fill **before** the index test;
+  then an index table (+0x0C) takes the indexed gather; otherwise the
+  straight run, inline dword moves for exactly 8, 12 and 16 bytes and a
+  `memcpy` loop for every other size (also 4). The 8/12/16 paths return
+  `count * countedBytes` from one 32-bit IMUL, the other paths sum it per
+  element (equal modulo 2^32). Count 0 returns 0 and writes nothing; `dest`
+  is never null-tested. The function reads no global and no clock.
+  Ghidra had no function here (it is reached through the routine table that
+  0x00771300 fills, pseudocode: the same-format copy for formats 1-4);
+  created 2026-10-30.
+  - **Finding for OBVR** (`StreamCopyLogic.h`, `StreamCopyFast` and
+    `StreamCopyReference`): on the **zero-fill path the engine memsets
+    `countedBytes` (+0x1C) per element, not `elementBytes`** (read:
+    0x0076E642/0x0076E64E load [EDI+0x1C] as memset's size; +0x14 is not read
+    on that path). OBVR's reference and fast copy memset `elementBytes`.
+    The in-game check (202000 copies, 0 mismatches) cannot see this when
+    `countedBytes >= elementBytes` (the engine's extra zeroes survive or lie
+    outside the compared span), and the zero-fill path may never run from
+    0x0076F590 (its pseudocode calls the routine only with a non-null source,
+    unverified). It matters only if a caller passes a null source with
+    `countedBytes != elementBytes` - open. Every other path matches OBVR's
+    reference (source address, size, dest step, total, path order); OBVR's
+    extra inline size-4 case is an optimisation, not a difference.
+  - The line above calling 0x0076F3B0 "the copier's memset loop" is doubtful:
+    in the decompiled table filler it is another table routine with the
+    same descriptor shape whose null-source path memsets **0xFF**, not 0
+    (unverified, pseudocode of 0x0076F3B0 and 0x00771300). OBVR's
+    performance-spec carries the same wording.
 - **A second entry into the packing** comes from the shape render
   0x00767B40: 0x00771790 and 0x00773330 call the packer 0x0076FE20, not
   0x00763130. Measured: another 0.5 to 0.6 MB a pass, in 210 small copies.

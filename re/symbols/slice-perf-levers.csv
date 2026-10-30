@@ -1,0 +1,10 @@
+address,name,kind,confidence,conflict,source
+0x007655F0,BuildBonePalette,function,inferred,0,re/ledger.md perf-levers (thiscall on the renderer, five args RET 0x14; class Renderer is a proposal)
+0x007C9140,UpdateLightPositionConstants,function,inferred,0,re/ledger.md perf-levers (stdcall(matrix scale passId skipAdjust) RET 0x10; three gated vec4s at 0x00B44FD8)
+0x0047DA70,NiBound_WhichSide,function,inferred,0,re/ledger.md perf-levers (thiscall sphere against plane RET 4; Gamebryo name unverified)
+0x004073D0,RenderActorShadows,function,inferred,0,re/ledger.md perf-levers (OBVR seed kRenderActorShadows already applied; kept)
+0x0076E610,CopyVertexStreamElements,function,inferred,0,re/ledger.md perf-levers (cdecl(desc); created 2026-10-30; reached through the table 0x00771300 fills)
+0x00B44FD8,g_constLightPos,global,inferred,0,re/functions/0x007C9140.md (three vec4 written per enabled slot)
+0x00B46528,g_lightPosTable,global,inferred,0,re/functions/0x007C9140.md (points read per slot, stride 0x10)
+0x00B465A8,g_lightWTable,global,inferred,0,re/functions/0x007C9140.md (fourth float per slot; a direction in 0x007C9230's pseudocode - unverified)
+0x00B3F92C,g_paletteOriginOffset,global,inferred,0,re/functions/0x007655F0.md (subtracted from every palette translation; runtime writer unverified)

@@ -28,6 +28,70 @@ OblivionWalkers captures. Nothing of this is built in OBNG.
   returns the object, `0x00543A00(frame seconds x 0x00B06530)`) - it
   accumulates time and re-renders the canopy shadow when it runs out.
 
+## At instruction level (read 2026-10-30, `re/functions/0x004073D0.md`, held by three skeptics)
+
+Proposed name `RenderActorShadows` (OBVR's seed `kRenderActorShadows`);
+`void(void)`, plain `RET`, ECX not an input; 532 instructions, 33 callees.
+In order:
+
+1. **An enable/disable state machine** on bit 0x10 of the dword 0x00B42F40
+   with the bytes 0x00B333B8 (a request) and 0x00B333F6 (a latch), gated by
+   `[0x00B42F48] >= 3`: a set request disables shadows (clears the bit,
+   `0x007B4280(0)->0x007C5EF0()`, `0x007C2710(renderer, 0)`), a cleared
+   request with the latch set re-enables them and reserves `count` maps
+   through 0x007C2710. What 0x00B42F48 and 0x00B333B8 are is unverified
+   (0x00B333B8 is also the one-frame flag the frame body hands the Havok
+   planner, `re/functions/0x0040D800.md`; one neutral name is still owed).
+2. `0x007B7650()` on every path; then the gate: byte 0x00B42CDB set,
+   level below 3 or the bit clear go straight to the timer.
+3. **Caster selection**, `count` = dword 0x00B06F04 (exterior,
+   `[g_TES]+0x34` set) or 0x00B06EFC (image values 4 and 2; the Int/Ext
+   setting names are OBVR's, the name pointers 0x00A3EC40/0x00A3EC20 are
+   not dereferenced here). With count 0: `scene->0x007C7880()` and the
+   timer. The player first, once, without an upper-bound check: in first
+   person only when `0x0065D650()` is non-zero; then, when `vt+0x380()` is
+   non-zero, `vt+0x18C()` must not be 4, 3 or 5; `0x005E9670()` must be 0;
+   the actor value 0x2F (`vt+0x284(0x2F)`, compared as a float with 0.0
+   through `TEST AH,0x44 / JP`) must be exactly 0; accepted through
+   `scene->0x007C6C30(player->0x00660110(0))`. Then the process list
+   `0x006747C0(0x00B3BD00)`, stopping at the first node whose data is null:
+   per actor, `accepted < count` first, `vt+0x154()` non-null,
+   `0x005EA5E0()` true, (when `vt+0x380()` non-zero) `vt+0x18C() != 4`,
+   `0x005E9670()` false, actor value 0x2F zero. **First come, first served
+   in list order** - nothing here ranks casters by distance, visibility or
+   screen size (derived); whether the player can appear in the list too
+   (registered twice) is unverified - the loop never compares against
+   0x00B333C4. The NPC check rejects only state 4 where the player also
+   rejects 3 and 5.
+4. **Hiding and the light walk**: the first-person node, `[[g_TES]+0x5C]+4`,
+   the object at `[0x00B36094]` (unless byte 0x00B06F14) and two
+   TES-managed node groups (`0x00442A30` with 0 and 3) are app-culled, the
+   culling process's +0x0C set to the scene camera, then the shadow scene's
+   lights (0x007C5AB0/0x007C5B50) are walked and **at most `count` of them
+   drawn** - a light is counted only when drawn; a light whose
+   `0x00405AD0` object is null is skipped entirely (no fade call, no hide,
+   no draw); a drawn light runs 0x007D2280 (placed at the caster node
+   +0x130), 0x007D6390 (camera), 0x007D5ED0, 0x007D6900 on the scene root
+   `[0x00B333CC]` (g_worldSceneGraph) and, with `bActorSelfShadowing`
+   (byte 0x00B06F0C), on the caster, then 0x007D6A40; otherwise its object
+   is hidden.
+5. **Restore**: what was hidden is un-culled, 0x007C6770 is bracketed by
+   `0x00977C50(3)` / `0x00977C50(2)`, byte 0x00B0727C set back to 1.
+6. **The Sky timer on every path**, early exits included:
+   `Sky_GetSingleton()->0x00543A00(fSetting 0x00B06530 * frameSeconds)`
+   when byte 0x00B430AD is set and a menu-mode condition allows it. So it
+   reads frameSeconds (0x00B33E9C) directly; whether 0x00B430AD is zero in
+   interiors (the earlier "exteriors only") is unverified. That this timer
+   is the canopy shadow's rests on OBVR's reading, nothing in this export
+   says "canopy".
+
+Lever (derived): the cost is the per-light draw (step 4) times the number
+of casters admitted in step 3; a rebuild of the selection (fewer, better
+chosen casters) changes the count without touching the draw. Which callee
+carries the measured 1.4 ms needs a per-callee timing. Worth their own
+slice: 0x007C6C30 (what registering a caster does), 0x007D6900 (the draw),
+0x007C2710 (the map reservation).
+
 ## Measured (OblivionWalkers perf-walkers-in-view.txt, Linux, 75 Hz, OBVR dual pass)
 
 - Eighteen Walkers standing in view, `iActorShadowCountInt` 0 against 10:

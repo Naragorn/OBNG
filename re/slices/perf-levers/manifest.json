@@ -1,0 +1,43 @@
+{
+  "slice": "perf-levers",
+  "subsystem": "render",
+  "sharedHeaders": [],
+  "purpose": "Map only: the five render-thread functions OBVR's sampler measured as the engine's own cost with a crowd in view (docs/performance-spec.md of ../OBVR, knowledge/bone-palettes.md, knowledge/skinned-vertex-streams.md, knowledge/actor-shadows.md). OBNG's first performance levers: what each does, its contract (arguments, the records it reads and writes), its control flow, and which callees are worth their own slice. Rebuilds follow one by one after the mappings held.",
+  "functions": [
+    {
+      "address": "0x007655F0",
+      "name": "the bone palette builder (seed: OBVR performance-spec section 7, knowledge/bone-palettes.md)",
+      "mapOnly": true,
+      "known": "From OBVR's reading (knowledge/bone-palettes.md, marked read there, Ghidra decompiler, not instruction-checked): thiscall on the renderer; [ecx+0x8ac] is an object whose vtable slot +0xfc is called at the end with the non-uniform-scale flag. The one argument is a skin instance record: +0x08 the skin data (its +0x40 the bone count, +0x44 the per-bone bind transforms, 0x4c bytes each: 3x3 rotation, translation, scale, then the bound), +0x14 the bone node array (a node's +0x94 is its world scale), +0x18 the frame stamp (0x00422DE0 returns the frame counter; the palette is rebuilt once a frame), +0x1c/+0x20/+0x24 the palette buffer's capacity, pointer and mode (reallocated through FormHeap 0x00401F00/0x00401F20 when the bone count grows or the mode changes), +0x28 a 0x40-byte scratch transform filled by 0x00761BE0. Per bone: bind transform times the bone's world transform (0x0053D7A0, the engine's thirteen-float transform multiply), scaled by the skin's world scale, written as a 4x3 row of twelve floats (floats 3, 7, 11 the translation) into the palette, or packed through 0x00761AE0/0x00761B60 in mode 4. Measured (OBVR): 7.6 % of a scene pass with 18 bodies, about 0.4 ms a frame. 281 instructions, 8 callees. Ghidra's body is non-contiguous (0x007655F0-0x0076580C, 0x00765810-0x0076598F).",
+      "questions": ["The exact row layout written per bone (which of the thirteen floats land where, and the translation's scale), as instructions, not pseudocode.", "The frame-stamp gate: under which condition is the build skipped, and does the stamp compare equal or less-than?", "Which mode values select the packed path, and what 0x00761AE0 / 0x00761B60 receive."]
+    },
+    {
+      "address": "0x007C9140",
+      "name": "the light constants per draw (seed: OBVR performance-spec, knowledge/bone-palettes.md)",
+      "mapOnly": true,
+      "known": "From OBVR's reading (knowledge/bone-palettes.md, read): transforms three light slots at 0x00B45040 into shader constants at 0x00B44FD8 for every draw, through D3DXVec3TransformCoord (the only callee, D3DX9_27.DLL). Measured (OBVR): 15 % of a scene pass with 18 bodies, about 0.8 ms a frame - three positions transformed per draw. Three callers in Ghidra (0x007F6FC0, 0x007C9230, 0x007F7EE0). 66 instructions; reads a table at 0x00B46528 stepped by ESI, and 0x00B465A8. The frame at 0x007C9140 is SUB ESP,0x18 with two stack arguments read at [ESP+0x2C] and [ESP+0x24] after the pushes.",
+      "questions": ["The exact contract: the arguments, what is read per light (the slot test at +0x08, the vectors), what is written where, and ret N.", "Is anything in the output independent of the draw (a per-frame invariant a cache could keep), i.e. does the output depend only on the light slots and the matrix argument?"]
+    },
+    {
+      "address": "0x0047DA70",
+      "name": "plane against sphere (seed: OBVR performance-spec, knowledge/skinned-vertex-streams.md)",
+      "mapOnly": true,
+      "known": "From OBVR's sampler (measured): 3.8 % of a scene pass, the culling test called from 0x007D2EA0. Five callers in Ghidra (0x0070DFD3, 0x007D6390, 0x007D2EA0, 0x0049CBF0, 0x0047F7B0). 32 instructions, no callees, pure x87: thiscall(ecx = a plane: normal at +0x00..+0x08, distance at +0x0C) with one stack argument (a sphere: centre +0x00..+0x08, radius +0x0C), RET 4; returns 2, 1 or 0 after two FCOMP tests. The x87 precision in the game is 24-bit (measured, OBNG.log probe) - the intermediate stores to [ESP+4] round to single anyway.",
+      "questions": ["The exact meaning of the three results (2, 1, 0): which side of the plane, intersecting, and the order of the two comparisons with their flags (TEST AH,0x1 and TEST AH,0x41 / JP).", "Whether the rounding through [ESP+4] between the dot product and the subtraction matters at 24-bit precision - i.e. what a rebuild must round where to match bit for bit."]
+    },
+    {
+      "address": "0x004073D0",
+      "name": "the actor shadows of a world render (seed: OBVR kRenderActorShadows, knowledge/actor-shadows.md)",
+      "mapOnly": true,
+      "known": "From OBVR's reading (knowledge/actor-shadows.md, read): cdecl, no arguments, plain ret, called once from the scene render 0x0040C830. Reads iActorShadowCountInt (value at 0x00B06F04) or iActorShadowCountExt (0x00B06EFC) by the current cell's exterior flag ([0x00B333A0]+0x34) and hands the count to 0x007C2710. Casters: the player first, then the actors of the process manager's list (0x006747C0 on 0x00B3BD00), each passing checks (3D present vtable+0x154, 0x005EA5E0, not knocked down/dead via vtable+0x18C, 0x005E9670, actor value 0x2F zero), up to the count. Drawing: a loop over the shadow scene's lights (0x007C5AB0/0x007C5B50); per light 0x007D2280 places it at the caster's node (+0x130), 0x007D6390 sets the camera, a light whose fade (+0xD8) is at least 0.05 is drawn (0x007D5ED0, 0x007D6900 on the scene root [0x00B333CC] and on the caster itself when bActorSelfShadowing byte 0x00B06F0C, 0x007D6A40). First-person node and others hidden by the app-culled flag (NiAVObject +0x18 bit 0) and restored. Exteriors only at the end: the canopy shadow timer (0x00542EA0, 0x00543A00(frame seconds x 0x00B06530)). Measured: ten casters cost 1.4 ms a pass. 532 instructions, 33 callees; Ghidra already carries the seed name kRenderActorShadows.",
+      "questions": ["The caster selection in instruction order: every check, its address and which it rejects - the rebuild of this selection is the lever (fewer, better-chosen casters).", "Does the function read frameSeconds (0x00B33E9C) directly for the canopy timer, and is the timer run on interiors at all?", "Which of the 33 callees are the per-light draw (the cost) and which are bookkeeping - name the smaller callees worth their own slice."]
+    },
+    {
+      "address": "0x0076E610",
+      "name": "the stream copy (seed: OBVR StreamCopyLogic.h, knowledge/skinned-vertex-streams.md)",
+      "mapOnly": true,
+      "known": "From OBVR's reading and its in-game check (../OBVR/src/render/StreamCopyLogic.h, measured 202000 copies with 0 mismatches against its reference): cdecl with one argument, the copier's 0x28-byte descriptor built on 0x0076F590's stack (0x0076F87C): +0x00 type code (unused here), +0x04 sourceWords (an index steps this many dwords), +0x08 count (word), +0x0C indices (null for a straight run), +0x10 source (null to zero-fill), +0x14 elementBytes, +0x18 sourceStride, +0x1C countedBytes (what each element adds to the returned total), +0x20 destStride, +0x24 dest; returns the counted total. Three paths: zero-fill (memset per element), indexed (memcpy per vertex at the loop 0x0076E690 - the hot one, 24 % of a pass sits in memcpy called from here), straight runs with unrolled 8/12/16-byte copies and a generic path. It is reached through a table filled at 0x00771356 (0x0076E430, 0x0076E4B0, 0x0076E610), so Ghidra had no function here - created 2026-10-30. 176 instructions, callees _memset and _memcpy. Ghidra's body is non-contiguous (0x0076E610-0x0076E686, 0x0076E690-0x0076E7F2).",
+      "questions": ["Does OBVR's StreamCopyReference match the instructions path for path - in particular the straight run's unrolled cases (which sizes, and what the generic path does with the total) and whether the zero-fill path adds countedBytes per element?", "Any path OBVR's reference does not cover (a count of 0, a null dest, the type code at +0x00)?"]
+    }
+  ]
+}

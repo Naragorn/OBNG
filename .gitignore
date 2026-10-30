@@ -13,3 +13,4 @@ re/export/
 *.log
 artifacts/shadow/*/*/*.png
 artifacts/shadow/*/*/player-*
+__pycache__/

@@ -1,0 +1,5 @@
+0x007655F0 # the bone palette builder (OBVR performance-spec section 7, knowledge/bone-palettes.md); 7.6 % of a pass with 18 bodies
+0x007C9140 # the light constants per draw (three light slots at 0x00B45040 transformed into 0x00B44FD8); 15 % of a pass
+0x0047DA70 # plane against sphere, the culling test called from 0x007D2EA0; 3.8 % of a pass
+0x004073D0 # the actor shadows of a world render, called once from the scene render 0x0040C830 (OBVR kRenderActorShadows)
+0x0076E610 # the stream copy out of the copier's table (filled at 0x00771356); created in Ghidra 2026-10-30 - no function there before
