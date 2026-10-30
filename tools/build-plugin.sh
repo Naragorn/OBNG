@@ -16,15 +16,7 @@ deploy=1
 [[ "${1:-}" == "--no-deploy" ]] && deploy=0
 
 game_running() {
-	local cmdline argv0
-	for cmdline in /proc/[0-9]*/cmdline; do
-		argv0="$(tr '\0' '\n' < "$cmdline" 2>/dev/null | head -n 1)" || continue
-		argv0="${argv0//\\//}"
-		if [[ "${argv0##*/}" =~ ^[Oo][Bb][Ll][Ii][Vv][Ii][Oo][Nn]\.[Ee][Xx][Ee]$ ]]; then
-			return 0
-		fi
-	done
-	return 1
+	"$root/tools/game-running.sh"
 }
 
 echo "== engine tests"

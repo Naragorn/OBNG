@@ -44,6 +44,7 @@ artifacts="$root/artifacts/shadow"
 
 [[ -f "$obvr/tools/hand-script-run.py" ]] || { echo "no OBVR harness at $obvr" >&2; exit 2; }
 [[ -f "$plugins/OBNG.dll" ]] || { echo "OBNG.dll is not deployed in $plugins" >&2; exit 2; }
+"$root/tools/game-running.sh" && { echo "Oblivion is already running - not started (another session's run?)" >&2; exit 3; }
 
 # The value of key in [section] of an INI file (comments and blanks skipped,
 # whitespace and CR stripped); empty when absent.
