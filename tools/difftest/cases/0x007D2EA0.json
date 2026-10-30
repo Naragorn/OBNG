@@ -1,0 +1,1303 @@
+{
+ "function": "0x007D2EA0",
+ "note": "Layer-1 differential cases for 0x007D2EA0 (proposed ShadowSceneLight::IsInRange). thiscall: ECX = this = 0x10000000 (the ShadowSceneLight view, 0x1B4 bytes filled 0xEE except +0x14C plane source, +0x150 six planes, +0x1B0 mask); stack arg1 = object 0x10001000 (0x30 bytes, bound at +0x20..+0x2C) or 0 where it must not be read; arg2 = source light 0x10002000 (vtable 0x10003000 at +0, position +0x88..+0x90, range +0xF8, the rest 0xEE) or 0. EAX 0xA5A5A5A5 and EDX 0x5A5A5A5A at entry. Vtable slot +4 (GetRTTI) = stub 0x10004000 returning NiRTTI_NiDirectionalLight 0x00B3FCFC or NiRTTI_NiPointLight 0x00B3FD80 (xobse.csv). 0x0047DA70 (WhichSide) is a per-call-return stub (ret 4) or, in C14..C16, the original bytes of re/export/perf-levers/0x0047DA70/bytes.bin as raw code. 0x00982C30 (the x87 square-root wrapper, ST0 in, ST0 out) is a raw-code stub: FST dword [0x10005000] (logs s), FSQRT, FST dword [0x10005004] (logs q as a float), RET - it models the CRT square root as FSQRT at the control word in force, which is unverified for the real 0x00982C30 (re/functions/0x007D2EA0.md C12, C14). fpcw 0x007F (24-bit, nearest, all masked; knowledge/frame-clock.md).",
+ "cases": [
+  {
+   "name": "C1 B1: null source light -> false, no virtual call, no write (EAX upper bytes kept)",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x00000000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 78 56 34 12 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 40 00 00 a0 40 00 00 c0 40 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c8 42",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c0 3f 00 00 10 c0 00 00 40 40 00 00 00 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "C2 B2: directional, plane source set, object 0 (unmapped) -> true, arg1 not read",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x00000000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 78 56 34 12 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 40 00 00 a0 40 00 00 c0 40 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c8 42",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FCFC"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "C3 B2: directional, plane source 0, object 0 (unmapped) -> true",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x00000000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 40 00 00 a0 40 00 00 c0 40 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c8 42",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FCFC"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "C4 B3 B4: plane path, mask 0 -> true, no WhichSide call, no write",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 78 56 34 12 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 00 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 40 00 00 a0 40 00 00 c0 40 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c8 42",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c0 3f 00 00 10 c0 00 00 40 40 00 00 00 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "C5 B6 B7: plane path, mask 0x3F, every plane 1 -> true, six writes clear bits 0..5",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 78 56 34 12 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 40 00 00 a0 40 00 00 c0 40 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c8 42",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c0 3f 00 00 10 c0 00 00 40 40 00 00 00 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000001",
+      "0x00000001",
+      "0x00000001",
+      "0x00000001",
+      "0x00000001",
+      "0x00000001"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "C6 B5: every plane 2 -> false, no write",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 78 56 34 12 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 40 00 00 a0 40 00 00 c0 40 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c8 42",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c0 3f 00 00 10 c0 00 00 40 40 00 00 00 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000002",
+      "0x00000002",
+      "0x00000002",
+      "0x00000002",
+      "0x00000002",
+      "0x00000002"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "C7 B5 B6 not taken: every plane 0 -> true, no write",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 78 56 34 12 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 40 00 00 a0 40 00 00 c0 40 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c8 42",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c0 3f 00 00 10 c0 00 00 40 40 00 00 00 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000",
+      "0x00000000",
+      "0x00000000",
+      "0x00000000",
+      "0x00000000",
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "C8 B5 then B6: sides 2 1 0 1 2 1 -> false, no early exit, bits 1 3 5 cleared",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 78 56 34 12 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 40 00 00 a0 40 00 00 c0 40 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c8 42",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c0 3f 00 00 10 c0 00 00 40 40 00 00 00 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000002",
+      "0x00000001",
+      "0x00000000",
+      "0x00000001",
+      "0x00000002",
+      "0x00000001"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "C9 B4: mask 0x2A (gaps), sides 1 2 1 for planes 1 3 5 -> false, bits 1 and 5 cleared",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 78 56 34 12 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 2a 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 40 00 00 a0 40 00 00 c0 40 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c8 42",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c0 3f 00 00 10 c0 00 00 40 40 00 00 00 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000001",
+      "0x00000002",
+      "0x00000001"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "C10 B7: mask 0xFFFFFFFF, every plane 1 -> bits 6..31 untouched, 0xFFFFFFC0",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 78 56 34 12 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 ff ff ff ff",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 40 00 00 a0 40 00 00 c0 40 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c8 42",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c0 3f 00 00 10 c0 00 00 40 40 00 00 00 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000001",
+      "0x00000001",
+      "0x00000001",
+      "0x00000001",
+      "0x00000001",
+      "0x00000001"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "C11 B5 B6: full-dword compares, sides 3 -1 0x102 0x101 0x80000001 0 change nothing -> true",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 78 56 34 12 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 40 00 00 a0 40 00 00 c0 40 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c8 42",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c0 3f 00 00 10 c0 00 00 40 40 00 00 00 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000003",
+      "0xFFFFFFFF",
+      "0x00000102",
+      "0x00000101",
+      "0x80000001",
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "C12 B3: plane source 0x00000001 (not a valid pointer) selects the plane path, never dereferenced",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 01 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 01 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 40 00 00 a0 40 00 00 c0 40 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c8 42",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c0 3f 00 00 10 c0 00 00 40 40 00 00 00 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000002"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "C13 B5 B6: one 2 on plane 5 after five 1s -> false, five bits cleared",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 78 56 34 12 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 40 00 00 a0 40 00 00 c0 40 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c8 42",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c0 3f 00 00 10 c0 00 00 40 40 00 00 00 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000001",
+      "0x00000001",
+      "0x00000001",
+      "0x00000001",
+      "0x00000001",
+      "0x00000002"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "C14 end to end with the original WhichSide bytes: sides 1 0 2 1 1 2 -> false, bits 0 3 4 cleared",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 78 56 34 12 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 a0 c0 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 a0 40 00 00 80 bf 00 00 00 00 00 00 00 00 00 00 00 c0 00 00 00 00 00 00 80 bf 00 00 00 00 00 00 80 bf 00 00 00 00 00 00 00 00 00 00 80 bf 00 00 80 3f 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 40 00 00 a0 40 00 00 c0 40 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c8 42",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 00 00 00 00 00 00 00 00 80 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "code": "8b 44 24 04 d9 40 04 d8 49 04 d9 00 d8 09 de c1 d9 40 08 d8 49 08 de c1 d9 5c 24 04 d9 44 24 04 d8 60 0c d9 5c 24 04 d9 44 24 04 d9 41 0c d9 e0 d8 d9 df e0 f6 c4 01 75 0a dd d8 b8 02 00 00 00 c2 04 00 d9 41 0c de d9 df e0 f6 c4 41 7a 08 b8 01 00 00 00 c2 04 00 33 c0 c2 04 00"
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "C15 end to end with the original WhichSide bytes: offset bound, sides 1 1 0 0 1 1 -> true",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 78 56 34 12 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 40 c0 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 30 40 9a 99 19 3f cd cc 4c 3f 00 00 00 00 00 00 20 c1 00 00 00 00 00 00 00 00 00 00 80 bf 00 00 60 c0 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 40 00 00 a0 40 00 00 c0 40 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c8 42",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c0 3f 00 00 10 c0 00 00 40 40 00 00 00 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "code": "8b 44 24 04 d9 40 04 d8 49 04 d9 00 d8 09 de c1 d9 40 08 d8 49 08 de c1 d9 5c 24 04 d9 44 24 04 d8 60 0c d9 5c 24 04 d9 44 24 04 d9 41 0c d9 e0 d8 d9 df e0 f6 c4 01 75 0a dd d8 b8 02 00 00 00 c2 04 00 d9 41 0c de d9 df e0 f6 c4 41 7a 08 b8 01 00 00 00 c2 04 00 33 c0 c2 04 00"
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "C16 end to end with the original WhichSide bytes: mask 0x15 tests planes 0 2 4 only",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 78 56 34 12 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 a0 c0 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 a0 40 00 00 80 bf 00 00 00 00 00 00 00 00 00 00 00 c0 00 00 00 00 00 00 80 bf 00 00 00 00 00 00 80 bf 00 00 00 00 00 00 00 00 00 00 80 bf 00 00 80 3f 15 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 40 00 00 a0 40 00 00 c0 40 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c8 42",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 00 00 00 00 00 00 00 00 80 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "code": "8b 44 24 04 d9 40 04 d8 49 04 d9 00 d8 09 de c1 d9 40 08 d8 49 08 de c1 d9 5c 24 04 d9 44 24 04 d8 60 0c d9 5c 24 04 d9 44 24 04 d9 41 0c d9 e0 d8 d9 df e0 f6 c4 01 75 0a dd d8 b8 02 00 00 00 c2 04 00 d9 41 0c de d9 df e0 f6 c4 41 7a 08 b8 01 00 00 00 c2 04 00 33 c0 c2 04 00"
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "D1 B3 B8: distance path, |(3,4,0)| = 5, r 1, range 10 -> true",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 40 40 00 00 80 40 00 00 00 00 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 20 41",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 00 00 00 00 00 00 00 00 80 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "D2 B8: range 4 == d -> false (equality)",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 40 40 00 00 80 40 00 00 00 00 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 40",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 00 00 00 00 00 00 00 00 80 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "D3 B8: range one ulp above d -> true",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 40 40 00 00 80 40 00 00 00 00 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 01 00 80 40",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 00 00 00 00 00 00 00 00 80 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "D4 B8: range one ulp below d -> false",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 40 40 00 00 80 40 00 00 00 00 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ff ff 7f 40",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 00 00 00 00 00 00 00 00 80 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "D5 B8: range QNaN -> false (unordered)",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 40 40 00 00 80 40 00 00 00 00 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c0 7f",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 00 00 00 00 00 00 00 00 80 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "D6 B8: light x QNaN -> s NaN -> false",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c0 7f 00 00 80 40 00 00 00 00 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 20 41",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 00 00 00 00 00 00 00 00 80 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "D7 PC24: dx 1+2^-12, dy 2^-12 -> s 0x3F801000 (PC64 would store 0x3F801001)",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 08 80 3f 00 00 80 39 00 00 00 00 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 40",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "D8 order: dx dz 2^-12, dy 1 -> s 1.0 ((dx2 + dz2) first would give 0x3F800001)",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 39 00 00 80 3f 00 00 80 39 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 40",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "D9 order: dy dz 2^-12, dx 1 -> s 1.0 ((dy2 + dz2) first would give 0x3F800001)",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 3f 00 00 80 39 00 00 80 39 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 40",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "D10 PC24 double rounding: dx 0x1C2F16AB -> s 0x000000F0 (one rounding: 0xEF)",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ab 16 2f 1c 00 00 00 00 00 00 00 00 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 3f",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "D11 FSUB rounding: q 2^24-1, r -0.5 -> d rounds to 2^24 == range -> false",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ff ff 7f 4b 00 00 00 00 00 00 00 00 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 4b",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 bf"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "D12 overflow: dx 2^64 -> s +inf, d +inf, range +inf -> false",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 5f 00 00 00 00 00 00 00 00 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 7f",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 00 00 00 00 00 00 00 00 80 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "D13 radius +inf -> d -inf, range 0 -> true",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 40 40 00 00 80 40 00 00 00 00 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 00 00 00 00 00 00 00 00 80 7f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "D14 differences: centre (1.5, -2.25, 3), light (4, 5, 6) -> s 67.8125, r 0.5, range 7.735 -> true",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 40 00 00 a0 40 00 00 c0 40 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 1f 85 f7 40",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c0 3f 00 00 10 c0 00 00 40 40 00 00 00 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  },
+  {
+   "name": "D15 differences: same, range 7.734 -> false",
+   "regs": {
+    "ecx": "0x10000000",
+    "eax": "0xA5A5A5A5",
+    "edx": "0x5A5A5A5A"
+   },
+   "stack": [
+    "0x10001000",
+    "0x10002000"
+   ],
+   "memory": {
+    "0x10000000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 40 40 00 00 00 00 00 00 00 00 00 00 00 40 00 00 80 40 00 00 00 00 00 00 00 00 00 00 40 40 00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 40 00 00 c0 40 00 00 00 00 00 00 00 00 00 00 a0 40 3f 00 00 00",
+    "0x10002000": "00 30 00 10 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 80 40 00 00 a0 40 00 00 c0 40 ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 7c f7 40",
+    "0x10003000": "00 3f 00 10 00 40 00 10",
+    "0x10005000": "cd cd cd cd cd cd cd cd",
+    "0x10001000": "ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee ee 00 00 c0 3f 00 00 10 c0 00 00 40 40 00 00 00 3f"
+   },
+   "fpcw": "0x007F",
+   "stubs": {
+    "0x10004000": {
+     "ret": 0,
+     "eax": "0x00B3FD80"
+    },
+    "0x00982C30": {
+     "code": "d9 15 00 50 00 10 d9 fa d9 15 04 50 00 10 c3"
+    },
+    "0x0047DA70": {
+     "ret": 4,
+     "eax": [
+      "0x00000000"
+     ]
+    }
+   },
+   "readback": [
+    {
+     "address": "0x100001B0",
+     "size": 4
+    }
+   ]
+  }
+ ]
+}
