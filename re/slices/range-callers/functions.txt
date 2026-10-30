@@ -1,0 +1,2 @@
+0x007C6100 # the per-geometry caller of ShadowSceneLight::IsInRange (return site 0x007C61C7; does not restore the plane mask +0x1B0); 108 instructions, caller 0x007C7050
+0x007D59E0 # the recursive scene walk that calls IsInRange per visited object (return site 0x007D5A10; saves/restores the mask); 112 instructions, recursive, caller 0x007D6900
