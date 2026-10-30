@@ -235,7 +235,11 @@ details per function in `re/functions/<address>.md`, states in
   0x009DC2D0 (the fGlobalTimeMultiplier registration) at 0x00A28850 - two
   entries of the initialiser table, so g_timeInfo is built at startup
   before any plugin loads (which also means its builder can never be
-  shadowed in the game; the emulator is its gate).
+  shadowed in the game; the emulator is its gate). The registration
+  0x009DC2D0 passed that gate too (measured in the emulator 2026-10-30,
+  `tools/difftest/cases/0x009DC2D0.json`): two calls, 0x004040E0 on the
+  collection 0x00B07BF0 with the setting 0x00B06704, then _atexit with
+  0x00A18690, nothing else written outside the stack.
 - **The TimeInfo class verified in the game** (measured 2026-10-27,
   tools/shadow-run.sh, artifacts/shadow/obng-shadow/20261027-082656):
   Update 108,574 calls, Init 4, Freeze 31, Unfreeze 32 - 0 mismatches

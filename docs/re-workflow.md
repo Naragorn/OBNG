@@ -157,8 +157,14 @@ layers exist (both since 2026-10-27):
    run in Unicorn with the image's constants (`data.json`), every memory
    write recorded; the cases in `tools/difftest/cases/<address>.json` give
    the inputs, `tools/difftest/expected/` holds what the original produced,
-   and the rebuild's tests assert those bit patterns. No game needed; runs
-   in CI.
+   and the rebuild's tests assert those bit patterns. Callees are stubs
+   (a fixed return, one return per call, or raw code) and every stub call
+   is traced with its return address, ECX, EDX and stack arguments, so a
+   function written over ports is checked call for call: the rebuild's
+   port sequence must be the original's trace (since 2026-10-30; vtable
+   slots pointed at stubs make virtual calls traceable too). No game
+   needed; runs in CI. `tools/difftest/emulate_test.py` checks the stub
+   kinds themselves.
 2. **Shadow mode in the game** (`plugin/`, `OBNG.dll`, an xOBSE plugin):
    an entry detour per function runs the original on the game's state and
    the rebuild on a copy, compares bit for bit, and lets the game continue
