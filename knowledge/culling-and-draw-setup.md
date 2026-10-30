@@ -382,7 +382,7 @@ windows (the 5th to 11th of the run; 750 frames each):
 | Step | Calls per frame | ms per frame | us per call | Share of the finish |
 |---|---:|---:|---:|---:|
 | FinishAccumulating 0x007AE070 (every draw of every pass) | 18.0 | 5.17 | 287 | 100 % |
-| ApplyConstantMap 0x009A8E30 (per partition per pass, vertex and pixel maps) | 4 548 | 1.17 | 0.26 | 23 % |
+| NiD3DShaderConstantMap::ApplyConstants 0x009A8E30 (per partition per pass, vertex and pixel maps; re/functions/0x009A8E30.md) | 4 548 | 1.17 | 0.26 | 23 % |
 | SetVertexShaderConstantArray 0x00783180 (the per-bone upload loop, inside the above) | 1 623 | 0.52 | 0.32 | 10 % |
 | SetVertexShaderConstant 0x007830C0 (one device call per entry, inside the above) | 2 320 | 0.07 | 0.03 | 1.4 % |
 
@@ -394,7 +394,7 @@ What that settles:
   which finish costs what is the next probe's question: return sites and
   time per site).
 - The constant maps are 1.17 ms a frame, 23 % of the finish: 4 548 applies a
-  frame. Inside them the per-bone upload loop is 0.52 ms (1 623 partitions
+  frame in this round (4 564 in the second round, the same 1.17 ms). Inside them the per-bone upload loop is 0.52 ms (1 623 partitions
   with bones a frame, 0.32 us each with N device calls per partition) and the
   plain uploads 0.07 ms (2 320 device calls at 30 ns each - D3D9's client-side
   set is cheap; the "uncached constant upload" lever is worth 0.07 ms, not
@@ -422,7 +422,7 @@ which sits inside the outer sums). Medians of the steady windows (the 3rd to
 | slot 13 SetupTransformations 0x007C9230 | 2 230 | 0.43 | 0.19 |
 | slot 15 PrepareGeometryForRendering 0x0077A310 (the packing) | 2 331 | 1.00 | 0.43 |
 | slot 14 SetupShaderPrograms 0x0077A1F0 (the constant maps inside) | 2 331 | 1.42 | 0.61 |
-| ApplyConstantMap 0x009A8E30 | 4 564 | 1.17 | 0.26 |
+| ApplyConstants 0x009A8E30 | 4 564 | 1.17 | 0.26 |
 | SetVertexShaderConstantArray 0x00783180 | 1 628 | 0.53 | 0.33 |
 | SetVertexShaderConstant 0x007830C0 | 2 328 | 0.07 | 0.03 |
 
