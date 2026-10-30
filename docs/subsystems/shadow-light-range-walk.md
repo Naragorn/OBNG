@@ -15,11 +15,28 @@ eighteen Walkers; `plugin/src/ShadowRangeWalk.cpp`'s shadow detour): 74 573
 walks compared - 30 996 on the plane path (only with the Walkers' actor-shadow
 lights), 43 577 on the distance path -, 3 574 564 AddGeometry calls in
 sequence with their masks, the final mask and AL per walk: **0 mismatches**.
-Routing built, not yet run in the game: `[Route] RangeWalk=1` makes the game
-run BatchedWalk at 0x007D59E0 instead of the original (`plugin/src/RouteRangeWalk.cpp`,
-flow in `plugin/src/RouteRangeWalkLogic.h`); the cost measurement against the
-original is the pair `tools/hand-scripts/obng-range-walk-original.txt` /
-`obng-range-walk-routed.txt`.
+That gate ran in the original-first order. The rebuild-first order (the
+rebuild on the untouched scene, then the original) found two holes on
+2026-10-30: the game runs this walk with the x87 rounding control set to
+truncate in some runs (FCW 0x0C7F) where the rebuild assumed nearest - fixed
+by making the mode an input, verified in the emulator under all four modes
+(`tools/difftest/cases/0x007D2EA0-rounding.json`, `0x0047DA70-rounding.json`)
+and in the game (run 13:53, 52 938 walks, 0 mismatches) -, and the first
+rounding helper called the CRT's x87 math per store, which made the route
+take 43 % of the render thread until it was replaced by bit arithmetic.
+
+**Routed and measured** (`[Route] RangeWalk=1`, `plugin/src/RouteRangeWalk.cpp`,
+flow in `plugin/src/RouteRangeWalkLogic.h`; series of three runs per side
+14:24-14:48, `tools/measure-summary.py` over
+`tools/hand-scripts/obng-range-walk-original.txt` / `-routed.txt`): frame
+means with eighteen Walkers 13.62 / 13.64 / 13.81 ms original against
+13.62 / 13.93 / 13.80 ms routed, scene_pass 0.25 / 0.71 / 1.02 ms against
+3.41 / 0.23 / 0.25 ms - the scene's own run-to-run variance (random Walker
+placement, 76 000 to 382 000 AddGeometry calls per 10 s between routed runs)
+is larger than any difference between the sides. The route costs nothing
+this scenario can measure and gains nothing it can measure; the subsystem is
+done as the proof of the method, and the shipped OBNG.ini keeps the route
+off in play until a block with a measurable gain carries it.
 
 ## The unit
 
