@@ -11,8 +11,12 @@ export const meta = {
 }
 
 // args: { slice, root, subsystem, sharedHeaders: [..],
-//         functions: [{address, name, known, questions, mapOnly?}],
+//         functions: [{address, name, known, questions, mapOnly?, map?, emulatorGate?}],
 //         stages?: { <stage>: {model, effort} } overriding STAGES below }
+// A function with `map` (the MAP_SCHEMA object of a mapping that already held
+// in an earlier run) skips the map and refute stages and goes to the rebuild.
+// With `emulatorGate` the rebuild also authors the layer-1 emulator case and
+// asserts the original's results in its tests (docs/re-workflow.md).
 const slice = args.slice
 const root = args.root
 const subsystem = args.subsystem
@@ -225,7 +229,8 @@ function rebuildPrompt(f, map) {
   return `Rebuild function ${f.address} ("${map.proposedName}") of Oblivion.exe 1.2.0.416 in modern C++ for OBNG, subsystem "${subsystem}", slice "${slice}".
 Read ${mdPath(f)}, the export under ${exportDir(f)}/ (asm.s, data.json, pseudo.c), ${root}/AGENTS.md, the shared headers ${sharedHeaders.map(h => root + '/' + h).join(', ') || '(none)'}, ${root}/tests/Check.h, ${root}/tests/CMakeLists.txt and one existing test under ${root}/tests/ for the style.
 Files, exactly these names: ${root}/src/engine/${subsystem}/${name}Logic.h (the decision logic as pure functions over plain values), ${root}/src/engine/${subsystem}/${name}.h (the engine-facing shape: layout structs with static_assert on sizes and offsets, the original's calling convention; includes the shared headers rather than redefining their types), ${root}/tests/${name}Test.cpp.
-Tests first: one test flow per branch of the mapped control flow (${map.branches.map(b => b.name).join('; ')}), refusal and fallback paths included; then the code until the tests pass. Integer widths, signedness, float precision and clamps as the instructions have them; where the original's result depends on x87 precision control, say so in a comment and test the 53-bit reading. A test file is picked up by CMake's glob; do not edit tests/CMakeLists.txt. Do NOT edit the shared headers; put missing fields into layoutRequests. Build and run your test yourself: cmake -B ${root}/build-tests-${f.address} ${root}/tests -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_CXX_FLAGS=-m32 -G Ninja, then cmake --build, then ctest --test-dir ${root}/build-tests-${f.address} -R ${name}Test --output-on-failure. Report in "ran" what you ran and what it showed; never claim a test you did not run.
+Tests first: one test flow per branch of the mapped control flow (${map.branches.map(b => b.name).join('; ')}), refusal and fallback paths included; then the code until the tests pass. Integer widths, signedness, float precision and clamps as the instructions have them; the game runs its x87 at 24-bit precision control, rounding to nearest (measured in the game, knowledge/frame-clock.md): where the original's result depends on that, model the rounding exactly where the instructions round (say so in a comment) and test it.${f.emulatorGate ? `
+Emulator gate (layer 1, docs/re-workflow.md "the gate outside the workflow"): also write ${root}/tools/difftest/cases/${f.address}.json - cases that drive every branch above with concrete memory and register inputs; callees as traced stubs (read the docstring of ${root}/tools/difftest/emulate.py: fixed-return, per-call-return and raw-code stubs; an external DLL callee becomes a raw-code stub that writes a chosen output), an "fpcw" of 0x007F (24-bit, nearest) where x87 is involved; run \`. ~/obvr-venv/bin/activate && python3 ${root}/tools/difftest/emulate.py ${exportDir(f)} ${root}/tools/difftest/cases/${f.address}.json --json > ${root}/tools/difftest/expected/${f.address}.json\` (every case must return cleanly: "returned" true, stack_delta 0, no errors), and transcribe the original's results (EAX, the recorded writes with their bit patterns, the traced calls with their arguments) as literal expectations into ${root}/tests/${name}Test.cpp, so the rebuild is checked against what the ORIGINAL produced, not against your reading. Existing examples: ${root}/tools/difftest/cases/0x0047D170.json, 0x004E1580.json and the tests that cite them. A difference between the original's result and the rebuild's is a finding to report, never something to paper over in the test.` : ''} A test file is picked up by CMake's glob; do not edit tests/CMakeLists.txt. Do NOT edit the shared headers; put missing fields into layoutRequests. Build and run your test yourself: cmake -B ${root}/build-tests-${f.address} ${root}/tests -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_CXX_FLAGS=-m32 -G Ninja, then cmake --build, then ctest --test-dir ${root}/build-tests-${f.address} -R ${name}Test --output-on-failure. Report in "ran" what you ran and what it showed; never claim a test you did not run.
 ${RULES}`
 }
 
@@ -262,12 +267,13 @@ ${RULES}`
 
 // ---- the run ----
 
-log(`slice ${slice}: ${args.functions.length} functions (${args.functions.filter(f => f.mapOnly).length} map-only); stages ${JSON.stringify(STAGES)}`)
+log(`slice ${slice}: ${args.functions.length} functions (${args.functions.filter(f => f.mapOnly).length} map-only, ${args.functions.filter(f => f.map).length} premapped); stages ${JSON.stringify(STAGES)}`)
 
 // Stage 1: map. A barrier on purpose: the consistency skeptics read the other
 // functions' files, which must be final before anyone cites them.
-const maps = await parallel(args.functions.map(f => () =>
-  agent(mapPrompt(f), opts('map', `map ${f.address}`, 'Map', MAP_SCHEMA))))
+const maps = await parallel(args.functions.map(f => () => f.map
+  ? Promise.resolve(f.map)
+  : agent(mapPrompt(f), opts('map', `map ${f.address}`, 'Map', MAP_SCHEMA))))
 const mapped = args.functions.map((f, i) => maps[i] ? { f, map: maps[i] } : { f, state: 'map-failed' })
 log(`map: ${mapped.filter(e => e.map).length} of ${args.functions.length} mapped`)
 
@@ -278,6 +284,7 @@ const entries = await pipeline(
   async (e) => {
     if (!e.map) return e
     const { f } = e
+    if (f.map) return { ...e, state: 'confirmed', refutations: [], decisions: [], premapped: true }
     const round1 = (await parallel(Object.keys(LENSES).map(lens => () =>
       agent(refutePrompt(f, lens, e.map), opts(LENS_STAGE[lens], `refute:${lens} ${f.address}`, 'Refute', VERDICT_SCHEMA))
         .then(v => v && { lens, ...v })))).filter(Boolean)

@@ -1,0 +1,36 @@
+{
+  "slice": "draw-setup",
+  "subsystem": "render",
+  "sharedHeaders": [],
+  "purpose": "Map only: the callers that decide the arguments of the two per-draw levers mapped in perf-levers - the constant setup 0x007C9230 (calls UpdateLightPositionConstants 0x007C9140 and BuildBonePalette 0x007655F0) and the two six-plane loops around NiBound::WhichSide 0x0047DA70 (the frustum culler 0x0070DFB0 with its split half 0x0070DFD3, and the shadow light's range test 0x007D2EA0). What each passes, what it reads per draw and what would stay constant across draws.",
+  "functions": [
+    {
+      "address": "0x007C9230",
+      "name": "the per-draw constant setup (seed: caller of 0x007C9140 and 0x007655F0, re/functions/0x007C9140.md and 0x007655F0.md)",
+      "mapOnly": true,
+      "known": "849 instructions, 17 callees, no callers in Ghidra (reached through a table or vtable - unverified). Callees: D3DXVec3TransformNormal, D3DXPlaneNormalize, D3DXVec3Normalize, D3DXMatrixInverse, D3DXMatrixTranspose, D3DXVec3TransformCoord, D3DXMatrixMultiply, D3DXPlaneTransform (all D3DX9_27), 0x007640A0, 0x00718A80 (the transform inverse the palette builder also calls), 0x00765480, 0x0043F350, InterlockedDecrement, 0x007655F0 BuildBonePalette (thiscall, five args: skin, world, rowTranslation, mode, separateSkinToWorld; its pseudocode shows this caller passing (skin, param_7, 0, 3, 1) guarded by [ecx+0x34] == 0 - unverified), 0x007B4280, 0x00405AD0, 0x007C9140 UpdateLightPositionConstants (stdcall(matrix, scale, passId, skipAdjust); its pseudocode suggests arg1 is D3DXMatrixInverse of the drawn object's world matrix, arg2 the scale +0x0C of a transform record, arg3 the global 0x00B42E90, arg4 this caller's second parameter - all unverified). Data it touches: the tables 0x00B46528/0x00B465A8 (light positions and w), the constant block 0x00B44FD8.., 0x00B45030 and other slot records around 0x00B45040 (byte +0x08 tested), 0x00B3F92C/30/34 (the vector the palette builder subtracts from translations), 0x00B42E90, 0x00B42EAC, 0x00B42EB8, 0x00B43104, 0x00B44EE4, 0x00B454D8.., 0x00B46658.., 0x00B44F18... The sampler measured 15 % of a scene pass in 0x007C9140 and 7.6 % in the palette builder with 18 bodies; this function decides how often and with what they run.",
+      "questions": ["The exact arguments passed to 0x007C9140 and 0x007655F0 (instructions at the call sites: what matrix, what scale, what passId, what arg4; what skin, world, mode, arg3, arg5), and under which gates each call runs.", "What this function reads per draw and what is per frame: which of its inputs change with the drawn object (its world matrix, scale, lights) and which are frame constants - the basis for any per-draw cache.", "How is it reached (vtable slot, table) and what is 'this'?", "Which of the 17 callees carry the cost and are worth their own slice."]
+    },
+    {
+      "address": "0x0070DFB0",
+      "name": "the frustum plane loop (seed: caller of 0x0047DA70; re/functions/0x0047DA70.md claims C13)",
+      "mapOnly": true,
+      "known": "Ghidra split this function: 0x0070DFB0 (15 instructions, body 0x0070DFB0-0x0070DFD2) is the entry, 0x0070DFD3 (40 instructions, body 0x0070DFD3-0x0070E03D, exported separately under re/export/draw-setup/0x0070DFD3/) is the loop reached by JNZ 0x0070DFD3 at 0x0070DFC0 - one function; read both exports and map them as one, in this file. Entry (read, asm.s): PUSH ECX; PUSH EBP; EBP = ECX (this); EAX = [this+0x8C] (the plane mask) stored to [ESP+4]; when the mask is 0: ECX = [ESP+0xC] (the stack argument, an object), CALL [[ECX]+0x7C](this) (a virtual method of the argument with this pushed), POP, RET 4. When the mask is non-zero the loop half runs: per set bit i of the mask it calls 0x0047DA70 (sphere = obj+0x20, plane = ebp+0x2C + 16 i, per the perf-levers reading - which object is the sphere's owner is to be read here) and leaves on result 2 (0x0070E001 JE 0x0070E01B), clears the plane's bit on 1. Caller: 0x0049CBF0 (tests a single plane at EBP+0x90 first and skips this call on 2).",
+      "questions": ["The complete contract as one function: this, the argument, the sphere (obj+0x20 - whose object?), the planes at this+0x2C (six 16-byte planes?), the mask at this+0x8C and its update, what happens on 2 (early exit - what is returned/called) and on 0/1 (the virtual call at +0x7C of the argument?), ret N.", "What the virtual slot +0x7C of the argument is (the 'visit' of a culling process on a node?) and what 0x0049CBF0 does around the call."]
+    },
+    {
+      "address": "0x0070DFD3",
+      "name": "the loop half of 0x0070DFB0 (not a function: a branch target Ghidra split off)",
+      "mapOnly": true,
+      "known": "This is the second half of 0x0070DFB0 (see that entry); write its findings into re/functions/0x0070DFB0.md and keep re/functions/0x0070DFD3.md to a pointer that says so, with the one read fact that matters: the 'callers: []' of this half and the JNZ 0x0070DFD3 at 0x0070DFC0 that reaches it. Its only callee is 0x0047DA70 (NiBound::WhichSide, re/functions/0x0047DA70.md).",
+      "questions": ["Confirm from the instructions that 0x0070DFD3 is reached only from 0x0070DFC0 and that it returns through the same RET 4 contract as the entry half."]
+    },
+    {
+      "address": "0x007D2EA0",
+      "name": "the shadow light's range test against its planes (seed: caller of 0x0047DA70; re/functions/0x0047DA70.md claim C12)",
+      "mapOnly": true,
+      "known": "107 instructions, 2 callees (0x0047DA70 NiBound::WhichSide and one more), callers 0x007C6100 and 0x007D59E0. Per the perf-levers reading (objdump, read): passes this = a stack copy of the second argument's +0x20..+0x2C (a bound: centre, radius) and the plane = this+0x150 + 16 i for i in 0..5 whose bit is set in this+0x1B0; result 2 sets its return byte to false (0x007D2F30) and continues the loop (0x007D2F35 JMP 0x007D2F44); result 1 clears the plane's bit in +0x1B0 (NOT ESI, AND). The sampler attributed the 3.8 % 'culling' cost to this caller. 0x007C6100 is also the path to the per-geometry light setup next to 0x007C9140 (knowledge/shadow-light-geometry-lookup.md).",
+      "questions": ["The complete contract: this (a shadow light? its planes at +0x150, its mask at +0x1B0), the arguments, the return byte, ret N; what the second callee is.", "Why the loop continues after a 2 - what the mask bits mean afterwards, and whether a batched rebuild (all six planes at once) could keep the same mask result.", "Who calls it per draw/per geometry (0x007C6100 vs 0x007D59E0) and how often per pass - the lever is the call count times the six-plane loop."]
+    }
+  ]
+}

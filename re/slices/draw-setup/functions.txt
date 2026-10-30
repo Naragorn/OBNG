@@ -1,0 +1,4 @@
+0x007C9230 # the per-draw constant setup that calls the light constants 0x007C9140 and the palette builder 0x007655F0 (849 instructions, no callers in Ghidra)
+0x0070DFB0 # the six-plane frustum loop around 0x0047DA70 (Ghidra split it: the loop body is the separate function 0x0070DFD3, exported too)
+0x0070DFD3 # the loop half of 0x0070DFB0 (a branch target, not a function of its own; mapped together with 0x0070DFB0)
+0x007D2EA0 # the shadow light's range test against its planes (calls 0x0047DA70 per plane, keeps looping on result 2)

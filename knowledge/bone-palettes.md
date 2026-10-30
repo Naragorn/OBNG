@@ -113,8 +113,19 @@ wrong and can differ arbitrarily under cancellation), rounds the sum to single t
 subtracts the plane constant, rounds again, and returns 2 when `d <= -r` (wholly on the negative
 side), 1 when `d >= r`, 0 otherwise (straddling, or NaN). A bit-exact rebuild computes in single
 precision in that order; at the game's 24-bit precision control the two stores change nothing
-in range, and only overflow/underflow at the stores differ from the x87 registers (unverified
-against the Intel SDM, to cite before edge-case tests).
+in range, and only overflow/underflow at the stores differ from the x87 registers. Source for
+that (read 2026-10-30, Intel SDM vol. 1 section 8.1.5.2 "Precision Control Field", mirror
+https://xem.github.io/minix86/manual/intel-x86-and-64-manual-vol1/o_7281d5ea06a5b67a-197.html
+and archive.org 325462-sdm-vol-1): "The double precision and single precision settings reduce
+the size of the significand to 53 bits and 24 bits, respectively. [...] When reduced precision
+is specified, the rounding of the significand value clears the unused bits on the right to
+zeros. The precision-control bits only affect the results of the following floating-point
+instructions: FADD, FADDP, FIADD, FSUB, FSUBP, FISUB, FSUBR, FSUBRP, FISUBR, FMUL, FMULP,
+FIMUL, FDIV, FDIVP, FIDIV, FDIVR, FDIVRP, FIDIVR, and FSQRT." So the significand is single
+after every FMUL/FADDP/FSUB here, the exponent keeps the register's range (the SDM reduces
+only the significand), and FLD/FSTP/FCOMP are untouched by the setting: a product beyond
+FLT_MAX stays finite in the register and becomes infinite at the store; one below FLT_MIN is
+rounded again to a denormal at the store (derived from the quote).
 
 Lever: the 3.8 % sit in the callers' six-plane loops, not here. 0x0070DFB0 (frustum planes at
 +0x2C under the mask +0x8C; 0x0070DFD3 is a branch target inside it, not a second caller) leaves

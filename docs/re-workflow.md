@@ -115,6 +115,15 @@ Functions flagged `mapOnly` in the manifest (large ones like the update
 step, 500+ instructions) stop after the refutation: state **mapped**, no
 rebuild attempt.
 
+A function given with `map` (the structured mapping of an earlier run whose
+refutation held, taken from that run's journal) skips the map and refute
+stages and goes straight to the rebuild (since 2026-10-30; used to rebuild
+map-only functions later, one by one, without paying for a second map).
+With `emulatorGate` the rebuild worker also writes the layer-1 emulator
+case (`tools/difftest/cases/<address>.json`), runs it and asserts the
+original's results in the tests - the rebuild is then checked against what
+the original produced before any reviewer sees it.
+
 ## Stage 3 - rebuild (one worker per confirmed function)
 
 Tests first. The decision logic goes into pure functions over plain values
