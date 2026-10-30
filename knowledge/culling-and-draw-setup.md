@@ -201,12 +201,21 @@ both eyes and the shadow passes together):
 
 Read off that (measured, derived where said):
 
-- **IsInRange's plane path runs**: 0x007D2F2B is its WhichSide call site, so
-  lights with `+0x14C != 0` exist and are the common case - the open
-  question above is answered, and the unrestored mask under 0x007C61C7
-  (2 793 260 calls in one 10-second window with the Walkers) is live
-  behaviour, not a dead branch. Derived: with eighteen bodies the shadow
-  lights' range test costs more plane tests than the frustum cull itself.
+- **IsInRange's plane path runs - from the shadow-map walk, not from the
+  per-geometry caller** (corrected 2026-10-30 by the range-callers
+  skeptics against the same log): 0x007D2F2B is its WhichSide call site,
+  so lights with `+0x14C != 0` exist; but in the windows where every
+  IsInRange call came from 0x007C61C7 (the empty prison, ~277 000 calls a
+  window) there were **zero** plane-path tests, and with the Walkers the
+  plane-path count never exceeds six times the 0x007D5A10 count
+  (10 202 994 against 2 412 800 x 6). So the data fits every plane test
+  coming through 0x007D59E0 (the walk, which saves and restores the mask)
+  and the per-geometry caller 0x007C6100 taking the distance path
+  (`+0x14C == 0`). The unrestored mask under 0x007C61C7 is therefore
+  **not shown to be live**; a counter of `[light+0x14C] != 0` at
+  0x007C61C2 would settle it. Derived: with eighteen bodies the shadow
+  lights' range test still costs more plane tests than the frustum cull
+  itself - in the shadow-map pass.
 - The per-frame counts scale with the bodies: slot 13 and IsInRange about
   four and eighteen times the empty prison, WhichSide seven times. The
   3.8 % "culling" of OBVR's sampler is therefore mostly 0x007D2EA0's loop,
@@ -218,6 +227,34 @@ Read off that (measured, derived where said):
   `FastStreamCopy=1` holds that entry (and `PreciseFrameClock=1` holds
   TimeInfo::Update's) on the Linux install, independent of OBVR's own
   switches; a count needs that plugin's switch off for the run.
+
+## The two callers of the range test (read 2026-10-30, range-callers slice, both held)
+
+- **ShadowSceneNode::RelightGeometry 0x007C6100** (`__cdecl(geometry P,
+  ShadowSceneNode* node or null)`, plain RET, AL): finds the node from P's
+  type-4 property when none is given, detaches P from its lights
+  (0x007C5750; a 0 ends the call), then walks the node's light list
+  (+0xE4/+0xE8) and for every light with data calls
+  `light->IsInRange(P, sourceLight)` with a temporary NiPointer copy of
+  light+0x100, releases it, and `light->AddGeometry(P)` (0x007D5790) when in
+  range. ~4 000 IsInRange calls a frame with the Walkers (lower bound on
+  lights x relit geometries). It never saves or restores the mask - which
+  only matters if one of these lights ever has `+0x14C != 0` (see above).
+- **ShadowSceneLight::CollectGeometryInRange 0x007D59E0** (`__thiscall(light;
+  object)`, RET 4, AL = 1 unless the gate [0x00B42F48] is 0): the recursive
+  walk the per-light shadow draw 0x007D6900 starts at the scene root (and
+  at the caster with self-shadowing): saves +0x1B0, tests IsInRange(object,
+  light+0x100), skips the subtree when out of range; an in-range node
+  recurses - an exact NiSwitchNode (RTTI 0x00B3FD70) only into its active
+  child (0x007C59E0, 0x0049FFC0), any other node into every non-null child
+  with radius +0x2C != 0.0 and flags bit 0 clear - and an in-range geometry
+  goes to AddGeometry 0x007D5790; the mask is written back on every exit.
+  So the children start with the parent's narrowed mask and the narrowing
+  is undone per subtree: a hierarchical plane cull per light over the
+  scene, ~2.0-2.4 M visits per 10 s with the Walkers. **This walk is where
+  the plane tests are, and it is the unit of the batched rebuild**: one
+  light, one scene walk, six planes - the same shape as
+  NiCullingProcess::Cull, so one batched plane test serves both.
 
 ## Open
 

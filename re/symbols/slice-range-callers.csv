@@ -1,0 +1,5 @@
+address,name,kind,confidence,conflict,source
+0x007C6100,ShadowSceneNode_RelightGeometry,function,inferred,0,re/ledger.md range-callers (cdecl(geometry node); detach then IsInRange + AddGeometry per light of the node's list)
+0x007D59E0,ShadowSceneLight_CollectGeometryInRange,function,inferred,0,re/ledger.md range-callers (recursive scene walk per light with the plane mask saved/restored; started by 0x007D6900)
+0x007D5790,ShadowSceneLight_AddGeometry,function,inferred,0,knowledge/shadow-light-list-remove.md and both callers (unverified at instruction level)
+0x007C5750,ShadowSceneNode_DetachGeometryFromLights,function,inferred,0,re/functions/0x007C6100.md (the detach before the relight; name a proposal)
