@@ -98,6 +98,13 @@ struct AtomicCounts {
 };
 
 AtomicCounts g_counts[static_cast<int>(Probed::Count)];
+// IsInRange split by the light's path: [this+0x14C] != 0 selects the six-plane
+// test, 0 the distance test (re/functions/0x007D2EA0.md B3). The split by
+// return site says which caller's lights take the plane path - the question
+// behind the unrestored mask under 0x007C6100 (knowledge/culling-and-draw-setup.md).
+constexpr UInt32 kPlaneSourceOffset = 0x14C;
+AtomicCounts g_inRangePlanePath;
+AtomicCounts g_inRangeDistancePath;
 bool g_installed[static_cast<int>(Probed::Count)] = {};
 bool g_memory = false;
 probe::MemoryPeak g_memoryPeak;
@@ -123,6 +130,9 @@ void __fastcall ProbeCull(void* self, void* /*edx*/, UInt32 object) {
 
 UInt8 __fastcall ProbeInRange(void* self, void* /*edx*/, UInt32 object, UInt32 light) {
 	Count(Probed::IsInRange, _ReturnAddress());
+	const UInt32 returnAddress = static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(_ReturnAddress()));
+	const UInt32 planeSource = *reinterpret_cast<volatile UInt32*>(reinterpret_cast<std::uintptr_t>(self) + kPlaneSourceOffset);
+	(planeSource != 0 ? g_inRangePlanePath : g_inRangeDistancePath).Add(returnAddress);
 	return g_inRange(self, nullptr, object, light);
 }
 
@@ -228,6 +238,12 @@ void LogProbeSummary() {
 	}
 	if (anyCounter) {
 		g_log("%s", line);
+		if (g_installed[static_cast<int>(Probed::IsInRange)]) {
+			at = std::snprintf(line, sizeof(line), "Probe: IsInRange by path -");
+			at += probe::FormatCallCounts("plane path (+0x14C != 0)", g_inRangePlanePath.TakeSnapshot(), line + at, sizeof(line) - at);
+			at += probe::FormatCallCounts("distance path", g_inRangeDistancePath.TakeSnapshot(), line + at, sizeof(line) - at);
+			g_log("%s", line);
+		}
 	}
 	if (g_memory) {
 		probe::MemorySample sample;
