@@ -24,6 +24,17 @@
 // Not covered: a structured (SEH) exception, e.g. an access violation inside
 // 0x004040E0. The test build (Linux, clang -m32) has none to raise; see the
 // logic header.
+//
+// Differential (layer 1 of docs/re-workflow.md): the original's bytes ran in
+// the emulator (tools/difftest/cases/0x009DC2D0.json, result in
+// tools/difftest/expected/0x009DC2D0.json, 2026-10-30) with both callees as
+// traced stubs. Its trace, transcribed below as kEmulator*: exactly two calls,
+// 0x004040E0 with ECX 0x00B07BF0 and the stack argument 0x00B06704 (return
+// address 0x009DC307), then 0x00981FB4 with the argument 0x00A18690 (return
+// address 0x009DC311); FS:[0] holds its previous value again at the end
+// (written at 0x009DC2EA, restored at 0x009DC318); no other write outside the
+// stack; the same with _atexit returning 0 and -1. The rebuild's port calls
+// must be that trace (measured in the emulator, not derived from the reading).
 
 #include "Check.h"
 #include "engine/time/StaticInit_RegisterIniSetting_B06704.h"
@@ -193,6 +204,37 @@ void CaughtFurtherOutFromAtExit() {
 	Check(outcome.unwindsWhenHandlerRan == 1, "the unwind is done before the accepting handler's body runs");
 }
 
+// The emulator's trace of the original (tools/difftest/expected/0x009DC2D0.json).
+struct EmulatorCall {
+	std::uint32_t callee;
+	std::uint32_t ecx;
+	std::uint32_t firstArgument;
+};
+constexpr EmulatorCall kEmulatorCalls[] = {
+	{0x004040E0u, 0x00B07BF0u, 0x00B06704u},  // from 0x009DC307
+	{0x00981FB4u, 0x00B07BF0u, 0x00A18690u},  // from 0x009DC311 (ECX unchanged, not an argument)
+};
+constexpr std::uint32_t kEmulatorAtExitResults[] = {0x00000000u, 0xFFFFFFFFu};
+constexpr int kEmulatorWritesOutsideStack = 2;  // both to FS:[0]: the link and its restore
+
+void DifferentialAgainstEmulator() {
+	Section("Differential: the rebuild's calls are the emulator's trace of the original, for both _atexit results");
+	for (std::uint32_t atExitResult : kEmulatorAtExitResults) {
+		FakePorts ports;
+		ports.atExitResult = static_cast<int>(atExitResult);
+		CaughtOutcome outcome = RunUnderCatchingCaller(ports);
+		Check(!outcome.threw, "the original returned to its caller (returned=true, stack balanced)");
+		Check(ports.events.size() == 2, "two calls, as the trace has two");
+		Check(ports.events.size() == 2 && ports.events[0] == Event::AddSetting && ports.collection == kEmulatorCalls[0].ecx &&
+				ports.setting == kEmulatorCalls[0].firstArgument,
+			"call 1: 0x004040E0, ECX 0x00B07BF0, argument 0x00B06704 - as traced");
+		Check(ports.events.size() == 2 && ports.events[1] == Event::RegisterAtExit && ports.exitFunction == kEmulatorCalls[1].firstArgument,
+			"call 2: 0x00981FB4, argument 0x00A18690 - as traced");
+		Check(ports.unwindCount == 0, "the frame is unlinked, not unwound: the trace's only writes outside the stack are the FS:[0] link and its restore");
+	}
+	Check(kEmulatorWritesOutsideStack == 2, "the original writes nothing else outside the stack (no global touched by this body)");
+}
+
 void NotCaughtFurtherOut() {
 	Section("Flow 2c: no handler further out accepts the exception - terminate, the frame is never unwound");
 	FakePorts fromAddSetting;
@@ -216,5 +258,6 @@ int main() {
 	CaughtFurtherOutFromAddSetting();
 	CaughtFurtherOutFromAtExit();
 	NotCaughtFurtherOut();
+	DifferentialAgainstEmulator();
 	return Failures();
 }

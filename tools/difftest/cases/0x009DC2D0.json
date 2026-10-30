@@ -1,0 +1,18 @@
+{
+  "function": "0x009DC2D0",
+  "note": "The static initialiser that hands the INI setting at 0x00B06704 to the collection at 0x00B07BF0 (0x004040E0, thiscall, one argument) and registers 0x00A18690 with _atexit (0x00981FB4, cdecl). Both callees are stubs and traced; the SEH frame it links through FS:[0] needs the 4 bytes at address 0 (the emulator's FS base is 0). Expected: exactly those two calls in that order with those arguments, FS:[0] restored to its previous value at the end, no other write outside the stack.",
+  "cases": [
+    {
+      "name": "_atexit returns 0",
+      "memory": {"0x0": "ef be ad de"},
+      "stubs": {"0x004040E0": {"ret": 4, "eax": "0x0"}, "0x00981FB4": {"ret": 0, "eax": "0x0"}},
+      "readback": [{"address": "0x0", "size": 4}, {"address": "0x00B06704", "size": 4}]
+    },
+    {
+      "name": "_atexit returns -1 (the result is never read)",
+      "memory": {"0x0": "ef be ad de"},
+      "stubs": {"0x004040E0": {"ret": 4, "eax": "0x12345678"}, "0x00981FB4": {"ret": 0, "eax": "0xFFFFFFFF"}},
+      "readback": [{"address": "0x0", "size": 4}, {"address": "0x00B06704", "size": 4}]
+    }
+  ]
+}

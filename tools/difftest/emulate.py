@@ -24,7 +24,11 @@ A cases file:
           "stack": ["0x00001000"],              # pushed last first: the arguments as the caller pushes them
           "memory": {"0x00B33E90": "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 f3 0f 00 00 00 00 00 00"},
           "fpcw": "0x027F",                      # optional x87 control word (default: the emulator's)
-          "stubs": {"0x00401F00": {"ret": 4, "eax": "0x1"}},   # optional: a callee replaced by mov eax,imm; ret N
+          "stubs": {                             # optional: callees replaced by stubs
+            "0x00401F00": {"ret": 4, "eax": "0x1"},          # returns eax, ret N (ret 0 = plain ret)
+            "0x00401F20": {"ret": 0, "eax": ["0x1", "0x0"]}, # one value per call, the last repeats
+            "0x00401F40": {"code": "8b 44 24 04 ff 00 c2 04 00"}  # raw code, run as is
+          },
           "readback": [{"address": "0x00B33E90", "size": 24}]
         }
       ]
@@ -33,13 +37,21 @@ A cases file:
 Numbers are hex strings or integers. Every case runs until the function
 returns to the sentinel return address; a jump or call to unmapped memory
 that no stub covers stops the case with an error, never silently.
+
+Every stub entry is traced: the result's "calls" lists them in order with
+the return address ("from", the instruction after the CALL), ECX, EDX, EAX
+on entry and the first six stack dwords above the return address ("args").
+A vtable slot that points at a stub makes a virtual call traceable too.
+Writes to the emulator's own stack are not recorded; writes everywhere else
+are. The FS segment has base 0 (no TEB): code that links an SEH frame
+through FS:[0] needs 4 bytes mapped at address 0 by the case ("memory").
 """
 import json
 import struct
 import sys
 from pathlib import Path
 
-from unicorn import (Uc, UC_ARCH_X86, UC_MODE_32, UC_HOOK_MEM_WRITE, UC_HOOK_MEM_FETCH_UNMAPPED,
+from unicorn import (Uc, UC_ARCH_X86, UC_MODE_32, UC_HOOK_CODE, UC_HOOK_MEM_WRITE, UC_HOOK_MEM_FETCH_UNMAPPED,
                      UC_HOOK_MEM_READ_UNMAPPED, UC_HOOK_MEM_WRITE_UNMAPPED, UcError)
 from unicorn.x86_const import (UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX,
                                UC_X86_REG_ESI, UC_X86_REG_EDI, UC_X86_REG_EBP, UC_X86_REG_ESP,
@@ -97,13 +109,37 @@ class Emulation:
             raw = bytes.fromhex(text.replace(' ', ''))
             self._map(uc, num(address), len(raw))
             uc.mem_write(num(address), raw)
-        for address, stub in (case.get('stubs') or {}).items():
-            a = num(address)
-            self._map(uc, a, 16)
-            code = b'\xb8' + struct.pack('<I', num(stub.get('eax', 0)))  # mov eax, imm32
-            ret = num(stub.get('ret', 0))
-            code += (b'\xc2' + struct.pack('<H', ret)) if ret else b'\xc3'  # ret N / ret
+        calls = []
+        stubs = {num(address): stub for address, stub in (case.get('stubs') or {}).items()}
+        for a, stub in stubs.items():
+            if 'code' in stub:
+                code = bytes.fromhex(stub['code'].replace(' ', ''))
+            else:
+                ret = num(stub.get('ret', 0))
+                code = (b'\xc2' + struct.pack('<H', ret)) if ret else b'\xc3'  # ret N / ret; eax set on entry
+            self._map(uc, a, len(code))
             uc.mem_write(a, code)
+            stub['_hits'] = 0
+
+        def on_stub(u, address, size, user):
+            stub = stubs[address]
+            eax_in = u.reg_read(UC_X86_REG_EAX)
+            if 'code' not in stub:
+                values = stub.get('eax', 0)
+                if isinstance(values, list):
+                    values = values[min(stub['_hits'], len(values) - 1)] if values else 0
+                u.reg_write(UC_X86_REG_EAX, num(values) & 0xFFFFFFFF)
+            stub['_hits'] += 1
+            sp = u.reg_read(UC_X86_REG_ESP)
+            frame = u.mem_read(sp, 4 * 7)
+            words = struct.unpack('<7I', bytes(frame))
+            calls.append({'stub': '%08x' % address, 'from': '%08x' % words[0],
+                          'ecx': '%08x' % u.reg_read(UC_X86_REG_ECX), 'edx': '%08x' % u.reg_read(UC_X86_REG_EDX),
+                          'eax': '%08x' % eax_in, 'esp': '%08x' % sp,
+                          'args': ['%08x' % w for w in words[1:]]})
+
+        for a in stubs:
+            uc.hook_add(UC_HOOK_CODE, on_stub, begin=a, end=a)
         self._map(uc, SENTINEL, PAGE)
         uc.mem_map(STACK_BASE, STACK_SIZE)
         self.mapped.add(STACK_BASE)
@@ -144,6 +180,7 @@ class Emulation:
             'returned': uc.reg_read(UC_X86_REG_EIP) == SENTINEL,
             'stack_delta': uc.reg_read(UC_X86_REG_ESP) - (esp + 4),
             'writes': writes,
+            'calls': calls,
             'readback': {},
             'errors': errors,
         }
@@ -168,6 +205,8 @@ def main(argv):
         print('  returned=%s stack_delta=%+d eax=%s' % (r['returned'], r['stack_delta'], r['regs']['eax']))
         for w in r['writes']:
             print('  write @%s [%s] size %d = 0x%0*x' % (w['at'], w['address'], w['size'], w['size'] * 2, w['value']))
+        for c in r['calls']:
+            print('  call  %s from %s ecx=%s edx=%s eax=%s args %s' % (c['stub'], c['from'], c['ecx'], c['edx'], c['eax'], ' '.join(c['args'])))
         for a, b in r['readback'].items():
             print('  mem %s: %s' % (a, b))
         for e in r['errors']:

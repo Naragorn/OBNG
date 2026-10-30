@@ -1,0 +1,138 @@
+[
+ {
+  "name": "_atexit returns 0",
+  "regs": {
+   "eax": "00000000",
+   "ebx": "00000000",
+   "ecx": "c44018be",
+   "edx": "00000000",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 0,
+  "writes": [
+   {
+    "at": "009dc2ea",
+    "address": "00000000",
+    "size": 4,
+    "value": 2130771696
+   },
+   {
+    "at": "009dc318",
+    "address": "00000000",
+    "size": 4,
+    "value": 3735928559
+   }
+  ],
+  "calls": [
+   {
+    "stub": "004040e0",
+    "from": "009dc307",
+    "ecx": "00b07bf0",
+    "edx": "00000000",
+    "eax": "7f00fef0",
+    "esp": "7f00fee4",
+    "args": [
+     "00b06704",
+     "c44018be",
+     "deadbeef",
+     "009af43a",
+     "00000000",
+     "7e000000"
+    ]
+   },
+   {
+    "stub": "00981fb4",
+    "from": "009dc311",
+    "ecx": "00b07bf0",
+    "edx": "00000000",
+    "eax": "00000000",
+    "esp": "7f00fee4",
+    "args": [
+     "00a18690",
+     "c44018be",
+     "deadbeef",
+     "009af43a",
+     "00000000",
+     "7e000000"
+    ]
+   }
+  ],
+  "readback": {
+   "00000000": "ef be ad de",
+   "00b06704": "00 00 80 3f"
+  },
+  "errors": []
+ },
+ {
+  "name": "_atexit returns -1 (the result is never read)",
+  "regs": {
+   "eax": "ffffffff",
+   "ebx": "00000000",
+   "ecx": "c44018be",
+   "edx": "00000000",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 0,
+  "writes": [
+   {
+    "at": "009dc2ea",
+    "address": "00000000",
+    "size": 4,
+    "value": 2130771696
+   },
+   {
+    "at": "009dc318",
+    "address": "00000000",
+    "size": 4,
+    "value": 3735928559
+   }
+  ],
+  "calls": [
+   {
+    "stub": "004040e0",
+    "from": "009dc307",
+    "ecx": "00b07bf0",
+    "edx": "00000000",
+    "eax": "7f00fef0",
+    "esp": "7f00fee4",
+    "args": [
+     "00b06704",
+     "c44018be",
+     "deadbeef",
+     "009af43a",
+     "00000000",
+     "7e000000"
+    ]
+   },
+   {
+    "stub": "00981fb4",
+    "from": "009dc311",
+    "ecx": "00b07bf0",
+    "edx": "00000000",
+    "eax": "12345678",
+    "esp": "7f00fee4",
+    "args": [
+     "00a18690",
+     "c44018be",
+     "deadbeef",
+     "009af43a",
+     "00000000",
+     "7e000000"
+    ]
+   }
+  ],
+  "readback": {
+   "00000000": "ef be ad de",
+   "00b06704": "00 00 80 3f"
+  },
+  "errors": []
+ }
+]
