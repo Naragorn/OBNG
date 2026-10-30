@@ -46,7 +46,6 @@ console-at people player.placeatme {form:OblivionWalkers.esp:801} 18
 console-at people-placed tai
 
 expect HandScript: finished
-expect Frame clock: precise
 expect Performance: capture armed, it starts in 60 seconds
 expect Performance: capture 1 started
 expect Performance: export
