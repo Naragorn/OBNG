@@ -110,14 +110,21 @@ LogFn g_log = nullptr;
 // SetVertexShaderConstant. The TSC is calibrated against the performance
 // counter over each summary window (probe::TicksPerMillisecond).
 enum class Step : int {
-	FinishAccumulating = 0,      // 0x007AE070, BSShaderAccumulator slot +0x50 (re/functions/0x007AC9A0.md C2-C4)
+	FinishAccumulating = 0,      // 0x007AE070, BSShaderAccumulator slot +0x50 (re/functions/0x007AC9A0.md C2-C4); by return site
+	DoRenderShape,               // 0x007693E0, NiDX9Renderer::Do_RenderShape (re/functions/0x007693E0.md): every shape draw
+	DrawSkinnedPrimitive,        // 0x00767520 (re/functions/0x00767520.md): the skinned partitions' draws, slots 13/15/14 inside
+	SetupTransformations,        // 0x007C9230, shader slot 13 (re/functions/0x007C9230.md): per partition, the light constants inside
+	PrepareGeometry,             // 0x0077A310, shader slot 15 (re/functions/0x0077A310.md): the packing
+	SetupShaderPrograms,         // 0x0077A1F0, shader slot 14 (re/functions/0x0077A1F0.md): the constant maps inside
 	ApplyConstantMap,            // 0x009A8E30, NiD3DShaderConstantMap slot +0x40 (re/functions/0x009A56D0.md)
 	SetVertexShaderConstantArray,  // 0x00783180, NiD3DVertexShader slot 11 (re/functions/0x007830C0.md C2)
 	SetVertexShaderConstant,     // 0x007830C0, NiD3DVertexShader slot 10 (re/functions/0x007830C0.md)
 	Count,
 };
-const char* const kStepNames[] = {"FinishAccumulating 0x007AE070", "ApplyConstantMap 0x009A8E30",
-                                  "SetVertexShaderConstantArray 0x00783180", "SetVertexShaderConstant 0x007830C0"};
+const char* const kStepNames[] = {"FinishAccumulating 0x007AE070", "Do_RenderShape 0x007693E0", "DrawSkinnedPrimitive 0x00767520",
+                                  "SetupTransformations 0x007C9230", "PrepareGeometry 0x0077A310", "SetupShaderPrograms 0x0077A1F0",
+                                  "ApplyConstantMap 0x009A8E30", "SetVertexShaderConstantArray 0x00783180",
+                                  "SetVertexShaderConstant 0x007830C0"};
 static_assert(sizeof(kStepNames) / sizeof(kStepNames[0]) == static_cast<int>(Step::Count), "one name per step");
 
 // The entries (objdump of the reference EXE, 2026-10-30): whole instructions,
@@ -130,6 +137,14 @@ constexpr UInt32 kSetArray = 0x00783180;
 constexpr UInt8 kSetArrayBytes[] = {0x51, 0x80, 0x3D, 0x5B, 0x29, 0xB4, 0x00, 0x00};  // push ecx; cmp byte [0xB4295B],0
 constexpr UInt32 kSetConstant = 0x007830C0;
 constexpr UInt8 kSetConstantBytes[] = {0x53, 0x8B, 0x5C, 0x24, 0x0C};  // push ebx; mov ebx,[esp+0Ch]
+constexpr UInt32 kRenderShape = 0x007693E0;
+constexpr UInt8 kRenderShapeBytes[] = {0x83, 0xEC, 0x4C, 0x53, 0x8B, 0xD9};  // sub esp,4Ch; push ebx; mov ebx,ecx
+constexpr UInt32 kDrawSkinned = 0x00767520;
+constexpr UInt8 kDrawSkinnedBytes[] = {0x8B, 0x44, 0x24, 0x0C, 0x83, 0xEC, 0x1C};  // mov eax,[esp+0Ch]; sub esp,1Ch
+constexpr UInt32 kPrepare = 0x0077A310;
+constexpr UInt8 kPrepareBytes[] = {0x8B, 0x54, 0x24, 0x04, 0x85, 0xD2};  // mov edx,[esp+4]; test edx,edx
+constexpr UInt32 kPrograms = 0x0077A1F0;
+constexpr UInt8 kProgramsBytes[] = {0x53, 0x55, 0x56, 0x57, 0x8B, 0x7C, 0x24, 0x14};  // push ebx; push ebp; push esi; push edi; mov edi,[esp+14h]
 
 // __fastcall with a dummy edx mirrors __thiscall; the stack argument counts
 // are the originals' RET immediates (plain RET, 0x2C, 0x14, 0xC; read).
@@ -138,11 +153,20 @@ using ApplyMapFn = UInt32(__fastcall*)(void* self, void* edx, UInt32, UInt32, UI
                                        UInt32, UInt32, UInt32);
 using SetArrayFn = UInt32(__fastcall*)(void* self, void* edx, UInt32, UInt32, UInt32, UInt32, UInt32);
 using SetConstantFn = UInt32(__fastcall*)(void* self, void* edx, UInt32, UInt32, UInt32);
+using RenderShapeFn = UInt32(__fastcall*)(void* self, void* edx, UInt32);                                   // RET 4 (read)
+using DrawSkinnedFn = UInt32(__fastcall*)(void* self, void* edx, UInt32, UInt32, UInt32, UInt32, UInt32);  // RET 0x14 (read)
+using PrepareFn = UInt32(__fastcall*)(void* self, void* edx, UInt32, UInt32, UInt32, UInt32);              // RET 0x10 (read)
+using ProgramsFn = UInt32(__fastcall*)(void* self, void* edx, UInt32, UInt32, UInt32, UInt32, UInt32, UInt32, UInt32, UInt32);  // RET 0x20 (read)
 
 FinishFn g_finish = nullptr;
 ApplyMapFn g_applyMap = nullptr;
 SetArrayFn g_setArray = nullptr;
 SetConstantFn g_setConstant = nullptr;
+RenderShapeFn g_renderShape = nullptr;
+DrawSkinnedFn g_drawSkinned = nullptr;
+SetupFn g_timedSetup = nullptr;
+PrepareFn g_prepare = nullptr;
+ProgramsFn g_programs = nullptr;
 
 struct AtomicTiming {
 	volatile LONG64 calls = 0;
@@ -160,15 +184,91 @@ struct AtomicTiming {
 	}
 };
 
+// The finish split by return site: a slot is claimed with a compare-exchange
+// on its address, as AtomicCounts does; eighteen calls a frame, so the scan
+// is cheap.
+struct AtomicSiteTiming {
+	volatile LONG addresses[probe::StepSites::kSites] = {};
+	AtomicTiming timings[probe::StepSites::kSites];
+	AtomicTiming others;
+
+	void Add(UInt32 returnAddress, unsigned __int64 elapsed) {
+		for (unsigned i = 0; i < probe::StepSites::kSites; ++i) {
+			const LONG seen = InterlockedCompareExchange(&addresses[i], static_cast<LONG>(returnAddress), 0);
+			if (seen == 0 || static_cast<UInt32>(seen) == returnAddress) {
+				timings[i].Add(elapsed);
+				return;
+			}
+		}
+		others.Add(elapsed);
+	}
+	probe::StepSites TakeSnapshot() {
+		probe::StepSites out;
+		for (unsigned i = 0; i < probe::StepSites::kSites; ++i) {
+			const LONG address = addresses[i];
+			if (address == 0) {
+				break;
+			}
+			const probe::StepTiming t = timings[i].TakeSnapshot();
+			if (t.calls != 0) {
+				out.sites[out.used++] = probe::StepSites::Site{static_cast<std::uint32_t>(address), t};
+			}
+		}
+		out.others = others.TakeSnapshot();
+		return out;
+	}
+};
+
 AtomicTiming g_steps[static_cast<int>(Step::Count)];
+AtomicSiteTiming g_finishSites;
 bool g_stepInstalled[static_cast<int>(Step::Count)] = {};
 bool g_stepsOn = false;
 probe::ClockPair g_stepClock;  // the clocks at the last summary (0: none yet)
 
 UInt32 __fastcall TimeFinish(void* self, void* /*edx*/) {
+	const UInt32 site = static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(_ReturnAddress()));
 	const unsigned __int64 start = __rdtsc();
 	const UInt32 eax = g_finish(self, nullptr);
-	g_steps[static_cast<int>(Step::FinishAccumulating)].Add(__rdtsc() - start);
+	const unsigned __int64 elapsed = __rdtsc() - start;
+	g_steps[static_cast<int>(Step::FinishAccumulating)].Add(elapsed);
+	g_finishSites.Add(site, elapsed);
+	return eax;
+}
+
+UInt32 __fastcall TimeRenderShape(void* self, void* /*edx*/, UInt32 a1) {
+	const unsigned __int64 start = __rdtsc();
+	const UInt32 eax = g_renderShape(self, nullptr, a1);
+	g_steps[static_cast<int>(Step::DoRenderShape)].Add(__rdtsc() - start);
+	return eax;
+}
+
+UInt32 __fastcall TimeDrawSkinned(void* self, void* /*edx*/, UInt32 a1, UInt32 a2, UInt32 a3, UInt32 a4, UInt32 a5) {
+	const unsigned __int64 start = __rdtsc();
+	const UInt32 eax = g_drawSkinned(self, nullptr, a1, a2, a3, a4, a5);
+	g_steps[static_cast<int>(Step::DrawSkinnedPrimitive)].Add(__rdtsc() - start);
+	return eax;
+}
+
+UInt32 __fastcall TimeSetup(void* self, void* /*edx*/, UInt32 a1, UInt32 a2, UInt32 a3, UInt32 a4, UInt32 a5, UInt32 a6, UInt32 a7,
+                            UInt32 a8) {
+	const unsigned __int64 start = __rdtsc();
+	const UInt32 eax = g_timedSetup(self, nullptr, a1, a2, a3, a4, a5, a6, a7, a8);
+	g_steps[static_cast<int>(Step::SetupTransformations)].Add(__rdtsc() - start);
+	return eax;
+}
+
+UInt32 __fastcall TimePrepare(void* self, void* /*edx*/, UInt32 a1, UInt32 a2, UInt32 a3, UInt32 a4) {
+	const unsigned __int64 start = __rdtsc();
+	const UInt32 eax = g_prepare(self, nullptr, a1, a2, a3, a4);
+	g_steps[static_cast<int>(Step::PrepareGeometry)].Add(__rdtsc() - start);
+	return eax;
+}
+
+UInt32 __fastcall TimePrograms(void* self, void* /*edx*/, UInt32 a1, UInt32 a2, UInt32 a3, UInt32 a4, UInt32 a5, UInt32 a6, UInt32 a7,
+                               UInt32 a8) {
+	const unsigned __int64 start = __rdtsc();
+	const UInt32 eax = g_programs(self, nullptr, a1, a2, a3, a4, a5, a6, a7, a8);
+	g_steps[static_cast<int>(Step::SetupShaderPrograms)].Add(__rdtsc() - start);
 	return eax;
 }
 
@@ -206,7 +306,8 @@ std::uint64_t ClockFrequency() {
 	return static_cast<std::uint64_t>(f.QuadPart);
 }
 
-UInt32 InstallPassSteps(LogFn log) {
+// withSetup: false when the call counters hold 0x007C9230's entry already.
+UInt32 InstallPassSteps(bool withSetup, LogFn log) {
 	struct Entry {
 		Step which;
 		UInt32 address;
@@ -217,12 +318,21 @@ UInt32 InstallPassSteps(LogFn log) {
 	};
 	const Entry entries[] = {
 	    {Step::FinishAccumulating, kFinish, kFinishBytes, sizeof(kFinishBytes), reinterpret_cast<const void*>(&TimeFinish), reinterpret_cast<void**>(&g_finish)},
+	    {Step::DoRenderShape, kRenderShape, kRenderShapeBytes, sizeof(kRenderShapeBytes), reinterpret_cast<const void*>(&TimeRenderShape), reinterpret_cast<void**>(&g_renderShape)},
+	    {Step::DrawSkinnedPrimitive, kDrawSkinned, kDrawSkinnedBytes, sizeof(kDrawSkinnedBytes), reinterpret_cast<const void*>(&TimeDrawSkinned), reinterpret_cast<void**>(&g_drawSkinned)},
+	    {Step::SetupTransformations, kSetup, kSetupBytes, sizeof(kSetupBytes), reinterpret_cast<const void*>(&TimeSetup), reinterpret_cast<void**>(&g_timedSetup)},
+	    {Step::PrepareGeometry, kPrepare, kPrepareBytes, sizeof(kPrepareBytes), reinterpret_cast<const void*>(&TimePrepare), reinterpret_cast<void**>(&g_prepare)},
+	    {Step::SetupShaderPrograms, kPrograms, kProgramsBytes, sizeof(kProgramsBytes), reinterpret_cast<const void*>(&TimePrograms), reinterpret_cast<void**>(&g_programs)},
 	    {Step::ApplyConstantMap, kApplyMap, kApplyMapBytes, sizeof(kApplyMapBytes), reinterpret_cast<const void*>(&TimeApplyMap), reinterpret_cast<void**>(&g_applyMap)},
 	    {Step::SetVertexShaderConstantArray, kSetArray, kSetArrayBytes, sizeof(kSetArrayBytes), reinterpret_cast<const void*>(&TimeSetArray), reinterpret_cast<void**>(&g_setArray)},
 	    {Step::SetVertexShaderConstant, kSetConstant, kSetConstantBytes, sizeof(kSetConstantBytes), reinterpret_cast<const void*>(&TimeSetConstant), reinterpret_cast<void**>(&g_setConstant)},
 	};
 	UInt32 made = 0;
 	for (const Entry& e : entries) {
+		if (e.which == Step::SetupTransformations && !withSetup) {
+			log("Probe: SetupTransformations 0x007C9230 timed through the call counter's entry is not possible - its time is left out");
+			continue;
+		}
 		const bool ok = InstallEntryDetour(kStepNames[static_cast<int>(e.which)], e.address, e.bytes, e.length, e.replacement, e.original, log);
 		g_stepInstalled[static_cast<int>(e.which)] = ok;
 		made += ok ? 1 : 0;
@@ -237,14 +347,20 @@ void LogPassSteps() {
 	const probe::ClockPair now = ReadClocks();
 	const double ticksPerMs = probe::TicksPerMillisecond(g_stepClock, now, ClockFrequency());
 	g_stepClock = now;
-	char line[600];
+	char line[1200];
 	int at = std::snprintf(line, sizeof(line), "Probe: pass steps (%.0f ticks per ms) -", ticksPerMs);
-	for (int i = 0; i < static_cast<int>(Step::Count) && at < 500; ++i) {
+	for (int i = 0; i < static_cast<int>(Step::Count) && at < 1000; ++i) {
 		if (g_stepInstalled[i]) {
 			at += probe::FormatStepTiming(kStepNames[i], g_steps[i].TakeSnapshot(), ticksPerMs, line + at, sizeof(line) - at);
 		}
 	}
 	g_log("%s", line);
+	if (g_stepInstalled[static_cast<int>(Step::FinishAccumulating)]) {
+		at = std::snprintf(line, sizeof(line), "Probe: pass steps -");
+		probe::FormatStepSites(kStepNames[static_cast<int>(Step::FinishAccumulating)], g_finishSites.TakeSnapshot(), ticksPerMs, line + at,
+		                       sizeof(line) - at);
+		g_log("%s", line);
+	}
 }
 // IsInRange split by the light's path: [this+0x14C] != 0 selects the six-plane
 // test, 0 the distance test (re/functions/0x007D2EA0.md B3). The split by
@@ -331,7 +447,7 @@ bool SampleMemory(probe::MemorySample* out) {
 
 UInt32 ProbesAsked(const ShadowSettings& settings) {
 	return (settings.callCounters ? static_cast<UInt32>(Probed::Count) : 0u) +
-	       (settings.passSteps ? static_cast<UInt32>(Step::Count) : 0u);
+	       (settings.passSteps ? static_cast<UInt32>(Step::Count) - (settings.callCounters ? 1u : 0u) : 0u);
 }
 
 UInt32 InstallProbes(const ShadowSettings& settings, LogFn log) {
@@ -344,7 +460,7 @@ UInt32 InstallProbes(const ShadowSettings& settings, LogFn log) {
 	g_memory = settings.memoryProbe;
 	UInt32 made = 0;
 	if (settings.passSteps) {
-		made += InstallPassSteps(log);
+		made += InstallPassSteps(!settings.callCounters, log);
 	}
 	if (!settings.callCounters) {
 		return made;

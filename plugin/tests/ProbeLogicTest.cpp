@@ -131,6 +131,38 @@ void TestStepTiming() {
 	char tiny[8];
 	const int wrote = FormatStepTiming("FinishAccumulating", t, 3000.0, tiny, sizeof(tiny));
 	Check(std::strlen(tiny) < sizeof(tiny) && wrote > 0, "a small buffer is never overrun");
+
+	Section("A step by return site: first come, first kept, the rest in others; calls and ms per site");
+	StepSites sites;
+	sites.Add(0x007C7D54, 3000);
+	sites.Add(0x007D6A10, 6000);
+	sites.Add(0x007C7D54, 3000);
+	Check(sites.used == 2 && sites.sites[0].timing.calls == 2 && sites.sites[0].timing.ticks == 6000 &&
+	          sites.sites[1].timing.calls == 1 && sites.sites[1].timing.ticks == 6000,
+	      "two sites, the repeat added to its site");
+	for (unsigned i = 0; i < StepSites::kSites; ++i) {
+		sites.Add(0x00400000u + i, 300);
+	}
+	Check(sites.used == StepSites::kSites && sites.others.calls == 2 && sites.others.ticks == 600,
+	      "beyond eight sites the calls and ticks go to others");
+	char wide[400];
+	StepSites two;
+	two.Add(0x007C7D54, 3000);
+	two.Add(0x007D6A10, 6000);
+	two.Add(0x007C7D54, 3000);
+	FormatStepSites("FinishAccumulating", two, 3000.0, wide, sizeof(wide));
+	Check(std::string(wide) == " FinishAccumulating by return site: 0x007C7D54 2 calls 2.00 ms, 0x007D6A10 1 calls 2.00 ms;",
+	      "calibrated: each site with calls and ms, in first-seen order");
+	FormatStepSites("FinishAccumulating", two, 0.0, wide, sizeof(wide));
+	Check(std::string(wide) == " FinishAccumulating by return site: 0x007C7D54 2 calls 6000 ticks, 0x007D6A10 1 calls 6000 ticks;",
+	      "uncalibrated: the raw ticks");
+	FormatStepSites("FinishAccumulating", sites, 3000.0, wide, sizeof(wide));
+	Check(std::strstr(wide, ", +others 2 calls 0.20 ms;") != nullptr, "others appended when present");
+	FormatStepSites("FinishAccumulating", StepSites{}, 3000.0, wide, sizeof(wide));
+	Check(std::string(wide) == " FinishAccumulating by return site: none;", "no call: none");
+	char small[12];
+	FormatStepSites("FinishAccumulating", sites, 3000.0, small, sizeof(small));
+	Check(std::strlen(small) < sizeof(small), "a small buffer is never overrun");
 }
 
 int main() {

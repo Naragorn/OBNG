@@ -159,6 +159,69 @@ inline int FormatStepTiming(const char* name, const StepTiming& t, double ticksP
 	                     static_cast<unsigned long long>(t.calls), ms, ms * 1000.0 / static_cast<double>(t.calls));
 }
 
+// A timed step split by return site: the first kSites distinct callers
+// with their calls and ticks, every other caller summed in `others`.
+struct StepSites {
+	static constexpr unsigned kSites = 8;
+	struct Site {
+		std::uint32_t address;
+		StepTiming timing;
+	};
+	Site sites[kSites] = {};
+	unsigned used = 0;
+	StepTiming others;
+
+	void Add(std::uint32_t address, std::uint64_t ticks) {
+		for (unsigned i = 0; i < used; ++i) {
+			if (sites[i].address == address) {
+				++sites[i].timing.calls;
+				sites[i].timing.ticks += ticks;
+				return;
+			}
+		}
+		if (used < kSites) {
+			sites[used++] = Site{address, StepTiming{1, ticks}};
+			return;
+		}
+		++others.calls;
+		others.ticks += ticks;
+	}
+};
+
+// " name by return site: 0x... N calls X ms, ...[, +N others X ms];" with the
+// calibration (the raw ticks without one); nothing but " name by return
+// site: none;" when no call was seen. Returns the characters written.
+inline int FormatStepSites(const char* name, const StepSites& s, double ticksPerMillisecond, char* out, std::size_t capacity) {
+	int at = std::snprintf(out, capacity, " %s by return site:", name);
+	if (s.used == 0) {
+		if (at >= 0 && static_cast<std::size_t>(at) < capacity) {
+			at += std::snprintf(out + at, capacity - at, " none;");
+		}
+		return at;
+	}
+	const auto amount = [&](const StepTiming& t, char* o, std::size_t c) {
+		return ticksPerMillisecond > 0.0
+			? std::snprintf(o, c, "%llu calls %.2f ms", static_cast<unsigned long long>(t.calls), static_cast<double>(t.ticks) / ticksPerMillisecond)
+			: std::snprintf(o, c, "%llu calls %llu ticks", static_cast<unsigned long long>(t.calls), static_cast<unsigned long long>(t.ticks));
+	};
+	for (unsigned i = 0; i < s.used && at >= 0 && static_cast<std::size_t>(at) < capacity; ++i) {
+		at += std::snprintf(out + at, capacity - at, "%s 0x%08X ", i == 0 ? "" : ",", s.sites[i].address);
+		if (at >= 0 && static_cast<std::size_t>(at) < capacity) {
+			at += amount(s.sites[i].timing, out + at, capacity - at);
+		}
+	}
+	if (s.others.calls != 0 && at >= 0 && static_cast<std::size_t>(at) < capacity) {
+		at += std::snprintf(out + at, capacity - at, ", +others ");
+		if (at >= 0 && static_cast<std::size_t>(at) < capacity) {
+			at += amount(s.others, out + at, capacity - at);
+		}
+	}
+	if (at >= 0 && static_cast<std::size_t>(at) < capacity) {
+		at += std::snprintf(out + at, capacity - at, ";");
+	}
+	return at;
+}
+
 // "Probe: memory commit N MB (peak N), working set N MB (peak N), address
 // space N of N MB used (N %, peak N MB)".
 inline int FormatMemory(const MemorySample& now, const MemoryPeak& peak, char* out, std::size_t capacity) {

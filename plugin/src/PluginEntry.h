@@ -63,12 +63,13 @@ struct Host {
 };
 
 // How many counting detours the settings ask for: five hot functions of the
-// scene pass for the call counters, four timed steps of the pass for the
-// pass steps, each all or none.
+// scene pass for the call counters, eight timed steps of the pass for the
+// pass steps - seven when the counters are on too, as SetupTransformations
+// 0x007C9230 is in both sets and the counter keeps its entry.
 constexpr uint32_t kProbeDetours = 5;
-constexpr uint32_t kPassStepDetours = 4;
+constexpr uint32_t kPassStepDetours = 8;
 inline uint32_t ProbesAskedFor(const ShadowSettings& s) {
-	return (s.callCounters ? kProbeDetours : 0u) + (s.passSteps ? kPassStepDetours : 0u);
+	return (s.callCounters ? kProbeDetours : 0u) + (s.passSteps ? (s.callCounters ? kPassStepDetours - 1 : kPassStepDetours) : 0u);
 }
 
 bool Query(const ExtenderInterfaceHead& xse, PluginInfo* info, const Host& host);
