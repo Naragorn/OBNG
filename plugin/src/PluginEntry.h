@@ -68,8 +68,10 @@ struct Host {
 // 0x007C9230 is in both sets and the counter keeps its entry.
 constexpr uint32_t kProbeDetours = 5;
 constexpr uint32_t kPassStepDetours = 9;
+constexpr uint32_t kPackCacheDetours = 2;  // the packer's entry and the unlock
 inline uint32_t ProbesAskedFor(const ShadowSettings& s) {
-	return (s.callCounters ? kProbeDetours : 0u) + (s.passSteps ? (s.callCounters ? kPassStepDetours - 1 : kPassStepDetours) : 0u);
+	return (s.callCounters ? kProbeDetours : 0u) + (s.passSteps ? (s.callCounters ? kPassStepDetours - 1 : kPassStepDetours) : 0u) +
+	       (s.packCache ? kPackCacheDetours : 0u);
 }
 
 bool Query(const ExtenderInterfaceHead& xse, PluginInfo* info, const Host& host);

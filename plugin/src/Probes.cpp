@@ -13,6 +13,7 @@
 #include <cstdio>
 
 #include "ProbeLogic.h"
+#include "RangeWalkGame.h"
 #include "ShadowRecorder.h"
 
 namespace obng::plugin {
@@ -294,6 +295,105 @@ UInt32 __fastcall TimeSetConstant(void* self, void* /*edx*/, UInt32 a1, UInt32 a
 	return eax;
 }
 
+// ---- The packing's cross-frame probe (docs/subsystems/stream-packing.md, L3) -------
+//
+// Two detours: the packer 0x00763130 (thiscall(renderer; record, geometry,
+// skin, partition, decl, force), RET 0x18; re/functions/0x00763130.md) puts
+// (geometry, partition) and the data's consistency word into this thread's
+// slot for the duration of the call; the unlock 0x00776D80 (thiscall(chip;
+// d3dBuffer), RET 4; read with objdump 2026-10-30: memcpy([chip+0x48],
+// [chip+0x40], [chip+0x4C]) then the D3D unlock) hashes the staging bytes
+// [chip+0x40] of length [chip+0x4C] before the original copies them, and
+// files the hash under (geometry, partition, chip). Unlocks with no packer
+// on this thread's stack are only counted.
+constexpr UInt32 kPacker = 0x00763130;
+constexpr UInt8 kPackerBytes[] = {0x83, 0xEC, 0x1C, 0x53, 0x56};  // sub esp,1Ch; push ebx; push esi
+constexpr UInt32 kUnlock = 0x00776D80;
+constexpr UInt8 kUnlockBytes[] = {0x56, 0x8B, 0xF1, 0x8B, 0x46, 0x4C};  // push esi; mov esi,ecx; mov eax,[esi+4Ch]
+constexpr UInt32 kChipStagingOffset = 0x40;
+constexpr UInt32 kChipBytesOffset = 0x4C;
+constexpr UInt32 kGeometryConsistencyOffset = 0x2E;
+
+using PackerFn = UInt32(__fastcall*)(void* self, void* edx, UInt32, UInt32, UInt32, UInt32, UInt32, UInt32);
+using UnlockFn = UInt32(__fastcall*)(void* self, void* edx, UInt32);
+
+PackerFn g_packer = nullptr;
+UnlockFn g_unlock = nullptr;
+bool g_packCacheOn = false;
+
+struct PackContext {
+	UInt32 depth = 0;
+	UInt32 geometry = 0;
+	UInt32 partition = 0;
+};
+range_walk_game::ThreadSlots<PackContext> g_packContexts;
+SRWLOCK g_packLock = SRWLOCK_INIT;
+probe::PackCache* g_packCache = nullptr;  // 65 536 slots, made at install
+probe::PackStats g_packStats;
+
+UInt32 __fastcall ProbePacker(void* self, void* /*edx*/, UInt32 record, UInt32 geometry, UInt32 skin, UInt32 partition, UInt32 decl,
+                              UInt32 force) {
+	PackContext& context = g_packContexts.Get();
+	if (context.depth++ == 0) {
+		context.geometry = geometry;
+		context.partition = partition;
+		const auto consistency = *reinterpret_cast<volatile UInt16*>(static_cast<std::uintptr_t>(geometry) + kGeometryConsistencyOffset);
+		AcquireSRWLockExclusive(&g_packLock);
+		probe::CountConsistency(consistency, g_packStats);
+		ReleaseSRWLockExclusive(&g_packLock);
+	}
+	const UInt32 eax = g_packer(self, nullptr, record, geometry, skin, partition, decl, force);
+	--context.depth;
+	return eax;
+}
+
+UInt32 __fastcall ProbeUnlock(void* self, void* /*edx*/, UInt32 d3dBuffer) {
+	PackContext* context = g_packContexts.Existing();
+	if (context == nullptr || context->depth == 0) {
+		AcquireSRWLockExclusive(&g_packLock);
+		++g_packStats.outside;
+		ReleaseSRWLockExclusive(&g_packLock);
+		return g_unlock(self, nullptr, d3dBuffer);
+	}
+	const auto chip = reinterpret_cast<std::uintptr_t>(self);
+	const auto staging = *reinterpret_cast<const unsigned char* volatile*>(chip + kChipStagingOffset);
+	const UInt32 bytes = *reinterpret_cast<volatile UInt32*>(chip + kChipBytesOffset);
+	const std::uint64_t hash = staging != nullptr ? probe::HashBytes(staging, bytes) : 0;
+	AcquireSRWLockExclusive(&g_packLock);
+	g_packCache->Add(probe::PackKey{context->geometry, context->partition, static_cast<UInt32>(chip)}, hash, bytes, g_packStats);
+	ReleaseSRWLockExclusive(&g_packLock);
+	return g_unlock(self, nullptr, d3dBuffer);
+}
+
+UInt32 InstallPackCache(LogFn log) {
+	if (!g_packContexts.Allocate()) {
+		log("Probe: pack cache - no TLS slot; not installed");
+		return 0;
+	}
+	g_packCache = new probe::PackCache(16);
+	UInt32 made = 0;
+	made += InstallEntryDetour("PackSkinnedGeometryBuffer 0x00763130 (pack cache)", kPacker, kPackerBytes, sizeof(kPackerBytes),
+	                           reinterpret_cast<const void*>(&ProbePacker), reinterpret_cast<void**>(&g_packer), log) ? 1 : 0;
+	made += InstallEntryDetour("dynamic buffer unlock 0x00776D80 (pack cache)", kUnlock, kUnlockBytes, sizeof(kUnlockBytes),
+	                           reinterpret_cast<const void*>(&ProbeUnlock), reinterpret_cast<void**>(&g_unlock), log) ? 1 : 0;
+	g_packCacheOn = made == 2;
+	if (made != 2) {
+		log("Probe: pack cache - %u of 2 detours made; the counts need both, so it is off", made);
+	}
+	return made;
+}
+
+void LogPackCache() {
+	AcquireSRWLockExclusive(&g_packLock);
+	const probe::PackStats stats = g_packStats;
+	g_packStats.Reset();
+	const std::uint64_t keys = g_packCache->Keys();
+	ReleaseSRWLockExclusive(&g_packLock);
+	char line[400];
+	probe::FormatPackStats(stats, keys, line, sizeof(line));
+	g_log("%s", line);
+}
+
 probe::ClockPair ReadClocks() {
 	LARGE_INTEGER qpc{};
 	QueryPerformanceCounter(&qpc);
@@ -447,7 +547,8 @@ bool SampleMemory(probe::MemorySample* out) {
 
 UInt32 ProbesAsked(const ShadowSettings& settings) {
 	return (settings.callCounters ? static_cast<UInt32>(Probed::Count) : 0u) +
-	       (settings.passSteps ? static_cast<UInt32>(Step::Count) - (settings.callCounters ? 1u : 0u) : 0u);
+	       (settings.passSteps ? static_cast<UInt32>(Step::Count) - (settings.callCounters ? 1u : 0u) : 0u) +
+	       (settings.packCache ? 2u : 0u);
 }
 
 UInt32 InstallProbes(const ShadowSettings& settings, LogFn log) {
@@ -461,6 +562,9 @@ UInt32 InstallProbes(const ShadowSettings& settings, LogFn log) {
 	UInt32 made = 0;
 	if (settings.passSteps) {
 		made += InstallPassSteps(!settings.callCounters, log);
+	}
+	if (settings.packCache) {
+		made += InstallPackCache(log);
 	}
 	if (!settings.callCounters) {
 		return made;
@@ -514,6 +618,9 @@ void LogProbeSummary() {
 	}
 	if (g_stepsOn) {
 		LogPassSteps();
+	}
+	if (g_packCacheOn) {
+		LogPackCache();
 	}
 	if (g_memory) {
 		probe::MemorySample sample;

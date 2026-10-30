@@ -221,6 +221,18 @@ void TestLoadPassSteps() {
 	Check(both.Logged("Probes: 13 of 13 call counters made, memory on"), "thirteen asked with both: the shared SetupTransformations entry counted once");
 }
 
+void TestLoadPackCache() {
+	Section("Load with the pack cache on: two more detours asked");
+	Fake fake;
+	fake.iniSettings.shadow.packCache = true;
+	fake.probesMade = 2;
+	g_fake = &fake;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(fake.probeInstalls == 1 && fake.probed.packCache && !fake.probed.passSteps, "the pack cache reaches the probe installer");
+	Check(fake.Logged("Probes: 2 of 2 call counters made, memory on"), "two asked");
+}
+
 void TestLoadProbesOff() {
 	Section("Load with every probe off");
 	Fake fake;
@@ -416,6 +428,7 @@ int main() {
 	TestLoadRangeWalk();
 	TestLoadProbes();
 	TestLoadPassSteps();
+	TestLoadPackCache();
 	TestLoadProbesOff();
 	TestLoadRoute();
 	TestLoadRouteAndShadow();

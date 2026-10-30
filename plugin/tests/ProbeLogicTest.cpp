@@ -165,7 +165,61 @@ void TestStepTiming() {
 	Check(std::strlen(small) < sizeof(small), "a small buffer is never overrun");
 }
 
+void TestPackCache() {
+	Section("The pack cache: new, same, changed, evicted; the bytes and the keys");
+	PackCache cache(4);  // 16 slots
+	PackStats stats;
+	const PackKey a{0x1000, 0x2000, 0x3000};
+	const PackKey b{0x1000, 0x2000, 0x3004};
+	Check(cache.Add(a, 11, 100, stats) == PackVerdict::New && stats.fresh == 1 && cache.Keys() == 1, "first pack of a key: new");
+	Check(cache.Add(a, 11, 100, stats) == PackVerdict::Same && stats.same == 1 && stats.sameBytes == 100, "the same hash again: same, its bytes counted");
+	Check(cache.Add(a, 12, 100, stats) == PackVerdict::Changed && stats.changed == 1, "a different hash: changed");
+	Check(cache.Add(a, 12, 100, stats) == PackVerdict::Same && stats.same == 2, "the changed hash is now the last one");
+	Check(cache.Add(b, 12, 50, stats) == PackVerdict::New && cache.Keys() == 2, "another chip of the same partition is another key");
+	Check(stats.packs == 5 && stats.bytes == 450, "five packs, 450 bytes hashed");
+	PackCache tiny(0);  // one slot: every other key evicts
+	PackStats t;
+	tiny.Add(a, 1, 10, t);
+	Check(tiny.Add(b, 1, 10, t) == PackVerdict::New && t.evictions == 1, "a collision overwrites the slot and counts an eviction, never a same");
+	Check(tiny.Add(a, 1, 10, t) == PackVerdict::New && t.evictions == 2 && t.same == 0, "the evicted key comes back as new");
+
+	Section("HashBytes: equal bytes equal hashes, one byte apart differs, the tail counts");
+	const unsigned char x[13] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};
+	unsigned char y[13] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};
+	Check(HashBytes(x, 13) == HashBytes(y, 13), "equal bytes: equal");
+	y[12] = 14;
+	Check(HashBytes(x, 13) != HashBytes(y, 13), "a tail byte differs: different");
+	y[12] = 13;
+	y[3] = 0;
+	Check(HashBytes(x, 13) != HashBytes(y, 13), "a word byte differs: different");
+	Check(HashBytes(x, 13) != HashBytes(x, 12), "the count is part of it");
+	Check(HashBytes(x, 0) == HashBytes(y, 0), "empty: equal");
+
+	Section("The consistency nibble: volatile, static, mutable, dirty bits");
+	PackStats c;
+	CountConsistency(0x8000, c);
+	CountConsistency(0x8FFF, c);
+	CountConsistency(0x4000, c);
+	CountConsistency(0x0001, c);
+	CountConsistency(0x2000, c);
+	Check(c.volatileData == 2 && c.staticData == 1 && c.mutableData == 2 && c.dirtyBits == 2, "2 volatile (one dirty), 1 static, 2 mutable (one dirty)");
+
+	Section("The pack cache line");
+	PackStats s;
+	s.packs = 1000; s.same = 750; s.changed = 200; s.fresh = 50; s.evictions = 5; s.bytes = 3u << 20; s.sameBytes = 1u << 20;
+	s.outside = 7; s.volatileData = 900; s.staticData = 10; s.mutableData = 90; s.dirtyBits = 95;
+	char line[400];
+	FormatPackStats(s, 60, line, sizeof(line));
+	Check(std::string(line) ==
+	          "Probe: pack cache - 1000 packs, 750 same (75 %), 200 changed, 50 new (5 evictions), 60 keys; 3 MB hashed, 33 % of the "
+	          "bytes same; 7 unlocks outside the packer; data volatile 900, static 10, mutable 90, dirty 95",
+	      "the line");
+	FormatPackStats(PackStats{}, 0, line, sizeof(line));
+	Check(std::strstr(line, "0 packs, 0 same (0 %)") != nullptr, "no pack: no division");
+}
+
 int main() {
+	TestPackCache();
 	TestStepTiming();
 	TestReturnSites();
 	TestCallCounts();

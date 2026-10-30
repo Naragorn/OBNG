@@ -5,8 +5,10 @@
 // site, how memory samples are kept at their peak, and how both are
 // written. The detours and the Windows calls live in Probes.cpp.
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <vector>
 
 namespace obng::plugin::probe {
 
@@ -220,6 +222,151 @@ inline int FormatStepSites(const char* name, const StepSites& s, double ticksPer
 		at += std::snprintf(out + at, capacity - at, ";");
 	}
 	return at;
+}
+
+// ---- The packing's cross-frame probe --------------------------------------------
+//
+// Does a partition's packed stream change from one pack to the next? The
+// packer 0x00763130 packs per (geometry, partition) into the record's chips,
+// one unlock 0x00776D80 per stream; the probe hashes the staging bytes at
+// every unlock and keeps the last hash per (geometry, partition, chip). A
+// pack whose hash equals the key's last one is a "same" pack: a cache
+// keyed like this would have skipped it (docs/subsystems/stream-packing.md,
+// lever L3). The table is open addressing with overwrite on collision: a
+// collision costs a "new" verdict, never a false "same".
+
+struct PackKey {
+	std::uint32_t geometry;
+	std::uint32_t partition;
+	std::uint32_t chip;
+	bool operator==(const PackKey&) const = default;
+};
+
+// A fast 64-bit hash over the bytes (8 at a time, a tail by bytes); no CRT
+// call. Equal bytes give equal hashes; a hash collision would count a changed
+// pack as the same, at odds of about 2^-64 per pack (derived).
+inline std::uint64_t HashBytes(const unsigned char* bytes, std::uint32_t count) {
+	std::uint64_t h = 0x9E3779B97F4A7C15ull ^ count;
+	std::uint32_t i = 0;
+	for (; i + 8 <= count; i += 8) {
+		std::uint64_t w = 0;
+		for (unsigned b = 0; b < 8; ++b) {
+			w |= static_cast<std::uint64_t>(bytes[i + b]) << (8 * b);
+		}
+		h = (h ^ w) * 0x100000001B3ull;
+		h ^= h >> 29;
+	}
+	for (; i < count; ++i) {
+		h = (h ^ bytes[i]) * 0x100000001B3ull;
+	}
+	return h ^ (h >> 32);
+}
+
+enum class PackVerdict : std::uint8_t {
+	New,      // the key was not in the table (first pack, or evicted)
+	Same,     // the bytes equal the key's last pack
+	Changed,  // the bytes differ from the key's last pack
+};
+
+struct PackStats {
+	std::uint64_t packs = 0;          // unlocks inside a packer call
+	std::uint64_t same = 0;
+	std::uint64_t changed = 0;
+	std::uint64_t fresh = 0;          // New verdicts
+	std::uint64_t bytes = 0;          // staging bytes hashed
+	std::uint64_t sameBytes = 0;      // of packs judged Same
+	std::uint64_t evictions = 0;      // a key overwritten another's slot
+	std::uint64_t outside = 0;        // unlocks with no packer on the stack (index buffers, other)
+	std::uint64_t volatileData = 0;   // packer entries whose geometry data nibble is 0x8000
+	std::uint64_t staticData = 0;     // 0x4000
+	std::uint64_t mutableData = 0;    // any other nibble
+	std::uint64_t dirtyBits = 0;      // packer entries with dirty bits set (low 12 bits of +0x2E)
+	void Reset() { *this = PackStats{}; }
+};
+
+struct PackCache {
+	struct Slot {
+		PackKey key{};
+		std::uint64_t hash = 0;
+		bool used = false;
+	};
+
+	explicit PackCache(std::uint32_t slotsPowerOfTwo = 16) : slots_(std::size_t{1} << slotsPowerOfTwo), mask_((1u << slotsPowerOfTwo) - 1) {}
+
+	PackVerdict Add(PackKey key, std::uint64_t hash, std::uint32_t bytes, PackStats& stats) {
+		++stats.packs;
+		stats.bytes += bytes;
+		Slot& slot = slots_[Index(key)];
+		if (!slot.used) {
+			slot = Slot{key, hash, true};
+			++stats.fresh;
+			++keys_;
+			return PackVerdict::New;
+		}
+		if (!(slot.key == key)) {
+			slot = Slot{key, hash, true};
+			++stats.fresh;
+			++stats.evictions;
+			return PackVerdict::New;
+		}
+		if (slot.hash == hash) {
+			++stats.same;
+			stats.sameBytes += bytes;
+			return PackVerdict::Same;
+		}
+		slot.hash = hash;
+		++stats.changed;
+		return PackVerdict::Changed;
+	}
+	std::uint64_t Keys() const { return keys_; }
+
+private:
+	std::uint32_t Index(PackKey k) const {
+		std::uint32_t h = k.geometry * 0x9E3779B1u;
+		h ^= k.partition * 0x85EBCA77u;
+		h ^= k.chip * 0xC2B2AE3Du;
+		h ^= h >> 15;
+		return h & mask_;
+	}
+	std::vector<Slot> slots_;
+	std::uint32_t mask_;
+	std::uint64_t keys_ = 0;
+};
+
+// The data's consistency nibble at the packer's entry (geometry +0x2E bits
+// 12-15; re/functions/0x00763130.md): 0x8000 volatile, 0x4000 static, else
+// mutable; the low 12 bits are the dirty bits.
+inline void CountConsistency(std::uint16_t consistencyAndDirty, PackStats& stats) {
+	switch (consistencyAndDirty & 0xF000u) {
+	case 0x8000u:
+		++stats.volatileData;
+		break;
+	case 0x4000u:
+		++stats.staticData;
+		break;
+	default:
+		++stats.mutableData;
+		break;
+	}
+	if ((consistencyAndDirty & 0x0FFFu) != 0) {
+		++stats.dirtyBits;
+	}
+}
+
+// "Probe: pack cache - N packs, N same (N %), N changed, N new (N evictions),
+// N keys; N MB hashed, N % of the bytes same; N unlocks outside the packer;
+// data volatile N, static N, mutable N, dirty N".
+inline int FormatPackStats(const PackStats& s, std::uint64_t keys, char* out, std::size_t capacity) {
+	return std::snprintf(out, capacity,
+	                     "Probe: pack cache - %llu packs, %llu same (%u %%), %llu changed, %llu new (%llu evictions), %llu keys; "
+	                     "%u MB hashed, %u %% of the bytes same; %llu unlocks outside the packer; data volatile %llu, static %llu, "
+	                     "mutable %llu, dirty %llu",
+	                     static_cast<unsigned long long>(s.packs), static_cast<unsigned long long>(s.same), PercentOf(s.same, s.packs),
+	                     static_cast<unsigned long long>(s.changed), static_cast<unsigned long long>(s.fresh),
+	                     static_cast<unsigned long long>(s.evictions), static_cast<unsigned long long>(keys), Megabytes(s.bytes),
+	                     PercentOf(s.sameBytes, s.bytes), static_cast<unsigned long long>(s.outside),
+	                     static_cast<unsigned long long>(s.volatileData), static_cast<unsigned long long>(s.staticData),
+	                     static_cast<unsigned long long>(s.mutableData), static_cast<unsigned long long>(s.dirtyBits));
 }
 
 // "Probe: memory commit N MB (peak N), working set N MB (peak N), address
