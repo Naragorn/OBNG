@@ -49,10 +49,8 @@
 // NaN payloads are not modelled (SSE's default NaN differs from the x87's
 // indefinite); they never reach the result, which only compares (derived).
 
-#include <algorithm>
 #include <bit>
 #include <cfloat>
-#include <cmath>
 #include <cstdint>
 #include <limits>
 
@@ -166,6 +164,21 @@ inline ExactSum TwoSum(double a, double b) {
 
 namespace detail {
 
+// Bit tests instead of the <cmath> classification calls: no CRT call can sit in
+// the hot path (the 32-bit MS CRT's math routines save, set and restore the x87
+// control word - FLDCW, serialising - and run under the caller's word).
+constexpr std::uint64_t Bits(double value) {
+	return std::bit_cast<std::uint64_t>(value);
+}
+
+constexpr bool IsFinite(double value) {
+	return ((Bits(value) >> 52) & 0x7FFu) != 0x7FFu;
+}
+
+constexpr bool SignBit(double value) {
+	return (Bits(value) >> 63) != 0;
+}
+
 inline constexpr std::uint64_t kDroppedMask = (std::uint64_t{1} << 29) - 1;  // 52 - 23 fraction bits dropped
 inline constexpr std::uint64_t kHalf = std::uint64_t{1} << 28;
 inline constexpr std::uint64_t kKeptLowBit = std::uint64_t{1} << 29;
@@ -194,16 +207,22 @@ constexpr Discarded ClassifyDropped(std::uint64_t dropped, int tailAway) {
 } // namespace detail
 
 // The exact value head + tail with its significand rounded to 24 bits under
-// the mode, the exponent unbounded within double's range. Preconditions: the
-// head is zero, infinite, NaN or a normal double, and a zero head has a zero
-// tail (true for TwoSum's result and every value of this body, see above).
+// the mode, the exponent unbounded within double's range - integer work on
+// the double's bits only: the 29 low fraction bits are the dropped part, the
+// tail's sign the sticky information below them, a carry out of the fraction
+// raises the exponent field. Preconditions: the head is zero, infinite, NaN
+// or a normal double, and a zero head has a zero tail (true for TwoSum's
+// result). A double-subnormal head (below 2^-1022) is excluded, not handled:
+// it cannot occur here - a product of two floats is 0 or at least
+// 2^-149 * 2^-149 = 2^-298, and a sum of two such 24-bit register values is 0
+// or a non-zero multiple of 2^-321 (derived), both far above 2^-1022.
 inline double RoundToPc24(ExactSum value, X87Rounding mode) {
-	if (!std::isfinite(value.head) || value.head == 0.0) {
+	if (!detail::IsFinite(value.head) || value.head == 0.0) {
 		return value.head;
 	}
 	std::uint64_t bits = std::bit_cast<std::uint64_t>(value.head);
 	const bool negative = (bits >> 63) != 0;
-	const int tailAway = value.tail == 0.0 ? 0 : (std::signbit(value.tail) == negative ? 1 : -1);
+	const int tailAway = value.tail == 0.0 ? 0 : (detail::SignBit(value.tail) == negative ? 1 : -1);
 	const std::uint64_t dropped = bits & detail::kDroppedMask;
 	bits &= ~detail::kDroppedMask;
 	Discarded discarded = detail::ClassifyDropped(dropped, tailAway);
@@ -237,7 +256,7 @@ inline double MulPc24(float a, float b, X87Rounding mode) {
 // tests/X87RoundingHostTest.cpp): +0 in every mode but Down, -0 under Down;
 // two zeros of the same sign keep it (x + x keeps x's sign).
 inline double ExactZeroSum(double a, double b, X87Rounding mode) {
-	if (a == 0.0 && b == 0.0 && std::signbit(a) == std::signbit(b)) {
+	if (a == 0.0 && b == 0.0 && detail::SignBit(a) == detail::SignBit(b)) {
 		return a;
 	}
 	return mode == X87Rounding::Down ? -0.0 : 0.0;
@@ -246,7 +265,7 @@ inline double ExactZeroSum(double a, double b, X87Rounding mode) {
 // FADDP / FSUB: two register values with 24-bit significands.
 inline double AddPc24(double a, double b, X87Rounding mode) {
 	const ExactSum sum = TwoSum(a, b);
-	if (sum.head == 0.0 && std::isfinite(a) && std::isfinite(b)) {
+	if (sum.head == 0.0 && detail::IsFinite(a) && detail::IsFinite(b)) {
 		return ExactZeroSum(a, b, mode);
 	}
 	return RoundToPc24(sum, mode);
@@ -258,8 +277,6 @@ inline double SubPc24(double a, double b, X87Rounding mode) {
 
 // ---- FSTP float: the register value rounded to the float format ------------------
 
-inline constexpr int kFloatMinQuantumExponent = -149;  // the smallest denormal, 2^-149
-inline constexpr int kFloatSignificandBits = 24;
 
 // The result of an overflowing store, by mode (IEEE 754 7.4 with the
 // overflow exception masked, as in every control word the game was measured
@@ -291,33 +308,54 @@ inline float OverflowResult(bool negative, X87Rounding mode) {
 // format's bounds: the significand rounded to 24 bits for a normal result,
 // to the fixed quantum 2^-149 for a denormal one (underflow masked: the
 // denormal result rounded under the mode, SDM vol. 1 4.9.1.5), overflow per
-// OverflowResult. Zeros, infinities and NaNs convert exactly.
+// OverflowResult. Zeros, infinities and NaNs convert exactly. Integer work on
+// the double's bits only (no CRT call): the 53-bit significand is shifted
+// right by the number of bits the float drops (29 for a normal result, more
+// for a denormal one), the shifted-out bits classified against half, the kept
+// units rounded per RoundsMagnitudeUp, and the float's bits built by adding
+// the units to the exponent field (so a carry to 2^24 units raises the
+// exponent, and a denormal rounding up to 2^23 units is FLT_MIN's pattern).
+// A double-subnormal input is handled too: it lies far below half the
+// smallest float denormal, so it rounds to 0 or 2^-149 by mode.
 inline float StoreSingle(double value, X87Rounding mode) {
-	if (!std::isfinite(value) || value == 0.0) {
-		return static_cast<float>(value);
+	const std::uint64_t bits = std::bit_cast<std::uint64_t>(value);
+	const bool negative = (bits >> 63) != 0;
+	const auto biased = static_cast<int>((bits >> 52) & 0x7FFu);
+	const std::uint64_t fraction = bits & ((std::uint64_t{1} << 52) - 1);
+	if (biased == 0x7FF || (biased == 0 && fraction == 0)) {
+		return static_cast<float>(value);  // inf, NaN, +-0: exact (CVTSD2SS, no CRT call)
 	}
-	const bool negative = std::signbit(value);
-	const double magnitude = std::fabs(value);
-	int exponent = 0;
-	std::frexp(magnitude, &exponent);  // magnitude = f * 2^exponent, f in [0.5, 1)
-	const int quantumExponent = std::max(exponent - kFloatSignificandBits, kFloatMinQuantumExponent);
-	// The magnitude in units of the quantum: below 2^24, exact (a power-of-two
-	// scaling of a double that neither overflows nor underflows).
-	const double units = std::ldexp(magnitude, -quantumExponent);
-	const double kept = std::floor(units);
-	const double rest = units - kept;  // exact: both are doubles of the same binade or below
-	const Discarded discarded = rest == 0.0 ? Discarded::None
-		: rest < 0.5                       ? Discarded::BelowHalf
-		: rest == 0.5                      ? Discarded::Half
-		                                   : Discarded::AboveHalf;
-	const bool odd = std::fmod(kept, 2.0) != 0.0;
-	const double rounded = RoundsMagnitudeUp(mode, negative, odd, discarded) ? kept + 1.0 : kept;
-	const double result = std::ldexp(rounded, quantumExponent);  // exact: at most 2^24 units of a float quantum
-	if (result > static_cast<double>(FLT_MAX)) {
+	constexpr int kFloatBias = 127;
+	constexpr int kFloatMinExponent = -126;
+	std::uint64_t kept = 0;
+	Discarded discarded = Discarded::BelowHalf;  // the double-subnormal case: everything dropped, far below half
+	int exponent = kFloatMinExponent;            // of the result's leading unit, for the exponent field
+	if (biased != 0) {
+		const std::uint64_t significand = fraction | (std::uint64_t{1} << 52);
+		exponent = biased - 1023;
+		// Bits dropped: 29 for a normal float result, one more per binade below FLT_MIN.
+		const int shift = 29 + (exponent < kFloatMinExponent ? kFloatMinExponent - exponent : 0);
+		if (shift < 64) {
+			kept = significand >> shift;
+			const std::uint64_t dropped = significand & ((std::uint64_t{1} << shift) - 1);
+			const std::uint64_t half = std::uint64_t{1} << (shift - 1);
+			discarded = dropped == 0 ? Discarded::None
+				: dropped < half     ? Discarded::BelowHalf
+				: dropped == half    ? Discarded::Half
+				                     : Discarded::AboveHalf;
+		}  // else: shift >= 64 - the value is below 2^-150 * 2^-11, below half a quantum
+	}
+	const std::uint64_t rounded = kept + (RoundsMagnitudeUp(mode, negative, (kept & 1u) != 0, discarded) ? 1u : 0u);
+	// Normal: field (exponent + 127) holds the leading unit 2^23 of `rounded`,
+	// so the pattern is ((exponent + 126) << 23) + rounded. Denormal: the
+	// pattern is the unit count itself (exponent clamped to -126 gives 0 << 23).
+	const std::int64_t field = exponent < kFloatMinExponent ? 0 : exponent + kFloatBias - 1;
+	const std::int64_t pattern = (field << 23) + static_cast<std::int64_t>(rounded);
+	if (pattern >= 0x7F800000) {
 		return OverflowResult(negative, mode);
 	}
-	const float single = static_cast<float>(result);  // exact: the value is a float
-	return negative ? -single : single;
+	const auto magnitude = static_cast<std::uint32_t>(pattern);
+	return std::bit_cast<float>(negative ? (magnitude | 0x80000000u) : magnitude);
 }
 
 // What the two stores through [ESP+4] hold.

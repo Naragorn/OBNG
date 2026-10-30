@@ -23,6 +23,8 @@
 #include "engine/render/NiBound_WhichSideLogic.h"
 
 #include <bit>
+#include <cmath>
+#include <initializer_list>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>

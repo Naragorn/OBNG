@@ -300,6 +300,14 @@ void RoundingModes() {
 	Check(Bits(ws::StoreSingle(P2(-149) * 2.5, kNearest)) == 2u, "2.5 units: to even 2");
 	Check(Bits(ws::StoreSingle(P2(-149) * 2.5, kUp)) == 3u && Bits(ws::StoreSingle(P2(-149) * 2.5, kZero)) == 2u, "2.5 units: up 3, zero 2");
 	Check(Bits(ws::StoreSingle(P2(-300), kUp)) == 1u && Bits(ws::StoreSingle(P2(-300), kNearest)) == 0u, "2^-300 (the register's range): up 2^-149, nearest 0");
+	{
+		const double tiny = std::numeric_limits<double>::denorm_min();  // a double subnormal: the excluded-input path of StoreSingle
+		Check(Bits(ws::StoreSingle(tiny, kUp)) == 1u && Bits(ws::StoreSingle(tiny, kNearest)) == 0u && Bits(ws::StoreSingle(tiny, kZero)) == 0u &&
+				Bits(ws::StoreSingle(-tiny, kDown)) == 0x80000001u && Bits(ws::StoreSingle(-tiny, kUp)) == 0x80000000u,
+			"a double subnormal: up gives 2^-149, nearest and zero +0; negative: down -2^-149, up -0");
+		Check(Bits(ws::StoreSingle(P2(-1000), kUp)) == 1u && Bits(ws::StoreSingle(P2(-1000), kDown)) == 0u,
+			"2^-1000 (more than 64 bits dropped): up 2^-149, down +0");
+	}
 	const double denormalTie = std::ldexp(1.0 + P2(-22), -128);  // (1+2^-22) * 2^-128 = 2^21 + 0.5 units
 	Check(Bits(ws::StoreSingle(denormalTie, kNearest)) == 0x00200000u && Bits(ws::StoreSingle(denormalTie, kUp)) == 0x00200001u &&
 			Bits(ws::StoreSingle(denormalTie, kDown)) == 0x00200000u && Bits(ws::StoreSingle(denormalTie, kZero)) == 0x00200000u,
