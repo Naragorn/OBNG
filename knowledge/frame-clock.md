@@ -240,6 +240,19 @@ details per function in `re/functions/<address>.md`, states in
   `tools/difftest/cases/0x009DC2D0.json`): two calls, 0x004040E0 on the
   collection 0x00B07BF0 with the setting 0x00B06704, then _atexit with
   0x00A18690, nothing else written outside the stack.
+- **The x87 control word is not one value per process** (measured
+  2026-10-30): the loading menu's tick runs at `_control87` 0x000A001F,
+  i.e. precision 24-bit and rounding to nearest (FCW 0x0A7F), but the
+  shadow light's range walk (0x007D59E0, from the per-light shadow draw
+  0x007D6900) runs at **FCW 0x0C7F: precision 24-bit, rounding control =
+  truncate** (FXSAVE at the walk's entry, artifacts/shadow/obng-range-walk-
+  routed/20261030-131826). Consequence for every rebuild: the rounding
+  mode of the call site is an input, and a float rebuild verified at
+  nearest is not verified at truncate (the overflow at a single store
+  gives +inf at nearest and FLT_MAX at truncate - that alone flips the
+  range test of a garbage-sized bound). Who sets truncate for the shadow
+  pass is unread (candidates: D3D9's device state, the engine's renderer,
+  a plugin).
 - **The TimeInfo class verified in the game** (measured 2026-10-27,
   tools/shadow-run.sh, artifacts/shadow/obng-shadow/20261027-082656):
   Update 108,574 calls, Init 4, Freeze 31, Unfreeze 32 - 0 mismatches
