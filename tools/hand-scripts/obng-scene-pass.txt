@@ -1,0 +1,44 @@
+# The scene pass counted in the game: OBNG.dll's call counters on the five
+# hot functions (shader slot 13 SetupTransformations 0x007C9230,
+# NiCullingProcess::Cull 0x0070DFB0, ShadowSceneLight::IsInRange 0x007D2EA0,
+# CopyVertexStreamElements 0x0076E610, NiBound::WhichSide 0x0047DA70), per
+# return site every summary, plus the memory probe - with the prison empty
+# and then with eighteen Walkers standing round the player (the shape of
+# OblivionWalkers' perf-walkers-in-view.txt). OBVR's precise clock is off so
+# OBNG's Update shadow gets its entry, and OBVR's fast stream copy is off so
+# the engine's own copy is the one counted. tools/shadow-run.sh writes the
+# OBNG-test.ini (every shadow and probe on) and reads OBNG.log afterwards:
+#   tools/shadow-run.sh tools/hand-scripts/obng-scene-pass.txt
+
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Render PreciseFrameClock=0
+ini Render FastStreamCopy=0
+ini Render Stereo=dual
+console-at placed tgm
+console-at placed coc ImperialDungeon01
+console-at prison tcl
+console-at prison player.setrestrained 1
+console-at prison SetNumericINISetting "fVanityModeAutoDelay:Camera" 100000
+console-at people player.placeatme {form:OblivionWalkers.esp:801} 18
+console-at people-placed tai
+
+expect HandScript: finished
+reject Frame clock: precise
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 22
+mark placed
+wait 16
+mark prison
+wait 30
+mark empty-watched
+mark people
+wait 8
+mark people-placed
+wait 45
+mark people-watched
+wait 2
+mark done

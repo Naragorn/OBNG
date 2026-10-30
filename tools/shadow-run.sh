@@ -34,6 +34,8 @@ LoadingMenuCtor=1
 [Probe]
 FpuControlWord=1
 HavokPlanner=1
+CallCounters=1
+Memory=1
 [Log]
 MismatchLines=20
 SummaryEverySeconds=10

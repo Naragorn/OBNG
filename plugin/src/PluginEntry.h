@@ -47,7 +47,16 @@ struct Host {
 	// The shadow detours; each returns how many were made.
 	uint32_t (*installShadowTimeInfo)(const ShadowSettings& settings);
 	uint32_t (*installShadowLoadingMenu)(const ShadowSettings& settings);
+	// The counting probes (Probes.cpp); returns how many detours were made.
+	uint32_t (*installProbes)(const ShadowSettings& settings);
 };
+
+// How many counting detours the settings ask for (five hot functions of the
+// scene pass, all or none).
+constexpr uint32_t kProbeDetours = 5;
+inline uint32_t ProbesAskedFor(const ShadowSettings& s) {
+	return s.callCounters ? kProbeDetours : 0u;
+}
 
 bool Query(const ExtenderInterfaceHead& xse, PluginInfo* info, const Host& host);
 // Puts the shadows the settings ask for. Always true: refusing to load would

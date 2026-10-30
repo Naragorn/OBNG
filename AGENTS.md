@@ -42,6 +42,13 @@ main source of measured engine facts; it stays a separate project.
   **verified** only when the in-game differential check (original and rebuild
   run side by side, outputs compared) has run clean. The ledger keeps the two
   apart.
+- Every rebuild is written 64-bit clean from the first line (decided
+  2026-10-30, so that each block becomes a part of a later 64-bit host without
+  a rewrite): no assumption that a pointer is four bytes, engine addresses and
+  engine object references only as explicit 32-bit handles (`std::uint32_t`)
+  behind ports, sizes and offsets as `static_assert`ed constants, no raw
+  engine pointers in the logic headers. The 32-bit engine-facing shape lives
+  in the `<Name>.h` headers and the plugin, nowhere else.
 
 ## Where things live
 

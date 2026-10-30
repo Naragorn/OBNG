@@ -1,0 +1,50 @@
+{
+  "slice": "scene-pass",
+  "subsystem": "render",
+  "sharedHeaders": [],
+  "purpose": "Map only: the scene pass as a boundary. From the world render 0x0040C830 down to the draw: where the culling walk (NiCullingProcess::Cull 0x0070DFB0) produces the visible set, where the shader's per-draw setup (vtable slot 13, ShadowLightShader::SetupTransformations 0x007C9230) is called per geometry, where the stream packer 0x00763130 / copier 0x0076F590 / CopyVertexStreamElements 0x0076E610 run per geometry, and where the draw is issued (0x00767520). The slice's output is the contract of that boundary: inputs (scene graph, camera, lights, pass id), outputs (draw calls, constant uploads, packed streams) and the order per geometry - the basis for replacing the pass as one unit (batched culling, parallel packing, single-pass stereo) verified at its output.",
+  "functions": [
+    {
+      "address": "0x0040C830",
+      "name": "RenderScene (seed: OBVR kRenderScene, GameAddresses.h:815; knowledge/actor-shadows.md)",
+      "mapOnly": true,
+      "known": "690 instructions, 3 callers (0x00411B70, 0x0040D4D0 RenderFrame at 0x0040D658 'otherwise render the world live' per OBVR, 0x0040D160), callees include 0x007AAA30, 0x007C1EE0, 0x00707370, 0x0049E880, 0x0070C0B0, 0x00544AD0, 0x007B4280 (the shadow scene object getter), 0x00405710, 0x007D71C0, 0x00496CB0, 0x007C23C0, 0x00404D60, 0x004073D0 RenderActorShadows (called once; re/functions/0x004073D0.md); string '@Render Passes'. OBVR's reading: sets bit 0 of a flag at the start (GameAddresses.h:875). The culling process's planes come from 0x0070E040 (re/functions/0x0070DFB0.md C13); the visible set is the array at process+0x08 (filled by 0x0070E1A0 when non-null, OBVR measured it null in the render path - derived there).",
+      "questions": ["The pass structure in order: which calls set up the camera/frustum, run the culling walk (where is 0x007073D0 / NiCullingProcess::Cull dispatched from - 0x00707370?), draw the visible set, and run the actor shadows - with the gates between them.", "What is the input of the pass (scene root [0x00B333CC], camera, pass id 0x00B42E90, render mode 0x00B42EAC) and what is its output (which calls issue draws, where constants and streams are uploaded)?", "Which callees carry the render walk (0x0077A1F0 is on the stack in 49 % of samples; through which callee of this function is it reached)?"]
+    },
+    {
+      "address": "0x0077A1F0",
+      "name": "the render walk's hot frame (seed: OBVR sampler, on the stack in 49 % of samples; performance-spec)",
+      "mapOnly": true,
+      "known": "118 instructions, one callee 0x006FF9C0 (a lock per OBVR's table: 'ntdll, kernel32 locks (0x006FF9C0)'), string '__NDL_SCMData'; caller 0x0080FC20. Being on the stack in half the samples means it is a frame of the walk that stays active while the geometries are processed - a loop over the visible set or a per-shader dispatch (unverified).",
+      "questions": ["What does it loop over (the visible array? a shader's geometry list?) and what does it call per element - through which vtable slots (the callees list is empty besides the lock, so the per-element calls are virtual)?", "Is this where shader vtable slot 13 (0x007C9230, +0x34) is called per geometry, or where 0x007693E0 is dispatched?", "What is '__NDL_SCMData' used for here?"]
+    },
+    {
+      "address": "0x007693E0",
+      "name": "the shape dispatcher (seed: OBVR sampler, 36 % inclusive with 18 bodies; performance-spec line 1280)",
+      "mapOnly": true,
+      "known": "96 instructions, no direct callers in Ghidra (reached through a vtable or table - unverified), callees 0x007672F0, 0x00767520 (the draws), 0x00768890, 0x00778DB0. OBVR: 'the shape dispatcher 36 % inclusive and 0x00767520 28 % (the draws themselves, 1186 a pass against 261)'.",
+      "questions": ["The dispatch: on what (geometry type, partition count, skinning) does it pick 0x007672F0 / 0x00767520 / 0x00768890 / 0x00778DB0, and what does each receive?", "Who calls it (find its vtable slot and the class), and is the shader's slot 13 called before it or inside its callees?"]
+    },
+    {
+      "address": "0x00767520",
+      "name": "the draw of a skinned partition (seed: OBVR sampler 28 % inclusive; string 'DrawSkinnedPrimitive> Cannot render partition with %d bones without a shader!')",
+      "mapOnly": true,
+      "known": "271 instructions, caller 0x007693E0, direct callees 0x0060D0A0 and 0x00560920 only - the D3D device calls and the shader calls are virtual. The string names it DrawSkinnedPrimitive (read: meta.json strings; a proposal for the name). The bone palette 0x007655F0 is built from 0x007C9230 (slot 13) with (skin, world, 0, 3, 1) and from 0x00779710 with mode 4 - whether this function calls slot 13 or the shader's other slots per partition is the question.",
+      "questions": ["The per-partition sequence: which shader vtable slots are called (slot 13 +0x34 = SetupTransformations? others for the palette upload?), which device calls (SetVertexShaderConstantF, SetStreamSource, DrawIndexedPrimitive - through which object), and in what order.", "What the two direct callees do, and what is read from the partition record (bone count, index/vertex buffers)."]
+    },
+    {
+      "address": "0x00763130",
+      "name": "the stream packer (seed: OBVR performance-spec section 2, knowledge/skinned-vertex-streams.md)",
+      "mapOnly": true,
+      "known": "228 instructions, caller 0x00769030, callees 0x00777F40, 0x007781F0, 0x00777F10, 0x00777F70, 0x007774C0. OBVR (read there): thiscall(renderer, record, geometry, a3, desc, custom, force), returns al = 1; calls the copier 0x0076F590 (not in this callee list - through 0x0076FE20? the second packer entry per OBVR is 0x0076FE20, called from 0x00771790 and 0x00773330); every dynamic buffer is written through a staging copy (lock wrapper 0x00776C90 hands out [this+0x40], the unlock 0x00776D80 copies into the mapped D3D pointer [this+0x48] with rep movsd). Measured: 135 dynamic-buffer unlocks a pass with 18 bodies, 35 % of a pass in the packing.",
+      "questions": ["The contract: arguments, what it reads from the geometry/record, which buffers it locks and fills through which callees, and what it returns.", "Where the copier 0x0076F590 / the routine table (filled at 0x00771356) enter the packing from here - through which callee.", "What is per geometry and what could be kept across passes (OBVR's StreamReuse found no gain: say why from the structure)."]
+    },
+    {
+      "address": "0x0076F590",
+      "name": "the copier (seed: OBVR StreamCopyLogic.h, knowledge/skinned-vertex-streams.md)",
+      "mapOnly": true,
+      "known": "209 instructions, caller 0x0076FE20, callees 0x007282F0, 0x00726320; the routine-table calls are indirect. OBVR (read there) and re/functions/0x0076E610.md (pseudocode, unverified): builds the 0x28-byte descriptor on its stack at 0x0076F87C (type code +0x00, sourceWords +0x04, count +0x08, indices +0x0C, source +0x10, elementBytes +0x14, sourceStride +0x18, countedBytes +0x1C from a per-type table at 0x00B42708, destStride +0x20, dest +0x24), picks the routine from the table 0x00771300 fills, and calls it only when the source local is non-zero (which would make 0x0076E610's zero-fill path unreachable from here - the open question of the stream-copy mapping).",
+      "questions": ["Instruction-level confirmation of the descriptor build and of the gate on a null source (does the zero-fill path of 0x0076E610 ever run from here?), and whether countedBytes can differ from elementBytes (the table at 0x00B42708 - its entries are in data.json if referenced).", "What sourceWords is (always elementBytes/4?) and which routine-table column it selects.", "Per-stream cost shape: how many routine calls per geometry and what decides them."]
+    }
+  ]
+}

@@ -22,6 +22,11 @@ target_include_directories(ShadowLogicTest PRIVATE ../src ../../src ../../tests)
 target_compile_options(ShadowLogicTest PRIVATE -Wall -Wextra -Werror)
 add_test(NAME ShadowLogicTest COMMAND ShadowLogicTest)
 
+add_executable(ProbeLogicTest ProbeLogicTest.cpp)
+target_include_directories(ProbeLogicTest PRIVATE ../src ../../tests)
+target_compile_options(ProbeLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME ProbeLogicTest COMMAND ProbeLogicTest)
+
 add_executable(PluginEntryTest PluginEntryTest.cpp ../src/PluginEntry.cpp)
 target_include_directories(PluginEntryTest PRIVATE ../src ../../tests)
 target_compile_options(PluginEntryTest PRIVATE -Wall -Wextra -Werror)

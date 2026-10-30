@@ -15,6 +15,8 @@ struct ShadowSettings {
 	bool loadingMenuCtor = true;
 	bool fpuControlWord = true;  // log the x87 control word at the first Update
 	bool havokPlanner = true;    // sample the planner's outputs every frame, histogram in the summary
+	bool callCounters = false;   // count the scene pass's hot functions per return site (Probes.cpp); off in play
+	bool memoryProbe = true;     // commit, working set and address space in the summary
 	UInt32 mismatchLines = 20;   // mismatches written in full per function
 	UInt32 summaryEverySeconds = 10;
 

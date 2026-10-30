@@ -1,0 +1,6 @@
+0x0040C830 # RenderScene (OBVR kRenderScene): the world render; calls the actor shadows 0x004073D0 once; 690 instructions, 3 callers
+0x0077A1F0 # on the render thread's stack in 49 % of OBVR's samples (the render walk); 118 instructions, caller 0x0080FC20
+0x007693E0 # the shape dispatcher (36 % inclusive with 18 bodies, OBVR); 96 instructions, no direct callers (vtable?)
+0x00767520 # the draws themselves (28 % inclusive; "DrawSkinnedPrimitive> Cannot render partition with %d bones without a shader!"); 271 instructions, caller 0x007693E0
+0x00763130 # the stream packer thiscall(renderer, record, geometry, a3, desc, custom, force) (OBVR); 228 instructions, caller 0x00769030
+0x0076F590 # the copier: builds the 0x28-byte descriptor and picks the routine out of the table (CopyVertexStreamElements 0x0076E610); 209 instructions, caller 0x0076FE20

@@ -36,10 +36,17 @@ bool Load(const ExtenderInterfaceHead& xse, const Host& host) {
 	const ShadowSettings& s = g_settings.shadow;
 	if (s.Asked() == 0) {
 		host.log("Shadow: every switch is 0, nothing shadowed");
+	} else {
+		const uint32_t made = host.installShadowTimeInfo(s) + host.installShadowLoadingMenu(s);
+		host.log("Shadow: %u of %u detours made", made, s.Asked());
+	}
+	const uint32_t probesAsked = ProbesAskedFor(s);
+	if (probesAsked == 0 && !s.memoryProbe) {
+		host.log("Probes: off");
 		return true;
 	}
-	const uint32_t made = host.installShadowTimeInfo(s) + host.installShadowLoadingMenu(s);
-	host.log("Shadow: %u of %u detours made", made, s.Asked());
+	const uint32_t probesMade = host.installProbes(s);
+	host.log("Probes: %u of %u call counters made, memory %s", probesMade, probesAsked, s.memoryProbe ? "on" : "off");
 	return true;
 }
 
