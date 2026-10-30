@@ -16,9 +16,16 @@ namespace obng::plugin::range_walk_game {
 // a push onto a full stack gives the indefinite NaN, which would make the
 // range compare false. Resetting the stack for the call and restoring it
 // after makes the result independent of the caller's x87 stack, and the
-// control word taken from the saved image keeps its numbers: the same
-// precision control and rounding the game runs (measured: 24-bit, nearest,
-// knowledge/frame-clock.md). Per square root rather than per walk: the walk
+// control word taken from the saved image keeps its numbers: the game's own
+// word at that moment (measured at the walk's entry: 0x0C7F, 24-bit,
+// truncate; knowledge/frame-clock.md). 0x00982C30 saves that word (FSTCW
+// 0x00982C4E), runs its FSQRT under (word & 0x300) | 0x7F - precision kept,
+// round to nearest, exceptions masked (0x00991B15..0x00991B27) - and loads
+// the saved word back before it returns (FLDCW 0x00991BA6 or 0x00991BD0);
+// read with objdump in the reference Oblivion.exe, md5 cdd2f0c5...: the same
+// root the original gets, and the FSTP dword below rounds under the game's
+// word as the original's store at 0x007D2FB0 does. Per square root rather
+// than per walk: the walk
 // calls game code that uses the x87 itself (0x0049FFC0's FLDZ/FCOMP; the
 // route's AddGeometry), which keeps running in the caller's environment, as
 // under the original.
@@ -43,6 +50,19 @@ __declspec(naked) void __cdecl GameSquareRootGuarded(float /*s*/, float* /*out*/
 		fstp dword ptr [eax]
 		mov eax, [esp + 12]
 		fxrstor [eax]
+		ret
+	}
+}
+
+// cdecl, no argument: the word in AX, zero-extended into EAX. FNSTCW is the
+// no-wait form: it neither waits for nor raises a pending x87 exception, and
+// changes no x87 state.
+__declspec(naked) std::uint16_t __cdecl CaptureControlWord() {
+	__asm {
+		push eax
+		fnstcw word ptr [esp]
+		pop eax
+		movzx eax, ax
 		ret
 	}
 }

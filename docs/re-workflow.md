@@ -182,8 +182,31 @@ layers exist (both since 2026-10-27):
    a case that feeds an SNaN through FLD/FSTP is decided by the hardware,
    not by the emulator. For a leaf function without callees the original's
    bytes can also run directly on the host x87 (mmap, fldcw) against the
-   rebuild over millions of random inputs - done once by a reviewer for
-   0x0047DA70; not yet a tool of the repository.
+   rebuild over millions of random inputs - done for 0x0047DA70 by a
+   reviewer at nearest and again on 2026-10-30 under all four rounding
+   controls; not yet a tool of the repository.
+
+   **Every float rebuild's cases run under the control words its call
+   sites were measured with** (since 2026-10-30). The x87 control word is
+   not one value per process: the loading menu ticks at 0x007F (24-bit,
+   nearest) while the shadow light's range walk runs at 0x0C7F (24-bit,
+   truncate), and an overflow at a single store is +inf under one and
+   FLT_MAX under the other (knowledge/frame-clock.md). So the rounding mode
+   is an input of the rebuild (`which_side::X87Rounding`, no default), its
+   call sites' control words are measured (FNSTCW/FXSAVE at the entry in
+   the shadow), and its emulator cases carry `"fpcw"` with each of them -
+   for a function whose callers are not all measured, with all four
+   rounding controls (0x007F, 0x047F, 0x087F, 0x0C7F at precision 24),
+   with inputs that make the modes differ (ties, sticky bits below the
+   double's precision, overflow and denormal stores, negative sums, exact
+   cancellation). A stub that models a callee's arithmetic must model it
+   under the case's control word too, or be the game's own code: a case
+   can take address ranges of the reference executable with `"image"`
+   (and a stub can be `{"image": size}`), given by `--image` or
+   `OBNG_ORACLE_EXE` - the CRT's square root 0x00982C30, for one, sets
+   round to nearest for its FSQRT whatever the caller's mode, which a plain
+   FSQRT stub does not. The rounding helpers themselves are checked against
+   the host's x87 under the four modes (tests/X87RoundingHostTest.cpp).
 2. **Shadow mode in the game** (`plugin/`, `OBNG.dll`, an xOBSE plugin):
    an entry detour per function runs the original on the game's state and
    the rebuild on a copy, compares bit for bit, and lets the game continue

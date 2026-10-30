@@ -26,8 +26,10 @@ namespace rw = obng::plugin::range_walk;
 namespace walk = obng::engine::render::shadow_light_range_walk;
 namespace ws = obng::engine::render::which_side;
 
+// FSQRT at 24 bits, round to nearest: the game's 0x00982C30 under every
+// caller rounding control (it loads round to nearest for its FSQRT; read).
 inline double StubSquareRoot(float s) {
-	return ws::RoundToPc24(std::sqrt(static_cast<double>(s)));
+	return ws::RoundToPc24(std::sqrt(static_cast<double>(s)), ws::X87Rounding::Nearest);
 }
 
 // ---- Fake game memory ---------------------------------------------------------------
@@ -52,6 +54,10 @@ struct FakeMemory {
 	// >= 0: the gate dword reads as it stands this many more times through
 	// U32, then turns 0 (another thread switching it off mid-walk).
 	int gateOnReads = -1;
+	// The x87 control word the fake game's code runs under: the original walk
+	// (FakeIsInRange) rounds under its rounding control, and it is what the
+	// detour's FNSTCW reads at the entry.
+	std::uint16_t controlWord = 0x007F;
 
 	void Put32(std::uint32_t address, std::uint32_t value) {
 		for (int i = 0; i < 4; ++i) {
@@ -207,6 +213,27 @@ struct SceneShape {
 	std::uint32_t light, root, g1, g2, g3, far, culled;
 };
 
+// The in-game mismatch of run 20261030-131826 (OBNG.log): a distance-path
+// light at (-491.4, 1076.6, 519.7), range 256, over a scene root whose bound
+// is garbage (centre about -2.4e37, radius 3.2e19), with one geometry near
+// the light under it. Its sum of squares overflows: +inf at nearest (the
+// root out of range), FLT_MAX under truncate (in, the geometry added).
+struct GarbageScene {
+	std::uint32_t light, root, geometry;
+};
+
+inline GarbageScene BuildGarbageScene(Builder& b) {
+	const auto f = [](std::uint32_t bits) { return std::bit_cast<float>(bits); };
+	const std::uint32_t source = b.Source(kPointLightRtti, f(0xC3F5B6A8u), f(0x4486928Fu), f(0x4401EB54u), 256.0f);
+	GarbageScene g{};
+	g.light = b.Light(source, 0, 0x3F);
+	b.m.Put32(kGate, 3);
+	g.root = b.Object(Kind::Node, f(0xFD935C0Fu), f(0xFD935C13u), f(0xFEBFCBA9u), f(0x5FDFFFF8u));
+	g.geometry = b.Object(Kind::Geometry, -491.0f, 1076.0f, 519.0f, 1.0f);
+	b.Children(g.root, {g.geometry});
+	return g;
+}
+
 inline SceneShape BuildScene(Builder& b, bool planes) {
 	const std::uint32_t source = b.Source(kPointLightRtti, 0, 0, 0, 100.0f);
 	const std::uint32_t light = b.Light(source, planes ? 1u : 0u, 0x3F);
@@ -240,9 +267,9 @@ inline SceneShape BuildScene(Builder& b, bool planes) {
 }
 
 // IsInRange 0x007D2EA0 as the logic computes it, on the live mask in memory,
-// narrowing it there as the original does.
+// narrowing it there as the original does, under the game's control word.
 inline bool FakeIsInRange(FakeMemory& m, std::uint32_t light, std::uint32_t object) {
-	const walk::LightValues v = rw::CaptureLight(m, light);
+	const walk::LightValues v = rw::CaptureLight(m, light, ws::RoundingFromControlWord(m.controlWord));
 	const walk::SourceMode mode = walk::SelectSourceMode(v.hasSource, v.sourceRtti, v.planeSource);
 	std::uint64_t count = 0;
 	const walk::RangeDecision d = walk::TestObject(

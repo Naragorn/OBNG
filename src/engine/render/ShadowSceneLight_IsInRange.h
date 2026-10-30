@@ -100,21 +100,26 @@ using IsInRangeFn = bool(__thiscall*)(ShadowSceneLightView* self, const NiAVObje
 // argument, so it has no C++ function type; the rebuild calls a port
 // double(float) in its place (see Distance in the logic header).
 
-// The plane port as the original calls it: WhichSide(bound copy, plane).
+// The plane port as the original calls it: WhichSide(bound copy, plane),
+// under the rounding control IsInRange itself runs with (it calls WhichSide
+// without touching the control word: no FLDCW in its 107 instructions, read).
 struct WhichSidePort {
+	which_side::X87Rounding mode;
 	std::int32_t operator()(const NiBound& bound, const NiPlane& plane) const {
-		return which_side::engine::WhichSide(bound, plane);
+		return which_side::engine::WhichSide(bound, plane, mode);
 	}
 };
 
 // ---- The rebuild --------------------------------------------------------------
 
-// testPlane(bound, plane) -> int32 stands for CALL 0x0047DA70 (WhichSidePort
-// for the WhichSide rebuild); squareRoot(float) -> double for CALL 0x00982C30.
-// object may be anything on the B1 and B2 paths: it is read only after them.
+// mode is the x87 rounding control the caller runs IsInRange with (its
+// control word's bits 10-11); testPlane(bound, plane) -> int32 stands for
+// CALL 0x0047DA70 (WhichSidePort{mode} for the WhichSide rebuild);
+// squareRoot(float) -> double for CALL 0x00982C30. object may be anything on
+// the B1 and B2 paths: it is read only after them.
 template <class TestPlane, class SquareRoot>
 bool IsInRange(ShadowSceneLightView& self, const NiAVObjectView* object, const NiLightView* source,
-	TestPlane&& testPlane, SquareRoot&& squareRoot) {
+	which_side::X87Rounding mode, TestPlane&& testPlane, SquareRoot&& squareRoot) {
 	if (source == nullptr) {  // B1: TEST ESI,ESI / JNZ 0x007D2EA9..0x007D2EAD
 		return false;
 	}
@@ -132,7 +137,7 @@ bool IsInRange(ShadowSceneLightView& self, const NiAVObjectView* object, const N
 	}
 	const BoundValues values{{bound.center.x, bound.center.y, bound.center.z}, bound.radius};
 	const PointValues light{source->worldTranslate.x, source->worldTranslate.y, source->worldTranslate.z};
-	return RangeExceeds(source->range, Distance(light, values, squareRoot).gap);  // B8
+	return RangeExceeds(source->range, Distance(light, values, mode, squareRoot).gap);  // B8
 }
 
 } // namespace obng::engine::render::shadow_scene_light_is_in_range::engine

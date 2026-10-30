@@ -16,7 +16,9 @@
 // 20261030-120624/OBNG.log). Every other call goes to the original unchanged.
 //
 // Per outermost call on a thread with the gate on, an object and a source:
-//   1. the light is read once (CaptureLight);
+//   1. the light is read once (CaptureLight), with the rounding control of
+//      the x87 control word at the entry, under which the original would
+//      have walked (measured 0x0C7F, truncate, in the shadow pass);
 //   2. BatchedWalk runs over the game's scene through PerformingScene: the
 //      same reads and engine calls as the shadow's MemoryScene, but
 //      AddGeometry 0x007D5790 is PERFORMED, in order, with +0x1B0 written
@@ -85,15 +87,17 @@ struct PerformingScene : MemoryScene<Memory> {
 };
 
 struct RouteReport {
-	EntryAction action;     // Compare: routed; a Skip*: left to the original (PassThrough is never reported)
-	walk::SourceMode mode;  // routed only
-	std::uint32_t adds;     // AddGeometry calls performed (routed only)
-	bool result;            // AL returned (routed only)
+	EntryAction action;         // Compare: routed; a Skip*: left to the original (PassThrough is never reported)
+	walk::SourceMode mode;      // routed only
+	std::uint32_t adds;         // AddGeometry calls performed (routed only)
+	bool result;                // AL returned (routed only)
+	std::uint16_t controlWord;  // the x87 control word at the walk's entry (FNSTCW)
 };
 
 // What the route did since the last summary.
 struct RouteStats {
 	std::uint64_t routed[4] = {0, 0, 0, 0};  // routed walks by walk::SourceMode
+	std::uint64_t byRounding[4] = {0, 0, 0, 0};  // routed walks by the rounding control at entry (which_side::X87Rounding)
 	std::uint64_t adds = 0;                  // AddGeometry calls performed by routed walks
 	std::uint64_t leftGateOff = 0;
 	std::uint64_t leftNullObject = 0;
@@ -103,6 +107,7 @@ struct RouteStats {
 		switch (report.action) {
 		case EntryAction::Compare:
 			++routed[static_cast<unsigned>(report.mode)];
+			++byRounding[static_cast<unsigned>(which_side::RoundingFromControlWord(report.controlWord))];
 			adds += report.adds;
 			return;
 		case EntryAction::SkipGateOff:
@@ -129,16 +134,21 @@ inline void FormatRouteStats(const RouteStats& s, char* out, std::size_t capacit
 	}
 	std::snprintf(out, capacity,
 		"Route: range walk %llu walks routed, %llu AddGeometry calls; by source planes %llu, distance %llu, "
-		"directional %llu; %llu left to the original (gate off %llu, null object %llu, no source %llu)",
+		"directional %llu; %llu left to the original (gate off %llu, null object %llu, no source %llu); by rounding "
+		"control at entry nearest %llu, down %llu, up %llu, truncate %llu",
 		static_cast<unsigned long long>(s.Routed()), static_cast<unsigned long long>(s.adds),
 		static_cast<unsigned long long>(s.routed[static_cast<unsigned>(walk::SourceMode::Planes)]),
 		static_cast<unsigned long long>(s.routed[static_cast<unsigned>(walk::SourceMode::Distance)]),
 		static_cast<unsigned long long>(s.routed[static_cast<unsigned>(walk::SourceMode::Directional)]),
 		static_cast<unsigned long long>(s.Left()), static_cast<unsigned long long>(s.leftGateOff),
-		static_cast<unsigned long long>(s.leftNullObject), static_cast<unsigned long long>(s.leftNoSource));
+		static_cast<unsigned long long>(s.leftNullObject), static_cast<unsigned long long>(s.leftNoSource),
+		static_cast<unsigned long long>(s.byRounding[0]), static_cast<unsigned long long>(s.byRounding[1]),
+		static_cast<unsigned long long>(s.byRounding[2]), static_cast<unsigned long long>(s.byRounding[3]));
 }
 
 // One call of the patched entry 0x007D59E0 under the route.
+//   controlWord                       the x87 control word at the entry (the detour's FNSTCW): BatchedWalk
+//                                     rounds under its rounding control, as the original would
 //   callOriginal(light, object)       the original through the trampoline; its EAX is returned whole
 //   performAddGeometry(light, geom)   0x007D5790
 //   squareRoot                        the 0x00982C30 port
@@ -149,9 +159,9 @@ inline void FormatRouteStats(const RouteStats& s, char* out, std::size_t capacit
 // walk entered again from inside AddGeometry on this thread - goes to the
 // original without reading anything (the depth, as in the shadow).
 template <class Memory, class CallOriginal, class PerformAddGeometry, class SquareRoot, class Report>
-std::uint32_t RouteWalk(Memory& memory, ThreadWalkState& state, walk::BatchedWalkScratch& scratch, std::uint32_t light,
-	ObjectHandle object, CallOriginal&& callOriginal, PerformAddGeometry&& performAddGeometry, SquareRoot&& squareRoot,
-	Report&& report) {
+std::uint32_t RouteWalk(Memory& memory, ThreadWalkState& state, walk::BatchedWalkScratch& scratch, std::uint16_t controlWord,
+	std::uint32_t light, ObjectHandle object, CallOriginal&& callOriginal, PerformAddGeometry&& performAddGeometry,
+	SquareRoot&& squareRoot, Report&& report) {
 	const DepthScope scope(state);
 	if (scope.Before() != 0) {
 		return callOriginal(light, object);
@@ -161,11 +171,11 @@ std::uint32_t RouteWalk(Memory& memory, ThreadWalkState& state, walk::BatchedWal
 	const EntryAction action = DecideEntry(scope.Before(), gate, object, source);
 	if (action != EntryAction::Compare) {
 		const std::uint32_t eax = callOriginal(light, object);
-		report(RouteReport{action, walk::SourceMode::NoSource, 0, false});
+		report(RouteReport{action, walk::SourceMode::NoSource, 0, false, controlWord});
 		return eax;
 	}
 
-	const walk::LightValues values = CaptureLight(memory, light);
+	const walk::LightValues values = CaptureLight(memory, light, which_side::RoundingFromControlWord(controlWord));
 	using Perform = std::remove_reference_t<PerformAddGeometry>;
 	PerformingScene<Memory, Perform> scene{{memory, nullptr}, light, &performAddGeometry};
 	walk::NoWalkObserver observer;
@@ -174,7 +184,7 @@ std::uint32_t RouteWalk(Memory& memory, ThreadWalkState& state, walk::BatchedWal
 		memory.W32(light + walk_engine::kActivePlanesOffset, values.activePlanes);
 	}
 	const walk::SourceMode mode = walk::SelectSourceMode(values.hasSource, values.sourceRtti, values.planeSource);
-	report(RouteReport{action, mode, scene.adds, walked});
+	report(RouteReport{action, mode, scene.adds, walked, controlWord});
 	return RouteEax(walked);
 }
 

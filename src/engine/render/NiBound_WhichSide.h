@@ -55,11 +55,14 @@ inline constexpr std::uint32_t kWhichSideAddress = 0x0047DA70;
 // from the instruction stack effects).
 using WhichSideFn = std::int32_t(__thiscall*)(const NiBound* self, const NiPlane* plane);
 
-// The rebuild over the engine's layouts: the value the original leaves in EAX.
-inline std::int32_t WhichSide(const NiBound& self, const NiPlane& plane) {
+// The rebuild over the engine's layouts: the value the original leaves in EAX
+// when called with the x87 rounding control `mode` (the caller's control
+// word; the function does not change it, read: no FLDCW in its 32
+// instructions).
+inline std::int32_t WhichSide(const NiBound& self, const NiPlane& plane, X87Rounding mode) {
 	const SphereValues sphere{self.center.x, self.center.y, self.center.z, self.radius};
 	const PlaneValues values{plane.normal.x, plane.normal.y, plane.normal.z, plane.constant};
-	return static_cast<std::int32_t>(which_side::WhichSide(sphere, values));
+	return static_cast<std::int32_t>(which_side::WhichSide(sphere, values, mode));
 }
 
 } // namespace obng::engine::render::which_side::engine

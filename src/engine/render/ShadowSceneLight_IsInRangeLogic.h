@@ -23,22 +23,38 @@
 // the instructions are followed here (AGENTS.md).
 //
 // Floating point (distance path only; the plane path does no x87 work of its
-// own). The game's x87 runs at precision control 24 bits, round to nearest
-// (measured, knowledge/frame-clock.md; the emulator cases run at fpcw
-// 0x007F). FSUB, FMUL and FADDP round the significand to 24 bits in the
-// register and keep the register's exponent range; FSTP float rounds to the
-// float format. The rebuild models each of those roundings where the
-// instructions make it, with the helpers of NiBound_WhichSideLogic.h
-// (RoundToPc24 and friends: double arithmetic rounded to 24 bits; why double
-// is wide enough is derived there). Where it matters (measured, emulator):
+// own). The game's x87 runs at precision control 24 bits (measured,
+// knowledge/frame-clock.md) under a rounding control that depends on the
+// call site: the shadow walk 0x007D59E0 calls this function with FCW 0x0C7F,
+// truncate (measured, artifacts/shadow/obng-range-walk-routed/
+// 20261030-131826). The mode is therefore an input (which_side::X87Rounding,
+// no default). FSUB, FMUL and FADDP round the significand to 24 bits in the
+// register under the mode and keep the register's exponent range; FSTP float
+// rounds to the float format under the mode. The rebuild models each of
+// those roundings where the instructions make it, with the helpers of
+// NiBound_WhichSideLogic.h (exact products and TwoSum sums rounded to 24
+// bits, StoreSingle). Where it matters (measured, emulator):
 //   - the sum of squares keeps its products at 24 bits, so a sum that would
 //     be exact at 64 bits rounds (case D7);
 //   - a sum in the float subnormal range is rounded twice, once to 24 bits
 //     and once by the store, which can differ from one float rounding by one
 //     unit (case D10: 0xF0 where one rounding gives 0xEF);
-//   - q - r is rounded before the compare (case D11: equality by rounding).
+//   - q - r is rounded before the compare (case D11: equality by rounding);
+//   - a sum of squares beyond FLT_MAX stores as +inf at nearest and as
+//     FLT_MAX under truncate, which flips the range test of a garbage-sized
+//     bound (tools/difftest/cases/0x007D2EA0-rounding.json).
 // The order of the sum is (dy*dy + dx*dx) + dz*dz (read, 0x007D2F93..
 // 0x007D2FA1, C10); a different grouping differs (cases D8, D9).
+// The square root 0x00982C30 does not run under the caller's rounding
+// control: it saves the control word, loads (caller & 0x300) | 0x7F -
+// precision kept, rounding to nearest, every exception masked - runs FSQRT
+// and restores the saved word (read 2026-10-30 with objdump in the
+// reference Oblivion.exe, md5 cdd2f0c5...: FSTCW 0x00982C4E, CALL 0x00991B15
+// unless the word is 0x027F, AND EDX,0x300 / OR EDX,0x7F / FLDCW
+// 0x00991B19..0x00991B27, FSQRT 0x00982C6C, FLDCW [ESP] 0x00991BA6 or
+// 0x00991BD0). So the root is FSQRT at 24 bits, round to nearest, whatever
+// the caller's mode; it stays a port here (the game's own function in the
+// plugin), and only the store after it rounds under the caller's mode.
 // NaN payloads are not modelled (SSE's default NaN differs from the x87's
 // indefinite); they reach only the comparison, which is false for any NaN
 // (derived from C11).
@@ -155,37 +171,39 @@ struct DistanceTerms {
 	float gap;           // FSTP [ESP+0x28] 0x007D2FC1, d = q - radius
 };
 
-// FLD light / FSUB centre / FSTP float: one 24-bit rounding, then the store.
-inline float DifferencePc24(float light, float centre) {
-	return which_side::StoreSingle(which_side::SubPc24(light, centre));
+// FLD light / FSUB centre / FSTP float: one 24-bit rounding, then the store,
+// both under the caller's mode.
+inline float DifferencePc24(float light, float centre, which_side::X87Rounding mode) {
+	return which_side::StoreSingle(which_side::SubPc24(light, centre, mode), mode);
 }
 
 // 0x007D2F87..0x007D2FA3 (read, C10): FLD dy, dx, dz; FLD ST1 / FMULP ST2
 // (dx*dx); FLD ST2 / FMULP ST3 (dy*dy); FXCH / FADDP ST2,ST0 (dy*dy + dx*dx);
 // FMUL ST0 (dz*dz); FADDP (+ dz*dz); FSTP float. Every product and sum is
 // rounded to 24 bits in the register, only the final sum by the store.
-inline float SumOfSquaresPc24(float dx, float dy, float dz) {
-	const double xx = which_side::MulPc24(dx, dx);
-	const double yy = which_side::MulPc24(dy, dy);
-	const double yyPlusXx = which_side::AddPc24(yy, xx);
-	const double zz = which_side::MulPc24(dz, dz);
-	return which_side::StoreSingle(which_side::AddPc24(yyPlusXx, zz));
+inline float SumOfSquaresPc24(float dx, float dy, float dz, which_side::X87Rounding mode) {
+	const double xx = which_side::MulPc24(dx, dx, mode);
+	const double yy = which_side::MulPc24(dy, dy, mode);
+	const double yyPlusXx = which_side::AddPc24(yy, xx, mode);
+	const double zz = which_side::MulPc24(dz, dz, mode);
+	return which_side::StoreSingle(which_side::AddPc24(yyPlusXx, zz, mode), mode);
 }
 
-// The path up to the compare. squareRoot is 0x00982C30: it takes the float s
-// in ST0 (FLD [ESP+0x28] at 0x007D2FA7, exact) and leaves its result in ST0;
-// what it computes is the CRT's (unverified, C12/C14), so it is a port that
-// returns the register value; the store at 0x007D2FB0 rounds it to float.
+// The path up to the compare, under the caller's rounding mode. squareRoot
+// is 0x00982C30: it takes the float s in ST0 (FLD [ESP+0x28] at 0x007D2FA7,
+// exact) and leaves its result in ST0, computed at round to nearest whatever
+// the mode (see above); so it is a port that returns the register value, and
+// the store at 0x007D2FB0 rounds it to float under the mode.
 template <class SquareRoot>
-DistanceTerms Distance(PointValues light, BoundValues bound, SquareRoot&& squareRoot) {
+DistanceTerms Distance(PointValues light, BoundValues bound, which_side::X87Rounding mode, SquareRoot&& squareRoot) {
 	DistanceTerms terms{};
-	terms.dx = DifferencePc24(light.x, bound.centre.x);
-	terms.dy = DifferencePc24(light.y, bound.centre.y);
-	terms.dz = DifferencePc24(light.z, bound.centre.z);
-	terms.sumOfSquares = SumOfSquaresPc24(terms.dx, terms.dy, terms.dz);
-	terms.distance = which_side::StoreSingle(squareRoot(terms.sumOfSquares));
+	terms.dx = DifferencePc24(light.x, bound.centre.x, mode);
+	terms.dy = DifferencePc24(light.y, bound.centre.y, mode);
+	terms.dz = DifferencePc24(light.z, bound.centre.z, mode);
+	terms.sumOfSquares = SumOfSquaresPc24(terms.dx, terms.dy, terms.dz, mode);
+	terms.distance = which_side::StoreSingle(squareRoot(terms.sumOfSquares), mode);
 	// FLD q / FSUB radius / FSTP float at 0x007D2FB4..0x007D2FC1.
-	terms.gap = which_side::StoreSingle(which_side::SubPc24(terms.distance, bound.radius));
+	terms.gap = which_side::StoreSingle(which_side::SubPc24(terms.distance, bound.radius, mode), mode);
 	return terms;
 }
 

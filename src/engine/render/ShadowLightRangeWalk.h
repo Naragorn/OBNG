@@ -130,7 +130,9 @@ concept RangeWalkReferenceLight = requires(L& light, ObjectHandle object, std::u
 // filled once per walk by the port: hasSource = this+0x100 != null; sourceRtti
 // = source->vt[+0x04]() (only when hasSource); planeSource = the dword +0x14C;
 // planes = +0x150; activePlanes = +0x1B0; sourcePosition = source+0x88;
-// sourceRange = source+0xF8 (offsets read in 0x007D2EA0.md). The square-root
-// port is 0x00982C30's (ShadowSceneLight_IsInRangeLogic.h Distance).
+// sourceRange = source+0xF8 (offsets read in 0x007D2EA0.md); rounding = bits
+// 10-11 of the x87 control word at the walk's entry (FNSTCW; measured 0x0C7F,
+// truncate). The square-root port is 0x00982C30's
+// (ShadowSceneLight_IsInRangeLogic.h Distance).
 
 } // namespace obng::engine::render::shadow_light_range_walk::engine

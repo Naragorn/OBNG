@@ -62,9 +62,11 @@ struct RoutedGame {
 
 	std::uint32_t Mask(std::uint32_t light) const { return m.Raw32(light + 0x1B0); }
 
+	// The entry, with the control word the detour's FNSTCW reads: the one the
+	// fake game runs under.
 	std::uint32_t Entry(std::uint32_t light, std::uint32_t object) {
 		return rw::RouteWalk(
-			m, state, scratch, light, object, [this](std::uint32_t l, std::uint32_t o) { return Original(l, o); },
+			m, state, scratch, m.controlWord, light, object, [this](std::uint32_t l, std::uint32_t o) { return Original(l, o); },
 			[this](std::uint32_t l, std::uint32_t g) { AddGeometry(l, g); }, StubSquareRoot,
 			[this](const rw::RouteReport& r) { reports.push_back(r); });
 	}
@@ -280,7 +282,7 @@ void TestLeftToOriginal() {
 		const SceneShape s = BuildScene(game.b, true);
 		std::uint64_t originalRuns = 0;
 		const std::uint32_t eax = rw::RouteWalk(
-			game.m, game.state, game.scratch, s.light, 0,
+			game.m, game.state, game.scratch, game.m.controlWord, s.light, 0,
 			[&](std::uint32_t, std::uint32_t) {
 				++originalRuns;
 				return 7u;
@@ -297,7 +299,7 @@ void TestLeftToOriginal() {
 		const std::uint64_t readsBefore = game.m.reads;
 		std::uint64_t originalRuns = 0;
 		const std::uint32_t eax = rw::RouteWalk(
-			game.m, game.state, game.scratch, s.light, s.root,
+			game.m, game.state, game.scratch, game.m.controlWord, s.light, s.root,
 			[&](std::uint32_t, std::uint32_t) {
 				++originalRuns;
 				return 0x55u;
@@ -370,6 +372,7 @@ void TestStats() {
 	stats.Add(r);
 	r.mode = walk::SourceMode::Distance;
 	r.adds = 9;
+	r.controlWord = 0x0C7F;
 	stats.Add(r);
 	rw::RouteReport left{};
 	left.action = rw::EntryAction::SkipGateOff;
@@ -388,13 +391,36 @@ void TestStats() {
 	rw::FormatRouteStats(stats, line, sizeof(line));
 	Check(std::string(line) ==
 			"Route: range walk 2 walks routed, 14 AddGeometry calls; by source planes 1, distance 1, directional 0; "
-			"4 left to the original (gate off 1, null object 1, no source 2)",
-		"the line: walks routed, calls performed, the source paths, the calls left by reason");
+			"4 left to the original (gate off 1, null object 1, no source 2); by rounding control at entry nearest 1, "
+			"down 0, up 0, truncate 1",
+		"the line: walks routed, calls performed, the source paths, the calls left by reason, the rounding controls");
 	stats.Reset();
 	Check(stats.Routed() == 0 && stats.adds == 0 && stats.Left() == 0, "reset clears it");
 	char tiny[6];
 	rw::FormatRouteStats(stats, tiny, sizeof(tiny));
 	Check(std::strlen(tiny) < sizeof(tiny), "a small buffer is never overrun");
+}
+
+void TestControlWord() {
+	Section("The routed walk rounds under the entry's control word, as the original (the garbage root of run 20261030-131826)");
+	for (const std::uint16_t controlWord : {std::uint16_t{0x007F}, std::uint16_t{0x047F}, std::uint16_t{0x087F}, std::uint16_t{0x0C7F}}) {
+		PlainGame plain;
+		plain.m.controlWord = controlWord;
+		const GarbageScene p = BuildGarbageScene(plain.b);
+		plain.Walk(p.light, p.root);
+		RoutedGame routed;
+		routed.m.controlWord = controlWord;
+		const GarbageScene r = BuildGarbageScene(routed.b);
+		const std::uint32_t eax = routed.Entry(r.light, r.root);
+		const bool truncateOrDown = controlWord == 0x0C7F || controlWord == 0x047F;  // s stores as FLT_MAX: the root in
+		char line[200];
+		std::snprintf(line, sizeof(line), "fpcw %04X: the original performed %zu, the route %zu - the same calls and masks, %s",
+			static_cast<unsigned>(controlWord), plain.performed.size(), routed.performed.size(),
+			truncateOrDown ? "the root in" : "the root out");
+		Check(routed.performed == plain.performed && plain.performed.size() == (truncateOrDown ? 1u : 0u) && eax == 1 &&
+				routed.reports.size() == 1 && routed.reports[0].controlWord == controlWord,
+			line);
+	}
 }
 
 }  // namespace
@@ -409,5 +435,6 @@ int main() {
 	TestReentrant();
 	TestGateOffMidWalk();
 	TestStats();
+	TestControlWord();
 	return Failures();
 }

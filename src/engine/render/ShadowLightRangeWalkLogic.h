@@ -62,8 +62,10 @@
 // ---- What it keeps --------------------------------------------------------------
 //
 // K1. The arithmetic: each lane is WhichSide's own SignedDistance and Classify
-//     (NiBound_WhichSideLogic.h, verified on hardware) and IsInRange's own
-//     ClassifySide; the distance path is IsInRange's Distance and RangeExceeds.
+//     (NiBound_WhichSideLogic.h, verified in the emulator under the four
+//     rounding modes) and IsInRange's own ClassifySide; the distance path is
+//     IsInRange's Distance and RangeExceeds - all under LightValues::rounding,
+//     the mode the original walk runs its range tests with.
 //     The batching is structural, not numerical: the same function per lane,
 //     the same roundings in the same order (derived; the differential test
 //     compares every event).
@@ -176,7 +178,20 @@ constexpr SourceMode SelectSourceMode(bool hasSource, std::uint32_t sourceRtti, 
 }
 
 // Everything IsInRange reads from the light, taken once at the walk's entry
-// (R5). Offsets per ShadowSceneLight_IsInRange.h (read there).
+// (R5), and the x87 rounding control the walk runs under. Offsets per
+// ShadowSceneLight_IsInRange.h (read there).
+//
+// rounding: bits 10-11 of the control word at the walk's entry. The original
+// walk and IsInRange never load a control word (no FLDCW in either, read:
+// re/export/range-callers/0x007D59E0/asm.s, re/export/draw-setup/
+// 0x007D2EA0/asm.s), so every range test of one walk runs under the entry's
+// mode - as long as the engine code it calls leaves the control word as it
+// found it: 0x007C59E0, 0x0049FFC0 and AddGeometry 0x007D5790 hold no
+// FLDCW/FNINIT/FXRSTOR/FLDENV (read, their asm.s under
+// re/export/range-callers/), the square root restores the word it saved
+// (read, ShadowSceneLight_IsInRangeLogic.h); the virtual slots and
+// AddGeometry's callees are not read (unverified). Measured at the walk's
+// entry: 0x0C7F, truncate.
 struct LightValues {
 	bool hasSource;                                              // this+0x100 != null (B1)
 	std::uint32_t sourceRtti;                                    // source GetRTTI (B2); used only when hasSource
@@ -185,6 +200,7 @@ struct LightValues {
 	std::uint32_t activePlanes;                                  // this+0x1B0 at the walk's entry
 	in_range::PointValues sourcePosition;                        // source+0x88
 	float sourceRange;                                           // source+0xF8
+	which_side::X87Rounding rounding;                            // the control word at the walk's entry
 };
 
 // ---- The batched plane test ---------------------------------------------------------------
@@ -201,12 +217,12 @@ struct PlaneBatch {
 };
 
 inline PlaneBatch ClassifyPlanes(const std::array<which_side::PlaneValues, in_range::kPlaneCount>& planes,
-	std::uint32_t mask, which_side::SphereValues sphere) {
+	std::uint32_t mask, which_side::SphereValues sphere, which_side::X87Rounding mode) {
 	PlaneBatch batch{};
 	batch.lanes = mask & kPlaneLanes;
 	for (unsigned plane = 0; plane < in_range::kPlaneCount; ++plane) {
 		if (in_range::IsPlaneActive(batch.lanes, plane)) {
-			batch.distance[plane] = which_side::SignedDistance(planes[plane], sphere).distanceStored;
+			batch.distance[plane] = which_side::SignedDistance(planes[plane], sphere, mode).distanceStored;
 		}
 	}
 	for (unsigned plane = 0; plane < in_range::kPlaneCount; ++plane) {
@@ -257,14 +273,14 @@ RangeDecision TestObject(const LightValues& light, SourceMode mode, std::uint32_
 	case SourceMode::Directional:
 		return RangeDecision{true, mask};
 	case SourceMode::Planes: {
-		const PlaneBatch batch = ClassifyPlanes(light.planes, mask, readBound());
+		const PlaneBatch batch = ClassifyPlanes(light.planes, mask, readBound(), light.rounding);
 		planeClassifications += PlaneClassifications(batch);
 		return ApplyPlaneBatch(batch, mask);
 	}
 	case SourceMode::Distance: {
 		const which_side::SphereValues b = readBound();
 		const in_range::BoundValues bound{{b.centerX, b.centerY, b.centerZ}, b.radius};
-		const float gap = in_range::Distance(light.sourcePosition, bound, squareRoot).gap;
+		const float gap = in_range::Distance(light.sourcePosition, bound, light.rounding, squareRoot).gap;
 		return RangeDecision{in_range::RangeExceeds(light.sourceRange, gap), mask};
 	}
 	}

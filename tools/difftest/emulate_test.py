@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Self-test of emulate.py's stub features on a hand-assembled function:
 a scalar stub with ret N, a stub with one value per call, a raw-code stub
-that writes memory, the call trace, and the stack-write exclusion.
+that writes memory, the call trace, and the stack-write exclusion; and of
+the "image" ranges: bytes taken from a PE file's section by address, run as
+code, the refusals (no image, a range outside the sections, a wrong md5).
 
     emulate_test.py        (exit 0 when every check holds)
 """
@@ -12,7 +14,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from emulate import Emulation  # noqa: E402
+from emulate import Emulation, Image  # noqa: E402
 
 ENTRY = 0x00410000
 STUB_A, STUB_B, STUB_C = 0x7D000000, 0x7D000100, 0x7D000200
@@ -73,10 +75,75 @@ def main():
     non_stack = [w['address'] for w in r['writes']]
     check(non_stack == ['%08x' % RESULTS, '%08x' % (RESULTS + 4), '%08x' % (RESULTS + 8)],
           'only the three non-stack writes are recorded (the pushes are not): %s' % non_stack)
+    checks = 8 + image_checks(check)
     for f in failures:
         print('FAIL ' + f)
-    print('%d checks, %d failed' % (8, len(failures)))
+    print('%d checks, %d failed' % (checks, len(failures)))
     return 1 if failures else 0
+
+
+IMAGE_BASE = 0x00400000
+TEXT_RVA = 0x1000
+CALLEE = IMAGE_BASE + TEXT_RVA + 0x10  # inside the fake image's .text
+
+
+def fake_pe(text):
+    """A minimal PE32: DOS stub pointer, PE signature, file header, a 96-byte
+    optional header with the image base, one .text section at RVA 0x1000."""
+    pe = 0x40
+    optional_size = 96
+    table = pe + 24 + optional_size
+    raw_offset = 0x200
+    data = bytearray(raw_offset + len(text))
+    data[0:2] = b'MZ'
+    struct.pack_into('<I', data, 0x3C, pe)
+    data[pe:pe + 4] = b'PE\0\0'
+    struct.pack_into('<HH12xHH', data, pe + 4, 0x014C, 1, optional_size, 0x0102)
+    struct.pack_into('<H', data, pe + 24, 0x010B)
+    struct.pack_into('<I', data, pe + 24 + 28, IMAGE_BASE)
+    struct.pack_into('<8sIIII', data, table, b'.text', len(text), TEXT_RVA, len(text), raw_offset)
+    data[raw_offset:] = text
+    return bytes(data)
+
+
+def image_checks(check):
+    callee = b'\xb8\x2a\x00\x00\x00\xc3'  # mov eax, 42; ret
+    text = b'\xcc' * 0x10 + callee
+    code = call_absolute(CALLEE) + b'\xa3' + struct.pack('<I', RESULTS) + b'\xc3'  # [RESULTS] = callee()
+    with tempfile.TemporaryDirectory() as tmp:
+        export = Path(tmp) / 'export'
+        export.mkdir()
+        (export / 'bytes.bin').write_bytes(code)
+        (export / 'meta.json').write_text(json.dumps({'entry': '%08x' % ENTRY, 'bytes_bin': {'from': '%08x' % ENTRY, 'length': len(code)}}))
+        (export / 'data.json').write_text(json.dumps({'data': [], 'jump_tables': []}))
+        exe = Path(tmp) / 'fake.exe'
+        exe.write_bytes(fake_pe(text))
+        image = Image(exe, expected_md5=None)
+        case = {'name': 'image', 'memory': {'0x%08X' % RESULTS: '00 00 00 00'},
+                'image': [{'address': '0x%08X' % CALLEE, 'size': len(callee)}],
+                'readback': [{'address': '0x%08X' % RESULTS, 'size': 4}]}
+        r = Emulation(export, image).run(case)
+        check(r['errors'] == [] and r['readback']['%08x' % RESULTS] == '2a 00 00 00',
+              'the image range ran as code: %s %s' % (r['errors'], r['readback']))
+        check(image.read(CALLEE, 2) == callee[:2], 'Image.read by virtual address')
+        stubbed = dict(case, image=[], stubs={'0x%08X' % CALLEE: {'image': len(callee)}})
+        r = Emulation(export, image).run(stubbed)
+        check(r['errors'] == [] and r['readback']['%08x' % RESULTS] == '2a 00 00 00' and
+              [c['stub'] for c in r['calls']] == ['%08x' % CALLEE],
+              'an image stub runs the image bytes and is traced: %s %s %s' % (r['errors'], r['readback'], r['calls']))
+        refused = []
+        for what, run in (
+                ('no image', lambda: Emulation(export).run(case)),
+                ('no image for a stub', lambda: Emulation(export).run(stubbed)),
+                ('outside the sections', lambda: image.read(IMAGE_BASE + TEXT_RVA + len(text) - 2, 4)),
+                ('wrong md5', lambda: Image(exe))):
+            try:
+                run()
+            except ValueError:
+                refused.append(what)
+        check(refused == ['no image', 'no image for a stub', 'outside the sections', 'wrong md5'],
+              'the four refusals raise: %s' % refused)
+    return 4
 
 
 if __name__ == '__main__':

@@ -94,10 +94,10 @@ void Report(const rw::WalkReport& report) {
 			rw::FormatRootDistance(report.root, detail + at, sizeof(detail) - at);
 		}
 	}
-	char inputs[200];
-	std::snprintf(inputs, sizeof(inputs), "light %08X root %08X source %s mask %08X thread %lu order %s", report.light,
-	              report.object, ModeName(report.mode), report.maskBefore, GetCurrentThreadId(),
-	              RangeWalkOrderName(report.order));
+	char inputs[220];
+	std::snprintf(inputs, sizeof(inputs), "light %08X root %08X source %s mask %08X fpcw %04X thread %lu order %s",
+	              report.light, report.object, ModeName(report.mode), report.maskBefore,
+	              static_cast<unsigned>(report.controlWord), GetCurrentThreadId(), RangeWalkOrderName(report.order));
 	RecordCall(Shadowed::RangeWalk, mismatch, detail, inputs);
 	SummaryIfDue(GetTickCount(), nullptr, false);
 }
@@ -112,8 +112,11 @@ UInt32 __fastcall ShadowAddGeometry(UInt32 light, void* /*edx*/, UInt32 geometry
 }
 
 UInt32 __fastcall ShadowWalk(UInt32 light, void* /*edx*/, UInt32 object) {
-	// rebuild-first: the x87 state first, before anything here could touch it
-	// (this function's own code is SSE; the TLS lookup is a kernel32 call).
+	// The control word first, before anything here could touch it (this
+	// function's own code is SSE; the TLS lookup is a kernel32 call): the
+	// original walks under its rounding control, so the rebuild does too.
+	const std::uint16_t controlWord = game::CaptureControlWord();
+	// rebuild-first: the whole x87 state, for the mismatch line.
 	game::FxsaveArea entry;
 	const bool diagnose = g_order == RangeWalkOrder::RebuildFirst;
 	if (diagnose) {
@@ -124,7 +127,7 @@ UInt32 __fastcall ShadowWalk(UInt32 light, void* /*edx*/, UInt32 object) {
 		slot.entryX87 = rw::DecodeFxsave(static_cast<const std::uint8_t*>(entry.Aligned()));
 	}
 	game::GameMemory memory;
-	return rw::ShadowWalk(memory, slot.state, slot.buffers, g_order, light, object,
+	return rw::ShadowWalk(memory, slot.state, slot.buffers, g_order, controlWord, light, object,
 	                      [](std::uint32_t l, std::uint32_t o) { return static_cast<std::uint32_t>(g_walk(l, nullptr, o)); },
 	                      game::GameSquareRootPort{}, &Report);
 }

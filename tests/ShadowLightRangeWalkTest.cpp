@@ -82,9 +82,11 @@ float FromBits(std::uint32_t bits) {
 	return std::bit_cast<float>(bits);
 }
 
-// The emulator's square-root stub (ShadowSceneLight_IsInRangeTest.cpp).
+// The square root as the emulator cases give it (ShadowSceneLight_IsInRangeTest.cpp):
+// FSQRT at 24 bits, round to nearest - the CRT's 0x00982C30 under every
+// caller mode (read).
 double StubSquareRoot(float s) {
-	return ws::RoundToPc24(std::sqrt(static_cast<double>(s)));
+	return ws::RoundToPc24(std::sqrt(static_cast<double>(s)), ws::X87Rounding::Nearest);
 }
 
 // ---- The scene behind the ports ------------------------------------------------------
@@ -261,7 +263,9 @@ struct EngineLight {
 	std::uint64_t planeTests = 0;  // WhichSide port calls
 	int maskWrites = 0;
 
-	EngineLight(const walk::LightValues& light, const TestScene& scene) {
+	ws::X87Rounding rounding;  // the control word IsInRange runs under, as the walk's
+
+	EngineLight(const walk::LightValues& light, const TestScene& scene) : rounding(light.rounding) {
 		hasSource = light.hasSource;
 		g_sourceRtti = light.sourceRtti;
 		view.planeSource = reinterpret_cast<const void*>(static_cast<std::uintptr_t>(light.planeSource));
@@ -292,10 +296,10 @@ struct EngineLight {
 
 	bool isInRange(ObjectHandle object) {
 		return in_range_engine::IsInRange(
-			view, &objects[object], hasSource ? &source : nullptr,
+			view, &objects[object], hasSource ? &source : nullptr, rounding,
 			[this](const in_range_engine::NiBound& bound, const in_range_engine::NiPlane& plane) {
 				++planeTests;
-				return in_range_engine::WhichSidePort{}(bound, plane);
+				return in_range_engine::WhichSidePort{rounding}(bound, plane);
 			},
 			StubSquareRoot);
 	}
@@ -392,6 +396,7 @@ walk::LightValues PlaneLight(std::uint32_t mask) {
 	light.activePlanes = mask;
 	light.sourcePosition = in_range::PointValues{0.0f, 0.0f, 0.0f};
 	light.sourceRange = 100.0f;
+	light.rounding = ws::X87Rounding::Nearest;
 	return light;
 }
 
@@ -447,10 +452,10 @@ void PlaneBatchFlows() {
 
 	Section("ClassifyPlanes: only the active lanes are computed and classified (B4 of 0x007D2EA0)");
 	{
-		const walk::PlaneBatch none = walk::ClassifyPlanes(light.planes, 0, S(0, 0, 0, 10));
+		const walk::PlaneBatch none = walk::ClassifyPlanes(light.planes, 0, S(0, 0, 0, 10), light.rounding);
 		Check(none.lanes == 0 && none.negative == 0 && none.positive == 0, "mask 0: no lane, nothing classified");
 		Check(walk::PlaneClassifications(none) == 0, "0 classifications");
-		const walk::PlaneBatch gaps = walk::ClassifyPlanes(light.planes, 0xFFFFFF2Au, S(500, 0, 0, 10));
+		const walk::PlaneBatch gaps = walk::ClassifyPlanes(light.planes, 0xFFFFFF2Au, S(500, 0, 0, 10), light.rounding);
 		Check(gaps.lanes == 0x2Au && walk::PlaneClassifications(gaps) == 3, "mask 0xFFFFFF2A: lanes 1, 3, 5 only");
 		Check(gaps.negative == 0x02u && gaps.positive == 0x28u, "plane 1 wholly negative, 3 and 5 wholly positive");
 		const walk::RangeDecision d = walk::ApplyPlaneBatch(gaps, 0xFFFFFF2Au);
@@ -460,12 +465,12 @@ void PlaneBatchFlows() {
 	Section("ClassifyPlanes: the per-lane distance is WhichSide's SignedDistance, the class its Classify");
 	{
 		const ws::SphereValues sphere = S(-30, 0, 0, 80);
-		const walk::PlaneBatch batch = walk::ClassifyPlanes(light.planes, 0x3F, sphere);
+		const walk::PlaneBatch batch = walk::ClassifyPlanes(light.planes, 0x3F, sphere, light.rounding);
 		bool same = true;
 		for (unsigned i = 0; i < in_range::kPlaneCount; ++i) {
-			const float expected = ws::SignedDistance(light.planes[i], sphere).distanceStored;
+			const float expected = ws::SignedDistance(light.planes[i], sphere, light.rounding).distanceStored;
 			same = same && Bits(batch.distance[i]) == Bits(expected);
-			const auto side = ws::WhichSide(sphere, light.planes[i]);
+			const auto side = ws::WhichSide(sphere, light.planes[i], light.rounding);
 			const std::uint32_t bit = in_range::PlaneBit(i);
 			same = same && ((batch.negative & bit) != 0) == (side == ws::PlaneSide::Negative);
 			same = same && ((batch.positive & bit) != 0) == (side == ws::PlaneSide::Positive);
@@ -476,15 +481,15 @@ void PlaneBatchFlows() {
 
 	Section("ClassifyPlanes: a negative radius makes both tests hold, Negative wins (C6 of 0x0047DA70)");
 	{
-		const walk::PlaneBatch batch = walk::ClassifyPlanes(light.planes, 0x01, S(-100, 0, 0, -1));
+		const walk::PlaneBatch batch = walk::ClassifyPlanes(light.planes, 0x01, S(-100, 0, 0, -1), light.rounding);
 		Check(batch.negative == 0x01u && batch.positive == 0, "d 0, r -1: negative only");
 	}
 
 	Section("ClassifyPlanes: NaN in the bound straddles every lane (no comparison holds)");
 	{
-		const walk::PlaneBatch batch = walk::ClassifyPlanes(light.planes, 0x3F, S(kNaN, 0, 0, 10));
+		const walk::PlaneBatch batch = walk::ClassifyPlanes(light.planes, 0x3F, S(kNaN, 0, 0, 10), light.rounding);
 		Check(batch.negative == 0 && batch.positive == 0, "centre x NaN: every lane kept (0 * NaN is NaN too)");
-		const walk::PlaneBatch radius = walk::ClassifyPlanes(light.planes, 0x3F, S(0, 0, 0, kNaN));
+		const walk::PlaneBatch radius = walk::ClassifyPlanes(light.planes, 0x3F, S(0, 0, 0, kNaN), light.rounding);
 		Check(radius.negative == 0 && radius.positive == 0, "NaN radius: every lane kept");
 	}
 
@@ -505,6 +510,43 @@ void PlaneBatchFlows() {
 		const walk::RangeDecision near =
 			walk::TestObject(light, walk::SourceMode::Distance, 0x3F, [] { return S(50, 0, 0, 10); }, StubSquareRoot, count);
 		Check(near.inRange && near.mask == 0x3Fu, "distance: gap 40 < range 100, in");
+	}
+
+	Section("The walk's rounding mode reaches every range test (LightValues::rounding; emulator cases R1 of 0x0047DA70, G1 of 0x007D2EA0)");
+	{
+		// R1 of 0x0047DA70-rounding.json: WhichSide 1 under up, 0 otherwise.
+		walk::LightValues tie = PlaneLight(0x01);
+		tie.planes[0] = ws::PlaneValues{FromBits(0x33800000u), 1.0f, FromBits(0x30800000u), 1.0f};
+		const ws::SphereValues sphere{1.0f, 1.0f, FromBits(0x30800000u), FromBits(0x33800000u)};
+		for (const ws::X87Rounding mode : {ws::X87Rounding::Nearest, ws::X87Rounding::Down, ws::X87Rounding::Up, ws::X87Rounding::Zero}) {
+			tie.rounding = mode;
+			const walk::PlaneBatch batch = walk::ClassifyPlanes(tie.planes, 0x01, sphere, tie.rounding);
+			Check(batch.positive == (mode == ws::X87Rounding::Up ? 0x01u : 0u) && batch.negative == 0,
+				mode == ws::X87Rounding::Up ? "plane path, up: plane 0 retired" : "plane path, nearest/down/truncate: plane 0 kept");
+			std::uint64_t count = 0;
+			const walk::RangeDecision d = walk::TestObject(tie, walk::SourceMode::Planes, 0x01, [&] { return sphere; }, StubSquareRoot, count);
+			Check(d.inRange && d.mask == (mode == ws::X87Rounding::Up ? 0u : 0x01u), "TestObject takes the light's mode on the plane path");
+		}
+		// G1 of 0x007D2EA0-rounding.json: the in-game mismatch's root.
+		walk::LightValues garbage = DistanceLight(0x3F);
+		garbage.sourcePosition = in_range::PointValues{FromBits(0xC3F5B6A8u), FromBits(0x4486928Fu), FromBits(0x4401EB54u)};
+		garbage.sourceRange = 256.0f;
+		const ws::SphereValues root{FromBits(0xFD935C0Fu), FromBits(0xFD935C13u), FromBits(0xFEBFCBA9u), FromBits(0x5FDFFFF8u)};
+		std::uint64_t count = 0;
+		garbage.rounding = ws::X87Rounding::Nearest;
+		Check(!walk::TestObject(garbage, walk::SourceMode::Distance, 0x3F, [&] { return root; }, StubSquareRoot, count).inRange,
+			"distance path, nearest: the garbage root is out (s +inf)");
+		garbage.rounding = ws::X87Rounding::Zero;
+		Check(walk::TestObject(garbage, walk::SourceMode::Distance, 0x3F, [&] { return root; }, StubSquareRoot, count).inRange,
+			"distance path, truncate: in (s FLT_MAX) - the original's answer in the game");
+		TestScene scene;
+		const ObjectHandle sceneRoot = scene.Add(Kind::Node, root);
+		const ObjectHandle child = scene.Add(Kind::Geometry, S(-491.0f, 1076.0f, 519.0f, 1.0f));
+		scene.Link(sceneRoot, child);
+		CheckBoth("both walks, truncate: the root in, the child in and added", scene, garbage, sceneRoot,
+			{V(sceneRoot, true, 0x3F, 0x3F), V(child, true, 0x3F, 0x3F), A(child, 0x3F)});
+		garbage.rounding = ws::X87Rounding::Nearest;
+		CheckBoth("both walks, nearest: the root out, nothing added", scene, garbage, sceneRoot, {V(sceneRoot, false, 0x3F, 0x3F)});
 	}
 }
 
@@ -1022,6 +1064,7 @@ struct DifferentialStats {
 	int trees = 0;
 	int mutated = 0;
 	int byMode[4] = {};  // SourceMode
+	int byRounding[4] = {};  // ws::X87Rounding
 	std::uint64_t visitsByMode[4] = {};
 	std::uint64_t objects = 0;
 	std::uint64_t visits = 0;
@@ -1048,7 +1091,7 @@ void CountLanes(const TestScene& scene, const walk::LightValues& light, const st
 			if (!in_range::IsPlaneActive(e.maskIn, i)) {
 				continue;
 			}
-			const float d = ws::SignedDistance(light.planes[i], b).distanceStored;
+			const float d = ws::SignedDistance(light.planes[i], b, light.rounding).distanceStored;
 			if (std::isnan(d) || std::isnan(b.radius)) {
 				++stats.nanLanes;
 			} else if (d == b.radius || d == -b.radius) {
@@ -1087,7 +1130,11 @@ void Differential() {
 				AddMutation(gen, scene);
 				++stats.mutated;
 			}
-			const walk::LightValues light = gen.Light();
+			walk::LightValues light = gen.Light();
+			// The rounding mode by tree index, so every mode gets a quarter of the
+			// trees and the generator's sequence stays the one before modes existed.
+			light.rounding = static_cast<ws::X87Rounding>(t % 4);
+			++stats.byRounding[t % 4];
 			if (gen.Chance(3)) {
 				scene.gateValue = 0;
 			}
@@ -1141,6 +1188,9 @@ void Differential() {
 	Check(stats.trees >= 2000, "at least 2 000 trees");
 	Check(stats.failures == 0, "every tree: the same events, AL, final mask and plane-test count");
 	Check(stats.byMode[0] > 0 && stats.byMode[1] > 0 && stats.byMode[2] > 0 && stats.byMode[3] > 0, "every source mode reached");
+	Check(stats.byRounding[0] == stats.trees / 4 && stats.byRounding[1] == stats.trees / 4 && stats.byRounding[2] == stats.trees / 4 &&
+			stats.byRounding[3] == stats.trees / 4,
+		"every rounding mode on a quarter of the trees (both walks under the same mode)");
 	Check(stats.ties > 0 && stats.nanLanes > 0 && stats.outOfRange > 0 && stats.narrowed > 0 && stats.mutated > 0,
 		"ties, NaN lanes, out-of-range visits, narrowing and mutations all reached");
 }

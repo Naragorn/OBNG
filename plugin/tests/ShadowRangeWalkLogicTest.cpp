@@ -210,7 +210,7 @@ void TestCaptureLight() {
 	for (unsigned i = 0; i < 6; ++i) {
 		b.Plane(light, i, static_cast<float>(i), 10.0f + i, 20.0f + i, 30.0f + i);
 	}
-	const walk::LightValues v = rw::CaptureLight(m, light);
+	const walk::LightValues v = rw::CaptureLight(m, light, ws::X87Rounding::Zero);
 	bool planes = true;
 	for (unsigned i = 0; i < 6; ++i) {
 		planes = planes && v.planes[i].normalX == static_cast<float>(i) && v.planes[i].normalY == 10.0f + i &&
@@ -222,13 +222,14 @@ void TestCaptureLight() {
 	Check(v.sourcePosition.x == 1.0f && v.sourcePosition.y == 2.0f && v.sourcePosition.z == 3.0f && v.sourceRange == 400.0f,
 		"the source's position +0x88 and range +0xF8");
 	Check(m.callLog.size() == 1 && m.callLog[0] == std::make_pair(0x04u, source), "one GetRTTI call, on the source");
+	Check(v.rounding == ws::X87Rounding::Zero, "the rounding control the caller passes (the entry's control word)");
 
 	FakeMemory n;
 	Builder c{n};
 	const std::uint32_t bare = c.Light(0, 0, 0x3F);
-	const walk::LightValues w = rw::CaptureLight(n, bare);
-	Check(!w.hasSource && w.sourceRtti == 0 && w.sourceRange == 0.0f && n.calls == 0,
-		"no source: no virtual call, the source fields stay zero");
+	const walk::LightValues w = rw::CaptureLight(n, bare, ws::X87Rounding::Down);
+	Check(!w.hasSource && w.sourceRtti == 0 && w.sourceRange == 0.0f && n.calls == 0 && w.rounding == ws::X87Rounding::Down,
+		"no source: no virtual call, the source fields stay zero, the rounding control kept");
 }
 
 void TestMemoryScene() {
@@ -291,13 +292,18 @@ struct FakeGame {
 	std::function<void(FakeGame&)> atOriginalStart;
 	std::function<void(FakeGame&)> atOriginalEnd;
 	obng::plugin::RangeWalkOrder order = obng::plugin::RangeWalkOrder::OriginalFirst;
+	// >= 0: the detour is handed this word instead of the one the game runs
+	// under (a broken FNSTCW, to see the comparison catch it).
+	int handedControlWord = -1;
 
 	std::uint32_t Mask(std::uint32_t light) { return m.Raw32(light + 0x1B0); }
 
-	// The entry 0x007D59E0, patched: every call goes to the detour first.
+	// The entry 0x007D59E0, patched: every call goes to the detour first, with
+	// the control word its FNSTCW reads.
 	std::uint32_t Entry(std::uint32_t light, std::uint32_t object) {
 		++entries;
-		return rw::ShadowWalk(m, state, buffers, order, light, object,
+		const auto controlWord = handedControlWord >= 0 ? static_cast<std::uint16_t>(handedControlWord) : m.controlWord;
+		return rw::ShadowWalk(m, state, buffers, order, controlWord, light, object,
 			[this](std::uint32_t l, std::uint32_t o) { return FakeOriginal(l, o); }, StubSquareRoot,
 			[this](const rw::WalkReport& r) { reports.push_back(r); });
 	}
@@ -451,7 +457,7 @@ void TestFlowSkips() {
 		FakeGame game;
 		const SceneShape s = BuildScene(game, true);
 		std::uint64_t originalRuns = 0;
-		const std::uint32_t eax = rw::ShadowWalk(game.m, game.state, game.buffers, obng::plugin::RangeWalkOrder::OriginalFirst, s.light, 0,
+		const std::uint32_t eax = rw::ShadowWalk(game.m, game.state, game.buffers, obng::plugin::RangeWalkOrder::OriginalFirst, game.m.controlWord, s.light, 0,
 			[&](std::uint32_t, std::uint32_t) {
 				++originalRuns;
 				return 7u;
@@ -467,7 +473,7 @@ void TestFlowSkips() {
 		game.state.depth = 1;  // as if the walk were already running on this thread
 		const std::uint64_t readsBefore = game.m.reads;
 		std::uint64_t originalRuns = 0;
-		const std::uint32_t eax = rw::ShadowWalk(game.m, game.state, game.buffers, obng::plugin::RangeWalkOrder::OriginalFirst, s.light, s.root,
+		const std::uint32_t eax = rw::ShadowWalk(game.m, game.state, game.buffers, obng::plugin::RangeWalkOrder::OriginalFirst, game.m.controlWord, s.light, s.root,
 			[&](std::uint32_t, std::uint32_t) {
 				++originalRuns;
 				return 0x55u;
@@ -757,6 +763,7 @@ void TestStats() {
 	r.mode = walk::SourceMode::Distance;
 	r.comparison.originalCount = 9;
 	r.comparison.maskDiffers = true;
+	r.controlWord = 0x0C7F;
 	stats.Add(r);
 	rw::WalkReport skipped{};
 	skipped.action = rw::EntryAction::SkipGateOff;
@@ -768,13 +775,58 @@ void TestStats() {
 	rw::FormatWalkStats(stats, line, sizeof(line));
 	Check(std::string(line) ==
 			"Shadow range walk: 2 walks compared (planes 1, distance 1, directional 0, no source 0), "
-			"14 AddGeometry calls compared, at most 9 in one walk, 1 mismatching walks",
-		"the line names the walks by source path and the adds");
+			"14 AddGeometry calls compared, at most 9 in one walk, 1 mismatching walks; by rounding control at entry "
+			"nearest 1, down 0, up 0, truncate 1",
+		"the line names the walks by source path, the adds and the rounding controls the walks ran under");
+	Check(stats.byRounding[0] == 1 && stats.byRounding[3] == 1, "0x0000 counts as nearest, 0x0C7F as truncate; a skip is not counted");
 	stats.Reset();
 	Check(stats.Walks() == 0 && stats.adds == 0 && stats.maxAdds == 0, "reset clears it");
 	char tiny[6];
 	rw::FormatWalkStats(stats, tiny, sizeof(tiny));
 	Check(std::strlen(tiny) < sizeof(tiny), "a small buffer is never overrun");
+}
+
+void TestControlWord() {
+	Section("The control word at the entry decides the rebuild's rounding (the in-game mismatch of run 20261030-131826)");
+	for (const RangeWalkOrder order : {RangeWalkOrder::OriginalFirst, RangeWalkOrder::RebuildFirst}) {
+		const bool rebuildFirst = order == RangeWalkOrder::RebuildFirst;
+		{
+			FakeGame game;
+			game.order = order;
+			game.m.controlWord = 0x0C7F;
+			const GarbageScene g = BuildGarbageScene(game.b);
+			game.Entry(g.light, g.root);
+			Check(game.reports.size() == 1 && !game.reports[0].comparison.Mismatch() && game.reports[0].comparison.originalCount == 1 &&
+					game.reports[0].controlWord == 0x0C7F,
+				rebuildFirst ? "rebuild-first, truncate: the root in, one geometry on both sides, no mismatch, fpcw 0C7F reported"
+				             : "original-first, truncate: the root in, one geometry on both sides, no mismatch, fpcw 0C7F reported");
+		}
+		{
+			FakeGame game;
+			game.order = order;
+			const GarbageScene g = BuildGarbageScene(game.b);
+			game.Entry(g.light, g.root);
+			Check(game.reports.size() == 1 && !game.reports[0].comparison.Mismatch() && game.reports[0].comparison.originalCount == 0,
+				rebuildFirst ? "rebuild-first, nearest: the root out on both sides, no mismatch"
+				             : "original-first, nearest: the root out on both sides, no mismatch");
+		}
+		{
+			FakeGame game;
+			game.order = order;
+			game.m.controlWord = 0x0C7F;
+			game.handedControlWord = 0x007F;  // the rebuild told nearest while the game walks at truncate
+			const GarbageScene g = BuildGarbageScene(game.b);
+			game.Entry(g.light, g.root);
+			const rw::WalkReport& r = game.reports[0];
+			Check(r.comparison.Mismatch() && r.comparison.originalCount == 1 && r.comparison.rebuildCount == 0,
+				rebuildFirst ? "rebuild-first, the wrong word: the mismatch of the game run (adds 1/0)"
+				             : "original-first, the wrong word: the mismatch of the game run (adds 1/0)");
+			if (rebuildFirst) {
+				Check(r.root.valid && std::bit_cast<std::uint32_t>(r.root.terms.sumOfSquares) == 0x7F800000u && !r.root.inRange,
+					"  the root's terms under the handed word: s +inf, out of range");
+			}
+		}
+	}
 }
 
 }  // namespace
@@ -795,5 +847,6 @@ int main() {
 	TestOrders();
 	TestX87State();
 	TestRootDistance();
+	TestControlWord();
 	return Failures();
 }

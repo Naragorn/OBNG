@@ -7,7 +7,9 @@
 //
 // The shadow, per outermost call of ShadowSceneLight::CollectGeometryInRange
 // 0x007D59E0 (proposed name) on a thread:
-//   1. the light's values are read (CaptureLight) BEFORE the original runs;
+//   1. the light's values are read (CaptureLight) BEFORE the original runs,
+//      with the rounding control of the x87 control word at the entry (the
+//      original walks under it: neither it nor IsInRange loads another);
 //   2. the original runs on the game's state, its AddGeometry 0x007D5790 calls
 //      recorded through the AddGeometry detour (geometry, live +0x1B0);
 //      its own recursive calls come back through the patched entry and pass
@@ -246,10 +248,14 @@ void OnAddGeometry(ThreadWalkState& state, std::uint32_t light, std::uint32_t ge
 //   CallThis(function, self)         function(self), thiscall, no stack argument -> EAX
 
 // The light as BatchedWalk takes it (walk::LightValues), read once before the
-// original runs. Offsets: ShadowLightRangeWalk.h (read there, 0x007D2EA0.md).
+// original runs, with the rounding control the walk runs under (bits 10-11 of
+// the x87 control word at the walk's entry; the detour reads it with FNSTCW,
+// RangeWalkGame.h CaptureControlWord). Offsets: ShadowLightRangeWalk.h (read
+// there, 0x007D2EA0.md).
 template <class Memory>
-walk::LightValues CaptureLight(Memory& memory, std::uint32_t light) {
+walk::LightValues CaptureLight(Memory& memory, std::uint32_t light, which_side::X87Rounding rounding) {
 	walk::LightValues v{};
+	v.rounding = rounding;
 	const std::uint32_t source = memory.U32(light + walk_engine::kSourceLightOffset);
 	v.hasSource = source != 0;
 	v.planeSource = memory.U32(light + walk_engine::kPlaneSourceOffset);
@@ -567,6 +573,7 @@ struct WalkReport {
 	std::uint32_t object;
 	std::uint32_t maskBefore;  // +0x1B0 at entry, filled when action == Compare
 	RangeWalkOrder order = RangeWalkOrder::OriginalFirst;
+	std::uint16_t controlWord = 0;  // the x87 control word at the walk's entry (FNSTCW)
 	TraceDifference trace{};   // rebuild-first after a mismatch: the first input that changed
 	bool lightChanged = false; // rebuild-first after a mismatch: the light's values differ after the original
 	RootDistance root{};       // rebuild-first after a mismatch on the distance path: the root's terms
@@ -575,7 +582,7 @@ struct WalkReport {
 // The light's values bit for bit (a float compare would hide -0.0 and NaN).
 inline bool SameLightValues(const walk::LightValues& a, const walk::LightValues& b) {
 	if (a.hasSource != b.hasSource || a.sourceRtti != b.sourceRtti || a.planeSource != b.planeSource ||
-		a.activePlanes != b.activePlanes) {
+		a.activePlanes != b.activePlanes || a.rounding != b.rounding) {
 		return false;
 	}
 	const auto same = [](float x, float y) { return std::bit_cast<std::uint32_t>(x) == std::bit_cast<std::uint32_t>(y); };
@@ -595,6 +602,7 @@ inline bool SameLightValues(const walk::LightValues& a, const walk::LightValues&
 // little).
 struct WalkStats {
 	std::uint64_t walks[4] = {0, 0, 0, 0};  // compared walks by walk::SourceMode
+	std::uint64_t byRounding[4] = {0, 0, 0, 0};  // compared walks by the rounding control at entry (which_side::X87Rounding)
 	std::uint64_t adds = 0;                 // original AddGeometry calls compared
 	std::uint64_t maxAdds = 0;              // the most in one walk
 	std::uint64_t mismatches = 0;
@@ -604,6 +612,7 @@ struct WalkStats {
 			return;
 		}
 		++walks[static_cast<unsigned>(report.mode)];
+		++byRounding[static_cast<unsigned>(which_side::RoundingFromControlWord(report.controlWord))];
 		const std::uint64_t n = report.comparison.originalCount;
 		adds += n;
 		maxAdds = n > maxAdds ? n : maxAdds;
@@ -619,21 +628,27 @@ inline void FormatWalkStats(const WalkStats& s, char* out, std::size_t capacity)
 	}
 	std::snprintf(out, capacity,
 		"Shadow range walk: %llu walks compared (planes %llu, distance %llu, directional %llu, no source %llu), "
-		"%llu AddGeometry calls compared, at most %llu in one walk, %llu mismatching walks",
+		"%llu AddGeometry calls compared, at most %llu in one walk, %llu mismatching walks; by rounding control at entry "
+		"nearest %llu, down %llu, up %llu, truncate %llu",
 		static_cast<unsigned long long>(s.Walks()),
 		static_cast<unsigned long long>(s.walks[static_cast<unsigned>(walk::SourceMode::Planes)]),
 		static_cast<unsigned long long>(s.walks[static_cast<unsigned>(walk::SourceMode::Distance)]),
 		static_cast<unsigned long long>(s.walks[static_cast<unsigned>(walk::SourceMode::Directional)]),
 		static_cast<unsigned long long>(s.walks[static_cast<unsigned>(walk::SourceMode::NoSource)]),
 		static_cast<unsigned long long>(s.adds), static_cast<unsigned long long>(s.maxAdds),
-		static_cast<unsigned long long>(s.mismatches));
+		static_cast<unsigned long long>(s.mismatches), static_cast<unsigned long long>(s.byRounding[0]),
+		static_cast<unsigned long long>(s.byRounding[1]), static_cast<unsigned long long>(s.byRounding[2]),
+		static_cast<unsigned long long>(s.byRounding[3]));
 }
 
-// One call of the patched entry 0x007D59E0. callOriginal(light, object)
-// runs the original (its EAX is returned unchanged); squareRoot is the
-// 0x00982C30 port; report(WalkReport) is called once per outermost call,
-// never for a pass-through. The game's state is left as the original left it:
-// the rebuild only reads and calls the read-only helpers.
+// One call of the patched entry 0x007D59E0. controlWord is the x87 control
+// word at the entry, before anything here ran (the detour's FNSTCW): the
+// original walks under it, so the rebuild rounds under its rounding control
+// (LightValues::rounding). callOriginal(light, object) runs the original (its
+// EAX is returned unchanged); squareRoot is the 0x00982C30 port;
+// report(WalkReport) is called once per outermost call, never for a
+// pass-through. The game's state is left as the original left it: the rebuild
+// only reads and calls the read-only helpers.
 //
 // In both orders the light's values are read FIRST, before either side runs
 // (CaptureLight); the rebuild never re-reads them.
@@ -645,7 +660,8 @@ inline void FormatWalkStats(const WalkStats& s, char* out, std::size_t capacity)
 //                   whether the light's own values changed.
 template <class Memory, class CallOriginal, class SquareRoot, class Report>
 std::uint32_t ShadowWalk(Memory& memory, ThreadWalkState& state, WalkBuffers& buffers, RangeWalkOrder order,
-	std::uint32_t light, ObjectHandle object, CallOriginal&& callOriginal, SquareRoot&& squareRoot, Report&& report) {
+	std::uint16_t controlWord, std::uint32_t light, ObjectHandle object, CallOriginal&& callOriginal, SquareRoot&& squareRoot,
+	Report&& report) {
 	const DepthScope scope(state);
 	if (scope.Before() != 0) {
 		return callOriginal(light, object);
@@ -655,11 +671,11 @@ std::uint32_t ShadowWalk(Memory& memory, ThreadWalkState& state, WalkBuffers& bu
 	const EntryAction action = DecideEntry(scope.Before(), gate, object, source);
 	if (action != EntryAction::Compare) {
 		const std::uint32_t eax = callOriginal(light, object);
-		report(WalkReport{action, Comparison{}, walk::SourceMode::NoSource, light, object, 0, order});
+		report(WalkReport{action, Comparison{}, walk::SourceMode::NoSource, light, object, 0, order, controlWord});
 		return eax;
 	}
 
-	const walk::LightValues values = CaptureLight(memory, light);
+	const walk::LightValues values = CaptureLight(memory, light, which_side::RoundingFromControlWord(controlWord));
 	const auto runOriginal = [&] {
 		buffers.original.Clear();
 		state.recordingLight = light;
@@ -695,12 +711,13 @@ std::uint32_t ShadowWalk(Memory& memory, ThreadWalkState& state, WalkBuffers& bu
 	buffers.rebuild.maskAfter = values.activePlanes;  // BatchedWalk never writes +0x1B0 (R4)
 
 	const walk::SourceMode mode = walk::SelectSourceMode(values.hasSource, values.sourceRtti, values.planeSource);
-	WalkReport result{action, Compare(buffers.original, buffers.rebuild), mode, light, object, values.activePlanes, order};
+	WalkReport result{action, Compare(buffers.original, buffers.rebuild), mode, light, object, values.activePlanes, order,
+		controlWord};
 	if (order == RangeWalkOrder::RebuildFirst && result.comparison.Mismatch()) {
 		buffers.afterAdds.clear();
 		runRebuild(buffers.afterAdds, &buffers.traceAfter);
 		result.trace = FirstTraceDifference(buffers.traceFresh, buffers.traceAfter);
-		result.lightChanged = !SameLightValues(values, CaptureLight(memory, light));
+		result.lightChanged = !SameLightValues(values, CaptureLight(memory, light, values.rounding));
 		if (mode == walk::SourceMode::Distance) {
 			RootDistance& d = result.root;
 			d.valid = true;
@@ -708,7 +725,8 @@ std::uint32_t ShadowWalk(Memory& memory, ThreadWalkState& state, WalkBuffers& bu
 			d.light = values.sourcePosition;
 			d.range = values.sourceRange;
 			d.terms = in_range_light::Distance(values.sourcePosition,
-				in_range_light::BoundValues{{d.bound.centerX, d.bound.centerY, d.bound.centerZ}, d.bound.radius}, squareRoot);
+				in_range_light::BoundValues{{d.bound.centerX, d.bound.centerY, d.bound.centerZ}, d.bound.radius}, values.rounding,
+				squareRoot);
 			d.inRange = in_range_light::RangeExceeds(d.range, d.terms.gap);
 		}
 	}

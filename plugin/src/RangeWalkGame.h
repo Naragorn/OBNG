@@ -80,16 +80,27 @@ struct GameMemory {
 // game itself (RangeWalkGame.cpp). `area` is 512 bytes, 16-aligned: the
 // caller's x87/SSE state is saved there (FXSAVE), the x87 is reset (FNINIT)
 // and given the caller's control word back (FLDCW from the image's FCW, so
-// the precision control and rounding stay the game's), 0x00982C30 runs on
-// that empty stack, the result is stored to *out, and the caller's state is
-// restored (FXRSTOR). *out is the result stored as a float, the original's
-// own store at 0x007D2FB0. So the call needs no free slot of the caller's x87
-// stack and leaves it, its tags and its sticky flags as it found them.
+// the precision control and rounding control are the game's at that moment -
+// the walk's entry word, as nothing between loads another), 0x00982C30 runs
+// on that empty stack, the result is stored to *out, and the caller's state
+// is restored (FXRSTOR). 0x00982C30 itself runs its FSQRT at the caller's
+// precision but at round to nearest (it loads (FCW & 0x300) | 0x7F and puts
+// the caller's word back, read), so the root does not depend on the walk's
+// rounding control; *out is the result stored as a float under the caller's
+// word, the original's own store at 0x007D2FB0 (exact for a 24-bit root). So
+// the call needs no free slot of the caller's x87 stack and leaves it, its
+// tags and its sticky flags as it found them.
 void __cdecl GameSquareRootGuarded(float s, float* out, void* area);
 
 // Copies the x87/SSE state into `area` (FXSAVE; 512 bytes, 16-aligned)
 // without changing it.
 void __cdecl CaptureX87(void* area);
+
+// The x87 control word as it stands (FNSTCW; changes nothing). The detours
+// call it first thing at the walk's entry: its bits 10-11 are the rounding
+// control the original walk and IsInRange run under, which the rebuild takes
+// as an input (measured 0x0C7F, truncate, at this entry in the shadow pass).
+std::uint16_t __cdecl CaptureControlWord();
 
 // A 512-byte FXSAVE area, 16-aligned inside a plain stack buffer (aligning by
 // hand, so nothing rests on the compiler realigning the frame).

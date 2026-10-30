@@ -51,10 +51,13 @@ void Report(const rw::RouteReport& report) {
 }
 
 UInt32 __fastcall RouteWalk(UInt32 light, void* /*edx*/, UInt32 object) {
+	// The control word first, as the original would walk under it (FNSTCW;
+	// nothing before this line touches the x87).
+	const std::uint16_t controlWord = game::CaptureControlWord();
 	ThreadSlot& slot = g_slots.Get();
 	game::GameMemory memory;
 	return rw::RouteWalk(
-		memory, slot.state, slot.scratch, light, object,
+		memory, slot.state, slot.scratch, controlWord, light, object,
 		[](std::uint32_t l, std::uint32_t o) { return static_cast<std::uint32_t>(g_walk(l, nullptr, o)); },
 		[](std::uint32_t l, std::uint32_t g) { g_addGeometry(l, nullptr, g); }, game::GameSquareRootPort{}, &Report);
 }
