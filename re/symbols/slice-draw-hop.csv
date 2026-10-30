@@ -1,0 +1,11 @@
+address,name,kind,confidence,conflict,source
+0x0070C0B0,NiDrawScene,function,inferred,0,re/ledger.md draw-hop (cdecl(camera scene process array); the scene draw RenderScene calls)
+0x00701970,NiRenderer_SetCameraData,function,inferred,0,re/ledger.md draw-hop (thiscall(renderer; camera) RET 4; calls renderer slot 80 with the camera's view)
+0x0070C000,NiDrawVisibleArray,function,inferred,0,re/ledger.md draw-hop (cdecl(camera array); brackets 0x0070BF30 between accumulator +0x4C/+0x50)
+0x0070BF30,NiDrawVisibleArrayAppend,function,inferred,0,re/functions/0x0070C000.md (array to accumulator +0x54 or geometry slot 33 each)
+0x0070E0A0,NiCullingProcess_Process,function,inferred,0,re/functions/0x0070C0B0.md (slot 2 of three culling-process vtables; RET 0xC; OBVR kCullingProcessProcess)
+0x0077A310,NiD3DShader_PrepareGeometryForRendering,function,inferred,0,re/ledger.md draw-hop (shader vtable slot 15; packs then binds streams and indices; returns the record)
+0x0076FE20,NiDX9ShaderDeclaration_PackStream,function,inferred,0,re/ledger.md draw-hop (slot +0x6C of 0x00A89C74; one lock, PackEntry per entry, one unlock)
+0x00767B40,NiDX9Renderer_PackGeometryBuffer,function,inferred,0,re/functions/0x0077A310.md (the whole-geometry pack beside PackSkinnedGeometryBuffer; name by analogy)
+0x00776C90,NiDX9VBChip_Lock,function,inferred,0,re/functions/0x0076FE20.md (hands out the staging block [this+0x40]; name a proposal)
+0x00776D80,NiDX9VBChip_Unlock,function,inferred,0,re/functions/0x0076FE20.md (memcpy staging to the mapped pointer then D3D Unlock; name a proposal)

@@ -134,9 +134,21 @@ instruction level except where marked):
    `0x0070C0B0(camera, sceneGraph, cullingProcess = [sceneGraph+0xE4], 0)`**,
    a gated first-person pass with a swapped accumulator, the device copy,
    image space 0x007B48E0, port reset, release. It issues no draw itself.
-2. **0x0070C0B0** (not mapped yet): the hop that runs the culling walk
-   (NiCullingProcess::Cull, above) and hands the visible geometries to the
-   renderer - the next slice's first function.
+2. **NiDrawScene 0x0070C0B0** (read 2026-10-30, draw-hop slice):
+   `__cdecl(camera, scene, cullingProcess, visibleArray)`. SetCameraData
+   0x00701970 hands the camera's rotation, translation, frustum and
+   viewport to the renderer's slot 80 (the view/projection builder,
+   unread); then `process->Process(camera, scene, array)` (slot 2,
+   0x0070E0A0) runs the culling walk (NiCullingProcess::Cull per object,
+   above). With an array (never on the world pass: all nine call sites
+   pass 0 and OBVR measured process+0x08 null there) NiDrawVisibleArray
+   0x0070C000 draws it between the accumulator's +0x4C and +0x50; **on the
+   world pass each geometry that reaches 0x0070E1A0 is registered with the
+   accumulator [renderer+0x08] (+0x58) or rendered at once through its own
+   slot 33** (+0x84, the renderer as argument -> Do_RenderShape below). Where
+   the accumulator's finish (+0x50) drains its registered geometries into
+   slot 33 is the one hop still unread (BSShaderAccumulator per OBVR's
+   wording).
 3. Per geometry, through NiDX9Renderer vtable slots 88/89:
    **Do_RenderShape 0x007693E0** - early out on renderer byte +0x6F0 or a
    zero vertex count, the world bound and transform copied to the stack,
@@ -150,6 +162,11 @@ instruction level except where marked):
    null aborts), slot 14 SetupShaderPrograms 0x0077A1F0, the
    [[renderer+0x8AC]+0xFF0] slot-1 call, one DrawIndexedPrimitive per strip
    or array, slot 16**; slot 17 closes, then [renderer+0x8AC] slot +0xFC(0).
+   Slot 15 is **PrepareGeometryForRendering 0x0077A310** (read 2026-10-30):
+   it decides whether to pack, calls PackSkinnedGeometryBuffer (record =
+   [partition+0x28]) or the whole-geometry pack 0x00767B40, then binds the
+   record on the device (SetStreamSource per stream, SetIndices) and
+   returns it - so the pack sits inside the draw, per partition and pass.
 5. **SetupShaderPrograms 0x0077A1F0** is slot 14 of NiD3DShader, inherited by
    30 shader classes - **not the "render walk" OBVR's sampler table named**
    (correction to knowledge/skinned-vertex-streams.md): it resets the
@@ -174,9 +191,18 @@ instruction level except where marked):
    zero-fill path of 0x0076E610 is unreachable from here, so OBVR's
    zero-fill size difference cannot matter on this path. Static geometry
    (consistency 0x4000) with all buffers present returns at once; volatile
-   (0x8000) or forced repacks everything - which of the two the skinned
-   bodies carry per frame is the open question behind OBVR's StreamReuse
-   result.
+   (0x8000) or forced repacks everything. **PackStream 0x0076FE20** (slot
+   +0x6C, read 2026-10-30) packs one stream per call: validates or
+   reallocates the chip (a volatile geometry always reallocates, dirty =
+   0xFFF after it), **locks once** (0x00776C90, the staging block), runs
+   PackEntry per declaration entry the dirty mask lets through by selector
+   group, **unlocks once** (0x00776D80: memcpy staging -> mapped, D3D
+   Unlock). So the 135 unlocks a pass are one per packed stream, and a
+   volatile body repacks every stream every pass by construction - the
+   structural reason OBVR's StreamReuse gained nothing. Which consistency
+   nibble the skinned bodies carry per frame (0x8000, or mutable with dirty
+   bits) is still the one runtime fact to log; it decides whether a
+   replacement may keep packed streams across passes at all.
 
 What the boundary's output is (derived from 4 and 6): per visible skinned
 geometry, per pass, per partition one constant setup, one program bind,
