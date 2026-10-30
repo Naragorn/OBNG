@@ -80,7 +80,7 @@ The engine's share is spread over the pass: palette building, shader constant up
 below), culling (0x0047DA70, below; the sphere against a plane), the stream packer
 (knowledge/skinned-vertex-streams.md).
 
-## The light constants per draw 0x007C9140 (read 2026-10-30; proposed `UpdateLightPositionConstants`)
+## The light constants per draw 0x007C9140 (read 2026-10-30; proposed `UpdateLightPositionConstants`; rebuilt and verified in the emulator, 27 cases)
 
 `__stdcall(const D3DXMATRIX* matrix, float scale, int passId, int skipAdjust)`, `RET 0x10`, no
 `this`, one callee (D3DXVec3TransformCoord, D3DX9_27.DLL), three callers (0x007F6FC0, 0x007C9230,
@@ -102,7 +102,7 @@ object and only the w part (lightW, unchanged while arg4 != 0 or arg3 in range) 
 per-draw constant setup 0x007C9230 (3320 bytes) decides the arguments and is the slice to map next;
 the writers of the two tables and the uploader of 0x00B44FD8 are unknown.
 
-## Sphere against plane 0x0047DA70 (read 2026-10-30; proposed `NiBound::WhichSide`, name unverified)
+## Sphere against plane 0x0047DA70 (read 2026-10-30; proposed `NiBound::WhichSide`, name unverified; rebuilt and verified in the emulator, 24 cases, plus 94 million inputs against the original bytes on a host x87 with 0 mismatches)
 
 `__thiscall(this = sphere {centre +0x00..+0x08, radius +0x0C}; const plane* {normal +0x00..+0x08,
 constant +0x0C})`, `RET 4`, no callees, no globals. Correction: the earlier "plane against sphere"

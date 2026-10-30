@@ -1,0 +1,506 @@
+[
+ {
+  "name": "E1 B1 not taken: d = -3 < -r = -1 -> 2",
+  "regs": {
+   "eax": "00000002",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 40 c0 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "E2 B1 not taken at equality: d = -1 == -r -> 2",
+  "regs": {
+   "eax": "00000002",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 80 bf 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "E3 B1 not taken: r = +0, d = +0 (-0 == +0) -> 2",
+  "regs": {
+   "eax": "00000002",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "E4 B1 taken, B2 taken (r > d): straddle d = 0.5, r = 1 -> 0",
+  "regs": {
+   "eax": "00000000",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 00 3f 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "E5 B1 taken, B2 not taken at equality: d == r = 1 -> 1",
+  "regs": {
+   "eax": "00000001",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 80 3f 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "E6 B1 taken, B2 not taken: d = 3 > r = 1 -> 1",
+  "regs": {
+   "eax": "00000001",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 40 40 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "E7 d NaN (centre x NaN): B1 taken, B2 taken (unordered) -> 0",
+  "regs": {
+   "eax": "00000000",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 c0 7f 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "E8 r NaN: B1 taken, B2 taken (unordered) -> 0",
+  "regs": {
+   "eax": "00000000",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 00 3f 00 00 00 00 00 00 00 00 00 00 c0 7f 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "E9 r = -1, d = 0.5 <= -r: B1 not taken -> 2",
+  "regs": {
+   "eax": "00000002",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 00 3f 00 00 00 00 00 00 00 00 00 00 80 bf 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "E10 r = -1, d = 2 > -r: B1 taken, B2 not taken (d > r) -> 1",
+  "regs": {
+   "eax": "00000001",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 00 40 00 00 00 00 00 00 00 00 00 00 80 bf 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "E11 r = -1, d NaN -> 0",
+  "regs": {
+   "eax": "00000000",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 c0 7f 00 00 00 00 00 00 00 00 00 00 80 bf 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "E12 r = +inf, d = 5 -> 0",
+  "regs": {
+   "eax": "00000000",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 7f 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "E13 d = +inf (centre x +inf), r = 1 -> 1",
+  "regs": {
+   "eax": "00000001",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 80 7f 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "E14 d = -inf (centre x -inf), r = 1 -> 2",
+  "regs": {
+   "eax": "00000002",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 80 ff 00 00 00 00 00 00 00 00 00 00 80 3f 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "E15 the plane constant: centre x 5, constant 4.5, r 0.25 -> d 0.5 -> 1",
+  "regs": {
+   "eax": "00000001",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 a0 40 00 00 00 00 00 00 00 00 00 00 80 3e 00 00 80 3f 00 00 00 00 00 00 00 00 00 00 90 40"
+  },
+  "errors": []
+ },
+ {
+  "name": "E16 summation order (C1/C2): y 1e8, x -1e8, z 1, constant 0.5, r 0.25: ((y + x) + z) = 1 -> d 0.5 -> 1; pseudo.c (z + x) + y = 0 would give 2",
+  "regs": {
+   "eax": "00000001",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 40 1c 46 00 40 1c 46 00 00 80 3f 00 00 80 3e 00 40 1c c6 00 40 1c 46 00 00 80 3f 00 00 00 3f"
+  },
+  "errors": []
+ },
+ {
+  "name": "E17 PC 24 tie: y 1, x 2^-24, z 2^-60, constant 1, r 2^-24: 1 + 2^-24 rounds to 1 at the first FADDP -> d 0 -> 0",
+  "regs": {
+   "eax": "00000000",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 80 3f 00 00 80 3f 00 00 80 30 00 00 80 33 00 00 80 33 00 00 80 3f 00 00 80 30 00 00 80 3f"
+  },
+  "errors": []
+ },
+ {
+  "name": "E18 the same at PC 64 (fpcw 0x037F): 1 + 2^-24 + 2^-60 stays exact, the store rounds up -> d 2^-23 -> 1",
+  "regs": {
+   "eax": "00000001",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 80 3f 00 00 80 3f 00 00 80 30 00 00 80 33 00 00 80 33 00 00 80 3f 00 00 80 30 00 00 80 3f"
+  },
+  "errors": []
+ },
+ {
+  "name": "E19 extended exponent in the register: y 2^200, x -2^200 cancel to 0 before the store, z 1, r 0.5 -> d 1 -> 1 (float arithmetic would give inf - inf = NaN -> 0)",
+  "regs": {
+   "eax": "00000001",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 80 71 00 00 80 71 00 00 80 3f 00 00 00 3f 00 00 80 f1 00 00 80 71 00 00 80 3f 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "E20 overflow at the store 0x0047DA88: y 2^200 -> +inf -> d +inf -> 1",
+  "regs": {
+   "eax": "00000001",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 00 00 00 00 80 71 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 80 71 00 00 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "E21 overflow at the store: y -2^200 -> -inf -> d -inf -> 2",
+  "regs": {
+   "eax": "00000002",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 00 00 00 00 80 71 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 80 f1 00 00 00 00 00 00 00 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "E22 stored +inf minus constant +inf: NaN -> 0",
+  "regs": {
+   "eax": "00000000",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 00 00 00 00 80 71 00 00 00 00 00 00 80 3f 00 00 00 00 00 00 80 71 00 00 00 00 00 00 80 7f"
+  },
+  "errors": []
+ },
+ {
+  "name": "E23 double rounding at the store: x (1+2^-23)^2 * 2^-128 rounds to (1+2^-22)*2^-128 at PC 24, then to the denormal 2^-128 (tie, even) at the store; constant 2^-128, r 2^-149 -> d 0 -> 0 (a single rounding would give 2^-128 + 2^-149 -> d 2^-149 -> 1)",
+  "regs": {
+   "eax": "00000000",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "01 00 80 1f 00 00 00 00 00 00 00 00 01 00 00 00 01 00 80 1f 00 00 00 00 00 00 00 00 00 00 20 00"
+  },
+  "errors": []
+ },
+ {
+  "name": "E24 the subtraction 0x0047DA90 rounds to 24 bits: centre x 1, constant 2^-25 + 2^-48: 1 - 2^-25 - 2^-48 lies just below the tie 1 - 2^-25 and rounds to 1 - 2^-24 = r -> 1",
+  "regs": {
+   "eax": "00000001",
+   "ebx": "00000000",
+   "ecx": "00b00000",
+   "edx": "5a5a5a5a",
+   "esi": "00000000",
+   "edi": "00000000",
+   "ebp": "00000000",
+   "esp": "7f00ff00"
+  },
+  "returned": true,
+  "stack_delta": 4,
+  "writes": [],
+  "calls": [],
+  "readback": {
+   "00b00000": "00 00 80 3f 00 00 00 00 00 00 00 00 ff ff 7f 3f 00 00 80 3f 00 00 00 00 00 00 00 00 01 00 00 33"
+  },
+  "errors": []
+ }
+]

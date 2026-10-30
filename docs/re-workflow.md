@@ -173,7 +173,15 @@ layers exist (both since 2026-10-27):
    port sequence must be the original's trace (since 2026-10-30; vtable
    slots pointed at stubs make virtual calls traceable too). No game
    needed; runs in CI. `tools/difftest/emulate_test.py` checks the stub
-   kinds themselves.
+   kinds themselves. Known limit of the emulator (measured 2026-10-30 on
+   the host against Unicorn): Unicorn honours precision control (the
+   double rounding of subnormal products at PC 24 matches the hardware),
+   but its FLD does not quiet a signalling NaN where the hardware's does;
+   a case that feeds an SNaN through FLD/FSTP is decided by the hardware,
+   not by the emulator. For a leaf function without callees the original's
+   bytes can also run directly on the host x87 (mmap, fldcw) against the
+   rebuild over millions of random inputs - done once by a reviewer for
+   0x0047DA70; not yet a tool of the repository.
 2. **Shadow mode in the game** (`plugin/`, `OBNG.dll`, an xOBSE plugin):
    an entry detour per function runs the original on the game's state and
    the rebuild on a copy, compares bit for bit, and lets the game continue
