@@ -367,3 +367,42 @@ is an upper bound, 3481 of its 5870 samples have no caller word above it), so
 the next subsystem is chosen from a direct measurement of the candidate steps
 (call counts plus a timer on 0x009A8E30, 0x00783180, 0x007830C0, 0x007AE070),
 not from this table.
+
+### The steps timed in the game (measured 2026-10-30 19:01)
+
+OBNG.dll's pass-steps probe ([Probe] PassSteps=1, Probes.cpp: one RDTSC pair
+per call, inclusive and nested, calibrated against the performance counter
+per 10 s summary window) on the fixed Walkers scene, nothing routed or
+shadowed (`artifacts/shadow/obng-walkers-steps/20261030-190102`; OBVR's
+capture of the same run: 4497 frames in the 60 s watched, 75.0 a second,
+frame 13.34 ms, scene_pass 2.85 ms against 2.78 ms in the run without the
+probe - the probe's own cost is inside the run-to-run spread). The steady
+windows (the 5th to 11th of the run; 750 frames each):
+
+| Step | Calls per frame | ms per frame | us per call | Share of the finish |
+|---|---:|---:|---:|---:|
+| FinishAccumulating 0x007AE070 (every draw of every pass) | 18.0 | 5.17 | 287 | 100 % |
+| ApplyConstantMap 0x009A8E30 (per partition per pass, vertex and pixel maps) | 4 548 | 1.17 | 0.26 | 23 % |
+| SetVertexShaderConstantArray 0x00783180 (the per-bone upload loop, inside the above) | 1 623 | 0.52 | 0.32 | 10 % |
+| SetVertexShaderConstant 0x007830C0 (one device call per entry, inside the above) | 2 320 | 0.07 | 0.03 | 1.4 % |
+
+What that settles:
+
+- The accumulator's finish holds 5.17 ms of the 13.34 ms frame - about three
+  quarters of the frame's CPU work once the 6.3 ms pose wait is taken out -
+  over eighteen finishes a frame (two eyes, the actor-shadow and other passes;
+  which finish costs what is the next probe's question: return sites and
+  time per site).
+- The constant maps are 1.17 ms a frame, 23 % of the finish: 4 548 applies a
+  frame. Inside them the per-bone upload loop is 0.52 ms (1 623 partitions
+  with bones a frame, 0.32 us each with N device calls per partition) and the
+  plain uploads 0.07 ms (2 320 device calls at 30 ns each - D3D9's client-side
+  set is cheap; the "uncached constant upload" lever is worth 0.07 ms, not
+  the 16.7 % the sampler's module table suggested for D3D9.DLL). The other
+  0.58 ms are the apply loop itself and SetDefinedConstant's matrix work
+  (D3DX multiply / inverse / transpose per entry, the pass-constant ones
+  included) and the pixel-map uploads.
+- What is left (about 4.0 ms a frame) sits below DrawRenderPass outside the
+  constant maps: the draws (DrawIndexedPrimitive and the driver), the
+  packing's locks and copies, SetupTransformations and the light constants,
+  OBVR's palette detour. Not split yet.

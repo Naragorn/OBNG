@@ -1,0 +1,52 @@
+OBNG 1 - xOBSE 22, Oblivion 010201A0, editor=0
+Settings from Z:\home\nadi\.local\share\Steam\steamapps\common\Oblivion\Data\OBSE\Plugins\OBNG-test.ini: TimeInfoUpdate=0 TimeInfoInit=0 TimeInfoFreeze=0 TimeInfoUnfreeze=0 LoadingMenuTick=0 LoadingMenuCtor=0 RangeWalk=0 RangeWalkOrder=original-first FpuControlWord=0 HavokPlanner=0 CallCounters=0 PassSteps=1 Memory=1 MismatchLines=20 SummaryEverySeconds=10 SummaryTimer=1 Route RangeWalk=0
+Shadow: every switch is 0, nothing shadowed
+Route: every switch is 0, nothing routed
+Shadow FinishAccumulating 0x007AE070: on at 007AE070 - the original runs, the rebuild runs on a copy, both compared bit for bit
+Shadow ApplyConstantMap 0x009A8E30: on at 009A8E30 - the original runs, the rebuild runs on a copy, both compared bit for bit
+Shadow SetVertexShaderConstantArray 0x00783180: on at 00783180 - the original runs, the rebuild runs on a copy, both compared bit for bit
+Shadow SetVertexShaderConstant 0x007830C0: on at 007830C0 - the original runs, the rebuild runs on a copy, both compared bit for bit
+Probes: 4 of 4 call counters made, memory on
+Log: a summary every 10 s from the summary timer
+Shadow:
+Probe: pass steps (4192127 ticks per ms) - FinishAccumulating 0x007AE070 0 calls; ApplyConstantMap 0x009A8E30 0 calls; SetVertexShaderConstantArray 0x00783180 0 calls; SetVertexShaderConstant 0x007830C0 0 calls;
+Probe: memory commit 385 MB (peak 385), working set 1928 MB (peak 1928), address space 1928 of 4095 MB used (47 %, peak 1928 MB)
+Shadow:
+Probe: pass steps (4192127 ticks per ms) - FinishAccumulating 0x007AE070 10072 calls, 2791.82 ms (277.19 us per call); ApplyConstantMap 0x009A8E30 2580378 calls, 614.55 ms (0.24 us per call); SetVertexShaderConstantArray 0x00783180 919766 calls, 274.67 ms (0.30 us per call); SetVertexShaderConstant 0x007830C0 1315691 calls, 37.74 ms (0.03 us per call);
+Probe: memory commit 438 MB (peak 438), working set 2177 MB (peak 2178), address space 2177 of 4095 MB used (53 %, peak 2177 MB)
+Shadow:
+Probe: pass steps (4192127 ticks per ms) - FinishAccumulating 0x007AE070 13518 calls, 3630.80 ms (268.59 us per call); ApplyConstantMap 0x009A8E30 3414046 calls, 815.94 ms (0.24 us per call); SetVertexShaderConstantArray 0x00783180 1218122 calls, 363.59 ms (0.30 us per call); SetVertexShaderConstant 0x007830C0 1741569 calls, 50.20 ms (0.03 us per call);
+Probe: memory commit 438 MB (peak 438), working set 2177 MB (peak 2178), address space 2177 of 4095 MB used (53 %, peak 2177 MB)
+Shadow:
+Probe: pass steps (4192127 ticks per ms) - FinishAccumulating 0x007AE070 13495 calls, 3804.55 ms (281.92 us per call); ApplyConstantMap 0x009A8E30 3409254 calls, 857.24 ms (0.25 us per call); SetVertexShaderConstantArray 0x00783180 1216479 calls, 382.97 ms (0.31 us per call); SetVertexShaderConstant 0x007830C0 1739138 calls, 53.06 ms (0.03 us per call);
+Probe: memory commit 465 MB (peak 465), working set 2173 MB (peak 2178), address space 2173 of 4095 MB used (53 %, peak 2177 MB)
+Shadow:
+Probe: pass steps (4192127 ticks per ms) - FinishAccumulating 0x007AE070 13513 calls, 3897.52 ms (288.43 us per call); ApplyConstantMap 0x009A8E30 3411822 calls, 880.74 ms (0.26 us per call); SetVertexShaderConstantArray 0x00783180 1217333 calls, 393.31 ms (0.32 us per call); SetVertexShaderConstant 0x007830C0 1740468 calls, 54.66 ms (0.03 us per call);
+Probe: memory commit 466 MB (peak 466), working set 2173 MB (peak 2178), address space 2173 of 4095 MB used (53 %, peak 2177 MB)
+Shadow:
+Probe: pass steps (4192127 ticks per ms) - FinishAccumulating 0x007AE070 13510 calls, 3893.17 ms (288.17 us per call); ApplyConstantMap 0x009A8E30 3411970 calls, 875.56 ms (0.26 us per call); SetVertexShaderConstantArray 0x00783180 1217310 calls, 392.42 ms (0.32 us per call); SetVertexShaderConstant 0x007830C0 1740463 calls, 53.23 ms (0.03 us per call);
+Probe: memory commit 467 MB (peak 467), working set 2142 MB (peak 2178), address space 2142 of 4095 MB used (52 %, peak 2177 MB)
+Shadow:
+Probe: pass steps (4192127 ticks per ms) - FinishAccumulating 0x007AE070 13518 calls, 3873.35 ms (286.53 us per call); ApplyConstantMap 0x009A8E30 3414046 calls, 874.60 ms (0.26 us per call); SetVertexShaderConstantArray 0x00783180 1218122 calls, 391.97 ms (0.32 us per call); SetVertexShaderConstant 0x007830C0 1741569 calls, 53.79 ms (0.03 us per call);
+Probe: memory commit 467 MB (peak 467), working set 2142 MB (peak 2178), address space 2142 of 4095 MB used (52 %, peak 2177 MB)
+Shadow:
+Probe: pass steps (4192127 ticks per ms) - FinishAccumulating 0x007AE070 13518 calls, 3871.21 ms (286.37 us per call); ApplyConstantMap 0x009A8E30 3414046 calls, 876.34 ms (0.26 us per call); SetVertexShaderConstantArray 0x00783180 1218122 calls, 392.46 ms (0.32 us per call); SetVertexShaderConstant 0x007830C0 1741569 calls, 53.57 ms (0.03 us per call);
+Probe: memory commit 468 MB (peak 468), working set 2111 MB (peak 2178), address space 2111 of 4095 MB used (51 %, peak 2177 MB)
+Shadow:
+Probe: pass steps (4192127 ticks per ms) - FinishAccumulating 0x007AE070 13508 calls, 3877.33 ms (287.04 us per call); ApplyConstantMap 0x009A8E30 3411122 calls, 876.51 ms (0.26 us per call); SetVertexShaderConstantArray 0x00783180 1217086 calls, 393.33 ms (0.32 us per call); SetVertexShaderConstant 0x007830C0 1740131 calls, 53.75 ms (0.03 us per call);
+Probe: memory commit 468 MB (peak 468), working set 2112 MB (peak 2178), address space 2112 of 4095 MB used (51 %, peak 2177 MB)
+Shadow:
+Probe: pass steps (4192127 ticks per ms) - FinishAccumulating 0x007AE070 13456 calls, 3865.44 ms (287.27 us per call); ApplyConstantMap 0x009A8E30 3398786 calls, 874.66 ms (0.26 us per call); SetVertexShaderConstantArray 0x00783180 1212670 calls, 393.93 ms (0.32 us per call); SetVertexShaderConstant 0x007830C0 1733731 calls, 53.67 ms (0.03 us per call);
+Probe: memory commit 470 MB (peak 470), working set 2114 MB (peak 2178), address space 2114 of 4095 MB used (51 %, peak 2177 MB)
+Shadow:
+Probe: pass steps (4192127 ticks per ms) - FinishAccumulating 0x007AE070 13464 calls, 3881.08 ms (288.26 us per call); ApplyConstantMap 0x009A8E30 3400408 calls, 883.28 ms (0.26 us per call); SetVertexShaderConstantArray 0x00783180 1213256 calls, 396.32 ms (0.33 us per call); SetVertexShaderConstant 0x007830C0 1734612 calls, 53.24 ms (0.03 us per call);
+Probe: memory commit 471 MB (peak 471), working set 2114 MB (peak 2178), address space 2114 of 4095 MB used (51 %, peak 2177 MB)
+Shadow:
+Probe: pass steps (4192127 ticks per ms) - FinishAccumulating 0x007AE070 13517 calls, 3693.68 ms (273.26 us per call); ApplyConstantMap 0x009A8E30 3414036 calls, 833.89 ms (0.24 us per call); SetVertexShaderConstantArray 0x00783180 1218122 calls, 372.61 ms (0.31 us per call); SetVertexShaderConstant 0x007830C0 1741569 calls, 51.52 ms (0.03 us per call);
+Probe: memory commit 445 MB (peak 471), working set 2088 MB (peak 2178), address space 2088 of 4095 MB used (50 %, peak 2177 MB)
+Shadow:
+Probe: pass steps (4192127 ticks per ms) - FinishAccumulating 0x007AE070 13509 calls, 3590.28 ms (265.77 us per call); ApplyConstantMap 0x009A8E30 3411030 calls, 810.71 ms (0.24 us per call); SetVertexShaderConstantArray 0x00783180 1217035 calls, 361.07 ms (0.30 us per call); SetVertexShaderConstant 0x007830C0 1740080 calls, 49.60 ms (0.03 us per call);
+Probe: memory commit 445 MB (peak 471), working set 2088 MB (peak 2178), address space 2088 of 4095 MB used (50 %, peak 2177 MB)
+Shadow:
+Probe: pass steps (4192127 ticks per ms) - FinishAccumulating 0x007AE070 13492 calls, 3609.36 ms (267.52 us per call); ApplyConstantMap 0x009A8E30 3407980 calls, 813.74 ms (0.24 us per call); SetVertexShaderConstantArray 0x00783180 1215965 calls, 363.01 ms (0.30 us per call); SetVertexShaderConstant 0x007830C0 1738420 calls, 49.93 ms (0.03 us per call);
+Probe: memory commit 445 MB (peak 471), working set 2088 MB (peak 2178), address space 2088 of 4095 MB used (50 %, peak 2177 MB)

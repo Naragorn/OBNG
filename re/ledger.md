@@ -219,6 +219,23 @@ next to it, so it is a joint decision), the uncached constant uploads (OBVR's ca
 already takes the F path), and the per-draw matrix recomputation of ids that are constant
 over a pass (view, projection, their products and inverses - Q1 of 0x009A56D0).
 
+Decisions taken after the pass-steps run (2026-10-30 19:01, run obng-walkers-steps/
+20261030-190102): the accumulator's finish 0x007AE070 holds 5.17 ms of the 13.34 ms frame
+over eighteen finishes a frame; the constant maps 0x009A8E30 1.17 ms (4 548 applies a
+frame), the per-bone upload loop 0x00783180 0.52 ms inside them, the plain constant
+uploads 0x007830C0 0.07 ms (2 320 device calls at 30 ns: the uncached-upload lever is
+worth nothing). So the sampler's module table (D3D9.DLL 16.7 %) was not the constant
+uploads; where the remaining 4 ms a frame under the draws go (DrawIndexedPrimitive, the
+packing, SetupTransformations and the light constants, OBVR's palette detour) and how
+the 5.17 ms split over the eighteen finishes (eye passes against actor-shadow passes) are
+the next probe's two questions - cheap, the same infrastructure with return sites. The
+block candidate from this round is the vertex constant map's apply (0x009A8E30 with
+SetDefinedConstant 0x009A56D0 and the bone upload 0x00783180): pass-constant matrices
+once per pass, the bones in one device call per palette, unchanged entries skipped;
+ceiling 1.17 ms a frame, 9 % of the frame; needs 0x009A8E30 and 0x00783180 mapped and a
+gate at the step's output (the constant registers after the apply, per partition).
+knowledge/culling-and-draw-setup.md carries the table.
+
 ## Subsystem replacements
 
 | Subsystem | Replaces | State | Gates | Note |
