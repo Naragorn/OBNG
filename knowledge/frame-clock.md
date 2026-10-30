@@ -242,7 +242,11 @@ details per function in `re/functions/<address>.md`, states in
   0x00A18690, nothing else written outside the stack.
 - **The x87 control word is not one value per process** (measured
   2026-10-30): the loading menu's tick runs at `_control87` 0x000A001F,
-  i.e. precision 24-bit and rounding to nearest (FCW 0x0A7F), but the
+  i.e. precision 24-bit and rounding to nearest (FCW 0x007F; corrected
+  2026-10-30 from "0x0A7F", which decodes as precision 53, round up - the
+  `_control87` bits are the CRT's abstract ones, `_PC_24` 0x00020000,
+  `_RC_NEAR` 0, `_EM_DENORMAL` 0x00080000, read in the UCRT's float.h of
+  Windows Kits 10.0.26100, derived), but the
   shadow light's range walk (0x007D59E0, from the per-light shadow draw
   0x007D6900) runs at **FCW 0x0C7F: precision 24-bit, rounding control =
   truncate** (FXSAVE at the walk's entry, artifacts/shadow/obng-range-walk-
@@ -252,7 +256,11 @@ details per function in `re/functions/<address>.md`, states in
   gives +inf at nearest and FLT_MAX at truncate - that alone flips the
   range test of a garbage-sized bound). Who sets truncate for the shadow
   pass is unread (candidates: D3D9's device state, the engine's renderer,
-  a plugin).
+  a plugin). The rebuilds of 0x0047DA70, 0x007D2EA0 and the walk now take
+  the rounding mode as an input and are verified in the emulator under all
+  four (re/functions/0x0047DA70.md, 0x007D2EA0.md, addenda 2026-10-30);
+  the CRT square root 0x00982C30 runs its FSQRT at round to nearest
+  whatever the caller's mode (read).
 - **The TimeInfo class verified in the game** (measured 2026-10-27,
   tools/shadow-run.sh, artifacts/shadow/obng-shadow/20261027-082656):
   Update 108,574 calls, Init 4, Freeze 31, Unfreeze 32 - 0 mismatches
