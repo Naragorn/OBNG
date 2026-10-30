@@ -60,8 +60,11 @@ CPU is unverified (see the end). These figures are for five people (measured):
 - It reaches **the copier** 0x0076F590 (read 2026-10-30: NiDX9ShaderDeclaration::PackEntry,
   `__stdcall` with seven arguments, called once per declaration entry from
   the declaration's vtable slot +0x6C = 0x0076FE20 - there is no direct call
-  from 0x00763130, and 0x00771790 / 0x00773330 reach 0x0076FE20 through that
-  slot as well). PackEntry builds the descriptor and calls **the stream copy**
+  from 0x00763130; the earlier note that 0x00771790 / 0x00773330 reach
+  0x0076FE20 through that slot was a sampler artefact - 0x00773330 is
+  TextureStageGroup::ApplySamplerStates and touches no stream, see
+  re/functions/0x00773330.md and OBVR's performance-spec.md:743 - the second
+  entry is the whole-geometry arm 0x00767B40 under 0x0077A310). PackEntry builds the descriptor and calls **the stream copy**
   0x0076E610 only with a non-null source, so the zero-fill path below is
   not reached from it. The stream copy has three paths:
   - **zero-fill**, the copier's memset loop 0x0076F3B0;
@@ -105,8 +108,10 @@ CPU is unverified (see the end). These figures are for five people (measured):
     (unverified, pseudocode of 0x0076F3B0 and 0x00771300). OBVR's
     performance-spec carries the same wording.
 - **A second entry into the packing** comes from the shape render
-  0x00767B40: 0x00771790 and 0x00773330 call the packer 0x0076FE20, not
-  0x00763130. Measured: another 0.5 to 0.6 MB a pass, in 210 small copies.
+  0x00767B40 (the whole-geometry arm under 0x0077A310, read by OBVR
+  2026-10-30; the earlier attribution to 0x00771790 / 0x00773330 was a stale
+  return word, re/functions/0x00773330.md C16-C18). Measured: another 0.5 to
+  0.6 MB a pass, in 210 small copies.
 - **A staging copy at every unlock.** Every dynamic buffer is written
   through a system-memory staging copy:
   - The lock wrapper 0x00776C90 hands out `[this+0x40]`.

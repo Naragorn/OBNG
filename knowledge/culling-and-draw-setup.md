@@ -321,6 +321,49 @@ has no start between 0x0077A1F0 and 0x0077A4A0), 0x009A56D0 27 %,
 0x007A9820 26 %, 0x007830C0 23 %, 0x00717690 23 %, 0x007AC9A0 21 %,
 PackStream 0x0076FE20 13 %, PackSkinnedGeometryBuffer 0x00763130 12 %, the
 range walk 0x007D59E0 3.1 %. Over the whole frame 52 % of the render
-thread's samples are in vrclient.dll (the pose wait). The unnamed inclusive
-functions above are unmapped (unverified names); they are where the next
-subsystem choice has to look.
+thread's samples are in vrclient.dll (the pose wait).
+
+The unnamed frames were mapped on 2026-10-30 (slice pass-drivers,
+re/functions/0x009A56D0.md, 0x007A9820.md, 0x007830C0.md, 0x007AC9A0.md,
+0x007AD270.md, 0x00773330.md; names are proposals that held their refutation
+rounds). The chain of the pass, as read there:
+
+1. ShadowSceneNode's render 0x007C78D0 calls the shader accumulator's begin
+   (+0x4C), then the cull walk 0x0070AB40, which registers every visible
+   geometry through **BSShaderAccumulator::RegisterGeometry 0x007AD270**
+   (slot +0x58): classification by shader id and property type, relight
+   against the shadow scene node, the property's pass list filed into one
+   list per pass id at accumulator+0x104+0x14*pass (opaque) or the blended
+   lists; an 0x18-byte FormHeap allocation per multi-pass geometry with a
+   morpher controller.
+2. The accumulator's finish (+0x50) is **0x007AE070**, unmapped and missing
+   from the sampler's function table (its frames are filed under
+   0x007AD270: 3806 of the 4419 samples); it draws the lists pass by pass
+   through **RenderPassList 0x007AC9A0** (begin the shader state, per item
+   **DrawRenderPass 0x007A9820**: pass id to 0x00B42E90, light constants,
+   the geometry's slot 33 -> Do_RenderShape 0x007693E0 -> DrawSkinnedPrimitive
+   0x00767520; end the state, retire the list).
+3. Per partition under the draw: slot 13 SetupTransformations 0x007C9230 (with
+   the light-constant upload 0x007C9140), slot 15 PrepareGeometryForRendering
+   0x0077A310 (the packing), slot 14 SetupShaderPrograms 0x0077A1F0, whose
+   constant-map apply loop 0x009A8E30 calls **NiD3DSCM_Vertex::SetDefinedConstant
+   0x009A56D0** per "defined" entry (world / view / projection products,
+   inverses and transposes through D3DX, the bone matrices through
+   0x00783180 as **one SetVertexShaderConstantF per bone**, texture
+   transforms, material colours) and **NiD3DVertexShader::SetVertexShaderConstant
+   0x007830C0** per entry (one device call each, no compare, no cache; OBVR's
+   SetVsConstantF hook sits below it).
+4. **TextureStageGroup::ApplySamplerStates 0x00773330** is five cached
+   sampler-state calls per stage and no stream work; its 15.9 % is a stale
+   return word (every one of its 4748 samples carries 0x00773369 with the
+   eip in memcpy or the copier), real share 1.5 to 3.5 %.
+
+What the maps say about the cost (measured in the same run): the engine's own
+instructions are 1.1 % per frame everywhere the maps looked, the D3DX matrix
+math about 0.7 %; the inclusive numbers are device calls (one per constant
+entry, one per bone, the draws) and the packing's memcpy. And the sampler's
+inclusive table over-reports through stale return words (0x009A56D0's 27.2 %
+is an upper bound, 3481 of its 5870 samples have no caller word above it), so
+the next subsystem is chosen from a direct measurement of the candidate steps
+(call counts plus a timer on 0x009A8E30, 0x00783180, 0x007830C0, 0x007AE070),
+not from this table.
