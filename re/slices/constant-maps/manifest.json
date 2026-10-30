@@ -1,0 +1,31 @@
+{
+  "slice": "constant-maps",
+  "subsystem": "render",
+  "sharedHeaders": [],
+  "purpose": "Map only: the two unmapped functions of the vertex constant map's apply step, measured at 1.17 ms a frame on the fixed Walkers scene (ApplyConstantMap 0x009A8E30, 4 564 calls a frame; the per-bone upload 0x00783180 0.53 ms inside it; knowledge/culling-and-draw-setup.md 'The steps timed in the game'). The block candidate is a rebuild of the apply step for the vertex map: the pass-constant matrices computed once per pass, the bones uploaded in one device call per palette, unchanged entries skipped, verified at the step's output (the constant registers the device receives per partition). The maps must give the contract of that step: the entry loop (which entries, in what order, under which gates), what each entry type does and through which program slot, what 0x00783180 uploads per bone and from where, and what the step reads and writes so the output gate can be placed. No rebuild in this run.",
+  "functions": [
+    {
+      "address": "0x009A8E30",
+      "name": "NiD3DShaderConstantMap::ApplyConstants (proposal; slot +0x40 of the three map vtables 0x00AB2A4C / 0x00AB2BAC / 0x00AB297C; the Gamebryo name is unverified)",
+      "mapOnly": true,
+      "known": "Read in the pass-drivers slice (re/functions/0x009A56D0.md, Identity and C3, and the refutations): __thiscall with 11 stack arguments, RET 0x2C at 0x009A903A; called from SetupShaderPrograms 0x0077A1F0 at 0x0077A28E as `[this+0x2C]->vt[+0x40](pass+0x44, arg1..arg8, this+0x34, 1)` per partition (re/functions/0x0077A1F0.md V2); the string '__NDL_SCMData' at 0x009A8E47 (meta.json); one direct callee, the lock 0x006FF9C0. The loop over the map's entries stops at the first entry whose byte +0x08 is clear (0x009A8E82, read in the refutation), skips null entries and entries with register -1 and +0x24 == 0, and dispatches by the entry's type dword +0x14: type 0x20000000 ('defined') to slot +0x54 = SetDefinedConstant 0x009A56D0 (0x009A8EAF..0x009A9008, read), other types to direct SetVertexShaderConstantF / device +0x1B4 uploads (refutation summary, unverified at instruction level here). A non-zero status from an entry only clears the caller's result flag; the loop continues. Measured (pass-steps probe, run 20261030-194432): 4 564 calls a frame, 1.17 ms a frame, 0.26 us a call, of which the per-bone upload 0x00783180 0.53 ms and the plain uploads 0x007830C0 0.07 ms.",
+      "questions": [
+        "The entry loop at instruction level: the entry array (where, stride, count), the gates per entry (+0x08, null, register -1 / +0x24), the type dispatch (every type value and its target: slot +0x54, a direct program slot, a device call), and what the 11 arguments are used for (which are passed on to SetDefinedConstant, which gate anything here).",
+        "What the lock 0x006FF9C0 guards here and the '__NDL_SCMData' extra data read: per call, per entry?",
+        "The output of the step: which registers (vertex and pixel) can be written by one apply, through which calls, and in what order - the compare point for a rebuild's gate (constant register contents per partition).",
+        "What in the map or the entries changes between two applies of the same partition in the same pass (the inputs that decide whether an entry's upload is redundant), and which entries depend only on the pass (view, projection, their products and inverses) so they could be computed once per pass."
+      ]
+    },
+    {
+      "address": "0x00783180",
+      "name": "NiD3DVertexShader::SetVertexShaderConstantArray (proposal; slot 11, +0x2C, of vtable 0x00A8B41C; derived from the HLSL override's strings in re/functions/0x007830C0.md C2)",
+      "mapOnly": true,
+      "known": "Created in Ghidra for this slice (CreateFunction.java: body 0x00783180-0x0078322F, 59 asm lines); it had no function start, so the rea-all pseudocode does not exist for it. Read in the pass-drivers slice: __thiscall with 5 stack arguments, RET 0x14; the per-bone loop at 0x007831F4..0x00783227 issues one SetVertexShaderConstantF (device vtable +0x178, method 94 per d3d9.h / OBVR D3D9Types.h) per bone (re/functions/0x009A56D0.md C17; the refutation adds 'only when its register-type check passes'); called from SetDefinedConstant at 0x009A5B33 for ids 33-36 (the bone matrices) as (entry, base, count, stride, indices) with the bone count from partition +0x20 and the bone data from skin +0x20 / +0x24 and partition +0x04 (re/functions/0x009A56D0.md, Struct accesses). The lazily filled type table 0x00B428D8 (0x00783C70) is its one direct callee, as in 0x007830C0. Measured: 1 628 calls a frame, 0.53 ms a frame, 0.33 us a call (N device calls per call).",
+      "questions": [
+        "The exact per-bone upload: for each bone which matrix (from where: skin +0x20 / +0x24 and partition +0x04, the bone index indirection), how many registers per bone (3 or 4 rows), to which start register (base + stride * bone?), and in what layout - so a rebuild can issue one SetVertexShaderConstantF with Vector4fCount = rows * bones, if the rows are contiguous, or build one contiguous block first.",
+        "The register-type check and every other gate (the type byte, the identity table, a count of 0), and the return value.",
+        "Whether anything but the device call has a side effect (a write to the entry or the program), i.e. whether the step's output is only the register contents."
+      ]
+    }
+  ]
+}
