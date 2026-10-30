@@ -337,10 +337,15 @@ UInt32 __fastcall ProbePacker(void* self, void* /*edx*/, UInt32 record, UInt32 g
 	if (context.depth++ == 0) {
 		context.geometry = geometry;
 		context.partition = partition;
-		const auto consistency = *reinterpret_cast<volatile UInt16*>(static_cast<std::uintptr_t>(geometry) + kGeometryConsistencyOffset);
-		AcquireSRWLockExclusive(&g_packLock);
-		probe::CountConsistency(consistency, g_packStats);
-		ReleaseSRWLockExclusive(&g_packLock);
+		// The original tests the record and the geometry for null before it
+		// reads either (JE 0x007633BD at 0x0076313F and 0x0076314B, read):
+		// read the consistency word only where it would.
+		if (record != 0 && geometry != 0) {
+			const auto consistency = *reinterpret_cast<volatile UInt16*>(static_cast<std::uintptr_t>(geometry) + kGeometryConsistencyOffset);
+			AcquireSRWLockExclusive(&g_packLock);
+			probe::CountConsistency(consistency, g_packStats);
+			ReleaseSRWLockExclusive(&g_packLock);
+		}
 	}
 	const UInt32 eax = g_packer(self, nullptr, record, geometry, skin, partition, decl, force);
 	--context.depth;
