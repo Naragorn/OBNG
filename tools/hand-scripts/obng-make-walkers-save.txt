@@ -1,0 +1,52 @@
+# Not a test: writes OBVRHarnessWalkers.ess, the save the deterministic
+# measurement scenarios start from (obng-walkers-original.txt and
+# obng-walkers-routed.txt). The measured series of 2026-10-30
+# (obng-range-walk-*.txt, OblivionWalkers' perf-walkers-in-view.txt) placed
+# eighteen Walkers with placeatme in every run and let their AI run for eight
+# seconds before tai: the scene differed from run to run and its scene_pass
+# variance (0.25 to 3.4 ms mean) was larger than any lever we measure. This
+# save fixes the scene once: the same timeline up to the Walkers standing
+# still, then saved.
+#
+# From OBVRHarness (TestingHall): god mode, the prison ImperialDungeon01, the
+# player held (tcl, setrestrained, the vanity camera off), thirty seconds
+# empty, eighteen Walkers placed round him, their AI off eight seconds
+# later, twenty seconds settled, saved. The name starts with OBVRHarness so
+# OBVR's runner keeps it the oldest save (the player's Continue never lands
+# in it).
+#
+# Run, from OBNG's folder (OBNG.dll deployed, nothing patched):
+#   tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-original.ini tools/hand-scripts/obng-make-walkers-save.txt
+# Then check the save exists: OBVRHarnessWalkers.ess in the game's Saves
+# folder (tools/hand-script-run.py's SAVES_DIR in OBVR).
+
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Render Stereo=dual
+console-at ready tgm
+console-at ready coc ImperialDungeon01
+console-at placed tcl
+console-at placed player.setrestrained 1
+console-at placed SetNumericINISetting "fVanityModeAutoDelay:Camera" 100000
+console-at people player.placeatme {form:OblivionWalkers.esp:801} 18
+console-at people-placed tai
+console-at settled save OBVRHarnessWalkers
+
+expect HandScript: finished
+reject menu Container
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 22
+mark placed
+wait 16
+mark prison
+wait 10
+mark people
+wait 8
+mark people-placed
+wait 20
+mark settled
+wait 10
+mark done

@@ -114,3 +114,28 @@ verified in the emulator).
   can change the scene or the gate (the walk keeps the re-reads in case it can).
 - Whether vt[+0x10] returns `this` (would allow one call instead of two).
 - No performance number is claimed; none has been measured for this rebuild.
+
+## The fixed scene (2026-10-30)
+
+The measured series above could not resolve the route's cost because the
+scene itself varied from run to run (the Walkers placed anew each run, eight
+seconds of AI before `tai`). The scenario is now a saved game:
+`tools/hand-scripts/obng-make-walkers-save.txt` writes `OBVRHarnessWalkers.ess`
+(ImperialDungeon01, eighteen Walkers round the held player, AI off, saved after
+twenty seconds), and `obng-walkers-original.txt` / `obng-walkers-routed.txt`
+load it through the harness's `--save` and watch it for sixty seconds under
+OBVR's profiler (`tools/measure-summary.py` reads the phase "settled to
+watched"). Two runs of the original side (15:17 and 15:20):
+
+| Run | Frames | Frame mean | p95 | scene_pass mean | p95 |
+|---|---:|---:|---:|---:|---:|
+| 20261030-151727 | 4497 | 13.34 ms | 13.83 | 2.68 ms | 3.07 |
+| 20261030-152017 | 4460 | 13.35 ms | 13.90 | 2.69 ms | 3.14 |
+
+The scene pass agrees to 0.01 ms between runs (0.25 to 3.4 ms spread before),
+and OBVR's relight counter reports the same 1680 / 360 geometries per 120 scene
+calls in both. A lever of 0.1 ms is now resolvable with one run per side. Still
+unverified: whether `tai`'s state survives the load (the scenario sends it again
+one second after the load; a toggle that survived would turn the AI back on, and
+the agreement above says the Walkers stood still either way, so the question is
+open but harmless here). The routed side has not been run on the fixed scene.

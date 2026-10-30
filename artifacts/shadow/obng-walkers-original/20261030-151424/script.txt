@@ -1,0 +1,58 @@
+# The range walk's cost measurement on the fixed scene, ORIGINAL side: the game
+# runs its own ShadowSceneLight::CollectGeometryInRange 0x007D59E0, OBNG.dll
+# loaded with nothing patched (tools/hand-scripts/obng-measure-original.ini).
+#
+# The pair obng-walkers-original.txt / obng-walkers-routed.txt differs only
+# in the OBNG-test.ini tools/shadow-run.sh writes. Both start from
+# OBVRHarnessWalkers.ess (made by obng-make-walkers-save.txt: the prison
+# ImperialDungeon01, eighteen Walkers standing round the held player), so
+# the scene is the same in every run - the measured series of 2026-10-30
+# (obng-range-walk-*.txt) placed the Walkers anew each run and its scene_pass
+# variance between runs was larger than the lever. What is not in the save
+# is sent again a second after the load: the toggles (tgm, tcl, tai) and the
+# hold; whether tai's state survives a load is not known (2026-10-30), so
+# the Walkers may take a step or two before the second tai lands - the
+# repeat runs show whether the scene is still the same.
+#
+# OBVR's profiler: armed with the game, it starts 40 s later (the script
+# started about 18 s after arming in the 2026-10-30 runs, so the capture
+# covers script seconds ~22 to ~117) and runs 95 s; the phase to compare is
+# "settled to watched" (script 30 to 90 s). Actor shadows come from
+# Oblivion.ini's [Display] iActorShadowCountInt (5 in the Linux install's
+# INI, read 2026-10-30) - keep it the same for both sides.
+#
+# Run, from OBNG's folder (OBNG.dll deployed, the save made):
+#   tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-original.ini tools/hand-scripts/obng-walkers-original.txt --save OBVRHarnessWalkers
+# then, from OBVR's folder, per run folder (artifacts/shadow/<scenario>/<stamp>):
+#   python3 tools/perf-phases.py <run> ready settled watched done --events scene_pass
+# and tools/measure-summary.py over the runs of both sides.
+
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Render Stereo=dual
+ini Performance Enabled=1
+ini Performance GpuTiming=0
+ini Performance StartAfterSeconds=40
+ini Performance CaptureSeconds=95
+ini Performance MaxRecords=262144
+console-at ready tgm
+console-at ready tcl
+console-at ready player.setrestrained 1
+console-at ready SetNumericINISetting "fVanityModeAutoDelay:Camera" 100000
+console-at ready tai
+
+expect HandScript: finished
+expect Performance: capture armed, it starts in 40 seconds
+expect Performance: capture 1 started
+expect Performance: export
+reject menu Container
+reject HandScript: WARNING
+
+wait 1
+mark ready
+wait 29
+mark settled
+wait 60
+mark watched
+wait 10
+mark done

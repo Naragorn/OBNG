@@ -2,10 +2,16 @@
 """Summarise a measurement series: for every run directory given, cut OBVR's
 capture by marks (../OBVR/tools/perf-phases.py) and print the Walkers phase's
 frame mean, p95, share over 20 ms and scene_pass mean / p95, then the median
-of each column per side. Runs are grouped by their scenario directory name
-(obng-range-walk-original, obng-range-walk-routed).
+of each column per side. Runs are grouped by their scenario directory name;
+the scenario family decides the marks:
+
+    obng-range-walk-{original,routed}  the placed-anew scene, the phase
+                                       "people-placed to people-watched"
+    obng-walkers-{original,routed}     the fixed scene (OBVRHarnessWalkers),
+                                       the phase "settled to watched"
 
     python3 tools/measure-summary.py artifacts/shadow/obng-range-walk-*/2026*
+    python3 tools/measure-summary.py artifacts/shadow/obng-walkers-*/2026*
 """
 import re
 import statistics
@@ -14,15 +20,29 @@ import sys
 from pathlib import Path
 
 OBVR = Path(__file__).resolve().parents[2] / 'OBVR'
-PHASE = 'people-placed to people-watched'
+# Scenario family prefix -> (the marks handed to perf-phases.py, the phase row read).
+FAMILIES = {
+    'obng-range-walk-': (['prison', 'empty-watched', 'people-placed', 'people-watched'],
+                         'people-placed to people-watched'),
+    'obng-walkers-': (['ready', 'settled', 'watched', 'done'], 'settled to watched'),
+}
 
 
-def phases(run):
-    out = subprocess.run(['python3', 'tools/perf-phases.py', str(Path(run).resolve()), 'prison', 'empty-watched',
-                          'people-placed', 'people-watched', '--events', 'scene_pass'],
+def family(scenario):
+    """The (prefix, marks, phase) of a scenario directory name; None when it is no
+    measurement family."""
+    for prefix, (marks, phase) in FAMILIES.items():
+        if scenario.startswith(prefix):
+            return prefix, marks, phase
+    return None
+
+
+def phases(run, marks, phase):
+    out = subprocess.run(['python3', 'tools/perf-phases.py', str(Path(run).resolve())] + marks
+                         + ['--events', 'scene_pass'],
                          cwd=OBVR, capture_output=True, text=True).stdout
     for line in out.splitlines():
-        if line.startswith('| ' + PHASE):
+        if line.startswith('| ' + phase):
             cells = [c.strip() for c in line.strip('|').split('|')]
             frames = int(cells[1])
             mean, p95 = float(cells[2]), float(cells[4])
@@ -35,8 +55,14 @@ def phases(run):
 def main(argv):
     sides = {}
     for run in argv[1:]:
-        side = Path(run).parent.name.replace('obng-range-walk-', '')
-        row = phases(run)
+        scenario = Path(run).parent.name
+        fam = family(scenario)
+        if fam is None:
+            print('%s: not a measurement scenario (%s)' % (Path(run).name, scenario))
+            continue
+        prefix, marks, phase = fam
+        side = scenario.replace(prefix, '')
+        row = phases(run, marks, phase)
         if row is None:
             print('%-9s %s: no capture' % (side, Path(run).name))
             continue
