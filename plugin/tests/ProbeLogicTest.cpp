@@ -110,7 +110,31 @@ void TestFormatMemory() {
 
 }  // namespace
 
+void TestStepTiming() {
+	Section("The pass steps: TSC calibration over the summary window");
+	const ClockPair before{1000, 50};
+	const ClockPair after{1000 + 3000000, 50 + 10000000};  // 10 M QPC units at 10 MHz = 1000 ms; 3 M ticks
+	Check(TicksPerMillisecond(before, after, 10000000) == 3000.0, "3 M ticks over 1 s at 10 MHz: 3000 ticks per ms");
+	Check(TicksPerMillisecond(before, before, 10000000) == 0.0, "an empty window: no calibration");
+	Check(TicksPerMillisecond(before, after, 0) == 0.0, "an unknown frequency: no calibration");
+	Check(TicksPerMillisecond(after, before, 10000000) == 0.0, "a window running backwards: no calibration");
+
+	Section("The step line: calls and milliseconds with a calibration, ticks without, idle steps");
+	char line[160];
+	StepTiming t{4000, 6000000};  // 6 M ticks at 3000 per ms = 2000 ms, 0.5 ms per call
+	FormatStepTiming("FinishAccumulating", t, 3000.0, line, sizeof(line));
+	Check(std::string(line) == " FinishAccumulating 4000 calls, 2000.00 ms (500.00 us per call);", "calibrated: calls, ms and us per call");
+	FormatStepTiming("FinishAccumulating", t, 0.0, line, sizeof(line));
+	Check(std::string(line) == " FinishAccumulating 4000 calls, 6000000 ticks;", "uncalibrated: the raw ticks");
+	FormatStepTiming("SetVertexShaderConstant", StepTiming{}, 3000.0, line, sizeof(line));
+	Check(std::string(line) == " SetVertexShaderConstant 0 calls;", "idle: 0 calls, no division");
+	char tiny[8];
+	const int wrote = FormatStepTiming("FinishAccumulating", t, 3000.0, tiny, sizeof(tiny));
+	Check(std::strlen(tiny) < sizeof(tiny) && wrote > 0, "a small buffer is never overrun");
+}
+
 int main() {
+	TestStepTiming();
 	TestReturnSites();
 	TestCallCounts();
 	TestMemoryPeak();

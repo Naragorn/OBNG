@@ -201,6 +201,26 @@ void TestLoadProbes() {
 	Check(fake.Logged("Probes: 4 of 5 call counters made, memory on"), "five asked, the shortfall in the log");
 }
 
+void TestLoadPassSteps() {
+	Section("Load with the pass steps on: four more detours asked");
+	Fake fake;
+	fake.iniSettings.shadow.passSteps = true;
+	fake.probesMade = 4;
+	g_fake = &fake;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(fake.probeInstalls == 1 && fake.probed.passSteps && !fake.probed.callCounters, "the pass steps reach the probe installer");
+	Check(fake.Logged("Probes: 4 of 4 call counters made, memory on"), "four asked without the counters");
+	Fake both;
+	both.iniSettings.shadow.passSteps = true;
+	both.iniSettings.shadow.callCounters = true;
+	both.probesMade = 9;
+	g_fake = &both;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(both.Logged("Probes: 9 of 9 call counters made, memory on"), "nine asked with both");
+}
+
 void TestLoadProbesOff() {
 	Section("Load with every probe off");
 	Fake fake;
@@ -395,6 +415,7 @@ int main() {
 	TestLoadPartialFailure();
 	TestLoadRangeWalk();
 	TestLoadProbes();
+	TestLoadPassSteps();
 	TestLoadProbesOff();
 	TestLoadRoute();
 	TestLoadRouteAndShadow();

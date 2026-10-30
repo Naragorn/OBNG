@@ -116,6 +116,49 @@ inline int FormatCallCounts(const char* name, const CallCounts& c, char* out, st
 	return at;
 }
 
+// ---- The pass steps: calls and time per summary window --------------------------
+
+// One timed function: how often it ran since the last summary and the sum
+// of the TSC ticks its calls took (inclusive: the original and everything
+// under it, the detour's own two reads included).
+struct StepTiming {
+	std::uint64_t calls = 0;
+	std::uint64_t ticks = 0;
+};
+
+// The TSC is calibrated against the performance counter over the summary
+// window itself: both are read at every summary, and the ratio of the two
+// deltas converts the window's ticks to milliseconds. 0 when the window is
+// empty or the frequency unknown (the first summary has no window yet).
+struct ClockPair {
+	std::uint64_t tsc = 0;
+	std::uint64_t qpc = 0;
+};
+
+inline double TicksPerMillisecond(ClockPair before, ClockPair after, std::uint64_t qpcFrequency) {
+	if (qpcFrequency == 0 || after.qpc <= before.qpc || after.tsc <= before.tsc) {
+		return 0.0;
+	}
+	const double milliseconds = static_cast<double>(after.qpc - before.qpc) * 1000.0 / static_cast<double>(qpcFrequency);
+	return static_cast<double>(after.tsc - before.tsc) / milliseconds;
+}
+
+// " name N calls, X.XX ms (Y.YY us per call);" with the calibration, or
+// " name N calls, T ticks;" without one; " name 0 calls;" for an idle step.
+// Returns the characters written.
+inline int FormatStepTiming(const char* name, const StepTiming& t, double ticksPerMillisecond, char* out, std::size_t capacity) {
+	if (t.calls == 0) {
+		return std::snprintf(out, capacity, " %s 0 calls;", name);
+	}
+	if (ticksPerMillisecond <= 0.0) {
+		return std::snprintf(out, capacity, " %s %llu calls, %llu ticks;", name, static_cast<unsigned long long>(t.calls),
+		                     static_cast<unsigned long long>(t.ticks));
+	}
+	const double ms = static_cast<double>(t.ticks) / ticksPerMillisecond;
+	return std::snprintf(out, capacity, " %s %llu calls, %.2f ms (%.2f us per call);", name,
+	                     static_cast<unsigned long long>(t.calls), ms, ms * 1000.0 / static_cast<double>(t.calls));
+}
+
 // "Probe: memory commit N MB (peak N), working set N MB (peak N), address
 // space N of N MB used (N %, peak N MB)".
 inline int FormatMemory(const MemorySample& now, const MemoryPeak& peak, char* out, std::size_t capacity) {

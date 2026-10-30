@@ -98,6 +98,154 @@ struct AtomicCounts {
 };
 
 AtomicCounts g_counts[static_cast<int>(Probed::Count)];
+LogFn g_log = nullptr;
+
+// ---- The pass steps: four timed detours (slice pass-drivers, 2026-10-30) ----------
+//
+// Each detour reads the TSC before and after the original (RDTSC, no
+// serialisation: the error is a few cycles against calls of microseconds)
+// and adds the difference and the call interlocked. The times are
+// inclusive and nested: FinishAccumulating holds every draw of the pass,
+// ApplyConstantMap holds SetVertexShaderConstantArray and
+// SetVertexShaderConstant. The TSC is calibrated against the performance
+// counter over each summary window (probe::TicksPerMillisecond).
+enum class Step : int {
+	FinishAccumulating = 0,      // 0x007AE070, BSShaderAccumulator slot +0x50 (re/functions/0x007AC9A0.md C2-C4)
+	ApplyConstantMap,            // 0x009A8E30, NiD3DShaderConstantMap slot +0x40 (re/functions/0x009A56D0.md)
+	SetVertexShaderConstantArray,  // 0x00783180, NiD3DVertexShader slot 11 (re/functions/0x007830C0.md C2)
+	SetVertexShaderConstant,     // 0x007830C0, NiD3DVertexShader slot 10 (re/functions/0x007830C0.md)
+	Count,
+};
+const char* const kStepNames[] = {"FinishAccumulating 0x007AE070", "ApplyConstantMap 0x009A8E30",
+                                  "SetVertexShaderConstantArray 0x00783180", "SetVertexShaderConstant 0x007830C0"};
+static_assert(sizeof(kStepNames) / sizeof(kStepNames[0]) == static_cast<int>(Step::Count), "one name per step");
+
+// The entries (objdump of the reference EXE, 2026-10-30): whole instructions,
+// no rel32; no jump in any body targets the bytes after the entry.
+constexpr UInt32 kFinish = 0x007AE070;
+constexpr UInt8 kFinishBytes[] = {0x6A, 0xFF, 0x68, 0xD3, 0xD4, 0x9C, 0x00};  // push -1; push 0x009CD4D3 (the SEH frame)
+constexpr UInt32 kApplyMap = 0x009A8E30;
+constexpr UInt8 kApplyMapBytes[] = {0x83, 0xEC, 0x08, 0x55, 0x8B, 0x6C, 0x24, 0x10};  // sub esp,8; push ebp; mov ebp,[esp+10h]
+constexpr UInt32 kSetArray = 0x00783180;
+constexpr UInt8 kSetArrayBytes[] = {0x51, 0x80, 0x3D, 0x5B, 0x29, 0xB4, 0x00, 0x00};  // push ecx; cmp byte [0xB4295B],0
+constexpr UInt32 kSetConstant = 0x007830C0;
+constexpr UInt8 kSetConstantBytes[] = {0x53, 0x8B, 0x5C, 0x24, 0x0C};  // push ebx; mov ebx,[esp+0Ch]
+
+// __fastcall with a dummy edx mirrors __thiscall; the stack argument counts
+// are the originals' RET immediates (plain RET, 0x2C, 0x14, 0xC; read).
+using FinishFn = UInt32(__fastcall*)(void* self, void* edx);
+using ApplyMapFn = UInt32(__fastcall*)(void* self, void* edx, UInt32, UInt32, UInt32, UInt32, UInt32, UInt32, UInt32, UInt32,
+                                       UInt32, UInt32, UInt32);
+using SetArrayFn = UInt32(__fastcall*)(void* self, void* edx, UInt32, UInt32, UInt32, UInt32, UInt32);
+using SetConstantFn = UInt32(__fastcall*)(void* self, void* edx, UInt32, UInt32, UInt32);
+
+FinishFn g_finish = nullptr;
+ApplyMapFn g_applyMap = nullptr;
+SetArrayFn g_setArray = nullptr;
+SetConstantFn g_setConstant = nullptr;
+
+struct AtomicTiming {
+	volatile LONG64 calls = 0;
+	volatile LONG64 ticks = 0;
+
+	void Add(unsigned __int64 elapsed) {
+		InterlockedIncrement64(&calls);
+		InterlockedAdd64(&ticks, static_cast<LONG64>(elapsed));
+	}
+	probe::StepTiming TakeSnapshot() {
+		probe::StepTiming out;
+		out.calls = static_cast<std::uint64_t>(InterlockedExchange64(&calls, 0));
+		out.ticks = static_cast<std::uint64_t>(InterlockedExchange64(&ticks, 0));
+		return out;
+	}
+};
+
+AtomicTiming g_steps[static_cast<int>(Step::Count)];
+bool g_stepInstalled[static_cast<int>(Step::Count)] = {};
+bool g_stepsOn = false;
+probe::ClockPair g_stepClock;  // the clocks at the last summary (0: none yet)
+
+UInt32 __fastcall TimeFinish(void* self, void* /*edx*/) {
+	const unsigned __int64 start = __rdtsc();
+	const UInt32 eax = g_finish(self, nullptr);
+	g_steps[static_cast<int>(Step::FinishAccumulating)].Add(__rdtsc() - start);
+	return eax;
+}
+
+UInt32 __fastcall TimeApplyMap(void* self, void* /*edx*/, UInt32 a1, UInt32 a2, UInt32 a3, UInt32 a4, UInt32 a5, UInt32 a6,
+                               UInt32 a7, UInt32 a8, UInt32 a9, UInt32 a10, UInt32 a11) {
+	const unsigned __int64 start = __rdtsc();
+	const UInt32 eax = g_applyMap(self, nullptr, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11);
+	g_steps[static_cast<int>(Step::ApplyConstantMap)].Add(__rdtsc() - start);
+	return eax;
+}
+
+UInt32 __fastcall TimeSetArray(void* self, void* /*edx*/, UInt32 a1, UInt32 a2, UInt32 a3, UInt32 a4, UInt32 a5) {
+	const unsigned __int64 start = __rdtsc();
+	const UInt32 eax = g_setArray(self, nullptr, a1, a2, a3, a4, a5);
+	g_steps[static_cast<int>(Step::SetVertexShaderConstantArray)].Add(__rdtsc() - start);
+	return eax;
+}
+
+UInt32 __fastcall TimeSetConstant(void* self, void* /*edx*/, UInt32 a1, UInt32 a2, UInt32 a3) {
+	const unsigned __int64 start = __rdtsc();
+	const UInt32 eax = g_setConstant(self, nullptr, a1, a2, a3);
+	g_steps[static_cast<int>(Step::SetVertexShaderConstant)].Add(__rdtsc() - start);
+	return eax;
+}
+
+probe::ClockPair ReadClocks() {
+	LARGE_INTEGER qpc{};
+	QueryPerformanceCounter(&qpc);
+	return probe::ClockPair{static_cast<std::uint64_t>(__rdtsc()), static_cast<std::uint64_t>(qpc.QuadPart)};
+}
+
+std::uint64_t ClockFrequency() {
+	LARGE_INTEGER f{};
+	QueryPerformanceFrequency(&f);
+	return static_cast<std::uint64_t>(f.QuadPart);
+}
+
+UInt32 InstallPassSteps(LogFn log) {
+	struct Entry {
+		Step which;
+		UInt32 address;
+		const UInt8* bytes;
+		UInt32 length;
+		const void* replacement;
+		void** original;
+	};
+	const Entry entries[] = {
+	    {Step::FinishAccumulating, kFinish, kFinishBytes, sizeof(kFinishBytes), reinterpret_cast<const void*>(&TimeFinish), reinterpret_cast<void**>(&g_finish)},
+	    {Step::ApplyConstantMap, kApplyMap, kApplyMapBytes, sizeof(kApplyMapBytes), reinterpret_cast<const void*>(&TimeApplyMap), reinterpret_cast<void**>(&g_applyMap)},
+	    {Step::SetVertexShaderConstantArray, kSetArray, kSetArrayBytes, sizeof(kSetArrayBytes), reinterpret_cast<const void*>(&TimeSetArray), reinterpret_cast<void**>(&g_setArray)},
+	    {Step::SetVertexShaderConstant, kSetConstant, kSetConstantBytes, sizeof(kSetConstantBytes), reinterpret_cast<const void*>(&TimeSetConstant), reinterpret_cast<void**>(&g_setConstant)},
+	};
+	UInt32 made = 0;
+	for (const Entry& e : entries) {
+		const bool ok = InstallEntryDetour(kStepNames[static_cast<int>(e.which)], e.address, e.bytes, e.length, e.replacement, e.original, log);
+		g_stepInstalled[static_cast<int>(e.which)] = ok;
+		made += ok ? 1 : 0;
+	}
+	g_stepsOn = made != 0;
+	g_stepClock = ReadClocks();
+	return made;
+}
+
+// "Probe: pass steps (N ticks per ms) - name N calls, X ms (Y us per call); ..."
+void LogPassSteps() {
+	const probe::ClockPair now = ReadClocks();
+	const double ticksPerMs = probe::TicksPerMillisecond(g_stepClock, now, ClockFrequency());
+	g_stepClock = now;
+	char line[600];
+	int at = std::snprintf(line, sizeof(line), "Probe: pass steps (%.0f ticks per ms) -", ticksPerMs);
+	for (int i = 0; i < static_cast<int>(Step::Count) && at < 500; ++i) {
+		if (g_stepInstalled[i]) {
+			at += probe::FormatStepTiming(kStepNames[i], g_steps[i].TakeSnapshot(), ticksPerMs, line + at, sizeof(line) - at);
+		}
+	}
+	g_log("%s", line);
+}
 // IsInRange split by the light's path: [this+0x14C] != 0 selects the six-plane
 // test, 0 the distance test (re/functions/0x007D2EA0.md B3). The split by
 // return site says which caller's lights take the plane path - the question
@@ -108,7 +256,6 @@ AtomicCounts g_inRangeDistancePath;
 bool g_installed[static_cast<int>(Probed::Count)] = {};
 bool g_memory = false;
 probe::MemoryPeak g_memoryPeak;
-LogFn g_log = nullptr;
 
 void Count(Probed which, void* returnAddress) {
 	g_counts[static_cast<int>(which)].Add(static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(returnAddress)));
@@ -183,7 +330,8 @@ bool SampleMemory(probe::MemorySample* out) {
 }  // namespace
 
 UInt32 ProbesAsked(const ShadowSettings& settings) {
-	return settings.callCounters ? static_cast<UInt32>(Probed::Count) : 0u;
+	return (settings.callCounters ? static_cast<UInt32>(Probed::Count) : 0u) +
+	       (settings.passSteps ? static_cast<UInt32>(Step::Count) : 0u);
 }
 
 UInt32 InstallProbes(const ShadowSettings& settings, LogFn log) {
@@ -194,8 +342,12 @@ UInt32 InstallProbes(const ShadowSettings& settings, LogFn log) {
 	s_done = true;
 	g_log = log;
 	g_memory = settings.memoryProbe;
+	UInt32 made = 0;
+	if (settings.passSteps) {
+		made += InstallPassSteps(log);
+	}
 	if (!settings.callCounters) {
-		return 0;
+		return made;
 	}
 	struct Entry {
 		Probed which;
@@ -212,7 +364,6 @@ UInt32 InstallProbes(const ShadowSettings& settings, LogFn log) {
 	    {Probed::CopyVertexStreamElements, kCopy, kCopyBytes, sizeof(kCopyBytes), reinterpret_cast<const void*>(&ProbeCopy), reinterpret_cast<void**>(&g_copy)},
 	    {Probed::WhichSide, kWhichSide, kWhichSideBytes, sizeof(kWhichSideBytes), reinterpret_cast<const void*>(&ProbeWhichSide), reinterpret_cast<void**>(&g_whichSide)},
 	};
-	UInt32 made = 0;
 	for (const Entry& e : entries) {
 		const bool ok = InstallEntryDetour(kNames[static_cast<int>(e.which)], e.address, e.bytes, e.length, e.replacement, e.original, log);
 		g_installed[static_cast<int>(e.which)] = ok;
@@ -244,6 +395,9 @@ void LogProbeSummary() {
 			at += probe::FormatCallCounts("distance path", g_inRangeDistancePath.TakeSnapshot(), line + at, sizeof(line) - at);
 			g_log("%s", line);
 		}
+	}
+	if (g_stepsOn) {
+		LogPassSteps();
 	}
 	if (g_memory) {
 		probe::MemorySample sample;

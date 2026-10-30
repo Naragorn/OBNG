@@ -62,11 +62,13 @@ struct Host {
 	uint32_t (*installProbes)(const ShadowSettings& settings);
 };
 
-// How many counting detours the settings ask for (five hot functions of the
-// scene pass, all or none).
+// How many counting detours the settings ask for: five hot functions of the
+// scene pass for the call counters, four timed steps of the pass for the
+// pass steps, each all or none.
 constexpr uint32_t kProbeDetours = 5;
+constexpr uint32_t kPassStepDetours = 4;
 inline uint32_t ProbesAskedFor(const ShadowSettings& s) {
-	return s.callCounters ? kProbeDetours : 0u;
+	return (s.callCounters ? kProbeDetours : 0u) + (s.passSteps ? kPassStepDetours : 0u);
 }
 
 bool Query(const ExtenderInterfaceHead& xse, PluginInfo* info, const Host& host);
