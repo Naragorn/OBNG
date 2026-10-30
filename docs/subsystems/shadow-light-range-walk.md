@@ -139,3 +139,43 @@ unverified: whether `tai`'s state survives the load (the scenario sends it again
 one second after the load; a toggle that survived would turn the AI back on, and
 the agreement above says the Walkers stood still either way, so the question is
 open but harmless here). The routed side has not been run on the fixed scene.
+
+## Routed on the fixed scene: slower (2026-10-30 15:28)
+
+| Side | Run | Frames | scene_pass mean | p95 |
+|---|---|---:|---:|---:|
+| original | 20261030-151727 | 4497 | 2.68 ms | 3.07 |
+| original | 20261030-152017 | 4460 | 2.69 ms | 3.14 |
+| routed | 20261030-152849 | 4496 | 3.15 ms | 4.07 |
+
+The route costs 0.46 ms a pass (+17 %), every walk routed (3004 walks per
+10 s, all on the plane path, all at rounding control truncate). The series
+of the morning could not see this: its scene varied by more than that.
+
+Where the cost is (measured, OBVR's render sampler through
+`../OBVR/tools/perf-functions.py`, phase settled to watched, in-pass
+samples): OBNG.dll holds 14.1 % of the routed run's in-pass samples (3575 of
+25 362; 99.4 % with the shadow draw 0x007D6900 on the stack), while the
+engine's own walk 0x007D59E0 held 3.1 % inclusive (669 of 21 666) in the
+original run: the rebuild runs about five times slower than the walk it
+replaces. Read in the DLL (build c09df5173de6ae0a, `llvm-objdump -d` at
+.text+0x54A0; the region +0x5480..+0x6180 holds over 90 % of the DLL's
+samples): `cvtss2sd`, `mulsd`, then the exponent bit arithmetic of the
+software 24-bit rounding. The cost is the bit-exact x87 emulation
+(`MulPc24` / `AddPc24` / `RoundToPc24` in NiBound_WhichSideLogic.h), not the
+batching and not the ports.
+
+What follows (design, not built): a native path in IEEE single precision
+(SSE) under the call site's rounding mode (MXCSR RC set from the FCW's RC),
+which equals x87 PC=24 arithmetic on single operands except where an
+intermediate leaves the single exponent range (x87 keeps a 15-bit exponent
+until the store; the garbage-sized root bound of df7bb93 is such a case),
+and the exact software path as the fallback whenever MXCSR's overflow,
+underflow or denormal flags were raised during the walk. Verified the same
+way as the exact path (the 30 000-tree differential, the emulator cases
+under the four modes, the in-game shadow in both orders), then routed and
+measured on the fixed scene. Until then the route stays off (OBNG.ini
+[Route] RangeWalk=0, the play default). This is a finding about the
+contract, not only about this subsystem: every future float rebuild takes
+the native-with-fallback shape, software rounding is the oracle, never the
+hot path.

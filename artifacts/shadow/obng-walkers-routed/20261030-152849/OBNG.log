@@ -1,0 +1,49 @@
+OBNG 1 - xOBSE 22, Oblivion 010201A0, editor=0
+Settings from Z:\home\nadi\.local\share\Steam\steamapps\common\Oblivion\Data\OBSE\Plugins\OBNG-test.ini: TimeInfoUpdate=0 TimeInfoInit=0 TimeInfoFreeze=0 TimeInfoUnfreeze=0 LoadingMenuTick=0 LoadingMenuCtor=0 RangeWalk=0 RangeWalkOrder=original-first FpuControlWord=0 HavokPlanner=0 CallCounters=0 Memory=1 MismatchLines=20 SummaryEverySeconds=10 SummaryTimer=1 Route RangeWalk=1
+Shadow: every switch is 0, nothing shadowed
+Route ShadowSceneLight::CollectGeometryInRange: on at 007D59E0 - the game runs OBNG's rebuild instead of the original
+Route: 1 of 1 detours made
+Probes: 0 of 0 call counters made, memory on
+Log: a summary every 10 s from the summary timer
+Shadow:
+Probe: memory commit 387 MB (peak 387), working set 1933 MB (peak 1933), address space 1933 of 4095 MB used (47 %, peak 1933 MB)
+Route: range walk 7871 walks routed, 2855 AddGeometry calls; by source planes 0, distance 7871, directional 0; 0 left to the original (gate off 0, null object 0, no source 0); by rounding control at entry nearest 7871, down 0, up 0, truncate 0
+Shadow:
+Probe: memory commit 441 MB (peak 441), working set 2183 MB (peak 2183), address space 2183 of 4095 MB used (53 %, peak 2183 MB)
+Route: range walk 2389 walks routed, 162131 AddGeometry calls; by source planes 2313, distance 76, directional 0; 0 left to the original (gate off 0, null object 0, no source 0); by rounding control at entry nearest 2389, down 0, up 0, truncate 0
+Shadow:
+Probe: memory commit 441 MB (peak 441), working set 2183 MB (peak 2183), address space 2183 of 4095 MB used (53 %, peak 2183 MB)
+Route: range walk 3004 walks routed, 208027 AddGeometry calls; by source planes 3004, distance 0, directional 0; 0 left to the original (gate off 0, null object 0, no source 0); by rounding control at entry nearest 3004, down 0, up 0, truncate 0
+Shadow:
+Probe: memory commit 468 MB (peak 468), working set 2178 MB (peak 2183), address space 2178 of 4095 MB used (53 %, peak 2183 MB)
+Route: range walk 2999 walks routed, 207680 AddGeometry calls; by source planes 2999, distance 0, directional 0; 0 left to the original (gate off 0, null object 0, no source 0); by rounding control at entry nearest 2999, down 0, up 0, truncate 0
+Shadow:
+Probe: memory commit 469 MB (peak 469), working set 2179 MB (peak 2183), address space 2179 of 4095 MB used (53 %, peak 2183 MB)
+Route: range walk 2993 walks routed, 207266 AddGeometry calls; by source planes 2993, distance 0, directional 0; 0 left to the original (gate off 0, null object 0, no source 0); by rounding control at entry nearest 2993, down 0, up 0, truncate 0
+Shadow:
+Probe: memory commit 469 MB (peak 469), working set 2148 MB (peak 2183), address space 2148 of 4095 MB used (52 %, peak 2183 MB)
+Route: range walk 3004 walks routed, 208027 AddGeometry calls; by source planes 3004, distance 0, directional 0; 0 left to the original (gate off 0, null object 0, no source 0); by rounding control at entry nearest 3004, down 0, up 0, truncate 0
+Shadow:
+Probe: memory commit 470 MB (peak 470), working set 2148 MB (peak 2183), address space 2148 of 4095 MB used (52 %, peak 2183 MB)
+Route: range walk 3004 walks routed, 208027 AddGeometry calls; by source planes 3004, distance 0, directional 0; 0 left to the original (gate off 0, null object 0, no source 0); by rounding control at entry nearest 3004, down 0, up 0, truncate 0
+Shadow:
+Probe: memory commit 471 MB (peak 471), working set 2117 MB (peak 2183), address space 2117 of 4095 MB used (51 %, peak 2183 MB)
+Route: range walk 3001 walks routed, 207815 AddGeometry calls; by source planes 3001, distance 0, directional 0; 0 left to the original (gate off 0, null object 0, no source 0); by rounding control at entry nearest 3001, down 0, up 0, truncate 0
+Shadow:
+Probe: memory commit 472 MB (peak 472), working set 2119 MB (peak 2183), address space 2119 of 4095 MB used (51 %, peak 2183 MB)
+Route: range walk 2995 walks routed, 207408 AddGeometry calls; by source planes 2995, distance 0, directional 0; 0 left to the original (gate off 0, null object 0, no source 0); by rounding control at entry nearest 2567, down 0, up 0, truncate 428
+Shadow:
+Probe: memory commit 473 MB (peak 473), working set 2119 MB (peak 2183), address space 2119 of 4095 MB used (51 %, peak 2183 MB)
+Route: range walk 3004 walks routed, 208027 AddGeometry calls; by source planes 3004, distance 0, directional 0; 0 left to the original (gate off 0, null object 0, no source 0); by rounding control at entry nearest 0, down 0, up 0, truncate 3004
+Shadow:
+Probe: memory commit 474 MB (peak 474), working set 2120 MB (peak 2183), address space 2120 of 4095 MB used (51 %, peak 2183 MB)
+Route: range walk 2996 walks routed, 207473 AddGeometry calls; by source planes 2996, distance 0, directional 0; 0 left to the original (gate off 0, null object 0, no source 0); by rounding control at entry nearest 0, down 0, up 0, truncate 2996
+Shadow:
+Probe: memory commit 447 MB (peak 474), working set 2094 MB (peak 2183), address space 2094 of 4095 MB used (51 %, peak 2183 MB)
+Route: range walk 3000 walks routed, 207750 AddGeometry calls; by source planes 3000, distance 0, directional 0; 0 left to the original (gate off 0, null object 0, no source 0); by rounding control at entry nearest 0, down 0, up 0, truncate 3000
+Shadow:
+Probe: memory commit 447 MB (peak 474), working set 2094 MB (peak 2183), address space 2094 of 4095 MB used (51 %, peak 2183 MB)
+Route: range walk 3004 walks routed, 208027 AddGeometry calls; by source planes 3004, distance 0, directional 0; 0 left to the original (gate off 0, null object 0, no source 0); by rounding control at entry nearest 0, down 0, up 0, truncate 3004
+Shadow:
+Probe: memory commit 447 MB (peak 474), working set 2094 MB (peak 2183), address space 2094 of 4095 MB used (51 %, peak 2183 MB)
+Route: range walk 3004 walks routed, 208027 AddGeometry calls; by source planes 3004, distance 0, directional 0; 0 left to the original (gate off 0, null object 0, no source 0); by rounding control at entry nearest 0, down 0, up 0, truncate 3004

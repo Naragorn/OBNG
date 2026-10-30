@@ -298,3 +298,29 @@ Read off that (measured, derived where said):
 - Whether `[0x00B43104]`, the shader's this+0x14 and OBVR's renderer
   0x00B3F928 are one object.
 - +0x14C of a ShadowSceneLight and the unrestored mask under 0x007C6100.
+
+## Where a scene pass goes on the fixed Walkers scene (measured 2026-10-30)
+
+OBVR's render sampler (`../OBVR/tools/perf-functions.py <run>/OBVR-samples.csv
+<run> settled watched --in-pass only`) over OBNG's fixed-scene run
+`artifacts/shadow/obng-walkers-original/20261030-151727` (ImperialDungeon01,
+eighteen Walkers standing, dual pass, scene_pass mean 2.68 ms of a 13.3 ms
+vsync-held frame; 21 666 in-pass samples in the sixty seconds watched).
+Exclusive, by module and function: engine code 51.7 %, spread - no single
+function above 2.4 % (NiBound::WhichSide 0x0047DA70 2.4 %, 72 % of it from
+IsInRange 0x007D2EA0 and 27 % from Cull 0x0070DFD3; 0x0077B140 2.4 %;
+0x007732B0 1.9 %; 0x0076F3B0 1.8 %; the bone compose 0x0053D7A0 1.5 %);
+D3D9.DLL 16.7 % (30 % of it called from the light-constant upload 0x007C9140,
+16 % from the inverse 0x00718A80, 12 % from the palette builder 0x007655F0);
+OBVR.dll 11.2 % (42 % under 0x007655F0, 30 % under 0x007C9140: OBVR's own
+detours there); Oblivion Frame Fixes' fast copy 6.8 %; the CRT memcpy 4.4 %
+(91 % from the unlock 0x00776D80); d3dx9 2.6 %. Inclusive (on the stack):
+Do_RenderShape 0x007693E0 44 %, DrawSkinnedPrimitive 0x00767520 36 %,
+0x0077A1F0 31 % (SetupShaderPrograms plus the packing: the function table
+has no start between 0x0077A1F0 and 0x0077A4A0), 0x009A56D0 27 %,
+0x007A9820 26 %, 0x007830C0 23 %, 0x00717690 23 %, 0x007AC9A0 21 %,
+PackStream 0x0076FE20 13 %, PackSkinnedGeometryBuffer 0x00763130 12 %, the
+range walk 0x007D59E0 3.1 %. Over the whole frame 52 % of the render
+thread's samples are in vrclient.dll (the pose wait). The unnamed inclusive
+functions above are unmapped (unverified names); they are where the next
+subsystem choice has to look.
