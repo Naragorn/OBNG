@@ -1,0 +1,45 @@
+# The PASS STEPS measurement on the fixed scene: the game runs its own code
+# (nothing routed, nothing shadowed) and OBNG.dll times four steps of the
+# scene pass per summary window - the shader accumulator's finish 0x007AE070
+# (every draw of the pass), the constant-map apply loop 0x009A8E30, the
+# per-bone upload 0x00783180 and the constant upload 0x007830C0 - as calls
+# and milliseconds, inclusive and nested (re/functions/0x007AC9A0.md,
+# 0x009A56D0.md, 0x007830C0.md; slice pass-drivers). The body is the
+# measurement pair's (obng-walkers-{original,routed}.txt, the save
+# OBVRHarnessWalkers); only the OBNG-test.ini differs
+# (tools/hand-scripts/obng-measure-steps.ini: [Probe] PassSteps=1).
+#
+# Run, from OBNG's folder (OBNG.dll deployed, the save made):
+#   tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-steps.ini tools/hand-scripts/obng-walkers-steps.txt --save OBVRHarnessWalkers
+# In OBNG.log look for the "Probe: pass steps (N ticks per ms) - ..." lines;
+# the frames per window come from OBVR's capture (perf-phases.py).
+
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Render Stereo=dual
+ini Performance Enabled=1
+ini Performance GpuTiming=0
+ini Performance StartAfterSeconds=40
+ini Performance CaptureSeconds=80
+ini Performance MaxRecords=262144
+console-at ready tgm
+console-at ready tcl
+console-at ready player.setrestrained 1
+console-at ready SetNumericINISetting "fVanityModeAutoDelay:Camera" 100000
+console-at ready tai
+
+expect HandScript: finished
+expect Performance: capture armed, it starts in 40 seconds
+expect Performance: capture 1 started
+expect Performance: export
+reject menu Container
+reject HandScript: WARNING
+
+wait 1
+mark ready
+wait 29
+mark settled
+wait 60
+mark watched
+wait 35
+mark done

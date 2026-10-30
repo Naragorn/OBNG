@@ -403,6 +403,43 @@ What that settles:
   (D3DX multiply / inverse / transpose per entry, the pass-constant ones
   included) and the pixel-map uploads.
 - What is left (about 4.0 ms a frame) sits below DrawRenderPass outside the
-  constant maps: the draws (DrawIndexedPrimitive and the driver), the
-  packing's locks and copies, SetupTransformations and the light constants,
-  OBVR's palette detour. Not split yet.
+  constant maps; the second round below splits it.
+
+### Round two: the draw side split (measured 2026-10-30 19:44)
+
+The same probe with nine steps and the finish summed per return address
+(`artifacts/shadow/obng-walkers-steps/20261030-194432`, 4485 frames in the
+60 s watched, 74.8 a second, scene_pass 3.04 ms against 2.78 without any
+probe: nine detours on about 19 000 timed calls a frame cost about 0.25 ms,
+which sits inside the outer sums). Medians of the steady windows (the 3rd to
+9th), per frame:
+
+| Step | Calls per frame | ms per frame | us per call |
+|---|---:|---:|---:|
+| FinishAccumulating 0x007AE070 | 18 | 5.36 | 297 |
+| Do_RenderShape 0x007693E0 (every shape draw) | 2 291 | 4.92 | 2.15 |
+| DrawSkinnedPrimitive 0x00767520 (the skinned ones) | 1 588 | 3.50 | 2.20 |
+| slot 13 SetupTransformations 0x007C9230 | 2 230 | 0.43 | 0.19 |
+| slot 15 PrepareGeometryForRendering 0x0077A310 (the packing) | 2 331 | 1.00 | 0.43 |
+| slot 14 SetupShaderPrograms 0x0077A1F0 (the constant maps inside) | 2 331 | 1.42 | 0.61 |
+| ApplyConstantMap 0x009A8E30 | 4 564 | 1.17 | 0.26 |
+| SetVertexShaderConstantArray 0x00783180 | 1 628 | 0.53 | 0.33 |
+| SetVertexShaderConstant 0x007830C0 | 2 328 | 0.07 | 0.03 |
+
+The finish by return site (per frame): 0x007C7D56 in ShadowSceneNode's
+render 0x007C78D0, 2 calls, **4.98 ms** - the two eye passes hold 93 % of
+the finish, about 2.5 ms each; 0x0070E152 in 0x0070E0A0, 10 calls, 0.38 ms -
+the actor-shadow map passes, 38 us each; 0x0040CE6D in RenderScene
+0x0040C830 and 0x007D4EA1 in 0x007D46C0, 2 and 4 calls, empty.
+
+Derived from the table (the probe's 0.25 ms inside the outer numbers):
+
+- Per partition the three shader slots take 2.85 ms a frame: the programs
+  with the constant maps 1.42, the packing 1.00, the transformations 0.43.
+- Do_RenderShape minus the three slots is 2.07 ms: the device draws (about
+  2 330 DrawIndexedPrimitive a frame, so under 0.9 us each with the driver),
+  the bone palette build (OBVR's detour sits there) and the dispatch.
+- The finish minus Do_RenderShape is 0.44 ms: the accumulator's list walk,
+  DrawRenderPass's per-light writes, the shader state begin and end.
+- The eye pass is the unit that holds everything: 2.5 ms of CPU per eye.
+  Single-pass stereo's ceiling on this scene is one of them.

@@ -205,20 +205,20 @@ void TestLoadPassSteps() {
 	Section("Load with the pass steps on: four more detours asked");
 	Fake fake;
 	fake.iniSettings.shadow.passSteps = true;
-	fake.probesMade = 8;
+	fake.probesMade = 9;
 	g_fake = &fake;
 	ResetForTest();
 	Check(Load(Game(), kHost), "loads");
 	Check(fake.probeInstalls == 1 && fake.probed.passSteps && !fake.probed.callCounters, "the pass steps reach the probe installer");
-	Check(fake.Logged("Probes: 8 of 8 call counters made, memory on"), "eight asked without the counters");
+	Check(fake.Logged("Probes: 9 of 9 call counters made, memory on"), "nine asked without the counters");
 	Fake both;
 	both.iniSettings.shadow.passSteps = true;
 	both.iniSettings.shadow.callCounters = true;
-	both.probesMade = 12;
+	both.probesMade = 13;
 	g_fake = &both;
 	ResetForTest();
 	Check(Load(Game(), kHost), "loads");
-	Check(both.Logged("Probes: 12 of 12 call counters made, memory on"), "twelve asked with both: the shared SetupTransformations entry counted once");
+	Check(both.Logged("Probes: 13 of 13 call counters made, memory on"), "thirteen asked with both: the shared SetupTransformations entry counted once");
 }
 
 void TestLoadProbesOff() {

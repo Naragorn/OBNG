@@ -236,6 +236,19 @@ ceiling 1.17 ms a frame, 9 % of the frame; needs 0x009A8E30 and 0x00783180 mappe
 gate at the step's output (the constant registers after the apply, per partition).
 knowledge/culling-and-draw-setup.md carries the table.
 
+Decisions taken after the second pass-steps run (2026-10-30 19:44, run obng-walkers-steps/
+20261030-194432): the finish's 5.4 ms a frame are the two eye passes (4.98 ms, 2.5 each);
+per partition the shader slots take 2.85 ms (programs with the constant maps 1.42, the
+packing 1.00, the transformations 0.43), the device draws with the palette build and
+the dispatch about 2.1 ms, the accumulator's own list work 0.44 ms. The measured levers,
+largest first: the second eye pass (2.5 ms, single-pass stereo, the whole pass as a
+unit - the long-term shape, huge), the constant maps (1.17 ms, mapped, a gate at the
+register contents - medium to large), the packing (1.00 ms, the cross-frame cache from
+docs/subsystems/stream-packing.md, its probe first - cheap then medium), the
+transformations (0.43, small). The sampler's inclusive table is retired as the basis
+for block choices; the pass-steps probe ([Probe] PassSteps=1) is the measurement.
+knowledge/culling-and-draw-setup.md carries both rounds' tables.
+
 ## Subsystem replacements
 
 | Subsystem | Replaces | State | Gates | Note |
