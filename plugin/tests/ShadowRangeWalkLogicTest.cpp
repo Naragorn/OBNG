@@ -304,7 +304,7 @@ struct FakeGame {
 		++entries;
 		const auto controlWord = handedControlWord >= 0 ? static_cast<std::uint16_t>(handedControlWord) : m.controlWord;
 		return rw::ShadowWalk(m, state, buffers, order, controlWord, light, object,
-			[this](std::uint32_t l, std::uint32_t o) { return FakeOriginal(l, o); }, StubSquareRoot,
+			[this](std::uint32_t l, std::uint32_t o) { return FakeOriginal(l, o); }, StubSquareRoot, ws::engine::MxcsrPort{},
 			[this](const rw::WalkReport& r) { reports.push_back(r); });
 	}
 
@@ -462,7 +462,7 @@ void TestFlowSkips() {
 				++originalRuns;
 				return 7u;
 			},
-			StubSquareRoot, [&](const rw::WalkReport& r) { game.reports.push_back(r); });
+			StubSquareRoot, ws::engine::MxcsrPort{}, [&](const rw::WalkReport& r) { game.reports.push_back(r); });
 		Check(eax == 7 && originalRuns == 1 && game.reports.size() == 1 &&
 				game.reports[0].action == rw::EntryAction::SkipNullObject,
 			"a null object: the original runs, reported as skipped");
@@ -478,7 +478,7 @@ void TestFlowSkips() {
 				++originalRuns;
 				return 0x55u;
 			},
-			StubSquareRoot, [&](const rw::WalkReport& r) { game.reports.push_back(r); });
+			StubSquareRoot, ws::engine::MxcsrPort{}, [&](const rw::WalkReport& r) { game.reports.push_back(r); });
 		Check(eax == 0x55 && originalRuns == 1 && game.reports.empty() && game.m.reads == readsBefore,
 			"an inner call: the original runs, nothing is read, nothing reported");
 		Check(game.state.depth == 1, "the depth is back where the inner call found it");
@@ -759,11 +759,13 @@ void TestStats() {
 	r.action = rw::EntryAction::Compare;
 	r.mode = walk::SourceMode::Planes;
 	r.comparison.originalCount = 5;
+	r.planes = walk::PlaneTestCounters{12, 3, 1};
 	stats.Add(r);
 	r.mode = walk::SourceMode::Distance;
 	r.comparison.originalCount = 9;
 	r.comparison.maskDiffers = true;
 	r.controlWord = 0x0C7F;
+	r.planes = walk::PlaneTestCounters{};
 	stats.Add(r);
 	rw::WalkReport skipped{};
 	skipped.action = rw::EntryAction::SkipGateOff;
@@ -776,8 +778,8 @@ void TestStats() {
 	Check(std::string(line) ==
 			"Shadow range walk: 2 walks compared (planes 1, distance 1, directional 0, no source 0), "
 			"14 AddGeometry calls compared, at most 9 in one walk, 1 mismatching walks; by rounding control at entry "
-			"nearest 1, down 0, up 0, truncate 1",
-		"the line names the walks by source path, the adds and the rounding controls the walks ran under");
+			"nearest 1, down 0, up 0, truncate 1; plane batches native 3, recomputed 1",
+		"the line names the walks by source path, the adds, the rounding controls the walks ran under and the native pass's share");
 	Check(stats.byRounding[0] == 1 && stats.byRounding[3] == 1, "0x0000 counts as nearest, 0x0C7F as truncate; a skip is not counted");
 	stats.Reset();
 	Check(stats.Walks() == 0 && stats.adds == 0 && stats.maxAdds == 0, "reset clears it");

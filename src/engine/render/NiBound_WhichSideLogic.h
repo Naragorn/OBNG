@@ -378,6 +378,125 @@ inline DistanceStores SignedDistance(PlaneValues plane, SphereValues sphere, X87
 	return DistanceStores{dotStored, distanceStored};
 }
 
+// ---- The native reading: IEEE single on SSE under the same rounding control ----
+//
+// Measured 2026-10-30 (artifacts/shadow/obng-walkers-routed/20261030-152849,
+// OBVR's sampler): the software rounding above costs about five times the
+// engine's own walk, 0.46 ms a scene pass. The hardware does the same
+// rounding for free: an x87 operation at precision control 24 and an SSE
+// single-precision operation both round the exact result of one operation
+// to a 24-bit significand under the rounding control they run with (SDM
+// vol. 1 4.8.4; both implement IEEE 754's four directions, the x87's
+// measured in tests/X87RoundingHostTest.cpp). They differ in the exponent
+// range alone: the x87 register keeps 15 exponent bits until the store, the
+// single format 8. So the two part only where an operation's result lies
+// beyond the single's normal range - above its largest finite value
+// (overflow), or below its smallest normal one (underflow: the single rounds
+// at the fixed denormal quantum, the register at 24 bits; a denormal operand
+// of a later operation is such a value), or when the operation is invalid
+// (inf - inf, 0 * inf: both produce a default NaN, whose payload is not
+// modelled here; a quiet NaN operand is not invalid, it propagates silently
+// in both, with a payload that is not modelled either and reaches only the
+// comparisons, which are false for any NaN) - and nowhere else (derived;
+// measured against the host's
+// own x87 on random edge-biased inputs in tests/NiBound_WhichSideNativeTest.cpp).
+// SSE reports exactly these cases in MXCSR's sticky flags while its
+// exceptions are masked (SDM vol. 1 11.5.2): IE for the invalid operation,
+// DE for a denormal operand, OE for the overflow, UE for a tiny inexact
+// result (a tiny exact one raises nothing and is the x87's value too: the
+// next operation on it raises DE, a stored final value is exact in both).
+// ZE cannot be raised here (no division); PE (inexact) is the ordinary case.
+//
+// The reading: MXCSR set to the x87 word's rounding control with every
+// exception masked, flush-to-zero and denormals-are-zero off and the flags
+// cleared (NativeControl); the plain float arithmetic in the original's
+// order; then the flags read back. None of the four raised: the result is
+// the x87's bit for bit. Any raised: the exact path above recomputes it.
+// MXCSR is a port (Mxcsr.h MxcsrPort; the game's own MXCSR at the walk's
+// entry was 0x00001FBF, nearest with every flag already set, measured
+// 2026-10-30 13:18, so both the control and the flags must be written) and is
+// put back as found, so nothing the walk calls between two batches runs
+// under a changed register. The pragma keeps the compiler from moving the
+// arithmetic across the port's accesses or assuming the default rounding
+// mode: clang lowers the operations to constrained intrinsics with dynamic
+// rounding and strict exceptions (measured in the generated code of
+// clang++ -m32 and clang-cl, 2026-10-30: the STMXCSR / LDMXCSR pair stays
+// around the MULSS / ADDSS / SUBSS); MSVC's fenv_access pragma disables the
+// code motion, folding and contraction that assume the default environment
+// (learn.microsoft.com/cpp/preprocessor/fenv-access; the MSVC build is not
+// run here, unverified).
+//
+// MXCSR layout (read in clang's xmmintrin.h, the _MM_* macros): flags in
+// bits 0-5 (IE 0x01, DE 0x02, ZE 0x04, OE 0x08, UE 0x10, PE 0x20), DAZ bit
+// 6, the six masks in bits 7-12 (0x1F80), the rounding control in bits
+// 13-14 with the x87's encoding (nearest 0, down 1, up 2, toward zero 3),
+// FTZ bit 15.
+
+#if defined(__clang__)
+#define OBNG_FENV_ACCESS_ON _Pragma("STDC FENV_ACCESS ON") _Pragma("clang fp contract(off)")
+#elif defined(_MSC_VER)
+#define OBNG_FENV_ACCESS_ON __pragma(fenv_access(on))
+#else
+#error "the native reading needs a compiler whose floating-point environment access is known"
+#endif
+
+inline constexpr std::uint32_t kMxcsrExceptionMasks = 0x1F80u;
+inline constexpr unsigned kMxcsrRoundingShift = 13;
+inline constexpr std::uint32_t kMxcsrInvalid = 0x01u;
+inline constexpr std::uint32_t kMxcsrDenormal = 0x02u;
+inline constexpr std::uint32_t kMxcsrDivideByZero = 0x04u;
+inline constexpr std::uint32_t kMxcsrOverflow = 0x08u;
+inline constexpr std::uint32_t kMxcsrUnderflow = 0x10u;
+inline constexpr std::uint32_t kMxcsrInexact = 0x20u;
+inline constexpr std::uint32_t kMxcsrFallbackFlags = kMxcsrInvalid | kMxcsrDenormal | kMxcsrOverflow | kMxcsrUnderflow;
+
+// The MXCSR the native arithmetic runs under: the mode's rounding control,
+// every exception masked, FTZ and DAZ off, every flag clear.
+constexpr std::uint32_t NativeControl(X87Rounding mode) {
+	return kMxcsrExceptionMasks | (static_cast<std::uint32_t>(mode) << kMxcsrRoundingShift);
+}
+
+// Whether the native results are the x87's, from the MXCSR read after them.
+constexpr bool NativeResultExact(std::uint32_t mxcsrAfter) {
+	return (mxcsrAfter & kMxcsrFallbackFlags) == 0;
+}
+
+// 0x0047DA74..0x0047DA97 in single precision: the same operations in the
+// same order, each rounded by the hardware; the FSTP/FLD pairs through
+// [ESP+4] are the identity for a value in the single's normal range, which
+// the flags guarantee when the result is kept. Valid only between a write of
+// NativeControl(mode) to MXCSR and the flag check that follows.
+inline float SignedDistanceNative(PlaneValues plane, SphereValues sphere) {
+	OBNG_FENV_ACCESS_ON
+	const float yTerm = plane.normalY * sphere.centerY;
+	const float xTerm = plane.normalX * sphere.centerX;
+	const float yx = yTerm + xTerm;
+	const float zTerm = plane.normalZ * sphere.centerZ;
+	const float dot = yx + zTerm;
+	return dot - plane.constant;
+}
+
+// The distances of up to six planes against one sphere, natively, as one
+// MXCSR scope: the register saved, set, the arithmetic, the flags read, the
+// register put back. Returns whether the results are the x87's; the caller
+// recomputes them on the exact path when not. The lanes are the planes'
+// indices with a set bit; other entries of `out` are left alone.
+template <class Planes, class Mxcsr>
+bool NativeDistances(const Planes& planes, std::uint32_t lanes, SphereValues sphere, X87Rounding mode, Mxcsr& mxcsr,
+	float* out) {
+	OBNG_FENV_ACCESS_ON
+	const std::uint32_t saved = mxcsr.Read();
+	mxcsr.Write(NativeControl(mode));
+	for (unsigned plane = 0; plane < 6; ++plane) {
+		if ((lanes & (std::uint32_t{1} << plane)) != 0) {
+			out[plane] = SignedDistanceNative(planes[plane], sphere);
+		}
+	}
+	const std::uint32_t after = mxcsr.Read();
+	mxcsr.Write(saved);
+	return NativeResultExact(after);
+}
+
 // B1, FLD r / FCHS / FCOMP / TEST AH,0x1 / JNZ 0x0047DAA7: C0 is set for
 // -r < d and for unordered, so the jump is not taken exactly when d <= -r
 // with both ordered (read; C7 derived). FCHS only flips the sign and FCOM

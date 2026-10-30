@@ -67,7 +67,7 @@ struct RoutedGame {
 	std::uint32_t Entry(std::uint32_t light, std::uint32_t object) {
 		return rw::RouteWalk(
 			m, state, scratch, m.controlWord, light, object, [this](std::uint32_t l, std::uint32_t o) { return Original(l, o); },
-			[this](std::uint32_t l, std::uint32_t g) { AddGeometry(l, g); }, StubSquareRoot,
+			[this](std::uint32_t l, std::uint32_t g) { AddGeometry(l, g); }, StubSquareRoot, ws::engine::MxcsrPort{},
 			[this](const rw::RouteReport& r) { reports.push_back(r); });
 	}
 
@@ -287,7 +287,8 @@ void TestLeftToOriginal() {
 				++originalRuns;
 				return 7u;
 			},
-			[&](std::uint32_t, std::uint32_t) {}, StubSquareRoot, [&](const rw::RouteReport& r) { game.reports.push_back(r); });
+			[&](std::uint32_t, std::uint32_t) {}, StubSquareRoot, ws::engine::MxcsrPort{},
+			[&](const rw::RouteReport& r) { game.reports.push_back(r); });
 		Check(eax == 7 && originalRuns == 1 && game.reports.size() == 1 &&
 				game.reports[0].action == rw::EntryAction::SkipNullObject,
 			"a null object: the original runs (whatever it does with it), reported as left");
@@ -304,7 +305,8 @@ void TestLeftToOriginal() {
 				++originalRuns;
 				return 0x55u;
 			},
-			[&](std::uint32_t, std::uint32_t) {}, StubSquareRoot, [&](const rw::RouteReport& r) { game.reports.push_back(r); });
+			[&](std::uint32_t, std::uint32_t) {}, StubSquareRoot, ws::engine::MxcsrPort{},
+			[&](const rw::RouteReport& r) { game.reports.push_back(r); });
 		Check(eax == 0x55 && originalRuns == 1 && game.reports.empty() && game.m.reads == readsBefore && game.m.writes.empty(),
 			"an inner call: the original runs, nothing is read, written or reported");
 		Check(game.state.depth == 1, "the depth is back where the inner call found it");
@@ -369,10 +371,12 @@ void TestStats() {
 	r.action = rw::EntryAction::Compare;
 	r.mode = walk::SourceMode::Planes;
 	r.adds = 5;
+	r.planes = walk::PlaneTestCounters{12, 3, 1};
 	stats.Add(r);
 	r.mode = walk::SourceMode::Distance;
 	r.adds = 9;
 	r.controlWord = 0x0C7F;
+	r.planes = walk::PlaneTestCounters{};
 	stats.Add(r);
 	rw::RouteReport left{};
 	left.action = rw::EntryAction::SkipGateOff;
@@ -392,8 +396,8 @@ void TestStats() {
 	Check(std::string(line) ==
 			"Route: range walk 2 walks routed, 14 AddGeometry calls; by source planes 1, distance 1, directional 0; "
 			"4 left to the original (gate off 1, null object 1, no source 2); by rounding control at entry nearest 1, "
-			"down 0, up 0, truncate 1",
-		"the line: walks routed, calls performed, the source paths, the calls left by reason, the rounding controls");
+			"down 0, up 0, truncate 1; plane batches native 3, recomputed 1",
+		"the line: walks routed, calls performed, the source paths, the calls left by reason, the rounding controls, the native pass's share");
 	stats.Reset();
 	Check(stats.Routed() == 0 && stats.adds == 0 && stats.Left() == 0, "reset clears it");
 	char tiny[6];

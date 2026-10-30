@@ -29,6 +29,7 @@
 #include "RangeWalkGame.h"
 #include "ShadowRangeWalkLogic.h"
 #include "ShadowRecorder.h"
+#include "engine/render/Mxcsr.h"
 
 namespace obng::plugin {
 namespace {
@@ -129,7 +130,7 @@ UInt32 __fastcall ShadowWalk(UInt32 light, void* /*edx*/, UInt32 object) {
 	game::GameMemory memory;
 	return rw::ShadowWalk(memory, slot.state, slot.buffers, g_order, controlWord, light, object,
 	                      [](std::uint32_t l, std::uint32_t o) { return static_cast<std::uint32_t>(g_walk(l, nullptr, o)); },
-	                      game::GameSquareRootPort{}, &Report);
+	                      game::GameSquareRootPort{}, engine::render::which_side::engine::MxcsrPort{}, &Report);
 }
 
 }  // namespace

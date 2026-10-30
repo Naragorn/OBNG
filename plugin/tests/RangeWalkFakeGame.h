@@ -12,6 +12,7 @@
 // the headers' constants, so a wrong constant shows in the tests.
 
 #include "ShadowRangeWalkLogic.h"
+#include "engine/render/Mxcsr.h"
 
 #include <bit>
 #include <cmath>
@@ -271,13 +272,14 @@ inline SceneShape BuildScene(Builder& b, bool planes) {
 inline bool FakeIsInRange(FakeMemory& m, std::uint32_t light, std::uint32_t object) {
 	const walk::LightValues v = rw::CaptureLight(m, light, ws::RoundingFromControlWord(m.controlWord));
 	const walk::SourceMode mode = walk::SelectSourceMode(v.hasSource, v.sourceRtti, v.planeSource);
-	std::uint64_t count = 0;
+	walk::PlaneTestCounters count;
+	ws::engine::MxcsrPort mxcsr;
 	const walk::RangeDecision d = walk::TestObject(
 		v, mode, m.Raw32(light + 0x1B0),
 		[&] {
 			return ws::SphereValues{m.F32(object + 0x20), m.F32(object + 0x24), m.F32(object + 0x28), m.F32(object + 0x2C)};
 		},
-		StubSquareRoot, count);
+		StubSquareRoot, mxcsr, count);
 	m.Put32(light + 0x1B0, d.mask);
 	return d.inRange;
 }

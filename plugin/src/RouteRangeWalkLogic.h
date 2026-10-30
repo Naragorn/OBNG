@@ -92,6 +92,7 @@ struct RouteReport {
 	std::uint32_t adds;         // AddGeometry calls performed (routed only)
 	bool result;                // AL returned (routed only)
 	std::uint16_t controlWord;  // the x87 control word at the walk's entry (FNSTCW)
+	walk::PlaneTestCounters planes{};  // the walk's plane tests: how many objects the native pass settled (routed only)
 };
 
 // What the route did since the last summary.
@@ -99,6 +100,8 @@ struct RouteStats {
 	std::uint64_t routed[4] = {0, 0, 0, 0};  // routed walks by walk::SourceMode
 	std::uint64_t byRounding[4] = {0, 0, 0, 0};  // routed walks by the rounding control at entry (which_side::X87Rounding)
 	std::uint64_t adds = 0;                  // AddGeometry calls performed by routed walks
+	std::uint64_t nativeBatches = 0;         // objects whose plane distances the native pass settled
+	std::uint64_t exactBatches = 0;          // objects recomputed on the exact path (a flag was raised)
 	std::uint64_t leftGateOff = 0;
 	std::uint64_t leftNullObject = 0;
 	std::uint64_t leftNoSource = 0;
@@ -109,6 +112,8 @@ struct RouteStats {
 			++routed[static_cast<unsigned>(report.mode)];
 			++byRounding[static_cast<unsigned>(which_side::RoundingFromControlWord(report.controlWord))];
 			adds += report.adds;
+			nativeBatches += report.planes.nativeBatches;
+			exactBatches += report.planes.exactBatches;
 			return;
 		case EntryAction::SkipGateOff:
 			++leftGateOff;
@@ -135,7 +140,7 @@ inline void FormatRouteStats(const RouteStats& s, char* out, std::size_t capacit
 	std::snprintf(out, capacity,
 		"Route: range walk %llu walks routed, %llu AddGeometry calls; by source planes %llu, distance %llu, "
 		"directional %llu; %llu left to the original (gate off %llu, null object %llu, no source %llu); by rounding "
-		"control at entry nearest %llu, down %llu, up %llu, truncate %llu",
+		"control at entry nearest %llu, down %llu, up %llu, truncate %llu; plane batches native %llu, recomputed %llu",
 		static_cast<unsigned long long>(s.Routed()), static_cast<unsigned long long>(s.adds),
 		static_cast<unsigned long long>(s.routed[static_cast<unsigned>(walk::SourceMode::Planes)]),
 		static_cast<unsigned long long>(s.routed[static_cast<unsigned>(walk::SourceMode::Distance)]),
@@ -143,7 +148,8 @@ inline void FormatRouteStats(const RouteStats& s, char* out, std::size_t capacit
 		static_cast<unsigned long long>(s.Left()), static_cast<unsigned long long>(s.leftGateOff),
 		static_cast<unsigned long long>(s.leftNullObject), static_cast<unsigned long long>(s.leftNoSource),
 		static_cast<unsigned long long>(s.byRounding[0]), static_cast<unsigned long long>(s.byRounding[1]),
-		static_cast<unsigned long long>(s.byRounding[2]), static_cast<unsigned long long>(s.byRounding[3]));
+		static_cast<unsigned long long>(s.byRounding[2]), static_cast<unsigned long long>(s.byRounding[3]),
+		static_cast<unsigned long long>(s.nativeBatches), static_cast<unsigned long long>(s.exactBatches));
 }
 
 // One call of the patched entry 0x007D59E0 under the route.
@@ -152,16 +158,17 @@ inline void FormatRouteStats(const RouteStats& s, char* out, std::size_t capacit
 //   callOriginal(light, object)       the original through the trampoline; its EAX is returned whole
 //   performAddGeometry(light, geom)   0x007D5790
 //   squareRoot                        the 0x00982C30 port
+//   mxcsr                             the MXCSR port of the plane path's native pass (Mxcsr.h)
 //   report(RouteReport)               once per outermost call, never for an inner one
 // The calls the shadow did not compare (DecideEntry's skips) go to the
 // original: they are exact there and the route has no evidence for them. An
 // inner call - the original's own recursion while it runs a left call, or a
 // walk entered again from inside AddGeometry on this thread - goes to the
 // original without reading anything (the depth, as in the shadow).
-template <class Memory, class CallOriginal, class PerformAddGeometry, class SquareRoot, class Report>
+template <class Memory, class CallOriginal, class PerformAddGeometry, class SquareRoot, class Mxcsr, class Report>
 std::uint32_t RouteWalk(Memory& memory, ThreadWalkState& state, walk::BatchedWalkScratch& scratch, std::uint16_t controlWord,
 	std::uint32_t light, ObjectHandle object, CallOriginal&& callOriginal, PerformAddGeometry&& performAddGeometry,
-	SquareRoot&& squareRoot, Report&& report) {
+	SquareRoot&& squareRoot, Mxcsr&& mxcsr, Report&& report) {
 	const DepthScope scope(state);
 	if (scope.Before() != 0) {
 		return callOriginal(light, object);
@@ -179,12 +186,12 @@ std::uint32_t RouteWalk(Memory& memory, ThreadWalkState& state, walk::BatchedWal
 	using Perform = std::remove_reference_t<PerformAddGeometry>;
 	PerformingScene<Memory, Perform> scene{{memory, nullptr}, light, &performAddGeometry};
 	walk::NoWalkObserver observer;
-	const bool walked = walk::BatchedWalk(values, scene, object, squareRoot, scratch, observer);
+	const bool walked = walk::BatchedWalk(values, scene, object, squareRoot, mxcsr, scratch, observer);
 	if (scene.maskWritten) {
 		memory.W32(light + walk_engine::kActivePlanesOffset, values.activePlanes);
 	}
 	const walk::SourceMode mode = walk::SelectSourceMode(values.hasSource, values.sourceRtti, values.planeSource);
-	report(RouteReport{action, mode, scene.adds, walked, controlWord});
+	report(RouteReport{action, mode, scene.adds, walked, controlWord, scratch.counters});
 	return RouteEax(walked);
 }
 

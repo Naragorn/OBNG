@@ -61,14 +61,21 @@
 //
 // ---- What it keeps --------------------------------------------------------------
 //
-// K1. The arithmetic: each lane is WhichSide's own SignedDistance and Classify
+// K1. The arithmetic: each lane is WhichSide's SignedDistance and Classify
 //     (NiBound_WhichSideLogic.h, verified in the emulator under the four
 //     rounding modes) and IsInRange's own ClassifySide; the distance path is
 //     IsInRange's Distance and RangeExceeds - all under LightValues::rounding,
 //     the mode the original walk runs its range tests with.
 //     The batching is structural, not numerical: the same function per lane,
 //     the same roundings in the same order (derived; the differential test
-//     compares every event).
+//     compares every event). Since 2026-10-30 the plane distances are
+//     computed natively first (SSE single precision under the same rounding
+//     control, NiBound_WhichSideLogic.h "The native reading"), one MXCSR scope
+//     per object, and recomputed by SignedDistance only when the flags say
+//     an operation left the single's range - the same values either way
+//     (derived there; measured against the host's x87 in
+//     tests/NiBound_WhichSideNativeTest.cpp and against ReferenceWalk by the
+//     differential test).
 // K2. The number of per-plane classifications: one per active lane per tested
 //     object, as many as the original's WhichSide calls (derived from B4 of
 //     0x007D2EA0; counted by the tests). No shortcut on the first "wholly
@@ -213,16 +220,36 @@ struct PlaneBatch {
 	std::uint32_t lanes;     // the active planes (mask bits 0..5)
 	std::uint32_t negative;  // lanes wholly on the negative side (WhichSide 2)
 	std::uint32_t positive;  // lanes wholly on the positive side (WhichSide 1)
+	bool native;             // the distances kept from the native pass (false: recomputed exactly, or no lane)
 	std::array<float, in_range::kPlaneCount> distance;  // d per active lane, as WhichSide stores it
 };
 
-inline PlaneBatch ClassifyPlanes(const std::array<which_side::PlaneValues, in_range::kPlaneCount>& planes,
-	std::uint32_t mask, which_side::SphereValues sphere, which_side::X87Rounding mode) {
+// What the plane tests of one walk did (K2 and the native reading's share).
+struct PlaneTestCounters {
+	std::uint64_t planeClassifications = 0;  // one per active lane per tested object (K2)
+	std::uint64_t nativeBatches = 0;         // objects whose native distances were kept
+	std::uint64_t exactBatches = 0;          // objects recomputed on the exact path (a flag was raised)
+};
+
+// mxcsr is the MXCSR port (Mxcsr.h MxcsrPort, or a test's fake): the native
+// pass is one scope of it per object with at least one active lane; an
+// object without one touches neither the register nor the counters.
+template <class Mxcsr>
+PlaneBatch ClassifyPlanes(const std::array<which_side::PlaneValues, in_range::kPlaneCount>& planes, std::uint32_t mask,
+	which_side::SphereValues sphere, which_side::X87Rounding mode, Mxcsr& mxcsr, PlaneTestCounters& counters) {
 	PlaneBatch batch{};
 	batch.lanes = mask & kPlaneLanes;
-	for (unsigned plane = 0; plane < in_range::kPlaneCount; ++plane) {
-		if (in_range::IsPlaneActive(batch.lanes, plane)) {
-			batch.distance[plane] = which_side::SignedDistance(planes[plane], sphere, mode).distanceStored;
+	if (batch.lanes != 0) {
+		batch.native = which_side::NativeDistances(planes, batch.lanes, sphere, mode, mxcsr, batch.distance.data());
+		if (batch.native) {
+			++counters.nativeBatches;
+		} else {
+			++counters.exactBatches;
+			for (unsigned plane = 0; plane < in_range::kPlaneCount; ++plane) {
+				if (in_range::IsPlaneActive(batch.lanes, plane)) {
+					batch.distance[plane] = which_side::SignedDistance(planes[plane], sphere, mode).distanceStored;
+				}
+			}
 		}
 	}
 	for (unsigned plane = 0; plane < in_range::kPlaneCount; ++plane) {
@@ -263,18 +290,19 @@ constexpr RangeDecision ApplyPlaneBatch(const PlaneBatch& batch, std::uint32_t m
 
 // IsInRange over plain values for one object. readBound() is the object's
 // world bound (+0x20..+0x2C); it is read only on the two paths that use it,
-// as IsInRange copies it only after B1 and B2. planeClassifications counts K2.
-template <class ReadBound, class SquareRoot>
+// as IsInRange copies it only after B1 and B2. counters takes K2 and the
+// native pass's share; mxcsr is the plane path's MXCSR port.
+template <class ReadBound, class SquareRoot, class Mxcsr>
 RangeDecision TestObject(const LightValues& light, SourceMode mode, std::uint32_t mask, ReadBound&& readBound,
-	SquareRoot&& squareRoot, std::uint64_t& planeClassifications) {
+	SquareRoot&& squareRoot, Mxcsr& mxcsr, PlaneTestCounters& counters) {
 	switch (mode) {
 	case SourceMode::NoSource:
 		return RangeDecision{false, mask};
 	case SourceMode::Directional:
 		return RangeDecision{true, mask};
 	case SourceMode::Planes: {
-		const PlaneBatch batch = ClassifyPlanes(light.planes, mask, readBound(), light.rounding);
-		planeClassifications += PlaneClassifications(batch);
+		const PlaneBatch batch = ClassifyPlanes(light.planes, mask, readBound(), light.rounding, mxcsr, counters);
+		counters.planeClassifications += PlaneClassifications(batch);
 		return ApplyPlaneBatch(batch, mask);
 	}
 	case SourceMode::Distance: {
@@ -350,16 +378,17 @@ struct WalkItem {
 // Reusable between walks so a warmed-up walk does not allocate.
 struct BatchedWalkScratch {
 	std::vector<WalkItem> stack;
-	std::uint64_t planeClassifications = 0;  // of the last walk (K2)
+	PlaneTestCounters counters;  // of the last walk
 };
 
 // The same contract as ReferenceWalk over the same scene ports; the light is
 // a snapshot (R5) and +0x1B0 is never written (R4). squareRoot is the port for
-// 0x00982C30 as IsInRange's distance path takes it.
-template <class Scene, class SquareRoot, class Observer>
-bool BatchedWalk(const LightValues& light, Scene& scene, ObjectHandle root, SquareRoot&& squareRoot,
+// 0x00982C30 as IsInRange's distance path takes it; mxcsr the MXCSR port of
+// the plane path's native pass.
+template <class Scene, class SquareRoot, class Mxcsr, class Observer>
+bool BatchedWalk(const LightValues& light, Scene& scene, ObjectHandle root, SquareRoot&& squareRoot, Mxcsr& mxcsr,
 	BatchedWalkScratch& scratch, Observer& observer) {
-	scratch.planeClassifications = 0;
+	scratch.counters = PlaneTestCounters{};
 	if (!IsWalkEnabled(scene.gate())) {  // B1 of the root call
 		return false;
 	}
@@ -398,7 +427,7 @@ bool BatchedWalk(const LightValues& light, Scene& scene, ObjectHandle root, Squa
 		const WalkItem visit = top;
 		stack.pop_back();
 		const RangeDecision decision = TestObject(
-			light, mode, visit.mask, [&] { return scene.bound(visit.object); }, squareRoot, scratch.planeClassifications);
+			light, mode, visit.mask, [&] { return scene.bound(visit.object); }, squareRoot, mxcsr, scratch.counters);
 		observer.onVisit(visit.object, decision.inRange, visit.mask, decision.mask);
 		if (!decision.inRange) {  // B2: the subtree skipped
 			continue;

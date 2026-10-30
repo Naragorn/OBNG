@@ -577,6 +577,7 @@ struct WalkReport {
 	TraceDifference trace{};   // rebuild-first after a mismatch: the first input that changed
 	bool lightChanged = false; // rebuild-first after a mismatch: the light's values differ after the original
 	RootDistance root{};       // rebuild-first after a mismatch on the distance path: the root's terms
+	walk::PlaneTestCounters planes{};  // the compared rebuild's plane tests: how many objects the native pass settled
 };
 
 // The light's values bit for bit (a float compare would hide -0.0 and NaN).
@@ -606,6 +607,8 @@ struct WalkStats {
 	std::uint64_t adds = 0;                 // original AddGeometry calls compared
 	std::uint64_t maxAdds = 0;              // the most in one walk
 	std::uint64_t mismatches = 0;
+	std::uint64_t nativeBatches = 0;        // objects whose plane distances the rebuild's native pass settled
+	std::uint64_t exactBatches = 0;         // objects the rebuild recomputed on the exact path
 
 	void Add(const WalkReport& report) {
 		if (report.action != EntryAction::Compare) {
@@ -617,6 +620,8 @@ struct WalkStats {
 		adds += n;
 		maxAdds = n > maxAdds ? n : maxAdds;
 		mismatches += report.comparison.Mismatch() ? 1 : 0;
+		nativeBatches += report.planes.nativeBatches;
+		exactBatches += report.planes.exactBatches;
 	}
 	std::uint64_t Walks() const { return walks[0] + walks[1] + walks[2] + walks[3]; }
 	void Reset() { *this = WalkStats{}; }
@@ -629,7 +634,7 @@ inline void FormatWalkStats(const WalkStats& s, char* out, std::size_t capacity)
 	std::snprintf(out, capacity,
 		"Shadow range walk: %llu walks compared (planes %llu, distance %llu, directional %llu, no source %llu), "
 		"%llu AddGeometry calls compared, at most %llu in one walk, %llu mismatching walks; by rounding control at entry "
-		"nearest %llu, down %llu, up %llu, truncate %llu",
+		"nearest %llu, down %llu, up %llu, truncate %llu; plane batches native %llu, recomputed %llu",
 		static_cast<unsigned long long>(s.Walks()),
 		static_cast<unsigned long long>(s.walks[static_cast<unsigned>(walk::SourceMode::Planes)]),
 		static_cast<unsigned long long>(s.walks[static_cast<unsigned>(walk::SourceMode::Distance)]),
@@ -638,16 +643,17 @@ inline void FormatWalkStats(const WalkStats& s, char* out, std::size_t capacity)
 		static_cast<unsigned long long>(s.adds), static_cast<unsigned long long>(s.maxAdds),
 		static_cast<unsigned long long>(s.mismatches), static_cast<unsigned long long>(s.byRounding[0]),
 		static_cast<unsigned long long>(s.byRounding[1]), static_cast<unsigned long long>(s.byRounding[2]),
-		static_cast<unsigned long long>(s.byRounding[3]));
+		static_cast<unsigned long long>(s.byRounding[3]), static_cast<unsigned long long>(s.nativeBatches),
+		static_cast<unsigned long long>(s.exactBatches));
 }
 
 // One call of the patched entry 0x007D59E0. controlWord is the x87 control
 // word at the entry, before anything here ran (the detour's FNSTCW): the
 // original walks under it, so the rebuild rounds under its rounding control
 // (LightValues::rounding). callOriginal(light, object) runs the original (its
-// EAX is returned unchanged); squareRoot is the 0x00982C30 port;
-// report(WalkReport) is called once per outermost call, never for a
-// pass-through. The game's state is left as the original left it: the rebuild
+// EAX is returned unchanged); squareRoot is the 0x00982C30 port; mxcsr the
+// MXCSR port of the plane path's native pass (Mxcsr.h); report(WalkReport)
+// is called once per outermost call, never for a pass-through. The game's state is left as the original left it: the rebuild
 // only reads and calls the read-only helpers.
 //
 // In both orders the light's values are read FIRST, before either side runs
@@ -658,10 +664,10 @@ inline void FormatWalkStats(const WalkStats& s, char* out, std::size_t capacity)
 //                   traced, with the same light values, and the first read
 //                   that differs between the two traces is reported, as is
 //                   whether the light's own values changed.
-template <class Memory, class CallOriginal, class SquareRoot, class Report>
+template <class Memory, class CallOriginal, class SquareRoot, class Mxcsr, class Report>
 std::uint32_t ShadowWalk(Memory& memory, ThreadWalkState& state, WalkBuffers& buffers, RangeWalkOrder order,
 	std::uint16_t controlWord, std::uint32_t light, ObjectHandle object, CallOriginal&& callOriginal, SquareRoot&& squareRoot,
-	Report&& report) {
+	Mxcsr&& mxcsr, Report&& report) {
 	const DepthScope scope(state);
 	if (scope.Before() != 0) {
 		return callOriginal(light, object);
@@ -691,12 +697,12 @@ std::uint32_t ShadowWalk(Memory& memory, ThreadWalkState& state, WalkBuffers& bu
 		MemoryScene<Memory> scene{memory, &adds};
 		if (trace == nullptr) {
 			walk::NoWalkObserver observer;
-			return walk::BatchedWalk(values, scene, object, squareRoot, buffers.scratch, observer);
+			return walk::BatchedWalk(values, scene, object, squareRoot, mxcsr, buffers.scratch, observer);
 		}
 		trace->clear();
 		TracingScene<MemoryScene<Memory>> traced{scene, trace};
 		TracingObserver observer{trace};
-		return walk::BatchedWalk(values, traced, object, squareRoot, buffers.scratch, observer);
+		return walk::BatchedWalk(values, traced, object, squareRoot, mxcsr, buffers.scratch, observer);
 	};
 
 	std::uint32_t eax = 0;
@@ -713,6 +719,7 @@ std::uint32_t ShadowWalk(Memory& memory, ThreadWalkState& state, WalkBuffers& bu
 	const walk::SourceMode mode = walk::SelectSourceMode(values.hasSource, values.sourceRtti, values.planeSource);
 	WalkReport result{action, Compare(buffers.original, buffers.rebuild), mode, light, object, values.activePlanes, order,
 		controlWord};
+	result.planes = buffers.scratch.counters;
 	if (order == RangeWalkOrder::RebuildFirst && result.comparison.Mismatch()) {
 		buffers.afterAdds.clear();
 		runRebuild(buffers.afterAdds, &buffers.traceAfter);

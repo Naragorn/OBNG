@@ -43,6 +43,7 @@
 // the walk only obeys what the ports answer.
 
 #include "Check.h"
+#include "engine/render/Mxcsr.h"
 #include "engine/render/ShadowLightRangeWalk.h"
 #include "engine/render/ShadowLightRangeWalkLogic.h"
 #include "engine/render/ShadowSceneLight_IsInRange.h"
@@ -314,6 +315,8 @@ struct RunResult {
 	std::vector<Event> log;
 	std::uint32_t finalMask = 0;
 	std::uint64_t planeTests = 0;
+	std::uint64_t nativeBatches = 0;  // BatchedWalk only
+	std::uint64_t exactBatches = 0;   // BatchedWalk only
 	std::vector<int> geometryCalls;
 };
 
@@ -336,11 +339,14 @@ RunResult RunBatched(const TestScene& spec, const walk::LightValues& light, Obje
 	scene.log = &run.log;
 	walk::BatchedWalkScratch scratch;
 	LogObserver observer{&run.log};
-	run.result = walk::BatchedWalk(light, scene, root, StubSquareRoot, scratch, observer);
+	ws::engine::MxcsrPort mxcsr;
+	run.result = walk::BatchedWalk(light, scene, root, StubSquareRoot, mxcsr, scratch, observer);
 	// The batched walk never writes the light's +0x1B0 (it keeps the mask on
 	// its stack): the light's mask afterwards is the value it entered with.
 	run.finalMask = light.activePlanes;
-	run.planeTests = scratch.planeClassifications;
+	run.planeTests = scratch.counters.planeClassifications;
+	run.nativeBatches = scratch.counters.nativeBatches;
+	run.exactBatches = scratch.counters.exactBatches;
 	run.geometryCalls = scene.geometryCalls;
 	return run;
 }
@@ -447,16 +453,33 @@ void Decisions() {
 	Check(walk::SelectSourceMode(true, kRttiNiPointLight, 0) == walk::SourceMode::Distance, "+0x14C zero: distance");
 }
 
+// A port that records the writes and answers the reads it is told to.
+struct FakeMxcsr {
+	std::vector<std::uint32_t> reads;  // answered in order; the last one repeats
+	std::vector<std::uint32_t> writes;
+	std::size_t next = 0;
+	std::uint32_t Read() {
+		const std::uint32_t value = reads[next < reads.size() ? next : reads.size() - 1];
+		++next;
+		return value;
+	}
+	void Write(std::uint32_t value) { writes.push_back(value); }
+};
+
 void PlaneBatchFlows() {
 	const walk::LightValues light = PlaneLight(0x3F);
+	ws::engine::MxcsrPort mxcsr;
+	walk::PlaneTestCounters counters;
 
 	Section("ClassifyPlanes: only the active lanes are computed and classified (B4 of 0x007D2EA0)");
 	{
-		const walk::PlaneBatch none = walk::ClassifyPlanes(light.planes, 0, S(0, 0, 0, 10), light.rounding);
+		const walk::PlaneBatch none = walk::ClassifyPlanes(light.planes, 0, S(0, 0, 0, 10), light.rounding, mxcsr, counters);
 		Check(none.lanes == 0 && none.negative == 0 && none.positive == 0, "mask 0: no lane, nothing classified");
 		Check(walk::PlaneClassifications(none) == 0, "0 classifications");
-		const walk::PlaneBatch gaps = walk::ClassifyPlanes(light.planes, 0xFFFFFF2Au, S(500, 0, 0, 10), light.rounding);
+		Check(!none.native && counters.nativeBatches == 0 && counters.exactBatches == 0, "no lane: no native pass, no batch counted");
+		const walk::PlaneBatch gaps = walk::ClassifyPlanes(light.planes, 0xFFFFFF2Au, S(500, 0, 0, 10), light.rounding, mxcsr, counters);
 		Check(gaps.lanes == 0x2Au && walk::PlaneClassifications(gaps) == 3, "mask 0xFFFFFF2A: lanes 1, 3, 5 only");
+		Check(gaps.native && counters.nativeBatches == 1 && counters.exactBatches == 0, "ordinary values: the native pass kept, one batch counted");
 		Check(gaps.negative == 0x02u && gaps.positive == 0x28u, "plane 1 wholly negative, 3 and 5 wholly positive");
 		const walk::RangeDecision d = walk::ApplyPlaneBatch(gaps, 0xFFFFFF2Au);
 		Check(!d.inRange && d.mask == 0xFFFFFF02u, "out of range; bits 3 and 5 retired, bits 6..31 kept");
@@ -465,7 +488,7 @@ void PlaneBatchFlows() {
 	Section("ClassifyPlanes: the per-lane distance is WhichSide's SignedDistance, the class its Classify");
 	{
 		const ws::SphereValues sphere = S(-30, 0, 0, 80);
-		const walk::PlaneBatch batch = walk::ClassifyPlanes(light.planes, 0x3F, sphere, light.rounding);
+		const walk::PlaneBatch batch = walk::ClassifyPlanes(light.planes, 0x3F, sphere, light.rounding, mxcsr, counters);
 		bool same = true;
 		for (unsigned i = 0; i < in_range::kPlaneCount; ++i) {
 			const float expected = ws::SignedDistance(light.planes[i], sphere, light.rounding).distanceStored;
@@ -481,34 +504,62 @@ void PlaneBatchFlows() {
 
 	Section("ClassifyPlanes: a negative radius makes both tests hold, Negative wins (C6 of 0x0047DA70)");
 	{
-		const walk::PlaneBatch batch = walk::ClassifyPlanes(light.planes, 0x01, S(-100, 0, 0, -1), light.rounding);
+		const walk::PlaneBatch batch = walk::ClassifyPlanes(light.planes, 0x01, S(-100, 0, 0, -1), light.rounding, mxcsr, counters);
 		Check(batch.negative == 0x01u && batch.positive == 0, "d 0, r -1: negative only");
 	}
 
 	Section("ClassifyPlanes: NaN in the bound straddles every lane (no comparison holds)");
 	{
-		const walk::PlaneBatch batch = walk::ClassifyPlanes(light.planes, 0x3F, S(kNaN, 0, 0, 10), light.rounding);
+		const walk::PlaneBatch batch = walk::ClassifyPlanes(light.planes, 0x3F, S(kNaN, 0, 0, 10), light.rounding, mxcsr, counters);
 		Check(batch.negative == 0 && batch.positive == 0, "centre x NaN: every lane kept (0 * NaN is NaN too)");
-		const walk::PlaneBatch radius = walk::ClassifyPlanes(light.planes, 0x3F, S(0, 0, 0, kNaN), light.rounding);
+		Check(batch.native, "a quiet NaN operand raises no flag (IEEE 754 6.2, SSE and x87 alike): kept, the comparisons false either way");
+		const walk::PlaneBatch radius = walk::ClassifyPlanes(light.planes, 0x3F, S(0, 0, 0, kNaN), light.rounding, mxcsr, counters);
 		Check(radius.negative == 0 && radius.positive == 0, "NaN radius: every lane kept");
+		Check(radius.native, "a NaN radius is never an operand of the distance: the native pass kept");
+	}
+
+	Section("ClassifyPlanes over a fake MXCSR port: the flags decide between the native pass and the exact path");
+	{
+		const ws::SphereValues sphere = S(-30, 0, 0, 80);
+		walk::PlaneTestCounters fakeCounters;
+		FakeMxcsr clean{{0x1F80u, 0x7FA0u}, {}};  // PE only after the arithmetic
+		const walk::PlaneBatch kept = walk::ClassifyPlanes(light.planes, 0x3F, sphere, ws::X87Rounding::Zero, clean, fakeCounters);
+		Check(kept.native && fakeCounters.nativeBatches == 1 && fakeCounters.exactBatches == 0, "PE only: the native distances kept");
+		Check(clean.writes.size() == 2 && clean.writes[0] == ws::NativeControl(ws::X87Rounding::Zero) && clean.writes[1] == 0x1F80u,
+			"the port saw NativeControl(truncate), then the saved word back");
+		FakeMxcsr flagged{{0x1F80u, 0x7FB0u}, {}};  // UE and PE after the arithmetic
+		const walk::PlaneBatch recomputed = walk::ClassifyPlanes(light.planes, 0x3F, sphere, ws::X87Rounding::Zero, flagged, fakeCounters);
+		Check(!recomputed.native && fakeCounters.nativeBatches == 1 && fakeCounters.exactBatches == 1, "UE: recomputed, counted as exact");
+		bool same = true;
+		for (unsigned i = 0; i < in_range::kPlaneCount; ++i) {
+			same = same && Bits(recomputed.distance[i]) == Bits(ws::SignedDistance(light.planes[i], sphere, ws::X87Rounding::Zero).distanceStored);
+			same = same && Bits(recomputed.distance[i]) == Bits(kept.distance[i]);
+		}
+		Check(same, "the recomputed distances are SignedDistance's, and equal to the kept ones on these values");
+		Check(recomputed.negative == kept.negative && recomputed.positive == kept.positive, "the same classification either way");
+		FakeMxcsr untouched{{0x1F80u}, {}};
+		walk::ClassifyPlanes(light.planes, 0xFFFFFFC0u, sphere, ws::X87Rounding::Zero, untouched, fakeCounters);
+		Check(untouched.next == 0 && untouched.writes.empty() && fakeCounters.nativeBatches == 1 && fakeCounters.exactBatches == 1,
+			"no lane in bits 0..5: the port is not touched");
 	}
 
 	Section("TestObject per source mode (IsInRange's B1, B2, B3/B8 over plain values)");
 	{
-		std::uint64_t count = 0;
+		walk::PlaneTestCounters count;
 		const auto bound = [] { return S(500, 0, 0, 10); };
 		const walk::RangeDecision none =
-			walk::TestObject(light, walk::SourceMode::NoSource, 0x3F, bound, StubSquareRoot, count);
-		Check(!none.inRange && none.mask == 0x3Fu && count == 0, "no source: out, mask kept, no plane test");
+			walk::TestObject(light, walk::SourceMode::NoSource, 0x3F, bound, StubSquareRoot, mxcsr, count);
+		Check(!none.inRange && none.mask == 0x3Fu && count.planeClassifications == 0, "no source: out, mask kept, no plane test");
 		const walk::RangeDecision directional =
-			walk::TestObject(light, walk::SourceMode::Directional, 0x3F, bound, StubSquareRoot, count);
-		Check(directional.inRange && directional.mask == 0x3Fu && count == 0, "directional: in, mask kept");
-		const walk::RangeDecision planes = walk::TestObject(light, walk::SourceMode::Planes, 0x3F, bound, StubSquareRoot, count);
-		Check(!planes.inRange && planes.mask == 0x02u && count == 6, "planes: out, mask 0x02, six classifications");
-		const walk::RangeDecision far = walk::TestObject(light, walk::SourceMode::Distance, 0x3F, bound, StubSquareRoot, count);
-		Check(!far.inRange && far.mask == 0x3Fu && count == 6, "distance: gap 490 >= range 100, out, no plane test");
+			walk::TestObject(light, walk::SourceMode::Directional, 0x3F, bound, StubSquareRoot, mxcsr, count);
+		Check(directional.inRange && directional.mask == 0x3Fu && count.planeClassifications == 0, "directional: in, mask kept");
+		const walk::RangeDecision planes = walk::TestObject(light, walk::SourceMode::Planes, 0x3F, bound, StubSquareRoot, mxcsr, count);
+		Check(!planes.inRange && planes.mask == 0x02u && count.planeClassifications == 6, "planes: out, mask 0x02, six classifications");
+		Check(count.nativeBatches == 1 && count.exactBatches == 0, "one native batch");
+		const walk::RangeDecision far = walk::TestObject(light, walk::SourceMode::Distance, 0x3F, bound, StubSquareRoot, mxcsr, count);
+		Check(!far.inRange && far.mask == 0x3Fu && count.planeClassifications == 6, "distance: gap 490 >= range 100, out, no plane test");
 		const walk::RangeDecision near =
-			walk::TestObject(light, walk::SourceMode::Distance, 0x3F, [] { return S(50, 0, 0, 10); }, StubSquareRoot, count);
+			walk::TestObject(light, walk::SourceMode::Distance, 0x3F, [] { return S(50, 0, 0, 10); }, StubSquareRoot, mxcsr, count);
 		Check(near.inRange && near.mask == 0x3Fu, "distance: gap 40 < range 100, in");
 	}
 
@@ -520,11 +571,12 @@ void PlaneBatchFlows() {
 		const ws::SphereValues sphere{1.0f, 1.0f, FromBits(0x30800000u), FromBits(0x33800000u)};
 		for (const ws::X87Rounding mode : {ws::X87Rounding::Nearest, ws::X87Rounding::Down, ws::X87Rounding::Up, ws::X87Rounding::Zero}) {
 			tie.rounding = mode;
-			const walk::PlaneBatch batch = walk::ClassifyPlanes(tie.planes, 0x01, sphere, tie.rounding);
+			const walk::PlaneBatch batch = walk::ClassifyPlanes(tie.planes, 0x01, sphere, tie.rounding, mxcsr, counters);
 			Check(batch.positive == (mode == ws::X87Rounding::Up ? 0x01u : 0u) && batch.negative == 0,
 				mode == ws::X87Rounding::Up ? "plane path, up: plane 0 retired" : "plane path, nearest/down/truncate: plane 0 kept");
-			std::uint64_t count = 0;
-			const walk::RangeDecision d = walk::TestObject(tie, walk::SourceMode::Planes, 0x01, [&] { return sphere; }, StubSquareRoot, count);
+			Check(batch.native, "the tie is decided by the native pass under the mode (no flag: the values are ordinary)");
+			walk::PlaneTestCounters count;
+			const walk::RangeDecision d = walk::TestObject(tie, walk::SourceMode::Planes, 0x01, [&] { return sphere; }, StubSquareRoot, mxcsr, count);
 			Check(d.inRange && d.mask == (mode == ws::X87Rounding::Up ? 0u : 0x01u), "TestObject takes the light's mode on the plane path");
 		}
 		// G1 of 0x007D2EA0-rounding.json: the in-game mismatch's root.
@@ -532,12 +584,12 @@ void PlaneBatchFlows() {
 		garbage.sourcePosition = in_range::PointValues{FromBits(0xC3F5B6A8u), FromBits(0x4486928Fu), FromBits(0x4401EB54u)};
 		garbage.sourceRange = 256.0f;
 		const ws::SphereValues root{FromBits(0xFD935C0Fu), FromBits(0xFD935C13u), FromBits(0xFEBFCBA9u), FromBits(0x5FDFFFF8u)};
-		std::uint64_t count = 0;
+		walk::PlaneTestCounters count;
 		garbage.rounding = ws::X87Rounding::Nearest;
-		Check(!walk::TestObject(garbage, walk::SourceMode::Distance, 0x3F, [&] { return root; }, StubSquareRoot, count).inRange,
+		Check(!walk::TestObject(garbage, walk::SourceMode::Distance, 0x3F, [&] { return root; }, StubSquareRoot, mxcsr, count).inRange,
 			"distance path, nearest: the garbage root is out (s +inf)");
 		garbage.rounding = ws::X87Rounding::Zero;
-		Check(walk::TestObject(garbage, walk::SourceMode::Distance, 0x3F, [&] { return root; }, StubSquareRoot, count).inRange,
+		Check(walk::TestObject(garbage, walk::SourceMode::Distance, 0x3F, [&] { return root; }, StubSquareRoot, mxcsr, count).inRange,
 			"distance path, truncate: in (s FLT_MAX) - the original's answer in the game");
 		TestScene scene;
 		const ObjectHandle sceneRoot = scene.Add(Kind::Node, root);
@@ -1072,6 +1124,8 @@ struct DifferentialStats {
 	std::uint64_t narrowed = 0;
 	std::uint64_t adds = 0;
 	std::uint64_t planeTests = 0;
+	std::uint64_t nativeBatches = 0;  // objects whose native plane distances were kept
+	std::uint64_t exactBatches = 0;   // objects recomputed on the exact path
 	std::uint64_t ties = 0;        // active lanes with d == r or d == -r exactly
 	std::uint64_t nanLanes = 0;    // active lanes with a NaN distance or radius
 	int maxDepthSeen = 0;
@@ -1158,6 +1212,8 @@ void Differential() {
 				}
 			}
 			stats.planeTests += reference.planeTests;
+			stats.nativeBatches += batched.nativeBatches;
+			stats.exactBatches += batched.exactBatches;
 			CountLanes(scene, light, reference.log, stats);
 			if (!same) {
 				++stats.failures;
@@ -1185,6 +1241,8 @@ void Differential() {
 		static_cast<unsigned long long>(stats.narrowed), static_cast<unsigned long long>(stats.adds),
 		static_cast<unsigned long long>(stats.planeTests), static_cast<unsigned long long>(stats.ties),
 		static_cast<unsigned long long>(stats.nanLanes));
+	std::printf("    plane batches: %llu kept natively, %llu recomputed on the exact path\n",
+		static_cast<unsigned long long>(stats.nativeBatches), static_cast<unsigned long long>(stats.exactBatches));
 	Check(stats.trees >= 2000, "at least 2 000 trees");
 	Check(stats.failures == 0, "every tree: the same events, AL, final mask and plane-test count");
 	Check(stats.byMode[0] > 0 && stats.byMode[1] > 0 && stats.byMode[2] > 0 && stats.byMode[3] > 0, "every source mode reached");
@@ -1193,6 +1251,8 @@ void Differential() {
 		"every rounding mode on a quarter of the trees (both walks under the same mode)");
 	Check(stats.ties > 0 && stats.nanLanes > 0 && stats.outOfRange > 0 && stats.narrowed > 0 && stats.mutated > 0,
 		"ties, NaN lanes, out-of-range visits, narrowing and mutations all reached");
+	Check(stats.nativeBatches > 0 && stats.exactBatches > 0,
+		"the native plane pass kept and the exact fallback both taken (the wild values leave the single's range)");
 }
 
 // ---- The engine-facing constants -----------------------------------------------------------

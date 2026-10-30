@@ -21,6 +21,7 @@
 #include "RangeWalkGame.h"
 #include "RouteRangeWalkLogic.h"
 #include "ShadowRecorder.h"
+#include "engine/render/Mxcsr.h"
 
 namespace obng::plugin {
 namespace {
@@ -59,7 +60,8 @@ UInt32 __fastcall RouteWalk(UInt32 light, void* /*edx*/, UInt32 object) {
 	return rw::RouteWalk(
 		memory, slot.state, slot.scratch, controlWord, light, object,
 		[](std::uint32_t l, std::uint32_t o) { return static_cast<std::uint32_t>(g_walk(l, nullptr, o)); },
-		[](std::uint32_t l, std::uint32_t g) { g_addGeometry(l, nullptr, g); }, game::GameSquareRootPort{}, &Report);
+		[](std::uint32_t l, std::uint32_t g) { g_addGeometry(l, nullptr, g); }, game::GameSquareRootPort{},
+		engine::render::which_side::engine::MxcsrPort{}, &Report);
 }
 
 }  // namespace

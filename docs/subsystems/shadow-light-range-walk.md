@@ -179,3 +179,28 @@ measured on the fixed scene. Until then the route stays off (OBNG.ini
 contract, not only about this subsystem: every future float rebuild takes
 the native-with-fallback shape, software rounding is the oracle, never the
 hot path.
+
+## The native reading, built (2026-10-30 17:20)
+
+Built as designed above: `SignedDistanceNative` and `NativeDistances` in
+`src/engine/render/NiBound_WhichSideLogic.h` ("The native reading"), the MXCSR
+port in `src/engine/render/Mxcsr.h`, `ClassifyPlanes` taking the port and
+counting per walk how many objects the native pass settled and how many the
+exact path recomputed (`PlaneTestCounters`, in the route's and the shadow's
+summary lines as "plane batches native N, recomputed M"). The contract and
+its evidence are in `knowledge/floating-point-contract.md`.
+
+What the tests measured (all green, 2026-10-30 17:17):
+
+| Test | What | Result |
+|---|---|---|
+| tests/NiBound_WhichSideNativeTest.cpp | the host's x87 running 0x0047DA74..0x0047DA97 against the exact path, the native path with its fallback, and the flags' soundness; 4 control words x 200 000 edge-biased inputs; ten forced cases (OE, UE, DE, IE, inf, the garbage bound) | 0 mismatches on both paths, 0 unreported raw differences; forced cases as predicted; 50 000 of 50 000 game-like inputs kept natively |
+| tests/ShadowLightRangeWalkTest.cpp | the flows over a fake port (flags decide, the register put back, no lane: no access) and the 30 000-tree differential against ReferenceWalk through the exact IsInRange | 0 differences; 34 990 batches kept natively, 2 445 recomputed (the wild values) |
+| plugin tests | the route and the shadow carry the port and the counters | green |
+| tools/bench/range-walk-batch-bench.cpp | one six-lane batch on this host, clang++ -m32 -O2 | exact 314 ns, native with the MXCSR scope 13.4 ns (23 x) |
+
+Not yet run (the game was held by OBVR's runs): the in-game shadow on the
+fixed scene (tools/hand-scripts/obng-walkers-check.txt, original-first,
+expecting 0 mismatches and the native share in the summary line), then the
+routed measurement against the original on the same scene with the same
+OBVR.dll (the OBVR.dll changed at 17:14, so the original side is re-run too).
