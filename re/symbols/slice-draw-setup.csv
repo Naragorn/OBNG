@@ -1,0 +1,7 @@
+address,name,kind,confidence,conflict,source
+0x007C9230,ShadowLightShader_SetupTransformations,function,inferred,0,re/ledger.md draw-setup (vtable slot 13 of ShadowLightShader/ParallaxShader/SkinShader/SpeedTreeBranchShader - the class is read from the COLs; the method name is a proposal)
+0x0070DFB0,NiCullingProcess_Cull,function,named,0,re/ledger.md draw-setup (slot 1 of the NiCullingProcess vtable 0x00A7E610 by RTTI, and OBVR GameAddresses.h names the slot; 0x0070DFD3 is its loop half, not a function)
+0x007D2EA0,ShadowSceneLight_IsInRange,function,inferred,0,re/ledger.md draw-setup (thiscall(object, sourceLight) -> AL; plane path on +0x14C != 0, distance path otherwise)
+0x0049CBF0,TESWaterCullingProcess_Cull,function,inferred,0,re/functions/0x0070DFB0.md C14 (slot 1 of the TESWaterCullingProcess vtable 0x00A3F380 by RTTI; calls 0x0070DFB0)
+0x0070E040,NiCullingProcess_SetFrustum,function,inferred,0,re/functions/0x0070DFB0.md C13 (copies the frustum, builds the six planes through 0x00717A40, sets the mask 0x3F)
+0x0080B7A0,HairShader_SetupTransformations,function,inferred,0,re/functions/0x007C9230.md C2 (slot 13 of the HairShader vtable; the only direct caller of 0x007C9230; no Ghidra function)
