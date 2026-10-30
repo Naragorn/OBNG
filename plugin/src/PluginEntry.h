@@ -47,6 +47,7 @@ struct Host {
 	// The shadow detours; each returns how many were made.
 	uint32_t (*installShadowTimeInfo)(const ShadowSettings& settings);
 	uint32_t (*installShadowLoadingMenu)(const ShadowSettings& settings);
+	uint32_t (*installShadowRangeWalk)(const ShadowSettings& settings);
 	// The counting probes (Probes.cpp); returns how many detours were made.
 	uint32_t (*installProbes)(const ShadowSettings& settings);
 };

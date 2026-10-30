@@ -36,3 +36,8 @@ add_executable(EntryDetourTest EntryDetourTest.cpp ../src/CodeWriter.cpp ../src/
 target_include_directories(EntryDetourTest PRIVATE ../src)
 target_compile_options(EntryDetourTest PRIVATE -Wall -Wextra)
 add_test(NAME EntryDetourTest COMMAND EntryDetourTest)
+
+add_executable(ShadowRangeWalkLogicTest ShadowRangeWalkLogicTest.cpp)
+target_include_directories(ShadowRangeWalkLogicTest PRIVATE ../src ../../src ../../tests)
+target_compile_options(ShadowRangeWalkLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME ShadowRangeWalkLogicTest COMMAND ShadowRangeWalkLogicTest)

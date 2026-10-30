@@ -30,14 +30,17 @@ bool Load(const ExtenderInterfaceHead& xse, const Host& host) {
 	}
 	g_settings = Settings{};
 	if (!host.readSettings(&g_settings)) {
-		host.log("No OBNG.ini next to the DLL - defaults: every TimeInfo shadow on, both probes on, 20 mismatch "
-		         "lines a function, a summary every 10 seconds");
+		host.log("No OBNG.ini next to the DLL - defaults: every TimeInfo and LoadingMenu shadow on, the range walk off, "
+		         "the memory probe on, 20 mismatch lines a function, a summary every 10 seconds");
 	}
 	const ShadowSettings& s = g_settings.shadow;
 	if (s.Asked() == 0) {
 		host.log("Shadow: every switch is 0, nothing shadowed");
 	} else {
-		const uint32_t made = host.installShadowTimeInfo(s) + host.installShadowLoadingMenu(s);
+		// In this order: the TimeInfo installer sets up the recorder the others report to.
+		uint32_t made = host.installShadowTimeInfo(s);
+		made += host.installShadowLoadingMenu(s);
+		made += host.installShadowRangeWalk(s);
 		host.log("Shadow: %u of %u detours made", made, s.Asked());
 	}
 	const uint32_t probesAsked = ProbesAskedFor(s);

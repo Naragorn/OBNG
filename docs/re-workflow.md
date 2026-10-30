@@ -198,6 +198,10 @@ layers exist (both since 2026-10-27):
    verdict. OBVR's `PreciseFrameClock` patches the same entry as the
    TimeInfo::Update shadow, so the shipped `OBNG.ini` keeps that shadow off
    and the harness turns it on with OBVR's clock off for the run.
+   Subsystem replacements are gated the same way: the `RangeWalk` shadow
+   (`plugin/src/ShadowRangeWalk.cpp`, off in play) records the original
+   0x007D59E0's AddGeometry calls and compares them with BatchedWalk's over
+   the same scene, per walk; scenario `tools/hand-scripts/obng-range-walk.txt`.
    The DLL also carries **probes** that measure instead of compare
    (`plugin/src/Probes.cpp`, since 2026-10-30): `[Probe] CallCounters=1`
    counts the scene pass's five hot functions per return site every summary

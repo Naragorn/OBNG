@@ -45,17 +45,21 @@ inline constexpr std::uint32_t kCollectGeometryInRangeAddress = 0x007D59E0;
 inline constexpr std::uint32_t kAddGeometryAddress = 0x007D5790;
 
 // The switch node's active child: __thiscall(NiSwitchNode* this) -> NiAVObject*
-// (CALL target read at 0x007D5A49 with ECX = the node). Body (-1 < [+0xE0] <
-// [+0xB6] -> [+0xB0][index], else 0) is rea-all pseudocode only: unverified.
-// One code path only (no other caller found in re/export/rea-all): the
-// address does not meet the two-source rule yet; use it only after a second
-// source or its instructions agree.
+// (CALL target read at 0x007D5A49 with ECX = the node). Body read
+// (re/export/range-callers/0x007C59E0/asm.s): index = [+0xE0], null when
+// index < 0 (JL 0x007C59E8) or index >= the u16 [+0xB6] (signed CMP/JGE
+// 0x007C59F1/3), else [[+0xB0] + 4*index]; plain RET. One code path only (no
+// other caller found in re/export/rea-all): the address does not meet the
+// two-source rule yet; OBNG.dll's range-walk shadow calls it only as the port
+// the original also calls.
 inline constexpr std::uint32_t kSwitchGetActiveChildAddress = 0x007C59E0;
 
 // "Has a non-zero bound radius": __thiscall(NiAVObject* this) -> AL (CALL read
-// at 0x007D5A5A, ECX = the active child, AL tested at 0x007D5A5F). Body
-// (+0x2C != 0.0) is rea-all pseudocode only: unverified, and how it treats NaN
-// is open (0x007D59E0.md open question 2). One code path only, as above.
+// at 0x007D5A5A, ECX = the active child, AL tested at 0x007D5A5F). Body read
+// (re/export/range-callers/0x0049FFC0/asm.s): FLDZ / FCOMP [ECX+0x2C] /
+// FNSTSW / TEST AH,0x44 / JNP - EAX 0 when +0x2C compares equal to 0.0, else
+// EAX 1; NaN sets C2 and returns 1, the same as the plain-node filter B11
+// (derived from the condition codes). One code path only, as above.
 inline constexpr std::uint32_t kHasNonZeroBoundRadiusAddress = 0x0049FFC0;
 
 // The gate: dword compared with 0 at 0x007D59E1 (read). Meaning (shadow

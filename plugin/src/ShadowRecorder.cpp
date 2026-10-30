@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include "Probes.h"
+#include "ShadowRangeWalk.h"
 
 #include <cstdio>
 
@@ -10,7 +11,8 @@ namespace obng::plugin {
 namespace {
 
 const char* const kNames[] = {"TimeInfo::Update", "TimeInfo::Init", "TimeInfo::Freeze", "TimeInfo::Unfreeze",
-                              "LoadingMenu::Tick", "LoadingMenu::LoadingMenu"};
+                              "LoadingMenu::Tick", "LoadingMenu::LoadingMenu",
+                              "ShadowSceneLight::CollectGeometryInRange"};
 static_assert(sizeof(kNames) / sizeof(kNames[0]) == static_cast<int>(Shadowed::Count), "one name per shadowed function");
 
 SRWLOCK g_lock = SRWLOCK_INIT;
@@ -102,6 +104,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	}
 	g_log("%s", line);
 	LogProbeSummary();
+	LogRangeWalkSummary();
 	if (planner != nullptr && g_settings.havokPlanner && sample.frames != 0) {
 		const float stepSeconds = *reinterpret_cast<volatile float*>(0x00BA790C);
 		g_log("Probe: Havok planner over %u frames - update type %u, steps per frame 0:%u 1:%u 2:%u 3+:%u, last step %.6f s",

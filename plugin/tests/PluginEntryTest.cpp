@@ -19,11 +19,14 @@ struct Fake {
 	int installs = 0;
 	int menuInstalls = 0;
 	int probeInstalls = 0;
+	int rangeWalkInstalls = 0;
 	ShadowSettings installed;
 	ShadowSettings probed;
 	uint32_t made = 4;
 	uint32_t menuMade = 2;
 	uint32_t probesMade = 5;
+	uint32_t rangeWalkMade = 2;  // made when asked; the real installer makes none when the switch is off
+	ShadowSettings rangeWalkInstalled;
 	std::vector<std::string> lines;
 
 	bool Logged(const char* text) const {
@@ -64,13 +67,20 @@ uint32_t FakeInstallMenu(const ShadowSettings& settings) {
 	return g_fake->menuMade;
 }
 
+uint32_t FakeInstallRangeWalk(const ShadowSettings& settings) {
+	++g_fake->rangeWalkInstalls;
+	g_fake->rangeWalkInstalled = settings;
+	return settings.rangeWalk ? g_fake->rangeWalkMade : 0u;
+}
+
 uint32_t FakeInstallProbes(const ShadowSettings& settings) {
 	++g_fake->probeInstalls;
 	g_fake->probed = settings;
 	return g_fake->probesMade;
 }
 
-const Host kHost{&FakeReset, &FakeLog, &FakeReadSettings, &FakeInstall, &FakeInstallMenu, &FakeInstallProbes};
+const Host kHost{&FakeReset, &FakeLog, &FakeReadSettings, &FakeInstall, &FakeInstallMenu, &FakeInstallRangeWalk,
+                 &FakeInstallProbes};
 
 ExtenderInterfaceHead Game() {
 	return ExtenderInterfaceHead{22, kOblivionVersion_1_2_416, 0, 0};
@@ -123,6 +133,8 @@ void TestLoadDefaults() {
 	          fake.installed.mismatchLines == 20 && fake.installed.summaryEverySeconds == 10,
 	      "every shadow and probe on by default, 20 lines, 10 s");
 	Check(fake.menuInstalls == 1 && fake.Logged("Shadow: 6 of 6 detours made"), "both installers called, the count of detours logged");
+	Check(fake.rangeWalkInstalls == 1 && !fake.rangeWalkInstalled.rangeWalk,
+	      "the range-walk installer is called with its switch off by default (two detours per walk, off in play)");
 	Check(fake.probeInstalls == 1 && !fake.probed.callCounters && fake.probed.memoryProbe &&
 	          fake.Logged("Probes: 5 of 0 call counters made, memory on"),
 	      "the probe installer is called for the memory probe; the counters are off by default (play)");
@@ -181,8 +193,44 @@ void TestLoadAllOff() {
 	g_fake = &fake;
 	ResetForTest();
 	Check(Load(Game(), kHost), "loads");
-	Check(fake.installs == 0 && fake.menuInstalls == 0 && fake.Logged("nothing shadowed"), "no installer is called, said so");
+	Check(fake.installs == 0 && fake.menuInstalls == 0 && fake.rangeWalkInstalls == 0 && fake.Logged("nothing shadowed"),
+	      "no installer is called, said so");
 	Check(fake.probeInstalls == 1 && fake.Logged("memory on"), "the probes still run with every shadow off");
+}
+
+void TestLoadRangeWalk() {
+	Section("Load with the range walk on");
+	Fake fake;
+	fake.iniSettings.shadow.rangeWalk = true;
+	g_fake = &fake;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(fake.rangeWalkInstalls == 1 && fake.rangeWalkInstalled.rangeWalk, "the switch reaches the range-walk installer");
+	Check(fake.Logged("Shadow: 8 of 8 detours made"), "six TimeInfo and LoadingMenu detours plus the walk's two");
+
+	Fake failing;
+	failing.iniSettings.shadow.rangeWalk = true;
+	failing.rangeWalkMade = 1;
+	g_fake = &failing;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads when one of the walk's detours is missing");
+	Check(failing.Logged("Shadow: 7 of 8 detours made"), "the shortfall is in the log");
+
+	Fake alone;
+	alone.iniSettings.shadow = ShadowSettings{};
+	alone.iniSettings.shadow.update = false;
+	alone.iniSettings.shadow.init = false;
+	alone.iniSettings.shadow.freeze = false;
+	alone.iniSettings.shadow.unfreeze = false;
+	alone.iniSettings.shadow.loadingMenuTick = false;
+	alone.iniSettings.shadow.loadingMenuCtor = false;
+	alone.iniSettings.shadow.rangeWalk = true;
+	alone.made = 0;
+	alone.menuMade = 0;
+	g_fake = &alone;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads with the range walk as the only shadow");
+	Check(alone.rangeWalkInstalls == 1 && alone.Logged("Shadow: 2 of 2 detours made"), "it alone counts as asked");
 }
 
 void TestLoadPartialFailure() {
@@ -206,6 +254,7 @@ int main() {
 	TestLoadSwitches();
 	TestLoadAllOff();
 	TestLoadPartialFailure();
+	TestLoadRangeWalk();
 	TestLoadProbes();
 	TestLoadProbesOff();
 	return Failures();

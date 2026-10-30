@@ -6,6 +6,10 @@ namespace obng::plugin {
 
 using LogFn = void (*)(const char* format, ...);
 
+// The range-walk shadow needs two detours: the walk's entry 0x007D59E0 and
+// the recording one on AddGeometry 0x007D5790.
+constexpr UInt32 kRangeWalkDetours = 2;
+
 struct ShadowSettings {
 	bool update = true;
 	bool init = true;
@@ -13,6 +17,7 @@ struct ShadowSettings {
 	bool unfreeze = true;
 	bool loadingMenuTick = true;
 	bool loadingMenuCtor = true;
+	bool rangeWalk = false;      // the shadow-light range walk 0x007D59E0 against BatchedWalk (ShadowRangeWalk.cpp); off in play
 	bool fpuControlWord = true;  // log the x87 control word at the first Update
 	bool havokPlanner = true;    // sample the planner's outputs every frame, histogram in the summary
 	bool callCounters = false;   // count the scene pass's hot functions per return site (Probes.cpp); off in play
@@ -22,7 +27,7 @@ struct ShadowSettings {
 
 	UInt32 Asked() const {
 		return (update ? 1u : 0u) + (init ? 1u : 0u) + (freeze ? 1u : 0u) + (unfreeze ? 1u : 0u) +
-		       (loadingMenuTick ? 1u : 0u) + (loadingMenuCtor ? 1u : 0u);
+		       (loadingMenuTick ? 1u : 0u) + (loadingMenuCtor ? 1u : 0u) + (rangeWalk ? kRangeWalkDetours : 0u);
 	}
 };
 

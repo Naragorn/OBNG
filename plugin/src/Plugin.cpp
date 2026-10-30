@@ -3,6 +3,7 @@
 
 #include "PluginEntry.h"
 #include "Probes.h"
+#include "ShadowRangeWalk.h"
 #include "ShadowTimeInfo.h"
 
 #include <windows.h>
@@ -76,6 +77,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	s.unfreeze = GetPrivateProfileIntA("Shadow", "TimeInfoUnfreeze", 1, path) != 0;
 	s.loadingMenuTick = GetPrivateProfileIntA("Shadow", "LoadingMenuTick", 1, path) != 0;
 	s.loadingMenuCtor = GetPrivateProfileIntA("Shadow", "LoadingMenuCtor", 1, path) != 0;
+	s.rangeWalk = GetPrivateProfileIntA("Shadow", "RangeWalk", 0, path) != 0;
 	s.fpuControlWord = GetPrivateProfileIntA("Probe", "FpuControlWord", 1, path) != 0;
 	s.havokPlanner = GetPrivateProfileIntA("Probe", "HavokPlanner", 1, path) != 0;
 	s.callCounters = GetPrivateProfileIntA("Probe", "CallCounters", 0, path) != 0;
@@ -83,9 +85,9 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	s.mismatchLines = GetPrivateProfileIntA("Log", "MismatchLines", 20, path);
 	s.summaryEverySeconds = GetPrivateProfileIntA("Log", "SummaryEverySeconds", 10, path);
 	Log("Settings from %s: TimeInfoUpdate=%d TimeInfoInit=%d TimeInfoFreeze=%d TimeInfoUnfreeze=%d LoadingMenuTick=%d "
-	    "LoadingMenuCtor=%d FpuControlWord=%d HavokPlanner=%d CallCounters=%d Memory=%d MismatchLines=%u SummaryEverySeconds=%u",
+	    "LoadingMenuCtor=%d RangeWalk=%d FpuControlWord=%d HavokPlanner=%d CallCounters=%d Memory=%d MismatchLines=%u SummaryEverySeconds=%u",
 	    path, s.update ? 1 : 0, s.init ? 1 : 0, s.freeze ? 1 : 0, s.unfreeze ? 1 : 0, s.loadingMenuTick ? 1 : 0,
-	    s.loadingMenuCtor ? 1 : 0, s.fpuControlWord ? 1 : 0, s.havokPlanner ? 1 : 0, s.callCounters ? 1 : 0,
+	    s.loadingMenuCtor ? 1 : 0, s.rangeWalk ? 1 : 0, s.fpuControlWord ? 1 : 0, s.havokPlanner ? 1 : 0, s.callCounters ? 1 : 0,
 	    s.memoryProbe ? 1 : 0, s.mismatchLines, s.summaryEverySeconds);
 	return true;
 }
@@ -98,12 +100,17 @@ uint32_t InstallShadowLoadingMenuSideEffect(const obng::plugin::ShadowSettings& 
 	return obng::plugin::InstallShadowLoadingMenu(settings, &Log);
 }
 
+uint32_t InstallShadowRangeWalkSideEffect(const obng::plugin::ShadowSettings& settings) {
+	return obng::plugin::InstallShadowRangeWalk(settings, &Log);
+}
+
 uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 	return obng::plugin::InstallProbes(settings, &Log);
 }
 
 const obng::plugin::Host kHost{&ResetLog, &Log, &ReadSettings, &InstallShadowSideEffect,
-                               &InstallShadowLoadingMenuSideEffect, &InstallProbesSideEffect};
+                               &InstallShadowLoadingMenuSideEffect, &InstallShadowRangeWalkSideEffect,
+                               &InstallProbesSideEffect};
 
 }  // namespace
 

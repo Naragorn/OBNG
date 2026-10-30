@@ -1,0 +1,56 @@
+# The in-game gate (layer 2) for OBNG's first subsystem replacement, the
+# batched shadow-light range walk (docs/subsystems/shadow-light-range-walk.md):
+# OBNG.dll's RangeWalk shadow runs, per walk of ShadowSceneLight::
+# CollectGeometryInRange 0x007D59E0, the original with its AddGeometry
+# 0x007D5790 calls recorded and then BatchedWalk over the same scene, and
+# compares the AddGeometry sequences (geometry and live +0x1B0), +0x1B0
+# afterwards and AL. The prison watched empty, then eighteen Walkers standing
+# round the player as actor-shadow casters (the shape of obng-scene-pass.txt).
+#
+# Actor shadows: the walk runs per drawn actor-shadow light (0x004073D0 ->
+# 0x007D6900), so the casters come from Oblivion.ini's [Display]
+# iActorShadowCountInt - 5 in the Linux install's INI (read 2026-10-30),
+# bActorSelfShadowing=0. Not set from the console: no OBVR or OblivionWalkers
+# script does (they set the INI by hand), and whether a runtime change is safe
+# against the maps reserved at enable (0x007C2710) is unverified.
+#
+# OBVR's precise clock is off so OBNG's Update shadow gets its entry and
+# drives the summary; tools/shadow-run.sh writes the OBNG-test.ini
+# (RangeWalk=1 with every other shadow and probe) and reads OBNG.log:
+#   tools/shadow-run.sh tools/hand-scripts/obng-range-walk.txt
+# In OBNG.log look for "Shadow ShadowSceneLight::CollectGeometryInRange: on",
+# the "Shadow range walk: ..." coverage lines and the summary's
+# "ShadowSceneLight::CollectGeometryInRange N calls 0 mismatches".
+
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Render PreciseFrameClock=0
+ini Render FastStreamCopy=0
+ini Render Stereo=dual
+console-at placed tgm
+console-at placed coc ImperialDungeon01
+console-at prison tcl
+console-at prison player.setrestrained 1
+console-at prison SetNumericINISetting "fVanityModeAutoDelay:Camera" 100000
+console-at people player.placeatme {form:OblivionWalkers.esp:801} 18
+console-at people-placed tai
+
+expect HandScript: finished
+reject Frame clock: precise
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 22
+mark placed
+wait 16
+mark prison
+wait 30
+mark empty-watched
+mark people
+wait 8
+mark people-placed
+wait 45
+mark people-watched
+wait 2
+mark done

@@ -2,7 +2,7 @@
 
 // The shared bookkeeping of every shadowed function: its counter, the log
 // budget, the mismatch lines and the summary. The detours in
-// ShadowTimeInfo.cpp and ShadowLoadingMenu.cpp report here.
+// ShadowTimeInfo.cpp, ShadowLoadingMenu.cpp and ShadowRangeWalk.cpp report here.
 
 #include "ShadowLogic.h"
 #include "ShadowTimeInfo.h"
@@ -17,6 +17,7 @@ enum class Shadowed : int {
 	TimeInfoUnfreeze,
 	LoadingMenuTick,
 	LoadingMenuCtor,
+	RangeWalk,
 	Count,
 };
 

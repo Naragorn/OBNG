@@ -1,8 +1,9 @@
 # Shadow light range walk (replacement of 0x007D59E0)
 
 OBNG's first subsystem replacement: the walk that collects, per shadow light,
-the scene geometry within the light's reach. Pure logic with tests; no engine
-integration yet. Code: `src/engine/render/ShadowLightRangeWalkLogic.h` (the two
+the scene geometry within the light's reach. Pure logic with tests; its
+in-game gate is OBNG.dll's `RangeWalk` shadow (`plugin/src/ShadowRangeWalk.cpp`,
+flow in `plugin/src/ShadowRangeWalkLogic.h`). Code: `src/engine/render/ShadowLightRangeWalkLogic.h` (the two
 walks), `src/engine/render/ShadowLightRangeWalk.h` (the engine ports), tests:
 `tests/ShadowLightRangeWalkTest.cpp`. Marks: read / measured / derived /
 unverified (AGENTS.md).
@@ -72,8 +73,10 @@ verified in the emulator).
 
 ## Still unverified
 
-- 0x007C59E0 and 0x0049FFC0: pseudocode only (index bounds, NaN in the radius
-  test); the walk obeys whatever the port answers.
+- 0x007C59E0 and 0x0049FFC0: their instructions are now read
+  (re/export/range-callers/; signed index bounds against the u16 count, NaN
+  counts as a non-zero radius, as B11); each still has one code path only, and
+  the walk obeys whatever the port answers.
 - +0x14C's meaning (only its zero-ness is used) and what sets +0x14C / +0x1B0
   before 0x007D6900 (0x007D6390, 0x007D5ED0 unread).
 - 0x007D5790: whether the insertion order matters to its consumers, whether it
