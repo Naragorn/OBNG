@@ -237,9 +237,14 @@ Read off that (measured, derived where said):
   (10 202 994 against 2 412 800 x 6). So the data fits every plane test
   coming through 0x007D59E0 (the walk, which saves and restores the mask)
   and the per-geometry caller 0x007C6100 taking the distance path
-  (`+0x14C == 0`). The unrestored mask under 0x007C61C7 is therefore
-  **not shown to be live**; a counter of `[light+0x14C] != 0` at
-  0x007C61C2 would settle it. Derived: with eighteen bodies the shadow
+  (`+0x14C == 0`). **Settled by the counter (measured 2026-10-30 14:50,
+  `artifacts/shadow/obng-scene-pass/20261030-145038`, IsInRange split by
+  `[this+0x14C]` and return site): the plane path's 1.8-1.95 million calls
+  per 10 s come entirely from the walk 0x007D5A10; the per-geometry caller
+  0x007C61C7 makes 2.8-3.0 million calls per 10 s, every one on the
+  distance path.** The unrestored mask under 0x007C6100 is dead in this
+  scene; whether any scene gives a relit geometry's light planes is not
+  shown. Derived: with eighteen bodies the shadow
   lights' range test still costs more plane tests than the frustum cull
   itself - in the shadow-map pass.
 - The per-frame counts scale with the bodies: slot 13 and IsInRange about
