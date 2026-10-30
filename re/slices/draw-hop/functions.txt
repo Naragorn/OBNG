@@ -1,0 +1,5 @@
+0x0070C0B0 # the scene-draw hop RenderScene calls with (camera, sceneGraph, cullingProcess, 0): a virtual slot 2 on the camera between 0x00701970 and 0x0070C000; 50 instructions, 7 callers
+0x00701970 # called first by the hop with the camera; also from WaterManager's reflections 0x0049BEF0; 46 instructions, no callees
+0x0070C000 # called last by the hop with (camera, cullingProcess); InterlockedIncrement/Decrement, 0x0070BF30; 63 instructions
+0x0077A310 # shader vtable slot +0x3C (32 vtables): calls PackSkinnedGeometryBuffer 0x00763130 with [partition+0x28] and 0x00767B40; created in Ghidra 2026-10-30; 88 instructions
+0x0076FE20 # NiDX9ShaderDeclaration slot +0x6C: the per-entry loop over PackEntry 0x0076F590 with the lock/unlock wrappers 0x00776C90/0x00776D80; 239 instructions, no direct callers

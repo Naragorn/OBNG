@@ -291,7 +291,11 @@ const entries = await pipeline(
     const decisions = round1.flatMap(v => v.needsDecision)
     const coreRefuted1 = round1.filter(v => v.coreRefuted)
 
-    if (coreRefuted1.length >= 2) {
+    // One skeptic citing an instruction is enough: the map barrier removed
+    // the pilot's false refutations, and the scene-pass run let a single
+    // fidelity refutation (a pointer read as an address) through into the
+    // ledger. Since 2026-10-30 a single core refutation starts the fix round.
+    if (coreRefuted1.length >= 1) {
       const fixed = await agent(fixPrompt(f, e.map, coreRefuted1), opts('fix', `fix ${f.address}`, 'Refute', MAP_SCHEMA))
       if (!fixed) return { ...e, state: 'disputed', refutations: [round1], decisions }
       const round2 = (await parallel(['fidelity', 'consistency'].map(lens => () =>

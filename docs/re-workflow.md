@@ -97,9 +97,11 @@ against the instructions or a settled source), **overstated** (a derived
 claim says more than the evidence carries; the skeptic gives the
 correction), **unverifiable** (the evidence is not in the export; the
 skeptic says what would settle it), or holds. A function is **refuted**
-only when two of three skeptics find something core-refuted. Then one fix
-round: the worker gets the refutations and rewrites the file; two skeptics
-check again. If one still finds a core refutation, the function is
+when any skeptic finds something core-refuted (since 2026-10-30; before,
+two of three were needed - the map barrier removed the false refutations
+that rule guarded against, and the scene-pass run let a single fidelity
+refutation through into the ledger). Then one fix round: the worker gets
+the refutations and rewrites the file; two skeptics check again. If one still finds a core refutation, the function is
 **disputed** in the ledger and goes no further in this run. A function whose
 core held but whose derived claims were overstated gets one trim pass
 (demote, no second refutation) and counts as **confirmed**. Naming

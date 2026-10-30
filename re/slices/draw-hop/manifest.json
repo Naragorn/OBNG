@@ -1,0 +1,43 @@
+{
+  "slice": "draw-hop",
+  "subsystem": "render",
+  "sharedHeaders": [],
+  "purpose": "Map only: close the two gaps the scene-pass slice left in the boundary. (1) The hop between RenderScene and the per-geometry draw: 0x0070C0B0(camera, sceneGraph, cullingProcess, 0) and its two callees - where the culling walk (NiCullingProcess::Cull 0x0070DFB0) is started, where the visible geometries are handed to the renderer (geometry slot 33 -> Do_RenderShape 0x007693E0), and what the fourth argument and the slot-2 call on the camera are. (2) The packing side's two indirect hops: shader slot +0x3C 0x0077A310 (per partition, calls PackSkinnedGeometryBuffer 0x00763130) and NiDX9ShaderDeclaration slot +0x6C 0x0076FE20 (the per-entry loop over PackEntry 0x0076F590 inside the buffer lock/unlock), which decide when a skinned body's streams are repacked per frame.",
+  "functions": [
+    {
+      "address": "0x0070C0B0",
+      "name": "the scene-draw hop (seed: re/functions/0x0040C830.md: 0x0070C0B0(camera, sceneGraph, cullingProcess, 0) draws the main scene and the first-person pass)",
+      "mapOnly": true,
+      "known": "50 instructions (read, asm.s): guards [0x00B3F928] (OBVR's renderer pointer kRendererPointer) and three arguments for null; arg3 null is replaced by [arg2+0x08] (the scene graph's own culling process? unverified); CALL 0x00701970(arg1) first; then, with a non-null process, [process+0x04] = 0 and the virtual slot +0x08 of arg2's vtable with (arg1, arg3? pushes ESI, EBP, EBX) - read the pushes; then 0x0070C000(arg1, process) cdecl (ADD ESP,8); with a null process the slot call gets (0, EBP, EBX). Seven callers: 0x0057F170, 0x00813960, 0x004826F0, 0x004D0190, 0x007D46C0, 0x0040C830 RenderScene, 0x00813510. Which argument is the camera and which the scene root follows from RenderScene's pushes (re/functions/0x0040C830.md: camera, sceneGraph, cullingProcess = [sceneGraph+0xE4], 0) - check the push order against this body's reads. The culling process's slot 1 is NiCullingProcess::Cull (re/functions/0x0070DFB0.md); 0x007073D0 (NiAVObject::Cull, OBVR) dispatches to it; process+0x08 is the visible array, process+0x04 a byte gate (re/functions/0x0070DFB0.md C11).",
+      "questions": ["Which object's vtable slot +0x08 is called with what, and is that the call that runs the culling walk (through 0x007073D0 / NiCullingProcess::Cull) over the scene graph and then draws the visible array - or does 0x0070C000 draw?", "What is [arg+0x08] that replaces a null third argument, and what does the write [process+0x04] = 0 mean (the byte gate of the visible-array append in 0x0070E1A0)?", "What the fourth argument (0 from RenderScene) selects."]
+    },
+    {
+      "address": "0x00701970",
+      "name": "the hop's first callee (seed: 0x0070C0B0 at 0x0070C0DE with its first argument; also WaterManager's reflections 0x0049BEF0)",
+      "mapOnly": true,
+      "known": "46 instructions, no callees, callers 0x0057F170, 0x0049A200, 0x0049BEF0 (OBVR: WaterManager::RenderReflections), 0x0070C0B0. Called with one pushed argument (the hop's EBX = its first argument) before the slot-2 call; the hop does not read a result (TEST ESI,ESI follows on its own register).",
+      "questions": ["What it does with the camera (or whatever the first argument is): a camera update (world transform, frustum, viewport into the renderer) before the walk? Which fields it reads and writes.", "Calling convention and ret N (the hop pushes one dword and does not adjust ESP after - callee cleans?)."]
+    },
+    {
+      "address": "0x0070C000",
+      "name": "the hop's last callee (seed: 0x0070C0B0 at 0x0070C0FC with (process, camera) pushed, cdecl)",
+      "mapOnly": true,
+      "known": "63 instructions, caller 0x0070C0B0 only, callees 0x0070BF30 and InterlockedIncrement/Decrement (refcounts - NiPointer handling). Called after the virtual slot-2 call, with two pushes and ADD ESP,8 after (cdecl, two arguments). If the slot-2 call is the culling walk, this is where the visible array (process+0x08, filled by 0x0070E1A0) would be consumed - drawn through the renderer (geometry slot 33 -> Do_RenderShape 0x007693E0, re/functions/0x007693E0.md) - unverified.",
+      "questions": ["Does it iterate the process's visible array and call each geometry's slot 33 (the renderer draw), i.e. is this the loop the scene-pass slice looked for? What is 0x0070BF30?", "What is refcounted here and why."]
+    },
+    {
+      "address": "0x0077A310",
+      "name": "shader vtable slot +0x3C (seed: re/functions/0x00763130.md: the per-draw caller of PackSkinnedGeometryBuffer; 32 shader vtables hold 0x0077A310)",
+      "mapOnly": true,
+      "known": "88 instructions, created in Ghidra 2026-10-30 (no function before), no direct callers (virtual), callees 0x00763130 PackSkinnedGeometryBuffer (thiscall renderer; six args, RET 0x18, AL = usable; re/functions/0x00763130.md) and 0x00767B40 (the shape render 0x00767B40 per OBVR's reading: 'a second entry into the packing comes from the shape render 0x00767B40: 0x00771790 and 0x00773330 call the packer 0x0076FE20' - knowledge/skinned-vertex-streams.md, now known to go through slot +0x6C). Read by the scene-pass skeptic (objdump): ECX = partition at 0x0077A351, MOV EDI,[ECX+0x28] at 0x0077A354 (the record is the pointer at partition+0x28), PUSH EDI as arg1 of 0x00763130, ECX = [shader+0x14] at 0x0077A359 for that call; [shader+0x34] gates something (re/functions/0x00763130.md open question: which shaders have it zero, 'pack always'). It binds streams and the index buffer after the pack (unverified).",
+      "questions": ["The complete contract: this (the shader), the arguments (geometry, partition, record...), when it calls PackSkinnedGeometryBuffer with which dirty mask and force flag, what [shader+0x34] gates, and what 0x00767B40 does with the result (binding streams / index buffer through the device?).", "Per frame: under which condition a skinned body's streams are repacked here (the dirty bits of data+0x2E, the 0x8000 volatile nibble, the force flag) - this decides what OBVR's StreamReuse could and could not save."]
+    },
+    {
+      "address": "0x0076FE20",
+      "name": "NiDX9ShaderDeclaration slot +0x6C (seed: re/functions/0x00763130.md: the per-entry pack loop; calls PackEntry 0x0076F590)",
+      "mapOnly": true,
+      "known": "239 instructions, no direct callers (virtual: slot +0x6C of the NiDX9ShaderDeclaration vtable 0x00A89C74 per the scene-pass skeptics' exe scan), callees 0x0072AF20, 0x00776D80 (the buffer unlock: copies the staging memory into the mapped D3D pointer with rep movsd - OBVR, knowledge/skinned-vertex-streams.md), 0x00761AC0, 0x0076F590 PackEntry (stdcall, seven args, RET 0x1C; re/functions/0x0076F590.md), 0x00776C40, 0x007780D0, 0x00776C90 (the lock wrapper handing out [this+0x40]). OBVR's reading: every dynamic buffer is written through a staging copy, 135 unlocks a pass with 18 bodies. PackSkinnedGeometryBuffer calls it 'for each stream' with the dirty mask (re/functions/0x00763130.md) versus PackEntry's reading that the caller filters by argument-4 bits 1/2/4/8 against selector groups - both pseudocode; this body settles it.",
+      "questions": ["The contract and the loop: over which entries of the declaration, with which filter (the dirty bits? argument-4 groups?), one lock/unlock per stream or per entry, and what is passed to PackEntry per entry.", "Where the staging copy and the unlock's rep movsd sit relative to the PackEntry calls, and how many lock/unlock pairs a skinned body costs per pack (the 135 unlocks a pass).", "What 0x0072AF20, 0x00761AC0, 0x00776C40 and 0x007780D0 are."]
+    }
+  ]
+}
