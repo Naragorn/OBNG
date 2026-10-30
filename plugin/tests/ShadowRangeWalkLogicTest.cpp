@@ -664,6 +664,88 @@ void TestOrders() {
 	}
 }
 
+void TestX87State() {
+	Section("The x87 state at the walk's entry, decoded from an FXSAVE image");
+	std::uint8_t area[512] = {};
+	area[0] = 0x7F;  // FCW 0x007F: precision 24-bit, rounding nearest, all masked
+	area[1] = 0x00;
+	area[2] = 0x00;  // FSW 0x3800: TOP = 7
+	area[3] = 0x38;
+	area[4] = 0x80;  // abridged tags: physical register 7 in use
+	area[24] = 0x80;  // MXCSR 0x00001F80
+	area[25] = 0x1F;
+	const rw::X87State x = rw::DecodeFxsave(area);
+	Check(x.taken && x.control == 0x007F && x.status == 0x3800 && x.tags == 0x80 && x.mxcsr == 0x1F80,
+		"FCW at offset 0, FSW at 2, the abridged tag byte at 4, MXCSR at 24");
+	Check(rw::X87Top(0x3800) == 7 && rw::X87Top(0x0000) == 0 && rw::X87Top(0xC7FF) == 0 && rw::X87Top(0x0800) == 1,
+		"TOP is bits 11..13 of the status word");
+	Check(rw::X87InUse(0x00) == 0 && rw::X87InUse(0xFF) == 8 && rw::X87InUse(0x81) == 2, "registers in use: the tag bits set");
+	Check(!rw::X87PushOverflows(0x3800, 0x80), "TOP 7, only R7 in use: a push goes to R6, free");
+	Check(rw::X87PushOverflows(0x3800, 0x40), "TOP 7 with R6 in use: a push would overflow");
+	Check(rw::X87PushOverflows(0x0000, 0x80), "TOP 0: a push goes to R7 (wraps), in use: overflow");
+	Check(rw::X87PushOverflows(0x0000, 0xFF), "all eight in use (an MMX state without EMMS): overflow");
+	Check(std::string(rw::X87PrecisionName(0x007F)) == "24-bit" && std::string(rw::X87PrecisionName(0x027F)) == "53-bit" &&
+			std::string(rw::X87PrecisionName(0x037F)) == "64-bit" && std::string(rw::X87PrecisionName(0x017F)) == "reserved",
+		"precision control, bits 8..9 of the control word");
+	char text[300];
+	rw::FormatX87State(x, text, sizeof(text));
+	Check(std::string(text) ==
+			" x87 at entry: TOP=7, tags=0x80 (1 of 8 in use, a push would not overflow), control 0x007F (precision 24-bit), "
+			"status 0x3800, MXCSR 0x00001F80;",
+		"the log text");
+	rw::FormatX87State(rw::X87State{}, text, sizeof(text));
+	Check(std::string(text) == " x87 at entry: not taken;", "not taken: said so");
+	char tiny[10];
+	rw::FormatX87State(x, tiny, sizeof(tiny));
+	Check(std::strlen(tiny) < sizeof(tiny), "a small buffer is never overrun");
+}
+
+void TestRootDistance() {
+	Section("The root's distance terms on a rebuild-first mismatch");
+	{
+		FakeGame game;
+		game.order = RangeWalkOrder::RebuildFirst;
+		const SceneShape s = BuildScene(game, false);
+		game.atOriginalStart = [&](FakeGame& g) { g.m.PutF(g.m.Raw32(s.light + 0x100) + 0xF8, 0.0f); };
+		game.Entry(s.light, s.root);
+		const rw::RootDistance& d = game.reports[0].root;
+		Check(d.valid && d.range == 100.0f && d.bound.radius == 60.0f && d.terms.sumOfSquares == 0.0f && d.terms.gap == -60.0f &&
+				d.inRange,
+			"distance path: the root's bound, the range the rebuild used, the terms, its decision");
+		char text[400];
+		rw::FormatRootDistance(d, text, sizeof(text));
+		Check(std::string(text).find(" root distance: range 100 (42C80000) gap -60 (C2700000) in range 1;") == 0,
+			"the text leads with range, gap and decision, floats with their bits");
+		Check(std::string(text).find("s 0 (00000000) q 0 (00000000)") != std::string::npos, "and the square root's in and out");
+	}
+	{
+		FakeGame game;
+		game.order = RangeWalkOrder::RebuildFirst;
+		const SceneShape s = BuildScene(game, true);
+		game.dropGeometry = s.g2;
+		game.Entry(s.light, s.root);
+		Check(game.reports[0].comparison.Mismatch() && !game.reports[0].root.valid, "planes path: no distance terms");
+		char text[100];
+		rw::FormatRootDistance(game.reports[0].root, text, sizeof(text));
+		Check(std::string(text).empty(), "and no text");
+	}
+	{
+		FakeGame game;
+		const SceneShape s = BuildScene(game, false);
+		game.atOriginalStart = [&](FakeGame& g) { g.m.PutF(g.m.Raw32(s.light + 0x100) + 0xF8, 0.0f); };
+		game.Entry(s.light, s.root);
+		Check(game.reports[0].comparison.Mismatch() && !game.reports[0].root.valid,
+			"original-first: the terms are only computed for the rebuild-first diagnostic");
+	}
+	{
+		FakeGame game;
+		game.order = RangeWalkOrder::RebuildFirst;
+		const SceneShape s = BuildScene(game, false);
+		game.Entry(s.light, s.root);
+		Check(!game.reports[0].comparison.Mismatch() && !game.reports[0].root.valid, "no mismatch: no terms");
+	}
+}
+
 void TestStats() {
 	Section("The coverage line of the summary");
 	rw::WalkStats stats;
@@ -711,5 +793,7 @@ int main() {
 	TestParseOrder();
 	TestTrace();
 	TestOrders();
+	TestX87State();
+	TestRootDistance();
 	return Failures();
 }

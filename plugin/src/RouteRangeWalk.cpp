@@ -56,7 +56,7 @@ UInt32 __fastcall RouteWalk(UInt32 light, void* /*edx*/, UInt32 object) {
 	return rw::RouteWalk(
 		memory, slot.state, slot.scratch, light, object,
 		[](std::uint32_t l, std::uint32_t o) { return static_cast<std::uint32_t>(g_walk(l, nullptr, o)); },
-		[](std::uint32_t l, std::uint32_t g) { g_addGeometry(l, nullptr, g); }, &game::GameSquareRoot, &Report);
+		[](std::uint32_t l, std::uint32_t g) { g_addGeometry(l, nullptr, g); }, game::GameSquareRootPort{}, &Report);
 }
 
 }  // namespace

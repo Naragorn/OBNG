@@ -41,6 +41,7 @@ namespace obng::plugin::range_walk {
 namespace walk = engine::render::shadow_light_range_walk;
 namespace walk_engine = walk::engine;
 namespace which_side = engine::render::which_side;
+namespace in_range_light = engine::render::shadow_scene_light_is_in_range;
 using walk::ObjectHandle;
 
 // The source light's position and range as IsInRange reads them (FLD
@@ -443,6 +444,107 @@ inline void DescribeTraceDifference(const TraceDifference& d, const std::vector<
 	append(std::snprintf(out + at, capacity - at, ";"));
 }
 
+// ---- The rebuild-first diagnostics: the x87 state at entry, the root's distance terms -------
+
+// The x87/SSE state as an FXSAVE image holds it (Intel SDM, FXSAVE layout):
+// FCW at byte 0, FSW at 2, the abridged tag byte at 4 (bit i set = physical
+// register Ri in use), MXCSR at 24.
+struct X87State {
+	bool taken = false;
+	std::uint16_t control = 0;
+	std::uint16_t status = 0;
+	std::uint8_t tags = 0;
+	std::uint32_t mxcsr = 0;
+};
+
+inline X87State DecodeFxsave(const std::uint8_t* area) {
+	const auto u16 = [area](unsigned at) {
+		return static_cast<std::uint16_t>(area[at] | (static_cast<unsigned>(area[at + 1]) << 8));
+	};
+	X87State x;
+	x.taken = true;
+	x.control = u16(0);
+	x.status = u16(2);
+	x.tags = area[4];
+	x.mxcsr = static_cast<std::uint32_t>(u16(24)) | (static_cast<std::uint32_t>(u16(26)) << 16);
+	return x;
+}
+
+// TOP, bits 11..13 of the status word.
+constexpr unsigned X87Top(std::uint16_t status) {
+	return (status >> 11) & 7u;
+}
+
+constexpr unsigned X87InUse(std::uint8_t tags) {
+	return static_cast<unsigned>(std::popcount(static_cast<unsigned>(tags)));
+}
+
+// A push (FLD) writes physical register (TOP - 1) mod 8; in use, it is a
+// stack overflow: with the invalid-operation exception masked the register
+// receives the indefinite NaN.
+constexpr bool X87PushOverflows(std::uint16_t status, std::uint8_t tags) {
+	return (tags & (1u << ((X87Top(status) + 7u) & 7u))) != 0;
+}
+
+// Precision control, bits 8..9 of the control word.
+inline const char* X87PrecisionName(std::uint16_t control) {
+	switch ((control >> 8) & 3u) {
+	case 0: return "24-bit";
+	case 2: return "53-bit";
+	case 3: return "64-bit";
+	default: return "reserved";
+	}
+}
+
+inline void FormatX87State(const X87State& x, char* out, std::size_t capacity) {
+	if (capacity == 0) {
+		return;
+	}
+	if (!x.taken) {
+		std::snprintf(out, capacity, " x87 at entry: not taken;");
+		return;
+	}
+	std::snprintf(out, capacity,
+		" x87 at entry: TOP=%u, tags=0x%02X (%u of 8 in use, a push would %s), control 0x%04X (precision %s), "
+		"status 0x%04X, MXCSR 0x%08X;",
+		X87Top(x.status), static_cast<unsigned>(x.tags), X87InUse(x.tags),
+		X87PushOverflows(x.status, x.tags) ? "overflow" : "not overflow", static_cast<unsigned>(x.control),
+		X87PrecisionName(x.control), static_cast<unsigned>(x.status), static_cast<unsigned>(x.mxcsr));
+}
+
+// The root's range test on the distance path as the rebuild computes it, so a
+// mismatch line shows whether the compare was borderline or a term was not
+// finite (IsInRange's Distance and RangeExceeds, 0x007D2F5D..0x007D2FD6).
+struct RootDistance {
+	bool valid = false;
+	which_side::SphereValues bound{};
+	in_range_light::PointValues light{};
+	float range = 0.0f;
+	in_range_light::DistanceTerms terms{};
+	bool inRange = false;
+};
+
+inline void FormatRootDistance(const RootDistance& d, char* out, std::size_t capacity) {
+	if (capacity == 0) {
+		return;
+	}
+	out[0] = '\0';
+	if (!d.valid) {
+		return;
+	}
+	const auto bits = [](float f) { return static_cast<unsigned>(std::bit_cast<std::uint32_t>(f)); };
+	std::snprintf(out, capacity,
+		" root distance: range %g (%08X) gap %g (%08X) in range %d; light %g %g %g, bound %g %g %g r %g "
+		"(%08X %08X %08X %08X), dx %g dy %g dz %g, s %g (%08X) q %g (%08X);",
+		static_cast<double>(d.range), bits(d.range), static_cast<double>(d.terms.gap), bits(d.terms.gap), d.inRange ? 1 : 0,
+		static_cast<double>(d.light.x), static_cast<double>(d.light.y), static_cast<double>(d.light.z),
+		static_cast<double>(d.bound.centerX), static_cast<double>(d.bound.centerY), static_cast<double>(d.bound.centerZ),
+		static_cast<double>(d.bound.radius), bits(d.bound.centerX), bits(d.bound.centerY), bits(d.bound.centerZ),
+		bits(d.bound.radius), static_cast<double>(d.terms.dx), static_cast<double>(d.terms.dy),
+		static_cast<double>(d.terms.dz), static_cast<double>(d.terms.sumOfSquares), bits(d.terms.sumOfSquares),
+		static_cast<double>(d.terms.distance), bits(d.terms.distance));
+}
+
 // ---- The detour's flow ----------------------------------------------------------------------
 
 // Reusable between walks so a warmed-up shadow does not allocate.
@@ -467,6 +569,7 @@ struct WalkReport {
 	RangeWalkOrder order = RangeWalkOrder::OriginalFirst;
 	TraceDifference trace{};   // rebuild-first after a mismatch: the first input that changed
 	bool lightChanged = false; // rebuild-first after a mismatch: the light's values differ after the original
+	RootDistance root{};       // rebuild-first after a mismatch on the distance path: the root's terms
 };
 
 // The light's values bit for bit (a float compare would hide -0.0 and NaN).
@@ -598,6 +701,16 @@ std::uint32_t ShadowWalk(Memory& memory, ThreadWalkState& state, WalkBuffers& bu
 		runRebuild(buffers.afterAdds, &buffers.traceAfter);
 		result.trace = FirstTraceDifference(buffers.traceFresh, buffers.traceAfter);
 		result.lightChanged = !SameLightValues(values, CaptureLight(memory, light));
+		if (mode == walk::SourceMode::Distance) {
+			RootDistance& d = result.root;
+			d.valid = true;
+			d.bound = MemoryScene<Memory>{memory, nullptr}.bound(object);
+			d.light = values.sourcePosition;
+			d.range = values.sourceRange;
+			d.terms = in_range_light::Distance(values.sourcePosition,
+				in_range_light::BoundValues{{d.bound.centerX, d.bound.centerY, d.bound.centerZ}, d.bound.radius}, squareRoot);
+			d.inRange = in_range_light::RangeExceeds(d.range, d.terms.gap);
+		}
 	}
 	report(result);
 	return eax;

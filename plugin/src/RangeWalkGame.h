@@ -77,8 +77,39 @@ struct GameMemory {
 };
 
 // The square root IsInRange's distance path calls, 0x00982C30, run by the
-// game itself under the game's x87 control word (RangeWalkGame.cpp).
-double __cdecl GameSquareRoot(float s);
+// game itself (RangeWalkGame.cpp). `area` is 512 bytes, 16-aligned: the
+// caller's x87/SSE state is saved there (FXSAVE), the x87 is reset (FNINIT)
+// and given the caller's control word back (FLDCW from the image's FCW, so
+// the precision control and rounding stay the game's), 0x00982C30 runs on
+// that empty stack, the result is stored to *out, and the caller's state is
+// restored (FXRSTOR). *out is the result stored as a float, the original's
+// own store at 0x007D2FB0. So the call needs no free slot of the caller's x87
+// stack and leaves it, its tags and its sticky flags as it found them.
+void __cdecl GameSquareRootGuarded(float s, float* out, void* area);
+
+// Copies the x87/SSE state into `area` (FXSAVE; 512 bytes, 16-aligned)
+// without changing it.
+void __cdecl CaptureX87(void* area);
+
+// A 512-byte FXSAVE area, 16-aligned inside a plain stack buffer (aligning by
+// hand, so nothing rests on the compiler realigning the frame).
+struct FxsaveArea {
+	unsigned char raw[512 + 15];
+	void* Aligned() { return reinterpret_cast<void*>((reinterpret_cast<std::uintptr_t>(raw) + 15) & ~std::uintptr_t{15}); }
+};
+
+// The square-root port both walks take (ShadowRangeWalkLogic.h, the engine's
+// Distance): forced inline, so the double comes back through memory and SSE,
+// never through ST0 - a return in ST0 would push onto the caller's x87 stack
+// again after the restore.
+struct GameSquareRootPort {
+	__forceinline double operator()(float s) const {
+		FxsaveArea area;
+		float out;
+		GameSquareRootGuarded(s, &out, area.Aligned());
+		return static_cast<double>(out);  // exact; Distance's StoreSingle then keeps it as it is
+	}
+};
 
 // One T per thread in an explicit TLS slot (TlsAlloc) rather than
 // thread_local, so nothing rests on the loader giving a LoadLibrary'd DLL

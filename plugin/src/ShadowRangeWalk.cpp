@@ -50,6 +50,7 @@ rw::WalkStats g_stats;
 struct ThreadSlot {
 	rw::ThreadWalkState state;
 	rw::WalkBuffers buffers;
+	rw::X87State entryX87;  // rebuild-first: the x87 state at the outermost walk's entry
 };
 game::ThreadSlots<ThreadSlot> g_slots;
 
@@ -72,7 +73,7 @@ void Report(const rw::WalkReport& report) {
 	g_stats.Add(report);
 	ReleaseSRWLockExclusive(&g_statsLock);
 	const bool mismatch = report.comparison.Mismatch();
-	char detail[640] = {};
+	char detail[1200] = {};
 	if (mismatch) {
 		const rw::WalkBuffers& buffers = g_slots.Get().buffers;  // this thread's: Report runs inside its walk
 		rw::DescribeComparison(report.comparison, buffers.original, buffers.rebuild, detail, sizeof(detail));
@@ -87,6 +88,10 @@ void Report(const rw::WalkReport& report) {
 			at = std::strlen(detail);
 			std::snprintf(detail + at, sizeof(detail) - at, " light values %s by the original;",
 			              report.lightChanged ? "CHANGED" : "unchanged");
+			at = std::strlen(detail);
+			rw::FormatX87State(g_slots.Get().entryX87, detail + at, sizeof(detail) - at);
+			at = std::strlen(detail);
+			rw::FormatRootDistance(report.root, detail + at, sizeof(detail) - at);
 		}
 	}
 	char inputs[200];
@@ -107,11 +112,21 @@ UInt32 __fastcall ShadowAddGeometry(UInt32 light, void* /*edx*/, UInt32 geometry
 }
 
 UInt32 __fastcall ShadowWalk(UInt32 light, void* /*edx*/, UInt32 object) {
+	// rebuild-first: the x87 state first, before anything here could touch it
+	// (this function's own code is SSE; the TLS lookup is a kernel32 call).
+	game::FxsaveArea entry;
+	const bool diagnose = g_order == RangeWalkOrder::RebuildFirst;
+	if (diagnose) {
+		game::CaptureX87(entry.Aligned());
+	}
 	ThreadSlot& slot = g_slots.Get();
+	if (diagnose && slot.state.depth == 0) {
+		slot.entryX87 = rw::DecodeFxsave(static_cast<const std::uint8_t*>(entry.Aligned()));
+	}
 	game::GameMemory memory;
 	return rw::ShadowWalk(memory, slot.state, slot.buffers, g_order, light, object,
 	                      [](std::uint32_t l, std::uint32_t o) { return static_cast<std::uint32_t>(g_walk(l, nullptr, o)); },
-	                      &game::GameSquareRoot, &Report);
+	                      game::GameSquareRootPort{}, &Report);
 }
 
 }  // namespace

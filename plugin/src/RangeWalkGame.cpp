@@ -3,16 +3,55 @@
 namespace obng::plugin::range_walk_game {
 
 // 0x00982C30 takes its argument in ST0 and returns in ST0 (read, C14 of
-// re/functions/0x007D2EA0.md); a cdecl function returns a double in ST0 as
-// well. So: load the float, tail jump; its RET comes back to our caller with
-// the result where it expects it. The game's own routine runs, under the
-// game's x87 control word, so neither the comparison nor the route rests on
-// a model of its rounding.
-__declspec(naked) double __cdecl GameSquareRoot(float /*s*/) {
+// re/functions/0x007D2EA0.md). Read with objdump in Oblivion.exe 1.2.0.416:
+// it stores the argument (FST qword), checks it (0x00991B88), and in
+// 0x00982C4D runs FSQRT in place - under the caller's precision control
+// (0x00991B15 keeps the caller's PC bits and masks every exception when the
+// control word is not 0x27F) - then restores the control word. It needs no
+// x87 slot beyond the one its caller pushed.
+//
+// Why the guard (FXSAVE / FNINIT / FLDCW / FXRSTOR): the rebuild calls it
+// from SSE code at a point where the original walk would have balanced its
+// own x87 use, but nothing guarantees the caller of the walk left free slots;
+// a push onto a full stack gives the indefinite NaN, which would make the
+// range compare false. Resetting the stack for the call and restoring it
+// after makes the result independent of the caller's x87 stack, and the
+// control word taken from the saved image keeps its numbers: the same
+// precision control and rounding the game runs (measured: 24-bit, nearest,
+// knowledge/frame-clock.md). Per square root rather than per walk: the walk
+// calls game code that uses the x87 itself (0x0049FFC0's FLDZ/FCOMP; the
+// route's AddGeometry), which keeps running in the caller's environment, as
+// under the original.
+//
+// The result is stored as a float (FSTP dword), the one rounding the original
+// makes at 0x007D2FB0 (FSTP float right after the call, read): exact in every
+// precision mode, where a double store followed by an SSE narrowing would
+// round twice outside 24-bit precision.
+//
+// cdecl: [esp+4] s, [esp+8] out, [esp+12] area (16-aligned). EAX, ECX, EDX
+// are the caller's to lose (0x00982C30 and its callees use them).
+__declspec(naked) void __cdecl GameSquareRootGuarded(float /*s*/, float* /*out*/, void* /*area*/) {
 	__asm {
+		mov eax, [esp + 12]
+		fxsave [eax]
+		fninit
+		fldcw word ptr [eax]
 		fld dword ptr [esp + 4]
 		mov eax, 0x00982C30
-		jmp eax
+		call eax
+		mov eax, [esp + 8]
+		fstp dword ptr [eax]
+		mov eax, [esp + 12]
+		fxrstor [eax]
+		ret
+	}
+}
+
+__declspec(naked) void __cdecl CaptureX87(void* /*area*/) {
+	__asm {
+		mov eax, [esp + 4]
+		fxsave [eax]
+		ret
 	}
 }
 
