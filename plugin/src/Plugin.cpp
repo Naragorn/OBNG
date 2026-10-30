@@ -3,7 +3,9 @@
 
 #include "PluginEntry.h"
 #include "Probes.h"
+#include "RouteRangeWalk.h"
 #include "ShadowRangeWalk.h"
+#include "ShadowRecorder.h"
 #include "ShadowTimeInfo.h"
 
 #include <windows.h>
@@ -84,12 +86,20 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	s.memoryProbe = GetPrivateProfileIntA("Probe", "Memory", 1, path) != 0;
 	s.mismatchLines = GetPrivateProfileIntA("Log", "MismatchLines", 20, path);
 	s.summaryEverySeconds = GetPrivateProfileIntA("Log", "SummaryEverySeconds", 10, path);
+	s.summaryTimer = GetPrivateProfileIntA("Log", "SummaryTimer", 0, path) != 0;
+	obng::plugin::RouteSettings& r = settings->route;
+	r.rangeWalk = GetPrivateProfileIntA("Route", "RangeWalk", 0, path) != 0;
 	Log("Settings from %s: TimeInfoUpdate=%d TimeInfoInit=%d TimeInfoFreeze=%d TimeInfoUnfreeze=%d LoadingMenuTick=%d "
-	    "LoadingMenuCtor=%d RangeWalk=%d FpuControlWord=%d HavokPlanner=%d CallCounters=%d Memory=%d MismatchLines=%u SummaryEverySeconds=%u",
+	    "LoadingMenuCtor=%d RangeWalk=%d FpuControlWord=%d HavokPlanner=%d CallCounters=%d Memory=%d MismatchLines=%u SummaryEverySeconds=%u "
+	    "SummaryTimer=%d Route RangeWalk=%d",
 	    path, s.update ? 1 : 0, s.init ? 1 : 0, s.freeze ? 1 : 0, s.unfreeze ? 1 : 0, s.loadingMenuTick ? 1 : 0,
 	    s.loadingMenuCtor ? 1 : 0, s.rangeWalk ? 1 : 0, s.fpuControlWord ? 1 : 0, s.havokPlanner ? 1 : 0, s.callCounters ? 1 : 0,
-	    s.memoryProbe ? 1 : 0, s.mismatchLines, s.summaryEverySeconds);
+	    s.memoryProbe ? 1 : 0, s.mismatchLines, s.summaryEverySeconds, s.summaryTimer ? 1 : 0, r.rangeWalk ? 1 : 0);
 	return true;
+}
+
+void InitRecorderSideEffect(const obng::plugin::ShadowSettings& settings) {
+	obng::plugin::InitRecorder(settings, &Log);
 }
 
 uint32_t InstallShadowSideEffect(const obng::plugin::ShadowSettings& settings) {
@@ -104,12 +114,27 @@ uint32_t InstallShadowRangeWalkSideEffect(const obng::plugin::ShadowSettings& se
 	return obng::plugin::InstallShadowRangeWalk(settings, &Log);
 }
 
+uint32_t InstallRouteRangeWalkSideEffect(const obng::plugin::RouteSettings& settings) {
+	return obng::plugin::InstallRouteRangeWalk(settings, &Log);
+}
+
+bool StartSummaryTimerSideEffect(const obng::plugin::ShadowSettings&) {
+	return obng::plugin::StartSummaryTimer();
+}
+
 uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 	return obng::plugin::InstallProbes(settings, &Log);
 }
 
-const obng::plugin::Host kHost{&ResetLog, &Log, &ReadSettings, &InstallShadowSideEffect,
-                               &InstallShadowLoadingMenuSideEffect, &InstallShadowRangeWalkSideEffect,
+const obng::plugin::Host kHost{&ResetLog,
+                               &Log,
+                               &ReadSettings,
+                               &InitRecorderSideEffect,
+                               &InstallShadowSideEffect,
+                               &InstallShadowLoadingMenuSideEffect,
+                               &InstallShadowRangeWalkSideEffect,
+                               &InstallRouteRangeWalkSideEffect,
+                               &StartSummaryTimerSideEffect,
                                &InstallProbesSideEffect};
 
 }  // namespace

@@ -15,7 +15,11 @@ eighteen Walkers; `plugin/src/ShadowRangeWalk.cpp`'s shadow detour): 74 573
 walks compared - 30 996 on the plane path (only with the Walkers' actor-shadow
 lights), 43 577 on the distance path -, 3 574 564 AddGeometry calls in
 sequence with their masks, the final mask and AL per walk: **0 mismatches**.
-Not yet routed: the game still runs the original.
+Routing built, not yet run in the game: `[Route] RangeWalk=1` makes the game
+run BatchedWalk at 0x007D59E0 instead of the original (`plugin/src/RouteRangeWalk.cpp`,
+flow in `plugin/src/RouteRangeWalkLogic.h`); the cost measurement against the
+original is the pair `tools/hand-scripts/obng-range-walk-original.txt` /
+`obng-range-walk-routed.txt`.
 
 ## The unit
 

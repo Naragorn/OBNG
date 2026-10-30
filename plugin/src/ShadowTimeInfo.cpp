@@ -199,38 +199,45 @@ bool TimeInfoUpdateEntryIsTheGames() {
 }
 
 bool InstallEntryDetour(const char* name, UInt32 address, const UInt8* bytes, UInt32 length, const void* replacement,
-                        void** original, LogFn log) {
+                        void** original, LogFn log, DetourRole role) {
+	const bool route = role == DetourRole::Route;
+	const char* who = route ? "Route" : "Shadow";
+	const char* refused = route ? "not routed" : "not shadowed";
 	if (!Verify(address, bytes, length)) {
 		char have[32];
 		DescribeBytes(address, have, sizeof(have));
-		log("Shadow %s: the entry at %08X reads %s, not the game's own bytes - another plugin's patch (OBVR's "
-		    "PreciseFrameClock?) or another game version; not shadowed",
-		    name, address, have);
+		log("%s %s: the entry at %08X reads %s, not the game's own bytes - another plugin's patch (OBVR's "
+		    "PreciseFrameClock?) or another game version; %s",
+		    who, name, address, have, refused);
 		return false;
 	}
 	constexpr UInt32 capacity = 32;
 	auto* trampoline = static_cast<UInt8*>(AllocExecutable(capacity));
 	if (trampoline == nullptr) {
-		log("Shadow %s: no executable memory; not shadowed", name);
+		log("%s %s: no executable memory; %s", who, name, refused);
 		return false;
 	}
 	if (BuildEntryTrampoline(trampoline, capacity, reinterpret_cast<UInt32>(trampoline), address, bytes, length) == 0) {
-		log("Shadow %s: trampoline did not fit; not shadowed", name);
+		log("%s %s: trampoline did not fit; %s", who, name, refused);
 		return false;
 	}
 	UInt8 patch[16];
 	if (BuildEntryPatch(patch, sizeof(patch), address, reinterpret_cast<UInt32>(replacement), length) == 0) {
-		log("Shadow %s: patch did not fit; not shadowed", name);
+		log("%s %s: patch did not fit; %s", who, name, refused);
 		return false;
 	}
 	*original = trampoline;
 	if (!SafeWrite(address, patch, length)) {
 		*original = nullptr;
-		log("Shadow %s: could not write the patch; not shadowed", name);
+		log("%s %s: could not write the patch; %s", who, name, refused);
 		return false;
 	}
-	log("Shadow %s: on at %08X - the original runs, the rebuild runs on a copy, both compared bit for bit", name,
-	    address);
+	if (route) {
+		log("Route %s: on at %08X - the game runs OBNG's rebuild instead of the original", name, address);
+	} else {
+		log("Shadow %s: on at %08X - the original runs, the rebuild runs on a copy, both compared bit for bit", name,
+		    address);
+	}
 	return true;
 }
 
@@ -241,8 +248,7 @@ UInt32 InstallShadowTimeInfo(const ShadowSettings& settings, LogFn log) {
 	}
 	s_done = true;
 	g_log = log;
-	g_settings = settings;
-	InitRecorder(settings, log);
+	g_settings = settings;  // the recorder is set up by Load (Host::initRecorder) before any installer
 	UInt32 made = 0;
 	if (settings.update) {
 		made += InstallEntryDetour(ShadowName(Shadowed::TimeInfoUpdate), kUpdate, kUpdateBytes, sizeof(kUpdateBytes),

@@ -27,6 +27,14 @@ struct Fake {
 	uint32_t probesMade = 5;
 	uint32_t rangeWalkMade = 2;  // made when asked; the real installer makes none when the switch is off
 	ShadowSettings rangeWalkInstalled;
+	int recorderInits = 0;
+	ShadowSettings recorderSettings;
+	int routeInstalls = 0;
+	RouteSettings routeInstalled;
+	uint32_t routeMade = 1;
+	int timerStarts = 0;
+	bool timerStarted = true;
+	std::vector<std::string> calls;  // the side effects in the order Load made them
 	std::vector<std::string> lines;
 
 	bool Logged(const char* text) const {
@@ -56,7 +64,13 @@ bool FakeReadSettings(Settings* settings) {
 	*settings = g_fake->iniSettings;
 	return true;
 }
+void FakeInitRecorder(const ShadowSettings& settings) {
+	++g_fake->recorderInits;
+	g_fake->recorderSettings = settings;
+	g_fake->calls.emplace_back("recorder");
+}
 uint32_t FakeInstall(const ShadowSettings& settings) {
+	g_fake->calls.emplace_back("shadow");
 	++g_fake->installs;
 	g_fake->installed = settings;
 	return g_fake->made;
@@ -73,14 +87,41 @@ uint32_t FakeInstallRangeWalk(const ShadowSettings& settings) {
 	return settings.rangeWalk ? g_fake->rangeWalkMade : 0u;
 }
 
+uint32_t FakeInstallRoute(const RouteSettings& settings) {
+	g_fake->calls.emplace_back("route");
+	++g_fake->routeInstalls;
+	g_fake->routeInstalled = settings;
+	return g_fake->routeMade;
+}
+
+bool FakeStartSummaryTimer(const ShadowSettings&) {
+	g_fake->calls.emplace_back("timer");
+	++g_fake->timerStarts;
+	return g_fake->timerStarted;
+}
+
 uint32_t FakeInstallProbes(const ShadowSettings& settings) {
+	g_fake->calls.emplace_back("probes");
 	++g_fake->probeInstalls;
 	g_fake->probed = settings;
 	return g_fake->probesMade;
 }
 
-const Host kHost{&FakeReset, &FakeLog, &FakeReadSettings, &FakeInstall, &FakeInstallMenu, &FakeInstallRangeWalk,
-                 &FakeInstallProbes};
+const Host kHost{&FakeReset,          &FakeLog,          &FakeReadSettings, &FakeInitRecorder,
+                 &FakeInstall,        &FakeInstallMenu,  &FakeInstallRangeWalk, &FakeInstallRoute,
+                 &FakeStartSummaryTimer, &FakeInstallProbes};
+
+// Every TimeInfo and LoadingMenu shadow off.
+ShadowSettings NoShadow() {
+	ShadowSettings s;
+	s.update = false;
+	s.init = false;
+	s.freeze = false;
+	s.unfreeze = false;
+	s.loadingMenuTick = false;
+	s.loadingMenuCtor = false;
+	return s;
+}
 
 ExtenderInterfaceHead Game() {
 	return ExtenderInterfaceHead{22, kOblivionVersion_1_2_416, 0, 0};
@@ -106,6 +147,7 @@ void TestLoadEditor() {
 	editor.isEditor = 1;
 	Check(Load(editor, kHost), "loads");
 	Check(fake.installs == 0 && fake.Logged("Editor: nothing to do"), "nothing shadowed, said so");
+	Check(fake.calls.empty(), "no recorder, no route, no timer, no probe");
 }
 
 void TestLoadWrongVersion() {
@@ -117,6 +159,7 @@ void TestLoadWrongVersion() {
 	other.oblivionVersion = 0x010101FF;
 	Check(Load(other, kHost), "loads anyway");
 	Check(fake.installs == 0 && fake.Logged("is not 1.2.416"), "nothing shadowed, the version named");
+	Check(fake.calls.empty(), "no recorder, no route, no timer, no probe");
 }
 
 void TestLoadDefaults() {
@@ -138,6 +181,12 @@ void TestLoadDefaults() {
 	Check(fake.probeInstalls == 1 && !fake.probed.callCounters && fake.probed.memoryProbe &&
 	          fake.Logged("Probes: 5 of 0 call counters made, memory on"),
 	      "the probe installer is called for the memory probe; the counters are off by default (play)");
+	Check(fake.recorderInits == 1 && fake.recorderSettings.summaryEverySeconds == 10 && fake.calls.front() == "recorder",
+	      "the recorder is set up first, with the settings Load stands on");
+	Check(fake.routeInstalls == 0 && fake.Logged("Route: every switch is 0, nothing routed"),
+	      "the route is off by default (play), said so");
+	Check(fake.timerStarts == 0 && !fake.Logged("summary timer") && !fake.installed.summaryTimer,
+	      "the summary timer is off by default (play): no thread, no line");
 }
 
 void TestLoadProbes() {
@@ -161,6 +210,85 @@ void TestLoadProbesOff() {
 	ResetForTest();
 	Check(Load(Game(), kHost), "loads");
 	Check(fake.probeInstalls == 0 && fake.Logged("Probes: off"), "no probe installer call, said so");
+
+	Fake timer;
+	timer.iniSettings.shadow.callCounters = false;
+	timer.iniSettings.shadow.memoryProbe = false;
+	timer.iniSettings.shadow.summaryTimer = true;
+	g_fake = &timer;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(timer.timerStarts == 1 && timer.Logged("Probes: off"), "every probe off does not end Load before the timer");
+}
+
+void TestLoadRoute() {
+	Section("Load with the range walk routed");
+	Fake fake;
+	fake.iniSettings.shadow = NoShadow();
+	fake.iniSettings.route.rangeWalk = true;
+	g_fake = &fake;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(fake.routeInstalls == 1 && fake.routeInstalled.rangeWalk && fake.Logged("Route: 1 of 1 detours made"),
+	      "the route's installer is called with its switch, one detour asked and made");
+	Check(fake.Logged("nothing shadowed") && fake.installs == 0, "no shadow beside it");
+	Check(LoadedSettings().route.rangeWalk, "LoadedSettings shows the route");
+
+	Fake failing;
+	failing.iniSettings.shadow = NoShadow();
+	failing.iniSettings.route.rangeWalk = true;
+	failing.routeMade = 0;
+	g_fake = &failing;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads when the route's detour cannot be made - the game keeps its original");
+	Check(failing.Logged("Route: 0 of 1 detours made"), "the shortfall is in the log");
+
+	Fake beside;
+	beside.iniSettings.route.rangeWalk = true;  // with the default TimeInfo and LoadingMenu shadows
+	g_fake = &beside;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(beside.routeInstalls == 1 && beside.Logged("Shadow: 6 of 6 detours made") && beside.Logged("Route: 1 of 1 detours made"),
+	      "other shadows do not stand in the route's way");
+}
+
+void TestLoadRouteAndShadow() {
+	Section("Load with the range walk both shadowed and routed: the shadow wins");
+	Fake fake;
+	fake.iniSettings.shadow.rangeWalk = true;
+	fake.iniSettings.route.rangeWalk = true;
+	g_fake = &fake;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(fake.routeInstalls == 0, "the route's installer is not called");
+	Check(fake.rangeWalkInstalls == 1 && fake.rangeWalkInstalled.rangeWalk && fake.Logged("Shadow: 8 of 8 detours made"),
+	      "the shadow takes the entry as asked");
+	Check(fake.Logged("Route: ShadowSceneLight::CollectGeometryInRange skipped - the RangeWalk shadow takes the same entry"),
+	      "the skip is logged with its reason");
+	Check(fake.Logged("Route: 0 of 1 detours made"), "and counted: one asked, none made");
+}
+
+void TestLoadSummaryTimer() {
+	Section("Load with the summary timer");
+	Fake fake;
+	fake.iniSettings.shadow = NoShadow();
+	fake.iniSettings.shadow.summaryTimer = true;
+	fake.iniSettings.shadow.summaryEverySeconds = 7;
+	g_fake = &fake;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(fake.timerStarts == 1 && fake.Logged("Log: a summary every 7 s from the summary timer"),
+	      "the timer is started and its period logged");
+	Check(fake.calls.size() == 3 && fake.calls[0] == "recorder" && fake.calls[1] == "probes" && fake.calls[2] == "timer",
+	      "after the recorder and the probes, so its first summary finds both");
+
+	Fake failing;
+	failing.iniSettings.shadow.summaryTimer = true;
+	failing.timerStarted = false;
+	g_fake = &failing;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads when the timer cannot be started");
+	Check(failing.Logged("Log: the summary timer could not be started"), "said so");
 }
 
 void TestLoadSwitches() {
@@ -196,6 +324,7 @@ void TestLoadAllOff() {
 	Check(fake.installs == 0 && fake.menuInstalls == 0 && fake.rangeWalkInstalls == 0 && fake.Logged("nothing shadowed"),
 	      "no installer is called, said so");
 	Check(fake.probeInstalls == 1 && fake.Logged("memory on"), "the probes still run with every shadow off");
+	Check(fake.recorderInits == 1, "the recorder is set up with every shadow off (the probes and the route report to it)");
 }
 
 void TestLoadRangeWalk() {
@@ -257,5 +386,8 @@ int main() {
 	TestLoadRangeWalk();
 	TestLoadProbes();
 	TestLoadProbesOff();
+	TestLoadRoute();
+	TestLoadRouteAndShadow();
+	TestLoadSummaryTimer();
 	return Failures();
 }

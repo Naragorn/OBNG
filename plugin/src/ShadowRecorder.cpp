@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include "Probes.h"
+#include "RouteRangeWalk.h"
 #include "ShadowRangeWalk.h"
 
 #include <cstdio>
@@ -105,12 +106,38 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	g_log("%s", line);
 	LogProbeSummary();
 	LogRangeWalkSummary();
+	LogRouteSummary();
 	if (planner != nullptr && g_settings.havokPlanner && sample.frames != 0) {
 		const float stepSeconds = *reinterpret_cast<volatile float*>(0x00BA790C);
 		g_log("Probe: Havok planner over %u frames - update type %u, steps per frame 0:%u 1:%u 2:%u 3+:%u, last step %.6f s",
 		      sample.frames, sample.lastType, sample.stepCounts[0], sample.stepCounts[1], sample.stepCounts[2],
 		      sample.stepCounts[3], stepSeconds);
 	}
+}
+
+namespace {
+
+DWORD WINAPI SummaryTimer(LPVOID) {
+	for (;;) {
+		Sleep(1000);
+		SummaryIfDue(GetTickCount(), nullptr, false);
+	}
+}
+
+}  // namespace
+
+bool StartSummaryTimer() {
+	static bool s_started = false;
+	if (s_started) {
+		return true;
+	}
+	HANDLE thread = CreateThread(nullptr, 0, &SummaryTimer, nullptr, 0, nullptr);
+	if (thread == nullptr) {
+		return false;
+	}
+	CloseHandle(thread);
+	s_started = true;
+	return true;
 }
 
 void DescribeStateDifferences(const shadow::State& before, const shadow::State& original,

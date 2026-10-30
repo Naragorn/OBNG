@@ -37,6 +37,12 @@ void RecordSkipped(Shadowed which, const char* why);
 
 // The summary line when it is due, plus the planner histogram.
 void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetPlanner);
+
+// A thread that calls SummaryIfDue once a second, for runs in which no
+// per-frame detour drives the summary (every shadow off, the route on - the
+// measurement runs). It never takes the planner sample. False when the thread
+// could not be created. Call after InitRecorder; at most one thread.
+bool StartSummaryTimer();
 shadow::PlannerSample& Planner();
 
 // The fields of two clock states that differ, as text for a mismatch line.

@@ -24,6 +24,7 @@ struct ShadowSettings {
 	bool memoryProbe = true;     // commit, working set and address space in the summary
 	UInt32 mismatchLines = 20;   // mismatches written in full per function
 	UInt32 summaryEverySeconds = 10;
+	bool summaryTimer = false;   // a thread drives the summary (runs with no per-frame detour); off in play
 
 	UInt32 Asked() const {
 		return (update ? 1u : 0u) + (init ? 1u : 0u) + (freeze ? 1u : 0u) + (unfreeze ? 1u : 0u) +
@@ -53,10 +54,14 @@ bool TimeInfoUpdateEntryIsTheGames();
 // which runs every frame, carries the probe there).
 void LogFpuControlWordOnce(const char* where);
 
+// What an entry detour is for, as its log lines say it: a shadow compares
+// (the original runs), a route replaces (OBNG's rebuild runs instead).
+enum class DetourRole : UInt8 { Shadow, Route };
+
 // One entry detour: the bytes checked, the trampoline built, the patch
 // written; the original reachable through *original afterwards. Shared by
-// the two installers.
+// the shadow installers and the route.
 bool InstallEntryDetour(const char* name, UInt32 address, const UInt8* bytes, UInt32 length, const void* replacement,
-                        void** original, LogFn log);
+                        void** original, LogFn log, DetourRole role = DetourRole::Shadow);
 
 }  // namespace obng::plugin

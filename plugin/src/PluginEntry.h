@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "RouteSettings.h"
 #include "ShadowTimeInfo.h"
 
 // What the plugin does when xOBSE queries and loads it - with the side
@@ -35,7 +36,8 @@ constexpr uint32_t kInfoVersion = 3;
 constexpr uint32_t kOblivionVersion_1_2_416 = 0x010201A0;
 
 struct Settings {
-	ShadowSettings shadow;  // [Shadow] and [Probe]
+	ShadowSettings shadow;  // [Shadow], [Probe] and [Log]
+	RouteSettings route;    // [Route]
 };
 
 struct Host {
@@ -44,10 +46,18 @@ struct Host {
 	// Reads the INI next to the DLL into *settings; false if there is no INI
 	// (the defaults then stand).
 	bool (*readSettings)(Settings* settings);
+	// The summary's bookkeeping (ShadowRecorder) every shadow, probe and
+	// route reports to; set up before any of them.
+	void (*initRecorder)(const ShadowSettings& settings);
 	// The shadow detours; each returns how many were made.
 	uint32_t (*installShadowTimeInfo)(const ShadowSettings& settings);
 	uint32_t (*installShadowLoadingMenu)(const ShadowSettings& settings);
 	uint32_t (*installShadowRangeWalk)(const ShadowSettings& settings);
+	// The range walk's route (RouteRangeWalk.cpp); returns how many detours were made.
+	uint32_t (*installRouteRangeWalk)(const RouteSettings& settings);
+	// A thread that drives the summary every second, for runs where no
+	// per-frame detour does (ShadowRecorder); false if it could not start.
+	bool (*startSummaryTimer)(const ShadowSettings& settings);
 	// The counting probes (Probes.cpp); returns how many detours were made.
 	uint32_t (*installProbes)(const ShadowSettings& settings);
 };

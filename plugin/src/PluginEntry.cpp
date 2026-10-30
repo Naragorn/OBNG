@@ -30,26 +30,45 @@ bool Load(const ExtenderInterfaceHead& xse, const Host& host) {
 	}
 	g_settings = Settings{};
 	if (!host.readSettings(&g_settings)) {
-		host.log("No OBNG.ini next to the DLL - defaults: every TimeInfo and LoadingMenu shadow on, the range walk off, "
+		host.log("No OBNG.ini next to the DLL - defaults: every TimeInfo and LoadingMenu shadow on, the range walk off, nothing routed, "
 		         "the memory probe on, 20 mismatch lines a function, a summary every 10 seconds");
 	}
 	const ShadowSettings& s = g_settings.shadow;
+	const RouteSettings& r = g_settings.route;
+	host.initRecorder(s);
 	if (s.Asked() == 0) {
 		host.log("Shadow: every switch is 0, nothing shadowed");
 	} else {
-		// In this order: the TimeInfo installer sets up the recorder the others report to.
 		uint32_t made = host.installShadowTimeInfo(s);
 		made += host.installShadowLoadingMenu(s);
 		made += host.installShadowRangeWalk(s);
 		host.log("Shadow: %u of %u detours made", made, s.Asked());
 	}
+	if (r.Asked() == 0) {
+		host.log("Route: every switch is 0, nothing routed");
+	} else if (RouteSkippedForShadow(s.rangeWalk, r.rangeWalk)) {
+		host.log("Route: ShadowSceneLight::CollectGeometryInRange skipped - the RangeWalk shadow takes the same entry "
+		         "and wins (a route without a prior clean shadow run makes nothing safer)");
+		host.log("Route: 0 of %u detours made", r.Asked());
+	} else {
+		const uint32_t made = host.installRouteRangeWalk(r);
+		host.log("Route: %u of %u detours made", made, r.Asked());
+	}
 	const uint32_t probesAsked = ProbesAskedFor(s);
 	if (probesAsked == 0 && !s.memoryProbe) {
 		host.log("Probes: off");
-		return true;
+	} else {
+		const uint32_t probesMade = host.installProbes(s);
+		host.log("Probes: %u of %u call counters made, memory %s", probesMade, probesAsked, s.memoryProbe ? "on" : "off");
 	}
-	const uint32_t probesMade = host.installProbes(s);
-	host.log("Probes: %u of %u call counters made, memory %s", probesMade, probesAsked, s.memoryProbe ? "on" : "off");
+	// Last, so its first summary finds the probes and the route in place.
+	if (s.summaryTimer) {
+		if (host.startSummaryTimer(s)) {
+			host.log("Log: a summary every %u s from the summary timer", s.summaryEverySeconds);
+		} else {
+			host.log("Log: the summary timer could not be started - only the detours that drive it write a summary");
+		}
+	}
 	return true;
 }
 

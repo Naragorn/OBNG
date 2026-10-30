@@ -41,3 +41,8 @@ add_executable(ShadowRangeWalkLogicTest ShadowRangeWalkLogicTest.cpp)
 target_include_directories(ShadowRangeWalkLogicTest PRIVATE ../src ../../src ../../tests)
 target_compile_options(ShadowRangeWalkLogicTest PRIVATE -Wall -Wextra -Werror)
 add_test(NAME ShadowRangeWalkLogicTest COMMAND ShadowRangeWalkLogicTest)
+
+add_executable(RouteRangeWalkLogicTest RouteRangeWalkLogicTest.cpp)
+target_include_directories(RouteRangeWalkLogicTest PRIVATE ../src ../../src ../../tests)
+target_compile_options(RouteRangeWalkLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME RouteRangeWalkLogicTest COMMAND RouteRangeWalkLogicTest)
