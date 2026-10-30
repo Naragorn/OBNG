@@ -385,6 +385,12 @@ UInt32 InstallShadowLoadingMenu(const ShadowSettings& settings, LogFn log) {
 	}
 	s_done = true;
 	UInt32 made = 0;
+	if ((settings.loadingMenuTick || settings.loadingMenuCtor) && !TimeInfoUpdateEntryIsTheGames()) {
+		log("Shadow LoadingMenu::Tick and LoadingMenu::LoadingMenu: not shadowed - TimeInfo::Update's entry holds another "
+		    "plugin's clock (OBVR's or OblivionFrameFixes' PreciseFrameClock), so their inner update would be compared "
+		    "against that plugin, not against the game; turn that clock off for a shadow run");
+		return 0;
+	}
 	if (settings.loadingMenuTick) {
 		made += InstallEntryDetour(ShadowName(Shadowed::LoadingMenuTick), kTick, kTickBytes, sizeof(kTickBytes),
 		                           reinterpret_cast<const void*>(&ShadowTick), reinterpret_cast<void**>(&g_tick), log) ? 1 : 0;

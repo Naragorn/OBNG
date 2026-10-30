@@ -196,6 +196,13 @@ layers exist (both since 2026-10-27):
    verdict. OBVR's `PreciseFrameClock` patches the same entry as the
    TimeInfo::Update shadow, so the shipped `OBNG.ini` keeps that shadow off
    and the harness turns it on with OBVR's clock off for the run.
+   The DLL also carries **probes** that measure instead of compare
+   (`plugin/src/Probes.cpp`, since 2026-10-30): `[Probe] CallCounters=1`
+   counts the scene pass's five hot functions per return site every summary
+   (who calls them, how often - the call count is the lever the slices
+   cannot read), `[Probe] Memory=1` writes commit, working set and the user
+   address space with its peak (the 4 GB question). The counters are off in
+   play; `tools/hand-scripts/obng-scene-pass.txt` is the run that uses them.
 
 The ledger keeps **reconstructed** and **verified** apart; verified names
 the run (date, calls, mismatches). A shadow run needs the Linux game free:

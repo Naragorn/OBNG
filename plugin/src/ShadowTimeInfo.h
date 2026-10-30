@@ -36,6 +36,13 @@ UInt32 InstallShadowTimeInfo(const ShadowSettings& settings, LogFn log);
 // (ShadowLoadingMenu.cpp). Call after InstallShadowTimeInfo.
 UInt32 InstallShadowLoadingMenu(const ShadowSettings& settings, LogFn log);
 
+// Whether TimeInfo::Update's entry still holds the game's own bytes. When
+// another plugin's clock (OBVR's or OblivionFrameFixes' PreciseFrameClock)
+// sits there, every shadow whose rebuild contains an Update - the
+// LoadingMenu's Tick and constructor - would compare against that plugin,
+// not against the game, and must stay off.
+bool TimeInfoUpdateEntryIsTheGames();
+
 // The x87 control word logged once, from whichever shadow runs first with
 // the probe on (Update is off in play because of OBVR's clock, so Tick,
 // which runs every frame, carries the probe there).

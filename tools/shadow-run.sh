@@ -16,8 +16,9 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 obvr="${OBNG_OBVR_DIR:-$root/../OBVR}"
 game="${OBNG_GAME_DIR:-$HOME/.local/share/Steam/steamapps/common/Oblivion}"
 plugins="$game/Data/OBSE/Plugins"
-scenario="${1:-$root/tools/hand-scripts/obng-shadow.txt}"
+scenario="$(readlink -f "${1:-$root/tools/hand-scripts/obng-shadow.txt}")"  # absolute: the runner runs from OBVR's directory
 shift || true
+[[ -f "$scenario" ]] || { echo "no scenario at $scenario" >&2; exit 2; }
 artifacts="$root/artifacts/shadow"
 
 [[ -f "$obvr/tools/hand-script-run.py" ]] || { echo "no OBVR harness at $obvr" >&2; exit 2; }

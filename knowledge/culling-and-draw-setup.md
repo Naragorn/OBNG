@@ -120,6 +120,41 @@ already gated by its own stamp. The lever this leaves: the call count of
 slot 13 per frame (who calls it per geometry is not in the export) and the
 cost split inside 0x007C9140 (three D3DX transforms) - neither measured.
 
+## Measured in the game (2026-10-30, OBNG.dll's call counters, Linux, 75 Hz, OBVR dual pass)
+
+Run `artifacts/shadow/obng-scene-pass/20261030-101556` (prison empty for
+30 s, then eighteen Walkers standing round the player for 45 s; counts per
+10-second summary, frames from OBVR's "frames shown since the last mark":
+75 a second empty, 70 with the Walkers; every number is calls per frame,
+both eyes and the shadow passes together):
+
+| function | empty prison | 18 Walkers | from where |
+|---|---:|---:|---|
+| shader slot 13 `SetupTransformations` 0x007C9230 | ~670 | ~2 500 | 0x007673C6 (in the skinned draw 0x00767520) and 0x007676A1 |
+| `NiCullingProcess::Cull` 0x0070DFB0 | ~1 080 | ~2 800 | 0x0070AB73 (the NiNode child walk) 99.7 %, 0x0070E145 the rest |
+| `ShadowSceneLight::IsInRange` 0x007D2EA0 | ~400 | ~7 400 | 0x007D5A10 (the recursive walk) and 0x007C61C7 (per geometry) about half each |
+| `NiBound::WhichSide` 0x0047DA70 | ~2 840 | ~20 900 | **0x007D2F2B, IsInRange's plane path, 70 %**; the frustum culler 0x0070DFFE 28 %; 0x0047F889 and 0x007D647F the rest |
+
+Read off that (measured, derived where said):
+
+- **IsInRange's plane path runs**: 0x007D2F2B is its WhichSide call site, so
+  lights with `+0x14C != 0` exist and are the common case - the open
+  question above is answered, and the unrestored mask under 0x007C61C7
+  (2 793 260 calls in one 10-second window with the Walkers) is live
+  behaviour, not a dead branch. Derived: with eighteen bodies the shadow
+  lights' range test costs more plane tests than the frustum cull itself.
+- The per-frame counts scale with the bodies: slot 13 and IsInRange about
+  four and eighteen times the empty prison, WhichSide seven times. The
+  3.8 % "culling" of OBVR's sampler is therefore mostly 0x007D2EA0's loop,
+  as the sampler said, not the frustum walk.
+- Slot 13 is called about twice per OBVR's draw count (1186 a pass): the
+  shadow passes draw the casters again (derived from the counts and the
+  mapping; a split by pass id would settle it).
+- `CopyVertexStreamElements` could not be counted: OblivionFrameFixes'
+  `FastStreamCopy=1` holds that entry (and `PreciseFrameClock=1` holds
+  TimeInfo::Update's) on the Linux install, independent of OBVR's own
+  switches; a count needs that plugin's switch off for the run.
+
 ## Open
 
 - Which render-loop function calls slot 13 per geometry, and how often per

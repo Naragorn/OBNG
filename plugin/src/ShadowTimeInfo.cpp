@@ -194,6 +194,10 @@ void LogFpuControlWordOnce(const char* where) {
 	      rounding, cw);
 }
 
+bool TimeInfoUpdateEntryIsTheGames() {
+	return Verify(kUpdate, kUpdateBytes, sizeof(kUpdateBytes));
+}
+
 bool InstallEntryDetour(const char* name, UInt32 address, const UInt8* bytes, UInt32 length, const void* replacement,
                         void** original, LogFn log) {
 	if (!Verify(address, bytes, length)) {
