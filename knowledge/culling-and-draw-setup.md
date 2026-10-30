@@ -120,6 +120,70 @@ already gated by its own stamp. The lever this leaves: the call count of
 slot 13 per frame (who calls it per geometry is not in the export) and the
 cost split inside 0x007C9140 (three D3DX transforms) - neither measured.
 
+## The scene pass as a boundary (read 2026-10-30, scene-pass slice, six mappings held)
+
+From the world render down to the draw, the chain is (every hop read at
+instruction level except where marked):
+
+1. **OSGlobals::RenderScene 0x0040C830** (`__thiscall(BSRenderedTexture*)`,
+   RET 4): guard byte 0x00B33395, a water pre-pass for interior cells with
+   water, the actor shadow maps 0x004073D0 (unconditional, before the
+   scene), the first-person node hidden, the follower roots updated, the
+   render target chosen (texture manager with a scaled port when byte
+   0x00B42F3E is set), then **the main scene through
+   `0x0070C0B0(camera, sceneGraph, cullingProcess = [sceneGraph+0xE4], 0)`**,
+   a gated first-person pass with a swapped accumulator, the device copy,
+   image space 0x007B48E0, port reset, release. It issues no draw itself.
+2. **0x0070C0B0** (not mapped yet): the hop that runs the culling walk
+   (NiCullingProcess::Cull, above) and hands the visible geometries to the
+   renderer - the next slice's first function.
+3. Per geometry, through NiDX9Renderer vtable slots 88/89:
+   **Do_RenderShape 0x007693E0** - early out on renderer byte +0x6F0 or a
+   zero vertex count, the world bound and transform copied to the stack,
+   0x00768890 decides "by skin partitions", 0x00778DB0 builds missing
+   renderer data (per partition at +0x28, or data+0x38), then
+4. **DrawSkinnedPrimitive 0x00767520** (skinned) or 0x007672F0 (whole
+   geometry): shader = geometry+0xBC (NiD3DShaderInterface) or the default
+   at renderer+0xA94; slots 10/11 open the pipeline; **per pass (slots
+   18..19) and per partition: slot 13 SetupTransformations 0x007C9230 (the
+   per-draw constants and the bone palette), slot 15 (the buffer record;
+   null aborts), slot 14 SetupShaderPrograms 0x0077A1F0, the
+   [[renderer+0x8AC]+0xFF0] slot-1 call, one DrawIndexedPrimitive per strip
+   or array, slot 16**; slot 17 closes, then [renderer+0x8AC] slot +0xFC(0).
+5. **SetupShaderPrograms 0x0077A1F0** is slot 14 of NiD3DShader, inherited by
+   30 shader classes - **not the "render walk" OBVR's sampler table named**
+   (correction to knowledge/skinned-vertex-streams.md): it resets the
+   `__NDL_SCMData` extra data (through NiObjectNET::GetExtraData 0x006FF9C0,
+   whose critical section is the "lock" of that table), forwards the
+   arguments and the pass index to the pass object's slot 1 (binds the
+   programs - pseudocode) and applies the constant maps through their slot
+   16 (the constant uploads - unverified). Its 49 % on-stack share is the
+   inclusive time of those virtual calls, i.e. of program binding and
+   constant upload per partition.
+6. Packing, on the shader side: shader slot +0x3C (0x0077A310, 32 vtables)
+   calls **PackSkinnedGeometryBuffer 0x00763130** with the record loaded
+   from partition+0x28; when the dirty mask has a bit other than 0x10 it
+   re-packs every vertex stream through the declaration's slot +0x6C
+   (0x0076FE20, NiDX9ShaderDeclaration), which calls **PackEntry 0x0076F590**
+   once per declaration entry (`__stdcall`, seven arguments): destType
+   picks the routine row and element size (tables [0x00B42700]+4 and
+   0x00B42708), the selector picks the source array and format column,
+   the 0x28-byte descriptor is built on the stack and the routine
+   (CopyVertexStreamElements 0x0076E610 for the same-format case) is
+   called once. **PackEntry never passes a null source** (read): the
+   zero-fill path of 0x0076E610 is unreachable from here, so OBVR's
+   zero-fill size difference cannot matter on this path. Static geometry
+   (consistency 0x4000) with all buffers present returns at once; volatile
+   (0x8000) or forced repacks everything - which of the two the skinned
+   bodies carry per frame is the open question behind OBVR's StreamReuse
+   result.
+
+What the boundary's output is (derived from 4 and 6): per visible skinned
+geometry, per pass, per partition one constant setup, one program bind,
+one stream pack when dirty, one indexed draw. A replacement of the pass
+can be checked at exactly these points: the constants written
+(0x00B44FD8 and its siblings), the packed bytes, the draw-call sequence.
+
 ## Measured in the game (2026-10-30, OBNG.dll's call counters, Linux, 75 Hz, OBVR dual pass)
 
 Run `artifacts/shadow/obng-scene-pass/20261030-101556` (prison empty for

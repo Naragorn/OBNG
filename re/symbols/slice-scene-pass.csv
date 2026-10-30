@@ -1,0 +1,11 @@
+address,name,kind,confidence,conflict,source
+0x0040C830,OSGlobals_RenderScene,function,inferred,0,re/ledger.md scene-pass (OBVR seed kRenderScene already applied; the class from 0x0040D4D0's mapping)
+0x0077A1F0,NiD3DShader_SetupShaderPrograms,function,inferred,0,re/ledger.md scene-pass (vtable slot 14 of NiD3DShader 0x00A8977C by RTTI; method name a proposal)
+0x007693E0,NiDX9Renderer_Do_RenderShape,function,inferred,0,re/ledger.md scene-pass (slots 88/89 of the NiDX9Renderer vtable 0x00A88EA4 by RTTI)
+0x00767520,NiDX9Renderer_DrawSkinnedPrimitive,function,named,0,re/ledger.md scene-pass (the function's own string "DrawSkinnedPrimitive> ..." and the NiDX9Renderer vtable)
+0x00763130,NiDX9Renderer_PackSkinnedGeometryBuffer,function,inferred,0,re/ledger.md scene-pass (class from [0x00B3F928] at two callers; method name recalled)
+0x0076F590,NiDX9ShaderDeclaration_PackEntry,function,inferred,0,re/ledger.md scene-pass (stdcall seven args RET 0x1C; called per entry from slot +0x6C 0x0076FE20)
+0x0076FE20,NiDX9ShaderDeclaration_PackEntries,function,inferred,0,re/functions/0x00763130.md (slot +0x6C of the NiDX9ShaderDeclaration vtable 0x00A89C74; calls 0x0076F590 per entry)
+0x0077A310,NiD3DShader_PackPartitionBuffers,function,inferred,0,re/functions/0x00763130.md (shader slot +0x3C in 32 vtables; calls 0x00763130 with the record loaded from partition+0x28)
+0x007672F0,NiDX9Renderer_DrawPrimitive,function,inferred,0,re/functions/0x007693E0.md (the whole-geometry draw beside DrawSkinnedPrimitive; name by analogy, unverified)
+0x006FF9C0,NiObjectNET_GetExtraData,function,inferred,0,re/functions/0x0077A1F0.md (critical section on 0x00B3F600, read; the "lock" of OBVR's sampler table)

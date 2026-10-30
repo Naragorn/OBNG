@@ -39,8 +39,8 @@ on (run of 2026-10-23 14:59).
 | 13.1 % | DXVK: draws, constants, the unlock |
 | 4.6 % | OBVR.dll |
 | 3.8 % | 0x0047DA70, a sphere against a plane (culling, from 0x007D2EA0; the roles corrected 2026-10-30, knowledge/bone-palettes.md) |
-| 40 % | the rest of the engine's render walk: 0x0077A1F0 on the stack in 49 % of samples, 0x00767520 in 40 % |
-| 4 % | ntdll and kernel32: locks (0x006FF9C0), file reads |
+| 40 % | the rest of the engine's render walk: 0x0077A1F0 on the stack in 49 % of samples, 0x00767520 in 40 % (corrected 2026-10-30: 0x0077A1F0 is NiD3DShader::SetupShaderPrograms, slot 14, called per partition and pass from the draws - program binding and constant maps, not a walk; 0x00767520 is NiDX9Renderer::DrawSkinnedPrimitive; knowledge/culling-and-draw-setup.md) |
+| 4 % | ntdll and kernel32: locks (0x006FF9C0 is NiObjectNET::GetExtraData, a critical section on 0x00B3F600 - read 2026-10-30), file reads |
 
 The allocator and the critical sections together take **under 0.5 %** of a
 pass (measured). A heap replacement or lock hooks, the approach of Oblivion
@@ -57,9 +57,13 @@ CPU is unverified (see the end). These figures are for five people (measured):
 - **The stream packer** is 0x00763130,
   `thiscall(renderer, record, geometry, a3, desc, custom, force)`. It
   returns al=1.
-- It calls **the copier** 0x0076F590, which works out the offsets per
-  stream. The copier calls **the stream copy** 0x0076E610, which has three
-  paths:
+- It reaches **the copier** 0x0076F590 (read 2026-10-30: NiDX9ShaderDeclaration::PackEntry,
+  `__stdcall` with seven arguments, called once per declaration entry from
+  the declaration's vtable slot +0x6C = 0x0076FE20 - there is no direct call
+  from 0x00763130, and 0x00771790 / 0x00773330 reach 0x0076FE20 through that
+  slot as well). PackEntry builds the descriptor and calls **the stream copy**
+  0x0076E610 only with a non-null source, so the zero-fill path below is
+  not reached from it. The stream copy has three paths:
   - **zero-fill**, the copier's memset loop 0x0076F3B0;
   - **straight runs**, with unrolled 8, 12 and 16-byte copies;
   - **indexed**, the path skinned bodies take. Its loop at 0x0076E690
