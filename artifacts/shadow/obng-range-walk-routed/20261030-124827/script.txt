@@ -1,0 +1,74 @@
+# The range walk's cost measurement, ROUTED side: the game runs OBNG's
+# BatchedWalk at ShadowSceneLight::CollectGeometryInRange 0x007D59E0 instead
+# of the original (plugin/src/RouteRangeWalk.cpp, [Route] RangeWalk=1 in
+# tools/hand-scripts/obng-measure-routed.ini).
+#
+# The pair: obng-range-walk-original.txt and obng-range-walk-routed.txt are
+# the same scenario - OblivionWalkers' perf-walkers-in-view.txt (the prison
+# watched empty for 30 s, then eighteen Walkers placed round the held player,
+# their AI off, watched for 45 s) with its OBVR profiler capture (armed with
+# the game, it starts 60 s later and runs 95 s) - and differ only in the
+# OBNG-test.ini tools/shadow-run.sh writes: obng-measure-original.ini (every
+# OBNG shadow, probe detour and route off; the memory sample and the summary
+# timer on) or obng-measure-routed.ini (the same plus [Route] RangeWalk=1).
+#
+# Measured as played: OBVR's precise frame clock stays ON (no
+# "ini Render PreciseFrameClock=0"; the expect line checks it took the entry),
+# which is why OBNG's TimeInfoUpdate shadow is off in both INIs. Actor
+# shadows: the walk runs per drawn actor-shadow light, so the casters come
+# from Oblivion.ini's [Display] iActorShadowCountInt (5 in the Linux install's
+# INI, read 2026-10-30) - keep it the same for both runs.
+#
+# Run, from OBNG's folder, one after the other (OBNG.dll deployed):
+#   tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-original.ini tools/hand-scripts/obng-range-walk-original.txt
+#   tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-routed.ini tools/hand-scripts/obng-range-walk-routed.txt
+# then, from OBVR's folder, per run folder (artifacts/shadow/<scenario>/<stamp>):
+#   python3 tools/perf-phases.py <run> prison empty-watched people-placed people-watched --events scene_pass
+# and compare scene_pass mean / p95 phase by phase. In the routed run's
+# OBNG.log: "Route ShadowSceneLight::CollectGeometryInRange: on at 007D59E0",
+# "Route: 1 of 1 detours made" and the "Route: range walk N walks routed, M
+# AddGeometry calls; ..." lines every summary (N > 0, few calls left to the
+# original); in both: the "Probe: memory ..." lines.
+
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Render Stereo=dual
+ini Performance Enabled=1
+ini Performance GpuTiming=0
+ini Performance StartAfterSeconds=60
+ini Performance CaptureSeconds=95
+ini Performance MaxRecords=262144
+console-at placed tgm
+console-at placed coc ImperialDungeon01
+console-at prison tcl
+console-at prison player.setrestrained 1
+console-at prison SetNumericINISetting "fVanityModeAutoDelay:Camera" 100000
+console-at people player.placeatme {form:OblivionWalkers.esp:801} 18
+console-at people-placed tai
+
+expect HandScript: finished
+expect Performance: capture armed, it starts in 60 seconds
+expect Performance: capture 1 started
+expect Performance: export
+reject menu Container
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 22
+mark placed
+wait 16
+mark prison
+wait 30
+mark empty-watched
+mark people
+wait 8
+mark people-placed
+wait 15
+mark people-15
+wait 15
+mark people-30
+wait 15
+mark people-watched
+wait 45
+mark done
