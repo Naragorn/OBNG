@@ -1,0 +1,52 @@
+OBNG 1 - xOBSE 22, Oblivion 010201A0, editor=0
+Settings from Z:\home\nadi\.local\share\Steam\steamapps\common\Oblivion\Data\OBSE\Plugins\OBNG-test.ini: TimeInfoUpdate=0 TimeInfoInit=0 TimeInfoFreeze=0 TimeInfoUnfreeze=0 LoadingMenuTick=0 LoadingMenuCtor=0 RangeWalk=1 RangeWalkOrder=original-first FpuControlWord=0 HavokPlanner=0 CallCounters=0 Memory=1 MismatchLines=20 SummaryEverySeconds=10 SummaryTimer=1 Route RangeWalk=1
+Shadow ShadowSceneLight::AddGeometry (recording): on at 007D5790 - the original runs, the rebuild runs on a copy, both compared bit for bit
+Shadow ShadowSceneLight::CollectGeometryInRange: on at 007D59E0 - the original runs, the rebuild runs on a copy, both compared bit for bit
+Shadow ShadowSceneLight::CollectGeometryInRange: order original-first
+Shadow: 2 of 2 detours made
+Route: ShadowSceneLight::CollectGeometryInRange skipped - the RangeWalk shadow takes the same entry and wins (a route without a prior clean shadow run makes nothing safer)
+Route: 0 of 1 detours made
+Probes: 0 of 0 call counters made, memory on
+Log: a summary every 10 s from the summary timer
+Shadow: ShadowSceneLight::CollectGeometryInRange 7871 calls 0 mismatches;
+Probe: memory commit 385 MB (peak 385), working set 1928 MB (peak 1928), address space 1928 of 4095 MB used (47 %, peak 1928 MB)
+Shadow range walk: 7871 walks compared (planes 0, distance 7871, directional 0, no source 0), 2855 AddGeometry calls compared, at most 108 in one walk, 0 mismatching walks; by rounding control at entry nearest 7871, down 0, up 0, truncate 0; plane batches native 0, recomputed 0
+Shadow: ShadowSceneLight::CollectGeometryInRange 10157 calls 0 mismatches;
+Probe: memory commit 439 MB (peak 439), working set 2178 MB (peak 2179), address space 2178 of 4095 MB used (53 %, peak 2178 MB)
+Shadow range walk: 2286 walks compared (planes 2210, distance 76, directional 0, no source 0), 156061 AddGeometry calls compared, at most 109 in one walk, 0 mismatching walks; by rounding control at entry nearest 2286, down 0, up 0, truncate 0; plane batches native 1145275, recomputed 0
+Shadow: ShadowSceneLight::CollectGeometryInRange 13157 calls 0 mismatches;
+Probe: memory commit 439 MB (peak 439), working set 2178 MB (peak 2179), address space 2178 of 4095 MB used (53 %, peak 2178 MB)
+Shadow range walk: 3000 walks compared (planes 3000, distance 0, directional 0, no source 0), 209250 AddGeometry calls compared, at most 79 in one walk, 0 mismatching walks; by rounding control at entry nearest 3000, down 0, up 0, truncate 0; plane batches native 1554750, recomputed 0
+Shadow: ShadowSceneLight::CollectGeometryInRange 16153 calls 0 mismatches;
+Probe: memory commit 466 MB (peak 466), working set 2173 MB (peak 2179), address space 2173 of 4095 MB used (53 %, peak 2178 MB)
+Shadow range walk: 2996 walks compared (planes 2996, distance 0, directional 0, no source 0), 208971 AddGeometry calls compared, at most 79 in one walk, 0 mismatching walks; by rounding control at entry nearest 2996, down 0, up 0, truncate 0; plane batches native 1552677, recomputed 0
+Shadow: ShadowSceneLight::CollectGeometryInRange 18825 calls 0 mismatches;
+Probe: memory commit 466 MB (peak 466), working set 2173 MB (peak 2179), address space 2173 of 4095 MB used (53 %, peak 2178 MB)
+Shadow range walk: 2672 walks compared (planes 2672, distance 0, directional 0, no source 0), 186372 AddGeometry calls compared, at most 79 in one walk, 0 mismatching walks; by rounding control at entry nearest 2672, down 0, up 0, truncate 0; plane batches native 1384764, recomputed 0
+Shadow: ShadowSceneLight::CollectGeometryInRange 21157 calls 0 mismatches;
+Probe: memory commit 467 MB (peak 467), working set 2142 MB (peak 2179), address space 2142 of 4095 MB used (52 %, peak 2178 MB)
+Shadow range walk: 2332 walks compared (planes 2332, distance 0, directional 0, no source 0), 162657 AddGeometry calls compared, at most 79 in one walk, 0 mismatching walks; by rounding control at entry nearest 2332, down 0, up 0, truncate 0; plane batches native 1208559, recomputed 0
+Shadow: ShadowSceneLight::CollectGeometryInRange 24157 calls 0 mismatches;
+Probe: memory commit 467 MB (peak 467), working set 2143 MB (peak 2179), address space 2143 of 4095 MB used (52 %, peak 2178 MB)
+Shadow range walk: 3000 walks compared (planes 3000, distance 0, directional 0, no source 0), 209250 AddGeometry calls compared, at most 79 in one walk, 0 mismatching walks; by rounding control at entry nearest 3000, down 0, up 0, truncate 0; plane batches native 1554750, recomputed 0
+Shadow: ShadowSceneLight::CollectGeometryInRange 27157 calls 0 mismatches;
+Probe: memory commit 468 MB (peak 468), working set 2111 MB (peak 2179), address space 2111 of 4095 MB used (51 %, peak 2178 MB)
+Shadow range walk: 3000 walks compared (planes 3000, distance 0, directional 0, no source 0), 209250 AddGeometry calls compared, at most 79 in one walk, 0 mismatching walks; by rounding control at entry nearest 3000, down 0, up 0, truncate 0; plane batches native 1554750, recomputed 0
+Shadow: ShadowSceneLight::CollectGeometryInRange 30149 calls 0 mismatches;
+Probe: memory commit 470 MB (peak 470), working set 2113 MB (peak 2179), address space 2113 of 4095 MB used (51 %, peak 2178 MB)
+Shadow range walk: 2992 walks compared (planes 2992, distance 0, directional 0, no source 0), 208692 AddGeometry calls compared, at most 79 in one walk, 0 mismatching walks; by rounding control at entry nearest 2992, down 0, up 0, truncate 0; plane batches native 1550604, recomputed 0
+Shadow: ShadowSceneLight::CollectGeometryInRange 33149 calls 0 mismatches;
+Probe: memory commit 470 MB (peak 470), working set 2114 MB (peak 2179), address space 2114 of 4095 MB used (51 %, peak 2178 MB)
+Shadow range walk: 3000 walks compared (planes 3000, distance 0, directional 0, no source 0), 209250 AddGeometry calls compared, at most 79 in one walk, 0 mismatching walks; by rounding control at entry nearest 3000, down 0, up 0, truncate 0; plane batches native 1554750, recomputed 0
+Shadow: ShadowSceneLight::CollectGeometryInRange 36141 calls 0 mismatches;
+Probe: memory commit 471 MB (peak 471), working set 2114 MB (peak 2179), address space 2114 of 4095 MB used (51 %, peak 2178 MB)
+Shadow range walk: 2992 walks compared (planes 2992, distance 0, directional 0, no source 0), 208692 AddGeometry calls compared, at most 79 in one walk, 0 mismatching walks; by rounding control at entry nearest 2992, down 0, up 0, truncate 0; plane batches native 1550604, recomputed 0
+Shadow: ShadowSceneLight::CollectGeometryInRange 39141 calls 0 mismatches;
+Probe: memory commit 445 MB (peak 471), working set 2088 MB (peak 2179), address space 2088 of 4095 MB used (50 %, peak 2178 MB)
+Shadow range walk: 3000 walks compared (planes 3000, distance 0, directional 0, no source 0), 209250 AddGeometry calls compared, at most 79 in one walk, 0 mismatching walks; by rounding control at entry nearest 3000, down 0, up 0, truncate 0; plane batches native 1554750, recomputed 0
+Shadow: ShadowSceneLight::CollectGeometryInRange 42141 calls 0 mismatches;
+Probe: memory commit 445 MB (peak 471), working set 2088 MB (peak 2179), address space 2088 of 4095 MB used (50 %, peak 2178 MB)
+Shadow range walk: 3000 walks compared (planes 3000, distance 0, directional 0, no source 0), 209250 AddGeometry calls compared, at most 79 in one walk, 0 mismatching walks; by rounding control at entry nearest 3000, down 0, up 0, truncate 0; plane batches native 1554750, recomputed 0
+Shadow: ShadowSceneLight::CollectGeometryInRange 45137 calls 0 mismatches;
+Probe: memory commit 445 MB (peak 471), working set 2088 MB (peak 2179), address space 2088 of 4095 MB used (50 %, peak 2178 MB)
+Shadow range walk: 2996 walks compared (planes 2996, distance 0, directional 0, no source 0), 208971 AddGeometry calls compared, at most 79 in one walk, 0 mismatching walks; by rounding control at entry nearest 2996, down 0, up 0, truncate 0; plane batches native 1552677, recomputed 0

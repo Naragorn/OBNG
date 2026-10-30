@@ -199,8 +199,35 @@ What the tests measured (all green, 2026-10-30 17:17):
 | plugin tests | the route and the shadow carry the port and the counters | green |
 | tools/bench/range-walk-batch-bench.cpp | one six-lane batch on this host, clang++ -m32 -O2 | exact 314 ns, native with the MXCSR scope 13.4 ns (23 x) |
 
-Not yet run (the game was held by OBVR's runs): the in-game shadow on the
-fixed scene (tools/hand-scripts/obng-walkers-check.txt, original-first,
-expecting 0 mismatches and the native share in the summary line), then the
-routed measurement against the original on the same scene with the same
-OBVR.dll (the OBVR.dll changed at 17:14, so the original side is re-run too).
+## In the game on the fixed scene (2026-10-30 17:21 to 17:30)
+
+Three runs on OBVRHarnessWalkers with OBNG.dll f26b6b0cb01eaaa9 and OBVR.dll
+4cbfa81d (OBVR's render code unchanged since 761bc12e, which its two baseline
+runs obvr-sums-0/20261030-170846 and obvr-sums-1/20261030-171131 used):
+
+| Run | Side | Walks per 10 s | Plane batches per 10 s | scene_pass mean | p95 | OBNG.dll in-pass | the walk inclusive |
+|---|---|---:|---:|---:|---:|---:|---:|
+| obng-walkers-check/20261030-172101 | shadow, original-first | 3000 | 1 554 750 native, 0 recomputed | 3.06 ms (both walks run) | 3.68 | - | - |
+| obng-walkers-routed/20261030-172355 | routed (native) | 3000 routed, 0 left | 1 543 500 native, 0 recomputed | 2.83 ms | 3.38 | 1.8 % (409 of 22 894) | 2.0 % under 0x007D6900 |
+| obng-walkers-original/20261030-172648 | original | - | - | 2.78 ms | 3.31 | - | 2.3 % (520 of 22 477) |
+| obvr-sums-1/20261030-171131, obvr-sums-0/20261030-170846 (OBVR's) | original | - | - | 2.82 / 2.91 ms | 3.36 / 3.44 | - | - |
+
+- **Correct** (measured): 45 137 walks compared over the check run, 0
+  mismatches - the native plane pass reproduces the original's AddGeometry
+  sequence, mask and AL on the game's own scene. That run saw the rounding
+  control nearest at every entry, the routed run truncate at every entry:
+  both modes are now covered in the game.
+- **Native on every object** (measured): 1.55 million plane batches per 10 s,
+  0 recomputed - the game's bounds and planes never leave the single's range
+  on this scene.
+- **Cost parity** (measured): the rebuild holds 1.8 % of the in-pass samples
+  where the engine's walk holds 2.3 % (3.1 % in the 15:17 run), against
+  14.1 % with the software rounding; scene_pass 2.83 against 2.78 ms, a
+  difference of 0.05 ms inside today's spread between two original runs of
+  the same build (2.82 / 2.91 ms, OBVR's). The 0.46 ms of 15:28 are gone.
+- **No measurable gain either** (derived): the walk is 2-3 % of a 2.8 ms
+  pass, about 0.07 ms; the batching's removal of per-plane calls cannot show
+  above a 0.1 ms spread. The first subsystem stands as the method proof it
+  was meant to be: verified, routed, at the engine's cost. The route stays
+  off in play (OBNG.ini [Route] RangeWalk=0) because it gains nothing to
+  pay a risk for; it is on for measurement runs.

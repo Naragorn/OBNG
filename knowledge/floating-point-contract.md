@@ -73,3 +73,11 @@ Why: the routed range walk with the software rounding cost 0.46 ms a scene
 pass more than the engine's own walk on the fixed scene (measured 2026-10-30
 15:28; OBNG.dll held 14.1 % of the in-pass samples, the engine's walk 3.1 %),
 and the samples sat in the rounding's bit arithmetic, not in the walk.
+
+In the game (measured 2026-10-30 17:21-17:30, fixed scene OBVRHarnessWalkers):
+the shadow compared 45 137 walks with the native pass, 0 mismatches, under
+rounding control nearest; the routed run (truncate at every entry) kept
+1.54 million plane batches per 10 s natively, 0 recomputed, and OBNG.dll
+held 1.8 % of the in-pass samples where the engine's own walk held 2.3 % -
+scene_pass 2.83 against 2.78 ms, inside the spread of two original runs
+(2.82 / 2.91 ms). The native-with-fallback shape runs at the engine's cost.
