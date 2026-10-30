@@ -10,6 +10,48 @@ using LogFn = void (*)(const char* format, ...);
 // the recording one on AddGeometry 0x007D5790.
 constexpr UInt32 kRangeWalkDetours = 2;
 
+// [Shadow] RangeWalkOrder: which side of the range-walk shadow runs first.
+// original-first (the default, the gate as it ran): the original walks and
+// performs its AddGeometry calls, then BatchedWalk reads the scene as the
+// original left it. rebuild-first (a diagnostic): BatchedWalk reads the scene
+// untouched, then the original runs - a mismatch here with none under
+// original-first shows the original's walk changing its own inputs.
+enum class RangeWalkOrder : UInt8 {
+	OriginalFirst,
+	RebuildFirst,
+};
+
+inline const char* RangeWalkOrderName(RangeWalkOrder order) {
+	return order == RangeWalkOrder::RebuildFirst ? "rebuild-first" : "original-first";
+}
+
+// Case-insensitive, whole word. Anything else gives original-first with
+// *known false, so the caller can say the value was not understood.
+inline RangeWalkOrder ParseRangeWalkOrder(const char* text, bool* known) {
+	const auto equals = [text](const char* word) {
+		UInt32 i = 0;
+		for (; word[i] != '\0'; ++i) {
+			char c = text[i];
+			if (c >= 'A' && c <= 'Z') {
+				c = static_cast<char>(c - 'A' + 'a');
+			}
+			if (c != word[i]) {
+				return false;
+			}
+		}
+		return text[i] == '\0';
+	};
+	*known = true;
+	if (equals("original-first")) {
+		return RangeWalkOrder::OriginalFirst;
+	}
+	if (equals("rebuild-first")) {
+		return RangeWalkOrder::RebuildFirst;
+	}
+	*known = false;
+	return RangeWalkOrder::OriginalFirst;
+}
+
 struct ShadowSettings {
 	bool update = true;
 	bool init = true;
@@ -18,6 +60,7 @@ struct ShadowSettings {
 	bool loadingMenuTick = true;
 	bool loadingMenuCtor = true;
 	bool rangeWalk = false;      // the shadow-light range walk 0x007D59E0 against BatchedWalk (ShadowRangeWalk.cpp); off in play
+	RangeWalkOrder rangeWalkOrder = RangeWalkOrder::OriginalFirst;  // [Shadow] RangeWalkOrder
 	bool fpuControlWord = true;  // log the x87 control word at the first Update
 	bool havokPlanner = true;    // sample the planner's outputs every frame, histogram in the summary
 	bool callCounters = false;   // count the scene pass's hot functions per return site (Probes.cpp); off in play

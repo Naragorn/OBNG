@@ -334,7 +334,17 @@ void TestLoadRangeWalk() {
 	g_fake = &fake;
 	ResetForTest();
 	Check(Load(Game(), kHost), "loads");
-	Check(fake.rangeWalkInstalls == 1 && fake.rangeWalkInstalled.rangeWalk, "the switch reaches the range-walk installer");
+	Check(fake.rangeWalkInstalls == 1 && fake.rangeWalkInstalled.rangeWalk &&
+	          fake.rangeWalkInstalled.rangeWalkOrder == RangeWalkOrder::OriginalFirst,
+	      "the switch reaches the range-walk installer, original-first by default");
+
+	Fake ordered;
+	ordered.iniSettings.shadow.rangeWalk = true;
+	ordered.iniSettings.shadow.rangeWalkOrder = RangeWalkOrder::RebuildFirst;
+	g_fake = &ordered;
+	ResetForTest();
+	Check(Load(Game(), kHost) && ordered.rangeWalkInstalled.rangeWalkOrder == RangeWalkOrder::RebuildFirst,
+	      "rebuild-first reaches the installer as read");
 	Check(fake.Logged("Shadow: 8 of 8 detours made"), "six TimeInfo and LoadingMenu detours plus the walk's two");
 
 	Fake failing;

@@ -24,6 +24,7 @@
 #include <windows.h>
 
 #include <cstdio>
+#include <cstring>
 
 #include "RangeWalkGame.h"
 #include "ShadowRangeWalkLogic.h"
@@ -40,6 +41,7 @@ game::WalkFn g_walk = nullptr;
 game::AddGeometryFn g_addGeometry = nullptr;
 bool g_on = false;
 LogFn g_log = nullptr;
+RangeWalkOrder g_order = RangeWalkOrder::OriginalFirst;
 
 SRWLOCK g_statsLock = SRWLOCK_INIT;
 rw::WalkStats g_stats;
@@ -70,14 +72,27 @@ void Report(const rw::WalkReport& report) {
 	g_stats.Add(report);
 	ReleaseSRWLockExclusive(&g_statsLock);
 	const bool mismatch = report.comparison.Mismatch();
-	char detail[400] = {};
+	char detail[640] = {};
 	if (mismatch) {
 		const rw::WalkBuffers& buffers = g_slots.Get().buffers;  // this thread's: Report runs inside its walk
 		rw::DescribeComparison(report.comparison, buffers.original, buffers.rebuild, detail, sizeof(detail));
+		if (report.order == RangeWalkOrder::RebuildFirst) {
+			std::size_t at = std::strlen(detail);
+			if (report.trace.found) {
+				rw::DescribeTraceDifference(report.trace, buffers.traceFresh, buffers.traceAfter, detail + at,
+				                            sizeof(detail) - at);
+			} else {
+				std::snprintf(detail + at, sizeof(detail) - at, " the rebuild's reads equal before and after the original;");
+			}
+			at = std::strlen(detail);
+			std::snprintf(detail + at, sizeof(detail) - at, " light values %s by the original;",
+			              report.lightChanged ? "CHANGED" : "unchanged");
+		}
 	}
-	char inputs[160];
-	std::snprintf(inputs, sizeof(inputs), "light %08X root %08X source %s mask %08X thread %lu", report.light,
-	              report.object, ModeName(report.mode), report.maskBefore, GetCurrentThreadId());
+	char inputs[200];
+	std::snprintf(inputs, sizeof(inputs), "light %08X root %08X source %s mask %08X thread %lu order %s", report.light,
+	              report.object, ModeName(report.mode), report.maskBefore, GetCurrentThreadId(),
+	              RangeWalkOrderName(report.order));
 	RecordCall(Shadowed::RangeWalk, mismatch, detail, inputs);
 	SummaryIfDue(GetTickCount(), nullptr, false);
 }
@@ -94,7 +109,7 @@ UInt32 __fastcall ShadowAddGeometry(UInt32 light, void* /*edx*/, UInt32 geometry
 UInt32 __fastcall ShadowWalk(UInt32 light, void* /*edx*/, UInt32 object) {
 	ThreadSlot& slot = g_slots.Get();
 	game::GameMemory memory;
-	return rw::ShadowWalk(memory, slot.state, slot.buffers, light, object,
+	return rw::ShadowWalk(memory, slot.state, slot.buffers, g_order, light, object,
 	                      [](std::uint32_t l, std::uint32_t o) { return static_cast<std::uint32_t>(g_walk(l, nullptr, o)); },
 	                      &game::GameSquareRoot, &Report);
 }
@@ -108,6 +123,7 @@ UInt32 InstallShadowRangeWalk(const ShadowSettings& settings, LogFn log) {
 	}
 	s_done = true;
 	g_log = log;
+	g_order = settings.rangeWalkOrder;
 	if (!g_slots.Allocate()) {
 		log("Shadow %s: no TLS slot; not shadowed", ShadowName(Shadowed::RangeWalk));
 		return 0;
@@ -125,6 +141,7 @@ UInt32 InstallShadowRangeWalk(const ShadowSettings& settings, LogFn log) {
 		return 1;
 	}
 	g_on = true;
+	log("Shadow %s: order %s", ShadowName(Shadowed::RangeWalk), RangeWalkOrderName(g_order));
 	return 2;
 }
 

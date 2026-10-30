@@ -26,11 +26,13 @@
 // nothing here depends on the pointer size. The 32-bit engine shape (calls,
 // volatile reads) lives in ShadowRangeWalk.cpp only.
 
+#include "ShadowTimeInfo.h"
 #include "engine/render/ShadowLightRangeWalk.h"
 #include "engine/render/ShadowLightRangeWalkLogic.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <bit>
 #include <cstdio>
 #include <vector>
 
@@ -293,6 +295,154 @@ struct MemoryScene {
 	void addGeometry(ObjectHandle g, std::uint32_t mask) { adds->push_back(AddGeometryEvent{g, mask}); }
 };
 
+// ---- The trace of the rebuild's scene reads (the rebuild-first diagnostic) -----------------
+
+// One scene port call of BatchedWalk with what it answered, or a visit with
+// its decision. Two traces of the same walk over the same light differ first
+// where an input the walk reads changed between them.
+enum class TraceKind : std::uint8_t {
+	Gate,           // values[0] = the gate dword
+	AsNode,         // values[0] = vt[+0x08]()
+	NodeRtti,       // values[0] = vt[+0x04]()
+	ActiveChild,    // values[0] = 0x007C59E0's result
+	NonZeroRadius,  // values[0] = 0x0049FFC0's AL
+	ChildCount,     // values[0] = the u16 +0xB6
+	Child,          // values[0] = the index, values[1] = the slot +0xB0[index]
+	Bound,          // values[0..3] = the words +0x20..+0x2C, bit for bit
+	Flags,          // values[0] = the byte +0x18
+	AsGeometry,     // values[0] = vt[+0x10]()
+	AddGeometry,    // values[0] = the mask handed over
+	Visit,          // values[0] = in range, values[1] = mask in, values[2] = mask out
+};
+
+inline const char* TraceKindName(TraceKind kind) {
+	switch (kind) {
+	case TraceKind::Gate: return "gate";
+	case TraceKind::AsNode: return "as-node";
+	case TraceKind::NodeRtti: return "node-rtti";
+	case TraceKind::ActiveChild: return "active-child";
+	case TraceKind::NonZeroRadius: return "non-zero-radius";
+	case TraceKind::ChildCount: return "child-count";
+	case TraceKind::Child: return "child";
+	case TraceKind::Bound: return "bound";
+	case TraceKind::Flags: return "flags";
+	case TraceKind::AsGeometry: return "as-geometry";
+	case TraceKind::AddGeometry: return "add-geometry";
+	case TraceKind::Visit: return "visit";
+	}
+	return "?";
+}
+
+struct TraceEvent {
+	TraceKind kind;
+	std::uint32_t object;  // the object, node or geometry the read was about (0 for the gate)
+	std::uint32_t values[4];
+	bool operator==(const TraceEvent&) const = default;
+};
+
+// A RangeWalkScene that forwards every port to `inner` and logs it.
+template <class Scene>
+struct TracingScene {
+	Scene& inner;
+	std::vector<TraceEvent>* trace;
+
+	std::uint32_t Log(TraceKind kind, std::uint32_t object, std::uint32_t value, std::uint32_t second = 0) {
+		trace->push_back(TraceEvent{kind, object, {value, second, 0, 0}});
+		return value;
+	}
+	std::uint32_t gate() { return Log(TraceKind::Gate, 0, static_cast<std::uint32_t>(inner.gate())); }
+	ObjectHandle asNode(ObjectHandle o) { return Log(TraceKind::AsNode, o, inner.asNode(o)); }
+	std::uint32_t nodeRtti(ObjectHandle n) { return Log(TraceKind::NodeRtti, n, inner.nodeRtti(n)); }
+	ObjectHandle activeChild(ObjectHandle n) { return Log(TraceKind::ActiveChild, n, inner.activeChild(n)); }
+	bool hasNonZeroBoundRadius(ObjectHandle o) {
+		return Log(TraceKind::NonZeroRadius, o, inner.hasNonZeroBoundRadius(o) ? 1u : 0u) != 0;
+	}
+	std::uint16_t childCount(ObjectHandle n) {
+		return static_cast<std::uint16_t>(Log(TraceKind::ChildCount, n, inner.childCount(n)));
+	}
+	ObjectHandle child(ObjectHandle n, std::uint32_t i) {
+		const ObjectHandle c = inner.child(n, i);
+		Log(TraceKind::Child, n, i, c);
+		return c;
+	}
+	which_side::SphereValues bound(ObjectHandle o) {
+		const which_side::SphereValues b = inner.bound(o);
+		trace->push_back(TraceEvent{TraceKind::Bound, o,
+			{std::bit_cast<std::uint32_t>(b.centerX), std::bit_cast<std::uint32_t>(b.centerY),
+				std::bit_cast<std::uint32_t>(b.centerZ), std::bit_cast<std::uint32_t>(b.radius)}});
+		return b;
+	}
+	std::uint8_t flags(ObjectHandle o) { return static_cast<std::uint8_t>(Log(TraceKind::Flags, o, inner.flags(o))); }
+	ObjectHandle asGeometry(ObjectHandle o) { return Log(TraceKind::AsGeometry, o, inner.asGeometry(o)); }
+	void addGeometry(ObjectHandle g, std::uint32_t mask) {
+		Log(TraceKind::AddGeometry, g, mask);
+		inner.addGeometry(g, mask);
+	}
+};
+
+// BatchedWalk's observer: the visits into the same trace.
+struct TracingObserver {
+	std::vector<TraceEvent>* trace;
+	void onVisit(ObjectHandle object, bool inRange, std::uint32_t maskIn, std::uint32_t maskOut) {
+		trace->push_back(TraceEvent{TraceKind::Visit, object, {inRange ? 1u : 0u, maskIn, maskOut, 0}});
+	}
+};
+
+struct TraceDifference {
+	bool found = false;
+	std::size_t index = 0;  // the first differing event; the shorter length when one is a prefix
+};
+
+inline TraceDifference FirstTraceDifference(const std::vector<TraceEvent>& fresh, const std::vector<TraceEvent>& after) {
+	const std::size_t common = fresh.size() < after.size() ? fresh.size() : after.size();
+	for (std::size_t i = 0; i < common; ++i) {
+		if (!(fresh[i] == after[i])) {
+			return TraceDifference{true, i};
+		}
+	}
+	if (fresh.size() != after.size()) {
+		return TraceDifference{true, common};
+	}
+	return TraceDifference{};
+}
+
+// " inputs first differ at read k: fresh <kind> <object> = <values>, after the
+// original <kind> <object> = <values>;" - nothing when no difference.
+inline void DescribeTraceDifference(const TraceDifference& d, const std::vector<TraceEvent>& fresh,
+	const std::vector<TraceEvent>& after, char* out, std::size_t capacity) {
+	if (capacity == 0) {
+		return;
+	}
+	out[0] = '\0';
+	if (!d.found) {
+		return;
+	}
+	std::size_t at = 0;
+	const auto append = [&](int written) {
+		if (written > 0) {
+			at += static_cast<std::size_t>(written);
+			if (at >= capacity) {
+				at = capacity - 1;
+			}
+		}
+	};
+	const auto event = [&](const std::vector<TraceEvent>& trace) {
+		if (d.index >= trace.size()) {
+			append(std::snprintf(out + at, capacity - at, "(ended)"));
+			return;
+		}
+		const TraceEvent& e = trace[d.index];
+		append(std::snprintf(out + at, capacity - at, "%s %08X = %08X %08X %08X %08X", TraceKindName(e.kind),
+			static_cast<unsigned>(e.object), static_cast<unsigned>(e.values[0]), static_cast<unsigned>(e.values[1]),
+			static_cast<unsigned>(e.values[2]), static_cast<unsigned>(e.values[3])));
+	};
+	append(std::snprintf(out + at, capacity - at, " inputs first differ at read %zu: fresh ", d.index));
+	event(fresh);
+	append(std::snprintf(out + at, capacity - at, ", after the original "));
+	event(after);
+	append(std::snprintf(out + at, capacity - at, ";"));
+}
+
 // ---- The detour's flow ----------------------------------------------------------------------
 
 // Reusable between walks so a warmed-up shadow does not allocate.
@@ -300,6 +450,11 @@ struct WalkBuffers {
 	WalkOutcome original;
 	WalkOutcome rebuild;
 	walk::BatchedWalkScratch scratch;
+	// rebuild-first only: the rebuild's reads on the untouched scene, and - after
+	// a mismatch - the same rebuild's reads once more after the original ran.
+	std::vector<TraceEvent> traceFresh;
+	std::vector<TraceEvent> traceAfter;
+	std::vector<AddGeometryEvent> afterAdds;  // the second rebuild's AddGeometry calls, only traced
 };
 
 struct WalkReport {
@@ -309,7 +464,27 @@ struct WalkReport {
 	std::uint32_t light;
 	std::uint32_t object;
 	std::uint32_t maskBefore;  // +0x1B0 at entry, filled when action == Compare
+	RangeWalkOrder order = RangeWalkOrder::OriginalFirst;
+	TraceDifference trace{};   // rebuild-first after a mismatch: the first input that changed
+	bool lightChanged = false; // rebuild-first after a mismatch: the light's values differ after the original
 };
+
+// The light's values bit for bit (a float compare would hide -0.0 and NaN).
+inline bool SameLightValues(const walk::LightValues& a, const walk::LightValues& b) {
+	if (a.hasSource != b.hasSource || a.sourceRtti != b.sourceRtti || a.planeSource != b.planeSource ||
+		a.activePlanes != b.activePlanes) {
+		return false;
+	}
+	const auto same = [](float x, float y) { return std::bit_cast<std::uint32_t>(x) == std::bit_cast<std::uint32_t>(y); };
+	for (std::size_t i = 0; i < a.planes.size(); ++i) {
+		if (!same(a.planes[i].normalX, b.planes[i].normalX) || !same(a.planes[i].normalY, b.planes[i].normalY) ||
+			!same(a.planes[i].normalZ, b.planes[i].normalZ) || !same(a.planes[i].constant, b.planes[i].constant)) {
+			return false;
+		}
+	}
+	return same(a.sourcePosition.x, b.sourcePosition.x) && same(a.sourcePosition.y, b.sourcePosition.y) &&
+		same(a.sourcePosition.z, b.sourcePosition.z) && same(a.sourceRange, b.sourceRange);
+}
 
 // What the compared walks covered since the last summary, so the log shows
 // which of IsInRange's source paths the game exercised and how many
@@ -356,9 +531,18 @@ inline void FormatWalkStats(const WalkStats& s, char* out, std::size_t capacity)
 // 0x00982C30 port; report(WalkReport) is called once per outermost call,
 // never for a pass-through. The game's state is left as the original left it:
 // the rebuild only reads and calls the read-only helpers.
+//
+// In both orders the light's values are read FIRST, before either side runs
+// (CaptureLight); the rebuild never re-reads them.
+//   original-first: the original (recorded), then BatchedWalk.
+//   rebuild-first:  BatchedWalk with its reads traced, then the original
+//                   (recorded); after a mismatch BatchedWalk runs once more,
+//                   traced, with the same light values, and the first read
+//                   that differs between the two traces is reported, as is
+//                   whether the light's own values changed.
 template <class Memory, class CallOriginal, class SquareRoot, class Report>
-std::uint32_t ShadowWalk(Memory& memory, ThreadWalkState& state, WalkBuffers& buffers, std::uint32_t light,
-	ObjectHandle object, CallOriginal&& callOriginal, SquareRoot&& squareRoot, Report&& report) {
+std::uint32_t ShadowWalk(Memory& memory, ThreadWalkState& state, WalkBuffers& buffers, RangeWalkOrder order,
+	std::uint32_t light, ObjectHandle object, CallOriginal&& callOriginal, SquareRoot&& squareRoot, Report&& report) {
 	const DepthScope scope(state);
 	if (scope.Before() != 0) {
 		return callOriginal(light, object);
@@ -368,28 +552,54 @@ std::uint32_t ShadowWalk(Memory& memory, ThreadWalkState& state, WalkBuffers& bu
 	const EntryAction action = DecideEntry(scope.Before(), gate, object, source);
 	if (action != EntryAction::Compare) {
 		const std::uint32_t eax = callOriginal(light, object);
-		report(WalkReport{action, Comparison{}, walk::SourceMode::NoSource, light, object, 0});
+		report(WalkReport{action, Comparison{}, walk::SourceMode::NoSource, light, object, 0, order});
 		return eax;
 	}
 
 	const walk::LightValues values = CaptureLight(memory, light);
-	buffers.original.Clear();
-	state.recordingLight = light;
-	state.recording = &buffers.original.adds;
-	const std::uint32_t eax = callOriginal(light, object);
-	state.recordingLight = 0;
-	state.recording = nullptr;
-	buffers.original.result = (eax & 0xFFu) != 0;  // AL (read, C1 of 0x007D59E0)
-	buffers.original.maskAfter = memory.U32(light + walk_engine::kActivePlanesOffset);
+	const auto runOriginal = [&] {
+		buffers.original.Clear();
+		state.recordingLight = light;
+		state.recording = &buffers.original.adds;
+		const std::uint32_t eax = callOriginal(light, object);
+		state.recordingLight = 0;
+		state.recording = nullptr;
+		buffers.original.result = (eax & 0xFFu) != 0;  // AL (read, C1 of 0x007D59E0)
+		buffers.original.maskAfter = memory.U32(light + walk_engine::kActivePlanesOffset);
+		return eax;
+	};
+	const auto runRebuild = [&](std::vector<AddGeometryEvent>& adds, std::vector<TraceEvent>* trace) {
+		MemoryScene<Memory> scene{memory, &adds};
+		if (trace == nullptr) {
+			walk::NoWalkObserver observer;
+			return walk::BatchedWalk(values, scene, object, squareRoot, buffers.scratch, observer);
+		}
+		trace->clear();
+		TracingScene<MemoryScene<Memory>> traced{scene, trace};
+		TracingObserver observer{trace};
+		return walk::BatchedWalk(values, traced, object, squareRoot, buffers.scratch, observer);
+	};
 
+	std::uint32_t eax = 0;
 	buffers.rebuild.Clear();
-	MemoryScene<Memory> scene{memory, &buffers.rebuild.adds};
-	walk::NoWalkObserver observer;
-	buffers.rebuild.result = walk::BatchedWalk(values, scene, object, squareRoot, buffers.scratch, observer);
+	if (order == RangeWalkOrder::RebuildFirst) {
+		buffers.rebuild.result = runRebuild(buffers.rebuild.adds, &buffers.traceFresh);
+		eax = runOriginal();
+	} else {
+		eax = runOriginal();
+		buffers.rebuild.result = runRebuild(buffers.rebuild.adds, nullptr);
+	}
 	buffers.rebuild.maskAfter = values.activePlanes;  // BatchedWalk never writes +0x1B0 (R4)
 
 	const walk::SourceMode mode = walk::SelectSourceMode(values.hasSource, values.sourceRtti, values.planeSource);
-	report(WalkReport{action, Compare(buffers.original, buffers.rebuild), mode, light, object, values.activePlanes});
+	WalkReport result{action, Compare(buffers.original, buffers.rebuild), mode, light, object, values.activePlanes, order};
+	if (order == RangeWalkOrder::RebuildFirst && result.comparison.Mismatch()) {
+		buffers.afterAdds.clear();
+		runRebuild(buffers.afterAdds, &buffers.traceAfter);
+		result.trace = FirstTraceDifference(buffers.traceFresh, buffers.traceAfter);
+		result.lightChanged = !SameLightValues(values, CaptureLight(memory, light));
+	}
+	report(result);
 	return eax;
 }
 

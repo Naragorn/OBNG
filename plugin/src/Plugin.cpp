@@ -80,6 +80,13 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	s.loadingMenuTick = GetPrivateProfileIntA("Shadow", "LoadingMenuTick", 1, path) != 0;
 	s.loadingMenuCtor = GetPrivateProfileIntA("Shadow", "LoadingMenuCtor", 1, path) != 0;
 	s.rangeWalk = GetPrivateProfileIntA("Shadow", "RangeWalk", 0, path) != 0;
+	char order[32] = {};
+	GetPrivateProfileStringA("Shadow", "RangeWalkOrder", "original-first", order, sizeof(order), path);
+	bool orderKnown = false;
+	s.rangeWalkOrder = obng::plugin::ParseRangeWalkOrder(order, &orderKnown);
+	if (!orderKnown) {
+		Log("Settings: [Shadow] RangeWalkOrder=%s is neither original-first nor rebuild-first - original-first used", order);
+	}
 	s.fpuControlWord = GetPrivateProfileIntA("Probe", "FpuControlWord", 1, path) != 0;
 	s.havokPlanner = GetPrivateProfileIntA("Probe", "HavokPlanner", 1, path) != 0;
 	s.callCounters = GetPrivateProfileIntA("Probe", "CallCounters", 0, path) != 0;
@@ -90,10 +97,10 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	obng::plugin::RouteSettings& r = settings->route;
 	r.rangeWalk = GetPrivateProfileIntA("Route", "RangeWalk", 0, path) != 0;
 	Log("Settings from %s: TimeInfoUpdate=%d TimeInfoInit=%d TimeInfoFreeze=%d TimeInfoUnfreeze=%d LoadingMenuTick=%d "
-	    "LoadingMenuCtor=%d RangeWalk=%d FpuControlWord=%d HavokPlanner=%d CallCounters=%d Memory=%d MismatchLines=%u SummaryEverySeconds=%u "
+	    "LoadingMenuCtor=%d RangeWalk=%d RangeWalkOrder=%s FpuControlWord=%d HavokPlanner=%d CallCounters=%d Memory=%d MismatchLines=%u SummaryEverySeconds=%u "
 	    "SummaryTimer=%d Route RangeWalk=%d",
 	    path, s.update ? 1 : 0, s.init ? 1 : 0, s.freeze ? 1 : 0, s.unfreeze ? 1 : 0, s.loadingMenuTick ? 1 : 0,
-	    s.loadingMenuCtor ? 1 : 0, s.rangeWalk ? 1 : 0, s.fpuControlWord ? 1 : 0, s.havokPlanner ? 1 : 0, s.callCounters ? 1 : 0,
+	    s.loadingMenuCtor ? 1 : 0, s.rangeWalk ? 1 : 0, obng::plugin::RangeWalkOrderName(s.rangeWalkOrder), s.fpuControlWord ? 1 : 0, s.havokPlanner ? 1 : 0, s.callCounters ? 1 : 0,
 	    s.memoryProbe ? 1 : 0, s.mismatchLines, s.summaryEverySeconds, s.summaryTimer ? 1 : 0, r.rangeWalk ? 1 : 0);
 	return true;
 }

@@ -19,6 +19,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <map>
 #include <string>
 #include <utility>
@@ -286,13 +287,17 @@ struct FakeGame {
 	std::uint32_t dropGeometry = 0;   // never handed to AddGeometry
 	bool changeMaskOnExit = false;    // the outermost call leaves +0x1B0 other than it found it
 	bool returnZero = false;          // AL 0 at the outermost call
+	// Side effects of the outermost original on its own inputs, before and after it walks.
+	std::function<void(FakeGame&)> atOriginalStart;
+	std::function<void(FakeGame&)> atOriginalEnd;
+	obng::plugin::RangeWalkOrder order = obng::plugin::RangeWalkOrder::OriginalFirst;
 
 	std::uint32_t Mask(std::uint32_t light) { return m.Raw32(light + 0x1B0); }
 
 	// The entry 0x007D59E0, patched: every call goes to the detour first.
 	std::uint32_t Entry(std::uint32_t light, std::uint32_t object) {
 		++entries;
-		return rw::ShadowWalk(m, state, buffers, light, object,
+		return rw::ShadowWalk(m, state, buffers, order, light, object,
 			[this](std::uint32_t l, std::uint32_t o) { return FakeOriginal(l, o); }, StubSquareRoot,
 			[this](const rw::WalkReport& r) { reports.push_back(r); });
 	}
@@ -307,6 +312,9 @@ struct FakeGame {
 		++originalCalls;
 		const bool outermost = state.depth == 1;  // the detour's scope raised it to 1 for the outermost call
 		const std::uint32_t saved = Mask(light);
+		if (outermost && atOriginalStart) {
+			atOriginalStart(*this);
+		}
 		const std::uint32_t eax = OriginalWalk(
 			m, light, object, [this](std::uint32_t l, std::uint32_t o) { Entry(l, o); },
 			[this](std::uint32_t l, std::uint32_t o, std::uint32_t g) {
@@ -314,6 +322,9 @@ struct FakeGame {
 					AddGeometry(l, g);
 				}
 			});
+		if (outermost && atOriginalEnd) {
+			atOriginalEnd(*this);
+		}
 		if (eax == kGateOffEax) {
 			return eax;
 		}
@@ -440,7 +451,7 @@ void TestFlowSkips() {
 		FakeGame game;
 		const SceneShape s = BuildScene(game, true);
 		std::uint64_t originalRuns = 0;
-		const std::uint32_t eax = rw::ShadowWalk(game.m, game.state, game.buffers, s.light, 0,
+		const std::uint32_t eax = rw::ShadowWalk(game.m, game.state, game.buffers, obng::plugin::RangeWalkOrder::OriginalFirst, s.light, 0,
 			[&](std::uint32_t, std::uint32_t) {
 				++originalRuns;
 				return 7u;
@@ -456,7 +467,7 @@ void TestFlowSkips() {
 		game.state.depth = 1;  // as if the walk were already running on this thread
 		const std::uint64_t readsBefore = game.m.reads;
 		std::uint64_t originalRuns = 0;
-		const std::uint32_t eax = rw::ShadowWalk(game.m, game.state, game.buffers, s.light, s.root,
+		const std::uint32_t eax = rw::ShadowWalk(game.m, game.state, game.buffers, obng::plugin::RangeWalkOrder::OriginalFirst, s.light, s.root,
 			[&](std::uint32_t, std::uint32_t) {
 				++originalRuns;
 				return 0x55u;
@@ -475,6 +486,183 @@ void TestFlowSkips() {
 	}
 }
 
+
+// ---- 5. The order switch and the trace of the rebuild's reads ---------------------------
+
+using obng::plugin::RangeWalkOrder;
+
+void TestParseOrder() {
+	Section("[Shadow] RangeWalkOrder parsed");
+	bool known = false;
+	Check(obng::plugin::ParseRangeWalkOrder("original-first", &known) == RangeWalkOrder::OriginalFirst && known,
+		"original-first");
+	Check(obng::plugin::ParseRangeWalkOrder("rebuild-first", &known) == RangeWalkOrder::RebuildFirst && known, "rebuild-first");
+	Check(obng::plugin::ParseRangeWalkOrder("Rebuild-First", &known) == RangeWalkOrder::RebuildFirst && known,
+		"case does not matter (an INI typed by hand)");
+	Check(obng::plugin::ParseRangeWalkOrder("rebuild", &known) == RangeWalkOrder::OriginalFirst && !known,
+		"anything else: original-first, and said to be unknown");
+	Check(obng::plugin::ParseRangeWalkOrder("", &known) == RangeWalkOrder::OriginalFirst && !known, "empty: the same");
+	Check(obng::plugin::ParseRangeWalkOrder("rebuild-first-x", &known) == RangeWalkOrder::OriginalFirst && !known,
+		"a longer word is not a match");
+	Check(std::string(obng::plugin::RangeWalkOrderName(RangeWalkOrder::OriginalFirst)) == "original-first" &&
+			std::string(obng::plugin::RangeWalkOrderName(RangeWalkOrder::RebuildFirst)) == "rebuild-first",
+		"the names round-trip");
+}
+
+void TestTrace() {
+	Section("The trace of the rebuild's scene reads and its first difference");
+	FakeMemory m;
+	Builder b{m};
+	const SceneShape s = obng::plugin::range_walk_test::BuildScene(b, true);
+	std::vector<rw::AddGeometryEvent> adds;
+	rw::MemoryScene<FakeMemory> inner{m, &adds};
+	std::vector<rw::TraceEvent> trace;
+	rw::TracingScene<rw::MemoryScene<FakeMemory>> scene{inner, &trace};
+	static_assert(walk::engine::RangeWalkScene<rw::TracingScene<rw::MemoryScene<FakeMemory>>>, "the tracing scene is a scene");
+	Check(scene.flags(s.culled) == 0x01 && trace.size() == 1 && trace[0].kind == rw::TraceKind::Flags &&
+			trace[0].object == s.culled && trace[0].values[0] == 0x01,
+		"a read is forwarded and logged with its result");
+	const ws::SphereValues bound = scene.bound(s.g1);
+	Check(bound.centerX == 10.0f && trace.back().kind == rw::TraceKind::Bound &&
+			trace.back().values[0] == std::bit_cast<std::uint32_t>(10.0f) &&
+			trace.back().values[3] == std::bit_cast<std::uint32_t>(5.0f),
+		"a bound is logged as its four words, bit for bit");
+	scene.addGeometry(s.g1, 0x3E);
+	Check(adds.size() == 1 && trace.back().kind == rw::TraceKind::AddGeometry, "AddGeometry is forwarded (recorded) and logged");
+
+	const std::vector<rw::TraceEvent> a = {{rw::TraceKind::Flags, 1, {0, 0, 0, 0}}, {rw::TraceKind::ChildCount, 2, {3, 0, 0, 0}}};
+	std::vector<rw::TraceEvent> c = a;
+	Check(!rw::FirstTraceDifference(a, c).found, "equal traces: no difference");
+	c[1].values[0] = 1;
+	rw::TraceDifference d = rw::FirstTraceDifference(a, c);
+	Check(d.found && d.index == 1, "a different value at read 1: index 1");
+	c = a;
+	c.pop_back();
+	d = rw::FirstTraceDifference(a, c);
+	Check(d.found && d.index == 1, "one trace a prefix of the other: the shorter length");
+	char text[300];
+	c = a;
+	c[1].values[0] = 1;
+	rw::DescribeTraceDifference(rw::FirstTraceDifference(a, c), a, c, text, sizeof(text));
+	Check(std::string(text).find("inputs first differ at read 1: fresh child-count 00000002 = 00000003 00000000 00000000 "
+								 "00000000, after the original child-count 00000002 = 00000001") != std::string::npos,
+		"the text names the read, the object and both values");
+	c.pop_back();
+	rw::DescribeTraceDifference(rw::FirstTraceDifference(a, c), a, c, text, sizeof(text));
+	Check(std::string(text).find("after the original (ended)") != std::string::npos, "an ended trace is named as such");
+	rw::DescribeTraceDifference(rw::TraceDifference{}, a, a, text, sizeof(text));
+	Check(std::string(text).empty(), "no difference: no text");
+}
+
+void TestOrders() {
+	Section("Both orders over the fake game");
+	for (const RangeWalkOrder order : {RangeWalkOrder::OriginalFirst, RangeWalkOrder::RebuildFirst}) {
+		for (const bool planes : {true, false}) {
+			FakeGame game;
+			game.order = order;
+			const SceneShape s = BuildScene(game, planes);
+			const std::uint32_t eax = game.Entry(s.light, s.root);
+			const rw::Comparison& c = game.reports[0].comparison;
+			Check(!c.Mismatch() && c.originalCount == 3 && game.performedAdds.size() == 3 && (eax & 0xFF) == 1 &&
+					game.reports[0].order == order && !game.reports[0].trace.found,
+				order == RangeWalkOrder::RebuildFirst ? "rebuild-first, an original without side effects: equal, its EAX returned"
+													  : "original-first, the same: equal (unchanged behaviour)");
+			Check(game.state.depth == 0 && game.state.recordingLight == 0, "nothing left recording");
+		}
+	}
+
+	struct Mutation {
+		const char* what;
+		std::function<void(FakeGame&, const SceneShape&)> apply;
+		rw::TraceKind kind;
+	};
+	const Mutation mutations[] = {
+		{"the flags byte of g2 (culled)", [](FakeGame& g, const SceneShape& s) { g.m.bytes[s.g2 + 0x18] = 0x01; },
+			rw::TraceKind::Flags},
+		{"the bound of g1 (radius 0.0: the child filter skips it)",
+			[](FakeGame& g, const SceneShape& s) { g.m.PutF(s.g1 + 0x2C, 0.0f); },
+			rw::TraceKind::Bound},
+		{"a node's child count (3 -> 1)",
+			[](FakeGame& g, const SceneShape& s) {
+				const std::uint32_t data = g.m.Raw32(s.root + 0xB0);
+				const std::uint32_t a = g.m.Raw32(data);
+				g.m.Put16(a + 0xB6, 1);
+			},
+			rw::TraceKind::ChildCount},
+	};
+	for (const Mutation& mutation : mutations) {
+		FakeGame fresh;
+		fresh.order = RangeWalkOrder::RebuildFirst;
+		const SceneShape s = BuildScene(fresh, true);
+		fresh.atOriginalStart = [&](FakeGame& g) { mutation.apply(g, s); };
+		fresh.Entry(s.light, s.root);
+		const rw::WalkReport& r = fresh.reports[0];
+		Check(r.comparison.Mismatch(), (std::string("rebuild-first, the original changes ") + mutation.what +
+										   " before walking: a mismatch").c_str());
+		const rw::TraceEvent& before = fresh.buffers.traceFresh[r.trace.index];
+		Check(r.trace.found && before.kind == mutation.kind && fresh.buffers.traceAfter[r.trace.index].kind == mutation.kind &&
+				!(before == fresh.buffers.traceAfter[r.trace.index]),
+			"the trace names the read that changed, with the value before and after the original");
+		char text[600];
+		rw::DescribeComparison(r.comparison, fresh.buffers.original, fresh.buffers.rebuild, text, sizeof(text));
+		const std::size_t at = std::strlen(text);
+		rw::DescribeTraceDifference(r.trace, fresh.buffers.traceFresh, fresh.buffers.traceAfter, text + at, sizeof(text) - at);
+		Check(std::string(text).find("inputs first differ at read") != std::string::npos, "and the mismatch text carries it");
+
+		FakeGame after;
+		const SceneShape t = BuildScene(after, true);
+		after.atOriginalStart = [&](FakeGame& g) { mutation.apply(g, t); };
+		after.Entry(t.light, t.root);
+		Check(!after.reports[0].comparison.Mismatch() && !after.reports[0].trace.found,
+			"original-first, the same change: equal - the rebuild reads what the original left");
+	}
+
+	{
+		FakeGame game;
+		const SceneShape s = BuildScene(game, false);
+		game.atOriginalEnd = [&](FakeGame& g) { g.m.PutF(g.m.Raw32(s.light + 0x100) + 0xF8, 0.0f); };
+		game.Entry(s.light, s.root);
+		Check(!game.reports[0].comparison.Mismatch() && game.reports[0].comparison.rebuildCount == 3,
+			"original-first: the light is read BEFORE the original - a range the original zeroes on its way out is not seen");
+	}
+	{
+		FakeGame game;
+		const SceneShape s = BuildScene(game, false);
+		game.atOriginalStart = [&](FakeGame& g) { g.m.PutF(g.m.Raw32(s.light + 0x100) + 0xF8, 0.0f); };
+		game.Entry(s.light, s.root);
+		Check(game.reports[0].comparison.Mismatch() && game.reports[0].comparison.originalCount == 0 &&
+				game.reports[0].comparison.rebuildCount == 3,
+			"original-first: a range the original zeroes before walking shows as a mismatch (the light is not re-read)");
+	}
+	{
+		FakeGame game;
+		game.order = RangeWalkOrder::RebuildFirst;
+		const SceneShape s = BuildScene(game, false);
+		game.atOriginalStart = [&](FakeGame& g) { g.m.PutF(g.m.Raw32(s.light + 0x100) + 0xF8, 0.0f); };
+		game.Entry(s.light, s.root);
+		const rw::WalkReport& r = game.reports[0];
+		Check(r.comparison.Mismatch() && r.lightChanged && !r.trace.found,
+			"rebuild-first, the original changes the light's range: a mismatch, reported as the light's values changing "
+			"(the scene reads equal)");
+	}
+	{
+		FakeGame game;
+		game.order = RangeWalkOrder::RebuildFirst;
+		const SceneShape s = BuildScene(game, true);
+		game.atOriginalStart = [&](FakeGame& g) { g.m.bytes[s.g2 + 0x18] = 0x01; };
+		game.Entry(s.light, s.root);
+		Check(game.reports[0].trace.found && !game.reports[0].lightChanged, "a scene change leaves the light's values unchanged");
+	}
+	{
+		FakeGame game;
+		game.order = RangeWalkOrder::RebuildFirst;
+		const SceneShape s = BuildScene(game, true);
+		game.dropGeometry = s.g2;
+		game.Entry(s.light, s.root);
+		Check(game.reports[0].comparison.Mismatch() && !game.reports[0].trace.found,
+			"rebuild-first, an original that differs without changing its inputs: a mismatch, the two rebuild traces equal");
+	}
+}
 
 void TestStats() {
 	Section("The coverage line of the summary");
@@ -520,5 +708,8 @@ int main() {
 	TestFlowMismatch();
 	TestFlowSkips();
 	TestStats();
+	TestParseOrder();
+	TestTrace();
+	TestOrders();
 	return Failures();
 }
