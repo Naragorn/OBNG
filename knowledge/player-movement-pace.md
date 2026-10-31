@@ -49,3 +49,14 @@ walk and run animations by speed (a 1D blend space) and drives the
 controller from the wanted velocity, with the animation's rate matched to
 it; root motion is optional. Oblivion has the factor, but only the gamepad
 feeds it, and only one animation plays per gait.
+
+## The factor is clamped to 1 every frame (read and measured 2026-10-31)
+
+- Read: in 0x00671620 the clamp `if (1.0 < factor) factor = 1.0` on 0x00B14E58
+  sits outside the gamepad's branch, so it runs every frame; a value over 1
+  written from outside never reaches the animation update.
+- Measured: 1.40 written each frame, the run stayed at 355 units a second.
+- The call that hands it on: `fld [0x00B14E58]` at 0x00672E04, `fstp [esp]`,
+  `call 0x005FCAB0` at 0x00672E0D (thiscall, the pace and the turn factor,
+  `ret 8` at 0x005FE2DF). Taking that call and passing 1.40 gave 494 units a
+  second (x1.42) with the run's legs.
