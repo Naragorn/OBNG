@@ -443,3 +443,38 @@ Derived from the table (the probe's 0.25 ms inside the outer numbers):
   DrawRenderPass's per-light writes, the shader state begin and end.
 - The eye pass is the unit that holds everything: 2.5 ms of CPU per eye.
   Single-pass stereo's ceiling on this scene is one of them.
+
+## Outdoors on Windows: the cull walk stays small, the draw side scales with the draws (measured 2026-11-02)
+
+OBVR's render sampler on Nadi's live Windows session (Pimax, 90 Hz, dual pass,
+capture `OBVR-performance-1-23`, 142 s in Tamriel cells 0000AC08 and 00005EFB,
+no Walkers, 33 183 in-pass samples; against the interior capture `1-22` of the
+same evening, 19 502 samples; the sampler's rows now land in the capture's
+folder, OBVR 81de7e8). Read with the stale-return caveat above (0x007AE070's
+frames file under 0x007AD270):
+
+- Exclusive by module, outdoors: Oblivion.exe 52-54 %, D3D9 (DXVK) 15-18 %,
+  OBVR.dll 7-10 %, Oblivion Frame Fixes' copy 4.5 % overall but 11 % in the
+  frames with 5 000+ dynamic-stream draws, FoliageAA 2.5 %. The shares are
+  the same in frames with few and with many draws (OBVR 0.27 -> 0.51 ms a
+  frame, DXVK 0.47 -> 1.06): nothing in the mod stack grows faster than the
+  engine's own draw path. (measured)
+- On the stack: the cull walk 0x0070AB40 without the accumulator's finish or
+  Do_RenderShape under it is 5 % of the pass, indoors and outdoors alike;
+  the finish/dispatch side 69-72 %; the rest 23-27 %. Culling the second eye
+  again is therefore not the dual pass's cost - drawing it again is. (derived
+  from the sampler; the cull walk's own frames may be under-counted by stale
+  words like every inclusive number here)
+- Per 1 000 dynamic-stream draws a pass the two passes together cost about
+  1.5 ms of CPU (fit over 76 heartbeat windows, r 0.76; 1 400 to 10 000 draws
+  a pass in this session) and the compositor's app GPU time about 1.8 ms
+  (r 0.66). In the heavier Unique-Landscapes sessions of 2026-10-29/30
+  (15 000-73 000 draws a pass, no sampler kept) the passes reached 4.7-6 ms
+  each and the frame was CPU-bound at 90 Hz. (measured; the draw counter is
+  OBVR's dynamic-buffer draw count, not every draw)
+- What a modern engine does instead: one culling and one draw list for both
+  eyes (multiview / single-pass stereo), instancing for the vegetation that
+  makes up those tens of thousands of draws, and a per-draw cost of
+  nanoseconds in a command buffer rather than the 2 us per shape measured
+  under Do_RenderShape on 2026-10-30. (reference: the engine behaviour notes
+  in ../OBVR/docs/vr-modding; source for the 2 us: round two above)
