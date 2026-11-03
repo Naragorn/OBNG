@@ -100,3 +100,20 @@ own pass (derived).
 A modern engine binds a skinned attachment once by bone index against a
 shared skeleton asset (e.g. Unreal's leader-pose component), not by
 string lookup at attach time (unverified here; no source fetched).
+
+## Measured 2026-11-03: the zombie neck plug faces up the neck (OBVR)
+
+- **Measured** (OBVR harness dismember-corpse, mean of the plug's 87 vertex
+  normals, NiGeometryData +0x20, under the skin-to-bone): `creatures\zombie\
+  neckplug.nif`, skinned to `Bip01 Head`, faces along the head bone's way up
+  the neck (0.82-0.92 of its mean normal) - it closes a body's neck from
+  above. Bound to a severed head it faces into the head, so the head's
+  underside shows the plug's back (culled): see-through from below.
+- **Derived:** reused for the other side of a cut, a one-sided plug must be
+  turned half round about its centre (a node following the bone, its
+  rotation times a 180-degree turn about an axis across the neck, its
+  position moved so the centre stays) - OBVR `game::FlippedCap`.
+- **A modern engine instead:** fills the cut from inside (Blade & Sorcery's
+  `RagdollPart.sliceFillMaterial`, "the material applied to the inside of
+  this part when it gets sliced", kospy.github.io/BasSDK) or draws the cap
+  two-sided; no per-side asset orientation to get right.
