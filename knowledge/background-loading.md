@@ -125,3 +125,47 @@ every sample's eip and eight stack words resolved to engine functions.
   creation), lock-free completion queues, and no spin-with-Sleep(50) wait.
   Skyrim's loader was not read for this note; the claim that it works that
   way is the common description, unverified here.
+
+## Addendum 2026-11-03: the long frames partitioned by OBVR's spans, and the allocator (measured, read)
+
+The inclusive columns above overlap (a sample counts for every function on
+its eight stack words), so they are not a partition. Partitioned by OBVR's
+own spans, the 41.7 s of long frames in the Tamriel capture
+(`OBVR-performance-1-23`, script `13865cd6/tmp/spans.py`) are:
+
+| part | share | time |
+|---|---|---|
+| the two scene passes (draw, 0x007693E0 on the stack in 52 % of them, DXVK's d3d9 16 % of the eips) | 37 % | 15.4 s |
+| engine logic outside OBVR's spans | 37 % | 15.3 s |
+| waiting for SteamVR's poses (`NtWaitForSingleObject`, the compositor holding a late frame; a consequence, not a cause) | 21 % | 8.8 s |
+| present | 5 % | 2.1 s |
+
+Inside the engine-logic part (`engine_rest.py`): the IO drain loop 13 %
+(its `Sleep(50)` is `NtDelayExecution`), the allocator about 20 %
+(`MemoryHeap::Allocate` 0x00401AA0 and its small-block pool 0x00402480 at
+the top of the exclusive list, `__VEC_memzero` 10 % inclusive, plus
+critical-section waits), the exterior attach after a load 9 %
+(0x00680110, 0x0067F830), the autosave 7.5 % plus `NtWriteFile` 6 %, the
+`BSTaskManager` lock wait 0x004322B0 2.5 %, Havok and scripts about 1 %.
+
+- **The saves are vanilla door autosaves, not a timer mod** (derived):
+  the capture's OBVR log shows three cell loads during the capture
+  ("Refs: a load runs", worlds 382, 498, 613) and the three save frames
+  sit at +15 s, +34 s and +106 s; Oblivion.ini has
+  `bSaveOnInteriorExteriorSwitch=1` (read). Timestamps are not in the log,
+  so the pairing rests on the counts.
+- **`MemoryHeap` (read, 0x00401AA0):** one global `CRITICAL_SECTION`
+  ("MemoryHeap::Allocate") around every allocation; requests up to 0x200
+  bytes go to a small-block pool of 4 KB pages (`VirtualAlloc`, 0x00402480,
+  which also calls `GlobalMemoryStatus` when a page is added); larger ones
+  walk free lists by size class. The IO thread allocates through the same
+  lock while it parses, so main-thread waits in this lock are IO-thread
+  contention (derived; the sampler did not read the IO thread).
+  `OblivionPerformanceRuntime.ini` only turns on the low-fragmentation
+  heap of the CRT heap (`LowFragmentationHeap=1`), which this pool never
+  uses except as the `_malloc` fallback; Oblivion Stutter Remover (whose
+  `bReplaceHeap` replaces this allocator) is not installed on the Windows
+  test system (read, the plugins folder).
+- What a modern engine does instead: a thread-local allocator with no
+  global lock (mimalloc, tbbmalloc, jemalloc) and no memset of pool pages
+  on the hot path.
