@@ -67,3 +67,41 @@ The hit handler is `0x005FEBF0`. Decompiled: `../re/export/rea-all/functions/0x5
   - Pommel: falls at 4 m/s.
   - Half-sword hilt: falls at 7 m/s.
   - Torch: staggers only.
+
+## Hand-to-hand damage, the victim's reaction, block training (read 2026-11-03)
+
+Found while making OBVR's VR strikes proper hits with their own skill (OBVR
+`src/game/StrikeRules.cpp`, `docs/physical-combat-spec.md` section 13.1).
+Read with `dumpbin /disasm` on the Steam EXE.
+
+- **Read:** the hand-to-hand branch of `0x005FEBF0` reads the attacker's hand to hand
+  (vtable +0x284 with 0x11, an integer) and calls `0x00547280` at `0x005FF419` - cdecl, seven
+  dwords: the skill's value first, then Luck, Strength, fatigue and two out pointers it writes
+  the health and fatigue damage through. It returns nothing (`ret` with an empty FPU stack); the
+  caller pops `1Ch`. The skill and Luck go to `0x00547B90` first.
+- **Read:** the power attack's factor is `0x00546BA0` (cdecl: the skill's value, the attack
+  direction; st0) at `0x005FF44D`, on the same hand-to-hand value. It looks up the mastery level
+  of the skill (`0x0056A300`) and a per-direction GMST.
+- **Read:** every landed hit ends at `0x006005B1`: `call [vtable+0x3A8]` on the target with
+  (attacker, 0). The slot holds `0x005FE380` in the PlayerCharacter, Character and Creature tables.
+  It weighs the target's Aggression (actor value 0x21) and disposition (`0x00546190`) and makes
+  it hostile or reports the assault - the crime of a hit lives here. Four jumps reach the call's
+  first byte (`0x005FF1BE`, `0x005FF1E1`, `0x00600581`, `0x006005A2`), so the blocked and the
+  unblocked hit both end there.
+- **Read:** Block is trained by the block handler `0x005F5B70` (the attacker's vtable +0x3B4,
+  called from the hit handler with the blocked share): `UseSkill(0xF)` on the defender when the
+  share is above 0 or the defender has no weapon. The hit handler itself only trains the
+  defender's armour skill (`UseSkill(0x12)` heavy or `0x1B` light, the `0x39C` call in the
+  decompile).
+- **Measured (OBVR harness `strike-skills-hands.txt`, 2026-11-03):** a fist blow with the
+  reaction call skipped took the beggar's health 39.0 to 35.8 and trained hand to hand; the
+  slap's blow with the call made 35.8 to 32.6. **Unverified:** that a skipped call leaves no
+  hostility or bounty behind (the beggar was frozen by `tai`; not looked at).
+
+### What a modern engine does instead (derived)
+
+- Damage, skill and the social reaction are one function in the EXE, chosen by the attack's
+  type. A modern combat system keeps them as separate stages of a hit event: the damage model
+  (which skill and which formula), the progression (which skill gains), the AI/crime response
+  (whether the victim perceives an attack). Each is replaceable on its own; OBVR had to reroute
+  three call sites inside one function to get there.
