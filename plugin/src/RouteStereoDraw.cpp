@@ -103,8 +103,14 @@ RouteSettings g_settings;
 eye::EyeData g_eyes;
 bool g_eyesSet = false;
 
-SRWLOCK g_statsLock = SRWLOCK_INIT;
+// The stats are the render thread's alone (every draw and the interface's
+// calls run there, by the engine's design and StereoEyesApi.h's contract);
+// the summary thread only asks for a line, and the next routed draw writes it
+// (FlushSummaryIfRequested). No lock on the draw path: the route's per-call
+// lock was 0.19 ms a pass on the fixed scene (docs/subsystems/
+// single-pass-stereo.md, step 3).
 route::Stats g_stats;
+volatile LONG g_summaryRequested = 0;
 probe::ClockPair g_summaryClock;  // the clocks at the last summary (0: none yet)
 
 probe::ClockPair ReadClocks() {
@@ -117,6 +123,22 @@ std::uint64_t ClockFrequency() {
 	LARGE_INTEGER f{};
 	QueryPerformanceFrequency(&f);
 	return static_cast<std::uint64_t>(f.QuadPart);
+}
+
+// The summary line, written by the render thread when the summary thread
+// asked for one (LogStereoDrawSummary); the counts are since the last line.
+void FlushSummaryIfRequested() {
+	if (g_summaryRequested == 0) {
+		return;
+	}
+	InterlockedExchange(&g_summaryRequested, 0);
+	const probe::ClockPair now = ReadClocks();
+	const double ticksPerMillisecond = probe::TicksPerMillisecond(g_summaryClock, now, ClockFrequency());
+	g_summaryClock = now;
+	char line[1400];
+	route::FormatStats(g_stats, ticksPerMillisecond, line, sizeof(line));
+	g_stats.Reset();
+	g_log("%s", line);
 }
 
 // The ticks one draw call's switches took, split by the re-apply.
@@ -446,7 +468,6 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
 	const whole::DrawInput in{geometry, data, skin, world, worldBound, record};
 	const whole::Outcome outcome =
 	    whole::Draw(in, route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode())), ports, shader, ports, ports, timed);
-	AcquireSRWLockExclusive(&g_statsLock);
 	g_stats.AddWhole(outcome);
 	g_stats.AddSwitches(counters);
 	g_stats.AddTicks(ticks.all, ticks.reapply);
@@ -458,7 +479,7 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
 		g_stats.shaderClasses.Add(seen_.shaderVtable);
 		g_stats.reappliesType1 += seen_.type1;
 	}
-	ReleaseSRWLockExclusive(&g_statsLock);
+	FlushSummaryIfRequested();
 	return 0;
 }
 
@@ -477,7 +498,6 @@ UInt32 __fastcall RouteDrawSkinned(void* self, void* /*edx*/, UInt32 geometry, U
 	const skinned::DrawArguments args{static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(self)), geometry, data, skin, world, worldBound};
 	const skinned::Outcome outcome =
 	    skinned::DrawSkinnedPrimitive(ports, args, route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode())));
-	AcquireSRWLockExclusive(&g_statsLock);
 	g_stats.AddSkinned(outcome);
 	g_stats.AddSwitches(counters);
 	g_stats.AddTicks(ticks.all, ticks.reapply);
@@ -489,7 +509,7 @@ UInt32 __fastcall RouteDrawSkinned(void* self, void* /*edx*/, UInt32 geometry, U
 		g_stats.shaderClasses.Add(seen_.shaderVtable);
 		g_stats.reappliesType1 += seen_.type1;
 	}
-	ReleaseSRWLockExclusive(&g_statsLock);
+	FlushSummaryIfRequested();
 	return 0;
 }
 
@@ -697,7 +717,6 @@ UInt32 RouteDirect(void* self, UInt32 geometry, Run&& run, std::uint64_t route::
 	TimedEyeSwitch timed{&eyeSwitch, &ticks};
 	Ports ports{{reinterpret_cast<std::uintptr_t>(self), &context, &timed}};
 	run(ports, route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode())));
-	AcquireSRWLockExclusive(&g_statsLock);
 	++(g_stats.*counter);
 	g_stats.AddSwitches(counters);
 	g_stats.AddTicks(ticks.all, ticks.reapply);
@@ -709,7 +728,7 @@ UInt32 RouteDirect(void* self, UInt32 geometry, Run&& run, std::uint64_t route::
 		g_stats.shaderClasses.Add(context.seen.shaderVtable);
 		g_stats.reappliesType1 += context.seen.type1;
 	}
-	ReleaseSRWLockExclusive(&g_statsLock);
+	FlushSummaryIfRequested();
 	return 0;
 }
 
@@ -768,13 +787,11 @@ UInt32 StereoPlan() {
 
 UInt32 SetStereoEyes(const ObngStereoEyes* eyes) {
 	const ObngStereoResult verdict = eye::Validate(eyes, StereoPlan());
-	AcquireSRWLockExclusive(&g_statsLock);
 	if (verdict == kObngStereoOk) {
 		++g_stats.eyeDataSets;
 	} else {
 		++g_stats.eyeDataRefused;
 	}
-	ReleaseSRWLockExclusive(&g_statsLock);
 	if (verdict != kObngStereoOk) {
 		return verdict;
 	}
@@ -791,16 +808,7 @@ void LogStereoDrawSummary() {
 	if (!g_on || g_log == nullptr) {
 		return;
 	}
-	const probe::ClockPair now = ReadClocks();
-	const double ticksPerMillisecond = probe::TicksPerMillisecond(g_summaryClock, now, ClockFrequency());
-	g_summaryClock = now;
-	AcquireSRWLockExclusive(&g_statsLock);
-	const route::Stats stats = g_stats;
-	g_stats.Reset();
-	ReleaseSRWLockExclusive(&g_statsLock);
-	char line[1400];
-	route::FormatStats(stats, ticksPerMillisecond, line, sizeof(line));
-	g_log("%s", line);
+	InterlockedExchange(&g_summaryRequested, 1);
 }
 
 }  // namespace obng::plugin
