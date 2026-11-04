@@ -1,0 +1,60 @@
+{
+  "slice": "eye-pass",
+  "subsystem": "render",
+  "sharedHeaders": [],
+  "purpose": "Map only: the eye pass as a unit, for single-pass stereo. OBVR renders a dual-pass frame by calling OSGlobals::RenderScene 0x0040C830 twice through its hook, with the camera moved between the two calls (../OBVR/src/render/SceneRenderHook.cpp; its CullingSync replays the first eye's cull results in the second, its ShadowShareHook keeps the first eye's actor shadow maps). Measured on the fixed Walkers scene (knowledge/culling-and-draw-setup.md, 'Round two'): the two eye passes hold 4.98 of the frame's 5.36 ms of draw work - per partition the shader slots 13/15/14 take 2.85 ms for both eyes, the device draws with the palette build about 2.1 ms, the accumulator's lists 0.44 ms. A single pass that culls and sets up once and draws every partition twice (left viewport, right viewport) would keep the draws and save the second eye's setup and lists: about 1.6 ms a frame, the largest lever left. The slice must give the contract of one eye pass: which engine state is eye-dependent (the view and projection the renderer builds from the camera, the viewport, the render target, the culling planes, the light constants?), where it is set, and where in the per-partition draw a second draw with the other eye's state can be inserted (the instructions between the last setup and the DrawIndexedPrimitive, and what has to be re-set between the two draws). No rebuild in this run.",
+  "functions": [
+    {
+      "address": "0x00762640",
+      "name": "NiDX9Renderer::Do_SetCameraData (proposal; vtable 0x00A88EA4 slot 80, +0x140, read in .rdata 2026-11-04: the COL at 0x00ACC9D0 names NiDX9Renderer, slot +0x160 of the same vtable is Do_RenderShape 0x007693E0)",
+      "mapOnly": true,
+      "known": "Called from NiRenderer::SetCameraData 0x00701970 (re/functions/0x00701970.md: thiscall(renderer; camera), the call at 0x00701A04 with six pushed dwords - the camera's rotation, translation, frustum camera+0xEC, viewport camera+0x110 and two more - RET 0x18 derived from the push count) at the start of NiDrawScene 0x0070C0B0 (re/functions/0x0070C0B0.md). 389 asm lines, no callees in Ghidra's table (the device calls are virtual). The renderer's view, world and projection matrices at +0x980 / +0x940 / +0x9C0 are what the constant map's defined ids read (re/functions/0x009A56D0.md Purpose table); who writes them is the question.",
+      "questions": [
+        "Which renderer fields does it write from the camera (the view matrix +0x980? the projection +0x9C0? the world +0x940? the frustum planes, the viewport, a camera pointer) and from which camera fields, in what form (row/column major, the D3D projection's near/far and the viewport transform)?",
+        "Which device calls does it make (SetViewport, SetTransform?) and under which gates - i.e. what a second eye needs re-set on the device, and what only in the renderer's fields.",
+        "Is anything else derived from the camera later in the pass (cached products, inverse matrices, a dirty flag) that a per-draw eye switch would have to refresh?"
+      ]
+    },
+    {
+      "address": "0x007C78D0",
+      "name": "ShadowSceneNode::Render (proposal; the eye pass driver: calls the accumulator's begin slot +0x4C, the cull walk 0x0070AB40 and the finish slot +0x50 = 0x007AE070 at 0x007C7D54; re/functions/0x007AC9A0.md C4)",
+      "mapOnly": true,
+      "known": "366 asm lines; callees 0x0070AB40, 0x007C6020, 0x007C71B0, 0x00405710, 0x00405AD0, 0x00707530, 0x007D6390, 0x0071A8E0 (meta.json); no direct callers (virtual). Measured: its finish call site 0x007C7D56 holds 4.98 ms a frame over two calls (one per eye); the finish 0x007AE070 draws the accumulator's lists through RenderPassList 0x007AC9A0 and DrawRenderPass 0x007A9820 (re/functions/0x007AC9A0.md, 0x007A9820.md).",
+      "questions": [
+        "The pass in order: what runs before the cull (lights, the shadow scene lights' lists, the fog, the accumulator's begin), the cull walk's inputs (which camera, which culling process), what runs between the cull and the finish, and what after it - which of these steps read the camera or the eye (and would run once in a single pass) and which are per draw.",
+        "Who calls it and with what (the scene root? the camera? the culling process), and how OBVR's second RenderScene call reaches it again with the moved camera.",
+        "What state does it leave for the next pass (lists cleared? flags?) that a single pass drawing twice would have to keep or reset."
+      ]
+    },
+    {
+      "address": "0x0070E0A0",
+      "name": "NiCullingProcess::Process (OBVR kCullingProcessProcess; slot 2 of the culling process: the culling walk driver)",
+      "mapOnly": true,
+      "known": "85 asm lines; callees 0x0075FA90 (NiPointer assign), 0x0070E040 (the planes from the camera), 0x007073D0, InterlockedDecrement; caller 0x0057F170 (kRenderInterface) direct, the scene draw hop through the vtable (re/functions/0x0070C0B0.md). Measured: the finish 0x007AE070 is called from 0x0070E152 inside this function 10 times a frame for 0.38 ms - the actor-shadow map passes, each with its own cull.",
+      "questions": [
+        "The flow: planes from the camera (0x0070E040), the walk (0x007073D0, NiCullingProcess::Cull per object), the visible array or the accumulator registration, and the finish call at 0x0070E152 - under which condition does it call the accumulator's finish itself (the shadow-map passes) and when does the caller (ShadowSceneNode::Render) do it?",
+        "What does it read from the camera and the process (planes, the array, the accumulator pointer [renderer+0x08]) and what does it write; could the walk run once with a union frustum (OBVR GetHeadsetFrustum) and the registration serve both eyes?"
+      ]
+    },
+    {
+      "address": "0x007672F0",
+      "name": "NiDX9Renderer::DrawPrimitive (proposal; the whole-geometry draw beside DrawSkinnedPrimitive 0x00767520, called from Do_RenderShape 0x007693E0 for geometry without skin partitions and from 0x0076B160)",
+      "mapOnly": true,
+      "known": "226 asm lines; callees 0x00560920 direct, the rest virtual (the shader slots and the device). Measured: Do_RenderShape 2 291 calls a frame of which 1 588 are DrawSkinnedPrimitive, so about 700 a frame take this path. DrawSkinnedPrimitive's own sequence is mapped (re/functions/0x00767520.md): slots 10/11 open, per pass and partition slot 13 SetupTransformations, slot 15 PrepareGeometryForRendering, slot 14 SetupShaderPrograms, the [[renderer+0x8AC]+0xFF0] slot-1 call, one DrawIndexedPrimitive per strip (device slot 82 at 0x0076774E), slot 16; slot 17 closes, [renderer+0x8AC] slot +0xFC(0).",
+      "questions": [
+        "Its sequence at instruction level against DrawSkinnedPrimitive's: which shader slots, which device calls (DrawIndexedPrimitive, DrawPrimitive?), in what order, with what from the geometry's record (0x0077A310's whole-geometry arm 0x00767B40 packs it).",
+        "The exact instructions between the last state set (the slot-1 call on [[renderer+0x8AC]+0xFF0]) and the draw, and between the draw and slot 16: what a second draw with the other eye's constants and viewport would need to redo - only the view-dependent constant entries and SetViewport, or more (the slot-1 call, slot 16/17 bookkeeping)?"
+      ]
+    },
+    {
+      "address": "0x0070E040",
+      "name": "NiCullingProcess::SetFrustumPlanes (proposal; re/functions/0x0070DFB0.md C13: thiscall(process; camera), with camera non-null copies 7 dwords to this+0x10 and calls 0x00717A40 - the planes from the camera's frustum)",
+      "mapOnly": true,
+      "known": "22 asm lines; one callee 0x00717A40; callers 0x0070E0A0, 0x007D46C0, 0x0049A200, kWaterRenderReflections 0x0049BEF0, 0x00813510, 0x00813960, 0x007D34C0, 0x00813300.",
+      "questions": [
+        "What exactly is copied (the camera's frustum +0xEC: left/right/top/bottom/near/far and the ortho flag?) and what 0x00717A40 builds from it and the camera's world transform (the six planes at process+0x..; the mask this+0x..): the inputs a union frustum for two eyes would have to feed.",
+        "Is the result cached per camera or rebuilt on every call?"
+      ]
+    }
+  ]
+}
