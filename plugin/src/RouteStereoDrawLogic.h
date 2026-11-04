@@ -69,6 +69,8 @@ struct Stats {
 	std::uint64_t eyeSwitchesApplied = 0; // of them with eye data: the second eye's state set
 	std::uint64_t drawsOutsideEye = 0;    // draws with eye data whose viewport was not eye 0's: drawn once
 	OutsideViewports outside;             // their viewports
+	stereo_eye_switch::ShaderClasses shaderClasses;  // the shader vtables the re-apply saw (applied switches)
+	std::uint64_t reappliesType1 = 0;     // re-applies that took the type-1 shader's maps (SpeedTree branches)
 	std::uint64_t switchTicks = 0;        // TSC ticks inside Switch(1) and Switch(0), applied switches only
 	std::uint64_t reapplyTicks = 0;       // of them inside the constants re-apply
 	std::uint64_t eyeDataSets = 0;        // ObngStereoSetEyes accepted
@@ -135,6 +137,17 @@ inline int FormatStats(const Stats& s, double ticksPerMillisecond, char* out, st
 		}
 		if (s.outside.overflow != 0 && at >= 0 && static_cast<std::size_t>(at) < capacity) {
 			at += std::snprintf(out + at, capacity - at, " (+%llu in other rects)", static_cast<unsigned long long>(s.outside.overflow));
+		}
+	}
+	if (at >= 0 && static_cast<std::size_t>(at) < capacity && s.shaderClasses.size != 0) {
+		at += std::snprintf(out + at, capacity - at, "; shader classes (vtable x switches):");
+		for (std::uint32_t i = 0; i < s.shaderClasses.size && at >= 0 && static_cast<std::size_t>(at) < capacity; ++i) {
+			at += std::snprintf(out + at, capacity - at, " %08X x%llu", s.shaderClasses.rows[i].vtable,
+			                    static_cast<unsigned long long>(s.shaderClasses.rows[i].count));
+		}
+		if (at >= 0 && static_cast<std::size_t>(at) < capacity) {
+			at += std::snprintf(out + at, capacity - at, "; %llu re-applies through the type-1 shader's maps",
+			                    static_cast<unsigned long long>(s.reappliesType1));
 		}
 	}
 	return at;

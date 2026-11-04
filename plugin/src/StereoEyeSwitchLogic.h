@@ -228,6 +228,55 @@ constexpr std::uint32_t ReportedPlan(bool routeOn, std::uint8_t allowedEyes) {
 
 constexpr std::uint32_t kNiD3DSCMVertexVtable = 0x00AB2BAC;
 
+// Whose constant maps the re-apply walks. Thirty shader classes share
+// NiD3DShader::SetupShaderPrograms 0x0077A1F0, which applies the shader's
+// OWN maps (+0x2C / +0x30); SpeedTreeBranchShader (vtable 0x00A9459C) has
+// its own slot 14 0x0080FC20, which applies the maps of the shader-manager's
+// type-1 shader (0x007B4290(1) -> [result+4] -> +0x2C / +0x30) against its
+// own pass's programs (read, re/functions/0x0077A1F0.md C2 / C18).
+constexpr std::uint32_t kSpeedTreeBranchShaderVtable = 0x00A9459C;
+constexpr std::uint32_t kShaderManagerTableAddress = 0x00B42EC0;  // (&DAT_00b42ec0)[type]
+constexpr std::uint32_t kShaderManagerType1 = 1;
+constexpr std::uint32_t kShaderManagerEntryShaderOffset = 0x04;  // [entry+4] = the shader
+
+enum class MapsSource : std::uint8_t {
+	kOwn,         // the shader's own +0x2C / +0x30
+	kType1Shader, // the manager's type-1 shader's +0x2C / +0x30 (SpeedTree branches)
+};
+
+constexpr MapsSource MapsSourceFor(std::uint32_t shaderVtable) {
+	return shaderVtable == kSpeedTreeBranchShaderVtable ? MapsSource::kType1Shader : MapsSource::kOwn;
+}
+
+// The shader classes seen by the draws (by vtable), with counts: which
+// classes reach the route, and how often.
+struct ShaderClasses {
+	static constexpr std::uint32_t kMaxRows = 12;
+	struct Row {
+		std::uint32_t vtable = 0;
+		std::uint64_t count = 0;
+	};
+	Row rows[kMaxRows] = {};
+	std::uint32_t size = 0;
+	std::uint64_t overflow = 0;
+
+	void Add(std::uint32_t vtable) {
+		for (std::uint32_t i = 0; i < size; ++i) {
+			if (rows[i].vtable == vtable) {
+				++rows[i].count;
+				return;
+			}
+		}
+		if (size >= kMaxRows) {
+			++overflow;
+			return;
+		}
+		rows[size].vtable = vtable;
+		rows[size].count = 1;
+		++size;
+	}
+};
+
 struct ReapplyTarget {
 	std::uint32_t map = 0;
 	std::uint32_t program = 0;

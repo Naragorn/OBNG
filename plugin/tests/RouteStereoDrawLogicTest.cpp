@@ -68,7 +68,7 @@ int main() {
 	      "three whole draws: two drawn, one refused");
 	Check(stats.skinnedDraws == 3 && stats.skinnedOutcome[3] == 1 && stats.skinnedOutcome[0] == 1 && stats.skinnedOutcome[2] == 1,
 	      "three skinned draws: closed, no skin, record missing");
-	char line[400];
+	char line[1400];
 	route::FormatStats(stats, 0.0, line, sizeof(line));
 	Check(std::string(line) ==
 	          "Route: stereo draw (eyes 2) - 3 whole draws (drawn 2, refused 1, null record 0), 3 skinned draws (closed 1, no skin 1, "
@@ -83,6 +83,13 @@ int main() {
 		stats.outside.Add(obng::plugin::stereo_eye_switch::Viewport{i, 0, 10, 10, 0.0f, 1.0f});
 	}
 	Check(stats.outside.size == route::OutsideViewports::kMaxRows && stats.outside.overflow == 4, "rects beyond the table are counted");
+	stats.shaderClasses.Add(0x00A8977C);
+	stats.shaderClasses.Add(0x00A9459C);
+	stats.shaderClasses.Add(0x00A8977C);
+	stats.reappliesType1 = 1;
+	route::FormatStats(stats, 0.0, line, sizeof(line));
+	Check(std::strstr(line, "; shader classes (vtable x switches): 00A8977C x2 00A9459C x1; 1 re-applies through the type-1 shader's maps") != nullptr,
+	      "the shader classes with their counts");
 	stats.AddTicks(6000, 2000);
 	route::FormatStats(stats, 1000.0, line, sizeof(line));  // 1000 ticks a millisecond: a tick is a microsecond
 	Check(std::strstr(line, "; switch 3000.00 us, re-apply 1000.00 us per applied switch") != nullptr, "the timing per applied switch (two applied)");

@@ -198,6 +198,22 @@ int main() {
 		Check(!sw::InEyeViewport(Viewport{0, 0, 1920, 1080, 0.0f, 1.0f}, eyes), "the whole target: out");
 	}
 
+	Section("MapsSourceFor: SpeedTree branches take the type-1 shader's maps, everyone else their own");
+	{
+		Check(sw::MapsSourceFor(sw::kSpeedTreeBranchShaderVtable) == sw::MapsSource::kType1Shader, "SpeedTreeBranchShader");
+		Check(sw::MapsSourceFor(0x00A8977C) == sw::MapsSource::kOwn, "NiD3DShader");
+		Check(sw::MapsSourceFor(0) == sw::MapsSource::kOwn, "nothing");
+		sw::ShaderClasses classes;
+		classes.Add(0x10);
+		classes.Add(0x20);
+		classes.Add(0x10);
+		Check(classes.size == 2 && classes.rows[0].count == 2 && classes.rows[1].vtable == 0x20, "two classes, counted");
+		for (std::uint32_t i = 0; i < sw::ShaderClasses::kMaxRows + 3; ++i) {
+			classes.Add(0x1000 + i);
+		}
+		Check(classes.size == sw::ShaderClasses::kMaxRows && classes.overflow == 5, "classes beyond the table are counted");
+	}
+
 	Section("EffectivePlan and ReportedPlan");
 	{
 		Check(sw::EffectivePlan(2, true).eyes == 2, "two allowed with data: two");

@@ -138,7 +138,30 @@ constexpr std::uint32_t kPassProgramAOffset = 0x44;
 constexpr std::uint32_t kPassProgramBOffset = 0x58;
 constexpr std::uint32_t kApplyLastArgument = 1;
 
-void ViewReapply(std::uint32_t shader, const std::uint32_t args[8]) {
+// What one draw call's re-applies saw, for the route's line.
+struct ReapplySeen {
+	std::uint32_t shaderVtable = 0;
+	std::uint32_t type1 = 0;
+};
+
+// The shader whose +0x2C / +0x30 maps the re-apply walks: the shader itself,
+// or for SpeedTree branches the manager's type-1 shader
+// (StereoEyeSwitchLogic.h MapsSourceFor).
+std::uint32_t MapsOwner(std::uint32_t shader, ReapplySeen* seen) {
+	const std::uint32_t vtable = ReadAt<std::uint32_t>(shader);
+	seen->shaderVtable = vtable;
+	if (eye::MapsSourceFor(vtable) == eye::MapsSource::kOwn) {
+		return shader;
+	}
+	const std::uint32_t entry = ReadAt<std::uint32_t>(eye::kShaderManagerTableAddress + 4 * eye::kShaderManagerType1);
+	if (entry == 0) {
+		return 0;
+	}
+	++seen->type1;
+	return ReadAt<std::uint32_t>(entry + eye::kShaderManagerEntryShaderOffset);
+}
+
+void ViewReapply(std::uint32_t shader, const std::uint32_t args[8], ReapplySeen* seen) {
 	if (shader == 0) {
 		return;
 	}
@@ -146,8 +169,12 @@ void ViewReapply(std::uint32_t shader, const std::uint32_t args[8]) {
 	if (pass == 0) {
 		return;
 	}
-	const std::uint32_t mapA = ReadAt<std::uint32_t>(shader + kShaderMapAOffset);
-	const std::uint32_t mapB = ReadAt<std::uint32_t>(shader + kShaderMapBOffset);
+	const std::uint32_t owner = MapsOwner(shader, seen);
+	if (owner == 0) {
+		return;
+	}
+	const std::uint32_t mapA = ReadAt<std::uint32_t>(owner + kShaderMapAOffset);
+	const std::uint32_t mapB = ReadAt<std::uint32_t>(owner + kShaderMapBOffset);
 	const std::uint32_t programA = ReadAt<std::uint32_t>(pass + kPassProgramAOffset);
 	const std::uint32_t programB = ReadAt<std::uint32_t>(pass + kPassProgramBOffset);
 	const std::uint32_t passIndex = ReadAt<std::uint32_t>(shader + kShaderPassIndexOffset);
@@ -253,6 +280,7 @@ struct TimedEyeSwitch {
 struct SkinnedEnginePorts {
 	skinned_engine::NiDX9RendererView* renderer;
 	TimedEyeSwitch* eyes;
+	ReapplySeen* seen;
 	skinned::Handle lastShader = skinned::kNull;
 	skinned::PartitionCall lastSetup{};
 
@@ -352,7 +380,7 @@ struct SkinnedEnginePorts {
 		}
 		const skinned::PartitionCall& c = self->lastSetup;
 		const std::uint32_t args[8] = {c.geometry, c.skin, c.partition, c.record, c.propertyState, c.effectState, c.world, c.worldBound};
-		ViewReapply(self->lastShader, args);
+		ViewReapply(self->lastShader, args, self->seen);
 	}
 };
 static_assert(skinned::DrawSkinnedPrimitivePorts<SkinnedEnginePorts>, "the engine ports meet the rebuild's concept");
@@ -361,6 +389,7 @@ static_assert(skinned::DrawSkinnedPrimitivePorts<SkinnedEnginePorts>, "the engin
 // slot-14 call kept for the eye switch's re-apply.
 struct RecordingShaderPort {
 	whole_engine::EnginePorts* engine;
+	ReapplySeen* seen;
 	whole::Handle lastShader = 0;
 	whole::ShaderCall lastSetup{};
 
@@ -384,7 +413,7 @@ struct RecordingShaderPort {
 		if (g_settings.stereoReapply == StereoReapply::kNone) {
 			return;
 		}
-		ViewReapply(self->lastShader, self->lastSetup.arguments);
+		ViewReapply(self->lastShader, self->lastSetup.arguments, self->seen);
 	}
 };
 
@@ -392,7 +421,8 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
                                      UInt32 record) {
 	whole_engine::EnginePorts ports{static_cast<whole_engine::NiDX9RendererView*>(self),
 	                                reinterpret_cast<whole_engine::ShaderInterfaceCastFn>(whole_engine::kShaderInterfaceCastAddress)};
-	RecordingShaderPort shader{&ports};
+	ReapplySeen seen_;
+	RecordingShaderPort shader{&ports, &seen_};
 	eye::SwitchCounters counters;
 	SwitchTicks ticks;
 	EyeEnginePort eyePort{reinterpret_cast<std::uintptr_t>(self), &RecordingShaderPort::Reapply, &shader, &ticks};
@@ -412,13 +442,18 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
 	if (outside) {
 		g_stats.outside.Add(seen);
 	}
+	if (counters.applied != 0 && seen_.shaderVtable != 0) {
+		g_stats.shaderClasses.Add(seen_.shaderVtable);
+		g_stats.reappliesType1 += seen_.type1;
+	}
 	ReleaseSRWLockExclusive(&g_statsLock);
 	return 0;
 }
 
 UInt32 __fastcall RouteDrawSkinned(void* self, void* /*edx*/, UInt32 geometry, UInt32 data, UInt32 skin, UInt32 world, UInt32 worldBound) {
 	eye::SwitchCounters counters;
-	SkinnedEnginePorts ports{static_cast<skinned_engine::NiDX9RendererView*>(self), nullptr};
+	ReapplySeen seen_;
+	SkinnedEnginePorts ports{static_cast<skinned_engine::NiDX9RendererView*>(self), nullptr, &seen_};
 	SwitchTicks ticks;
 	EyeEnginePort eyePort{reinterpret_cast<std::uintptr_t>(self), &SkinnedEnginePorts::Reapply, &ports, &ticks};
 	bool outside = false;
@@ -437,6 +472,10 @@ UInt32 __fastcall RouteDrawSkinned(void* self, void* /*edx*/, UInt32 geometry, U
 	g_stats.drawsOutsideEye += outside ? 1u : 0u;
 	if (outside) {
 		g_stats.outside.Add(seen);
+	}
+	if (counters.applied != 0 && seen_.shaderVtable != 0) {
+		g_stats.shaderClasses.Add(seen_.shaderVtable);
+		g_stats.reappliesType1 += seen_.type1;
 	}
 	ReleaseSRWLockExclusive(&g_statsLock);
 	return 0;
@@ -505,7 +544,7 @@ void LogStereoDrawSummary() {
 	const route::Stats stats = g_stats;
 	g_stats.Reset();
 	ReleaseSRWLockExclusive(&g_statsLock);
-	char line[900];
+	char line[1400];
 	route::FormatStats(stats, ticksPerMillisecond, line, sizeof(line));
 	g_log("%s", line);
 }
