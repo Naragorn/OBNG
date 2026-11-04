@@ -1,0 +1,629 @@
+{
+ "slice": "stereo-draw",
+ "root": "/run/media/nadi/Games/Modding/OBNG",
+ "subsystem": "render",
+ "sharedHeaders": [
+  "src/engine/render/StereoDraw.h"
+ ],
+ "purpose": "Rebuild the two draw functions of the scene pass as units for single-pass stereo (docs/subsystems/single-pass-stereo.md, src/engine/render/StereoDraw.h): NiDX9Renderer::DrawPrimitive 0x007672F0 and DrawSkinnedPrimitive 0x00767520, both mapped and held (re/functions/0x007672F0.md from the eye-pass slice, 0x00767520.md from the scene-pass slice). Each rebuild is the original 1:1 over ports (the shader interface's vtable slots, the device's draw calls, the render state's sub-object slot 1 and draw flag, the geometry / partition / record reads) - bit-identical in its port-call sequence and arguments when the EyePlan has one eye - PLUS the one documented deviation of StereoDraw.h: with a plan of two eyes the device draw(s) run a second time after eyeSwitch.Switch(1), between the first eye's draw(s) and shader slot 16, then eyeSwitch.Switch(0). Take the EyePlan and the eye-switch port as inputs of the logic; the 1:1 path must not change by their presence. Tests: every mapped branch, the two-eye flow (the call sequence with the second draw and the two switches), the refusal paths (slot 10 non-zero, null skin, zero bones, null record). The emulator gate records the original's traced calls per branch; the rebuild's port-call sequence for one eye is compared with it. The engine shapes (vtable slots, offsets) go into the <Name>.h header with static_asserts; the logic is 64-bit clean (handles as std::uint32_t).",
+ "functions": [
+  {
+   "address": "0x007672F0",
+   "name": "NiDX9Renderer::DrawPrimitive",
+   "mapOnly": false,
+   "emulatorGate": true,
+   "known": "Mapped in slice eye-pass (held, 0 core refutations): re/functions/0x007672F0.md. 226 asm lines; thiscall(renderer; geometry, ..., record), the shader from geometry+0xBC or the default +0xA94, slots 10/11 open, per pass slots 12, 13, 15, 14, the sub-object slot-1 call, DrawIndexedPrimitive per array entry or DrawPrimitive without an index buffer, slot 16; slot 17 and the draw flag close.",
+   "questions": [],
+   "map": {
+    "address": "0x007672F0",
+    "proposedName": "NiDX9Renderer::DrawPrimitive",
+    "purpose": "Draws one geometry as a whole (no skin partitions) with an NiD3DShaderInterface, pass by pass. It picks the shader by RTTI-casting [a1+0xBC], or falls back to this+0xA94. It opens the pipeline (slots 10, 11), then runs each pass: slots 12, 13, 15 (buffer record), 14, then the [[this+0x8AC]+0xFF0] slot-1 call. Next come the device draws: DrawIndexedPrimitive per array entry when record+0x30 != 0, otherwise one DrawPrimitive. Slot 16 closes the pass. After the pass loop, slot 17 and [[this+0x8AC]]+0xFC(0) run once per call. It reads no clock and no global, and makes no non-stack store.",
+    "callingConvention": "__thiscall, ECX = this (renderer, kept in EDI). Six stack arguments, callee-cleaned (RET 0x18 at 0x00767513). No meaningful return value.",
+    "parameters": [
+     {
+      "index": 0,
+      "type": "NiDX9Renderer* (proposal)",
+      "name": "this",
+      "evidence": "ECX->EDI 0x007672FB; +0x280 used as the device at 0x00767443/0x00767489"
+     },
+     {
+      "index": 1,
+      "type": "NiGeometry*, may be null",
+      "name": "geometry",
+      "evidence": "ESP0+0x04 -> EBP 0x007672F3, null test 0x007672F7"
+     },
+     {
+      "index": 2,
+      "type": "NiGeometryData* (proposal)",
+      "name": "data",
+      "evidence": "ESP0+0x08, never addressed in the body"
+     },
+     {
+      "index": 3,
+      "type": "NiSkinInstance* (proposal)",
+      "name": "skin",
+      "evidence": "[ESP+0x2C] after three pushes, e.g. 0x00767336, 0x007674B6"
+     },
+     {
+      "index": 4,
+      "type": "const NiTransform*",
+      "name": "world",
+      "evidence": "[ESP+0x24] at 0x00767323, 0x007674A7, 0x007674DC"
+     },
+     {
+      "index": 5,
+      "type": "const NiBound* (proposal)",
+      "name": "worldBound",
+      "evidence": "[ESP+0x28] at 0x0076731F, 0x007674A3, 0x007674D8"
+     },
+     {
+      "index": 6,
+      "type": "GeometryBufferData*",
+      "name": "record",
+      "evidence": "[ESP+0x2C] at 0x00767327 into ESI; slot reused as the DIP start at 0x0076741A"
+     }
+    ],
+    "returns": "void (EAX holds whatever the last call left)",
+    "structAccesses": [
+     {
+      "base": "this",
+      "offset": "0x0C",
+      "size": 4,
+      "field": "propertyState",
+      "evidence": "pushed in every shader call with arguments, e.g. 0x007674B2",
+      "mark": "read (access); meaning derived"
+     },
+     {
+      "base": "this",
+      "offset": "0x10",
+      "size": 4,
+      "field": "effectState",
+      "evidence": "0x007674AE",
+      "mark": "read (access); meaning unverified"
+     },
+     {
+      "base": "this",
+      "offset": "0x280",
+      "size": 4,
+      "field": "device (IDirect3DDevice9*)",
+      "evidence": "0x00767443, 0x00767489",
+      "mark": "read (access); meaning from two sources"
+     },
+     {
+      "base": "this",
+      "offset": "0x8AC",
+      "size": 4,
+      "field": "renderState",
+      "evidence": "0x007673FD, 0x007674FA",
+      "mark": "read (access); type unverified"
+     },
+     {
+      "base": "this",
+      "offset": "0xA94",
+      "size": 4,
+      "field": "defaultShader",
+      "evidence": "0x00767319",
+      "mark": "read"
+     },
+     {
+      "base": "geometry",
+      "offset": "0xBC",
+      "size": 4,
+      "field": "shader",
+      "evidence": "0x007672FF, cast 0x0076730B",
+      "mark": "read"
+     },
+     {
+      "base": "record",
+      "offset": "0x14",
+      "size": 4,
+      "field": "vertexCount",
+      "evidence": "0x00767453",
+      "mark": "read (access)"
+     },
+     {
+      "base": "record",
+      "offset": "0x30",
+      "size": 4,
+      "field": "indexBuffer",
+      "evidence": "0x00767412",
+      "mark": "read (access)"
+     },
+     {
+      "base": "record",
+      "offset": "0x34",
+      "size": 4,
+      "field": "baseVertexIndex",
+      "evidence": "0x00767457, 0x00767498",
+      "mark": "read (access)"
+     },
+     {
+      "base": "record",
+      "offset": "0x38",
+      "size": 4,
+      "field": "primitiveType",
+      "evidence": "0x0076745D, 0x0076749C",
+      "mark": "read (access); meaning derived"
+     },
+     {
+      "base": "record",
+      "offset": "0x3C",
+      "size": 4,
+      "field": "triangleCount",
+      "evidence": "0x0076743C, 0x00767486",
+      "mark": "read (access)"
+     },
+     {
+      "base": "record",
+      "offset": "0x44",
+      "size": 4,
+      "field": "arrayCount",
+      "evidence": "0x00767417, 0x00767473",
+      "mark": "read"
+     },
+     {
+      "base": "record",
+      "offset": "0x48",
+      "size": 4,
+      "field": "arrayLengths (u16*)",
+      "evidence": "0x00767428, 0x00767433",
+      "mark": "read"
+     }
+    ],
+    "branches": [
+     {
+      "name": "B1",
+      "condition": "a1 == 0: default shader this+0xA94",
+      "at": "0x007672FD"
+     },
+     {
+      "name": "B2",
+      "condition": "cast of [a1+0xBC] non-null",
+      "at": "0x00767317"
+     },
+     {
+      "name": "B3",
+      "condition": "slot 10 returns non-zero: return",
+      "at": "0x00767347"
+     },
+     {
+      "name": "B4",
+      "condition": "slot 18 returns 0: no pass, close",
+      "at": "0x0076737A"
+     },
+     {
+      "name": "B5",
+      "condition": "record+0x30 == 0: DrawPrimitive arm",
+      "at": "0x00767415"
+     },
+     {
+      "name": "B6",
+      "condition": "record+0x44 == 0: no DIP, slot 16 still runs",
+      "at": "0x00767422"
+     },
+     {
+      "name": "B7",
+      "condition": "record+0x48 == 0: count = record+0x3C, else lengths[i]-2",
+      "at": "0x0076742D"
+     },
+     {
+      "name": "B8",
+      "condition": "i+1 < record+0x44 (unsigned): next DIP",
+      "at": "0x0076747E"
+     },
+     {
+      "name": "B9",
+      "condition": "slot 19 non-zero: next pass",
+      "at": "0x007674D2"
+     }
+    ],
+    "claims": [
+     {
+      "text": "C9: The slot 15 result is not null-tested. 0x00767412 is its first dereference inside this body, but the record is passed to slot 14 first (0x007673F4/0x007673FB). Slot 14 forwards it to callees that are not mapped (0x0077A1F0 V1-V3; 0x0080FC20 for SpeedTreeBranchShader), so a null record faults at 0x00767412 or earlier inside slot 14. Where exactly is unverified.",
+      "mark": "derived",
+      "evidence": "asm 0x007673ED, 0x007673F4, 0x00767412; 0x0077A310.md B6"
+     },
+     {
+      "text": "E1: Between the slot-1 call (0x0076740E) and the draw, the body reads record fields, this+0x280, the device vtable entry (+0x148/+0x144) and [record+0x48][i] (0x00767433). Between the draw and slot 16 it runs the arithmetic and loop test (0x00767464-0x00767484) plus slot 16's argument setup (0x007674A3-0x007674C3, loads and pushes only; on the DrawPrimitive arm this is the whole window). Neither window has a call or a non-stack store.",
+      "mark": "read",
+      "evidence": "asm 0x0076740E-0x007674C5"
+     },
+     {
+      "text": "E2: Slot 16 (0x007674C5) runs once per pass. Slot 17 (0x007674F8) and [[this+0x8AC]]+0xFC(0) (0x0076750C) run once per call, after the pass loop exits at 0x007674D2. What they do is unverified.",
+      "mark": "read",
+      "evidence": "asm 0x007674C5, 0x007674D2, 0x007674F8, 0x0076750C"
+     },
+     {
+      "text": "E3: Slot 13 (0x007C9230) reads renderer+0x980/+0x9C0; their view/projection meaning is unverified in 0x007C9230.md. It sets clip planes through device+0xDC only in passes 0x177..0x17A, and only on a cache miss: a hit at L+0x214 reuses the planes from L+0x1B4, so a second eye could get stale planes. Slot 14 (0x0077A1F0) may also carry view-dependent constants. 'SetViewport' and 'constant upload' as requirements of a second eye are unverified premises of the stereo strategy.",
+      "mark": "derived",
+      "evidence": "0x007C9230.md C14, C15, struct rows +0x980/+0x9C0"
+     },
+     {
+      "text": "pseudo.c disagrees with the pushes on the argument lists of slots 11, 12, 13, 14, 16 and 17. For slot 17 (0x007674F8), pseudo.c ends with iVar11, uVar12 where the asm pushes a4, a5. The instructions win.",
+      "mark": "read",
+      "evidence": "asm 0x007674D8-0x007674F8; pseudo.c lines 91-93"
+     },
+     {
+      "text": "C14: That 0x0076B160 sets this+0x0C from [this+0x89C] around the call comes from pseudocode only. The objdump of 0x0076B26C-0x0076B272 shows only MOV [EBX+0xC],EAX with EAX from [EBP+0]. Settling it needs an instruction-level trace of 0x0076B160.",
+      "mark": "unverified",
+      "evidence": "objdump 0x0076B26C-0x0076B272; rea-all 0x76b160.c"
+     },
+     {
+      "text": "The method name DrawPrimitive is a proposal by analogy (slice-scene-pass.csv:10, 'inferred'). No independent source names 0x007672F0, and none contradicts it. The name collides with IDirect3DDevice9::DrawPrimitive, which this body calls.",
+      "mark": "unverified",
+      "evidence": "re/symbols/slice-scene-pass.csv:10; knowledge/culling-and-draw-setup.md"
+     }
+    ],
+    "openQuestions": [
+     "What [[renderer+0x8AC]+0xFF0] slot 1 (0x0076740E) does, and whether a second eye must call it again",
+     "What [renderer+0x8AC]+0xFC(0) (0x0076750C) and shader slots 16/17 do",
+     "How slot-14 targets 0x0077A1F0 / 0x0080FC20 use the record (where a null record faults)",
+     "Source of EAX stored to this+0x0C at 0x0076B272 in 0x0076B160",
+     "Whether SetViewport or a render-target switch is the stereo mechanism (premise, unverified)",
+     "Which shader classes reach this function"
+    ],
+    "layoutRequests": [
+     "NiDX9Renderer: +0x0C propertyState, +0x10 effectState, +0x280 device, +0x8AC renderState (+0xFF0 sub-object), +0xA94 defaultShader",
+     "GeometryBufferData: +0x14 vertexCount, +0x30 indexBuffer, +0x34 baseVertexIndex, +0x38 primitiveType, +0x3C triangleCount, +0x44 arrayCount, +0x48 arrayLengths (u16*)",
+     "NiGeometry: +0xBC shader",
+     "NiD3DShaderInterface vtable slots 10-19 at +0x28..+0x4C"
+    ],
+    "mdPath": "/run/media/nadi/Games/Modding/OBNG/re/functions/0x007672F0.md"
+   }
+  },
+  {
+   "address": "0x00767520",
+   "name": "NiDX9Renderer::DrawSkinnedPrimitive",
+   "mapOnly": false,
+   "emulatorGate": true,
+   "known": "Mapped in slice scene-pass (held): re/functions/0x00767520.md. thiscall with five stack arguments, RET 0x14; the null-skin early return, the bone gate, the world-bound copy, per pass and per partition the same slot sequence with the partition argument, one DrawIndexedPrimitive per strip.",
+   "questions": [],
+   "map": {
+    "address": "0x00767520",
+    "proposedName": "NiDX9Renderer::DrawSkinnedPrimitive",
+    "purpose": "Draws one skinned geometry with a shader (cast of geometry+0xBC to NiD3DShaderInterface, else the default shader at this+0xA94), pass by pass (shader slots 18/19) and, inside each pass, partition by partition of the skin partition: shader slots 13, 15, 14, the [[this+0x8AC]+0xFF0] slot 1 call, one IDirect3DDevice9::DrawIndexedPrimitive per strip or array, then slot 16; pipeline opened by slots 10/11 and closed by slot 17 and [this+0x8AC] slot +0xFC(0). No global variable or clock is touched by its own instructions.",
+    "callingConvention": "__thiscall, ECX = this (MOV ESI,ECX at 0x0076752A), five stack arguments, callee-cleaned RET 0x14 (0x0076780B); no return value read by the caller. Frame: ESP0-0x28 until PUSH EBP at 0x00767589 (after the RTTI cast at 0x00767566), ESP0-0x2C from 0x0076758A to the epilogue at 0x00767804.",
+    "parameters": [
+     {
+      "index": 0,
+      "type": "NiDX9Renderer* (proposal)",
+      "name": "this",
+      "evidence": "ECX -> ESI at 0x0076752A; +0x280 is the D3D device used for DIP at 0x00767729-0x0076774E (OBVR GameAddresses.h:598 + xOBSE NiRenderer.h)"
+     },
+     {
+      "index": 1,
+      "type": "NiGeometry*",
+      "name": "geometry",
+      "evidence": "ESP0+4; +0xBC cast at 0x0076755A; first argument of every shader slot with arguments"
+     },
+     {
+      "index": 2,
+      "type": "NiGeometryData* (proposal)",
+      "name": "data",
+      "evidence": "ESP0+8; only access AND word [a2+0x2E],0xF000 at 0x007677B7 (pseudo.c wrongly applies it to a5)"
+     },
+     {
+      "index": 3,
+      "type": "NiSkinInstance* (proposal)",
+      "name": "skin",
+      "evidence": "ESP0+0xC; null returns at 0x0076752C; +0x0C skinPartition at 0x00767532"
+     },
+     {
+      "index": 4,
+      "type": "const NiTransform*",
+      "name": "world",
+      "evidence": "ESP0+0x10; caller pushes a 13-dword copy of geometry+0x64 (0x0076941D-0x00769429); handed on unread"
+     },
+     {
+      "index": 5,
+      "type": "const NiBound*",
+      "name": "worldBound",
+      "evidence": "ESP0+0x14; four dwords copied to this+0x658..+0x664 per pass at 0x00767617-0x00767635"
+     }
+    ],
+    "returns": "void (EAX at exit is whatever the last call left; caller 0x007693E0 does not read it, 0x007694C2-0x007694C9)",
+    "structAccesses": [
+     {
+      "base": "this",
+      "offset": "0x0C",
+      "size": 4,
+      "field": "propertyState",
+      "evidence": "arg 4 of slots 10, 11, 12, 15, 17; arg 5 of slots 13, 14, 16 (0x00767590, 0x00767694, 0x007676D9, 0x0076778A); 0x007C9230.md reads its arg 5 as a property state",
+      "mark": "read (access); meaning derived from 0x007C9230.md"
+     },
+     {
+      "base": "this",
+      "offset": "0x10",
+      "size": 4,
+      "field": "effectState",
+      "evidence": "pushed next to +0x0C (e.g. 0x0076757E, 0x00767688)",
+      "mark": "read (access); meaning unverified"
+     },
+     {
+      "base": "this",
+      "offset": "0x280",
+      "size": 4,
+      "field": "IDirect3DDevice9* device",
+      "evidence": "0x00767729, COM call 0x0076774E",
+      "mark": "read (access); meaning from OBVR + xOBSE"
+     },
+     {
+      "base": "this",
+      "offset": "0x658",
+      "size": 16,
+      "field": "currentWorldBound",
+      "evidence": "stores from a5 at 0x00767617-0x00767635 once per pass",
+      "mark": "read (access); meaning derived"
+     },
+     {
+      "base": "this",
+      "offset": "0x6D8",
+      "size": 4,
+      "field": "maxBonesWithoutShader",
+      "evidence": "CMP/JBE 0x0076765C-0x00767662",
+      "mark": "read (access); meaning derived from string"
+     },
+     {
+      "base": "this",
+      "offset": "0x8AC",
+      "size": 4,
+      "field": "renderState object (unverified)",
+      "evidence": "0x007676E6 (+0xFF0), 0x007677F0 (vtable +0xFC)",
+      "mark": "read (access); type unverified"
+     },
+     {
+      "base": "this",
+      "offset": "0xA94",
+      "size": 4,
+      "field": "defaultShader",
+      "evidence": "fallback 0x00767574; identity compare 0x00767650",
+      "mark": "read"
+     },
+     {
+      "base": "geometry",
+      "offset": "0xBC",
+      "size": 4,
+      "field": "shader candidate",
+      "evidence": "cast to NiRTTI_NiD3DShaderInterface 0x00B42858 at 0x0076755A-0x00767566",
+      "mark": "read"
+     },
+     {
+      "base": "data",
+      "offset": "0x2E",
+      "size": 2,
+      "field": "flags word",
+      "evidence": "AND 0xF000 at 0x007677B7",
+      "mark": "read (access); bits unverified"
+     },
+     {
+      "base": "skin",
+      "offset": "0x0C",
+      "size": 4,
+      "field": "skinPartition",
+      "evidence": "0x00767532",
+      "mark": "read (access); name unverified"
+     },
+     {
+      "base": "skinPartition",
+      "offset": "0x08",
+      "size": 4,
+      "field": "partitionCount",
+      "evidence": "0x007675D2",
+      "mark": "read"
+     },
+     {
+      "base": "skinPartition",
+      "offset": "0x0C",
+      "size": 4,
+      "field": "partitions (0x2C stride)",
+      "evidence": "0x0076753B, ADD EBP,0x2C 0x0076779E",
+      "mark": "read"
+     },
+     {
+      "base": "partition",
+      "offset": "0x1C",
+      "size": 2,
+      "field": "vertexCount",
+      "evidence": "0x0076773D DIP NumVertices",
+      "mark": "read (access); meaning derived"
+     },
+     {
+      "base": "partition",
+      "offset": "0x20",
+      "size": 2,
+      "field": "boneCount",
+      "evidence": "0x00767658",
+      "mark": "read (access); meaning derived"
+     },
+     {
+      "base": "partition[0]",
+      "offset": "0x22",
+      "size": 2,
+      "field": "stripCount",
+      "evidence": "0x00767540 selects prim type 5/4",
+      "mark": "read (access); name unverified"
+     },
+     {
+      "base": "partition",
+      "offset": "0x28",
+      "size": 4,
+      "field": "bufferData",
+      "evidence": "0x00767581, 0x0076767F",
+      "mark": "read (access); meaning unverified"
+     },
+     {
+      "base": "buf",
+      "offset": "0x34",
+      "size": 4,
+      "field": "baseVertexIndex",
+      "evidence": "0x00767742",
+      "mark": "read (access); meaning derived"
+     },
+     {
+      "base": "buf",
+      "offset": "0x3C",
+      "size": 4,
+      "field": "triangleCount",
+      "evidence": "0x00767720",
+      "mark": "read (access); meaning derived"
+     },
+     {
+      "base": "buf",
+      "offset": "0x44",
+      "size": 4,
+      "field": "arrayCount",
+      "evidence": "0x007676FB, 0x00767763",
+      "mark": "read"
+     },
+     {
+      "base": "buf",
+      "offset": "0x48",
+      "size": 4,
+      "field": "arrayLengths (u16*)",
+      "evidence": "0x00767708, 0x00767713",
+      "mark": "read"
+     }
+    ],
+    "branches": [
+     {
+      "name": "B1",
+      "condition": "a3 == 0",
+      "at": "0x0076752C"
+     },
+     {
+      "name": "B2",
+      "condition": "a1 == 0 -> default shader",
+      "at": "0x00767558"
+     },
+     {
+      "name": "B3",
+      "condition": "cast non-null -> cast shader, else this+0xA94",
+      "at": "0x00767572"
+     },
+     {
+      "name": "B4",
+      "condition": "slot 10 != 0 -> abort",
+      "at": "0x007675A6"
+     },
+     {
+      "name": "B5",
+      "condition": "slot 18 == 0 -> no pass, close",
+      "at": "0x007675E4"
+     },
+     {
+      "name": "B6",
+      "condition": "partitionCount == 0 -> skip partition loop",
+      "at": "0x00767643"
+     },
+     {
+      "name": "B7",
+      "condition": "shader != this+0xA94 -> draw (no bone gate)",
+      "at": "0x00767656"
+     },
+     {
+      "name": "B8",
+      "condition": "default shader and boneCount <= this+0x6D8 -> draw, else silent skip",
+      "at": "0x00767662"
+     },
+     {
+      "name": "B9",
+      "condition": "slot 15 == 0 -> abort mid-pass (slot 13 already ran)",
+      "at": "0x007676B9"
+     },
+     {
+      "name": "B10",
+      "condition": "buf.+0x44 == 0 -> no DIP",
+      "at": "0x00767706"
+     },
+     {
+      "name": "B11",
+      "condition": "buf.+0x48 == 0 -> list count, else strip length - 2",
+      "at": "0x0076770D"
+     },
+     {
+      "name": "B12",
+      "condition": "i+1 < buf.+0x44 -> next DIP",
+      "at": "0x0076776E"
+     },
+     {
+      "name": "B13",
+      "condition": "partitionIndex+1 < partitionCount -> next partition",
+      "at": "0x007677A9"
+     },
+     {
+      "name": "B14",
+      "condition": "slot 19 != 0 -> next pass",
+      "at": "0x007677C8"
+     }
+    ],
+    "claims": [
+     {
+      "text": "Slot 13 (+0x34) runs once per partition that passes the bone gate (B7/B8), in every pass the slot 18/19 loop opens, including a partition whose slot 15 then returns null and aborts (0x007676B9); so slot 13 can run for a partition that is never drawn.",
+      "mark": "read",
+      "evidence": "call 0x0076769F between the gate 0x00767656/0x00767662 and slot 15 at 0x007676B3; abort JZ 0x007676B9"
+     },
+     {
+      "text": "For shaders whose slot 13 is 0x007C9230 (ShadowLightShader, ParallaxShader, SkinShader, SpeedTreeBranchShader; HairShader via 0x0080B7A0), the bone palette builder 0x007655F0 is reached at most once per bone-gate-passing partition per pass, only when 0x007C9230's gates hold: [propertyState+0x18] != 0, bit 1 of that property's +0x1C set, partition non-null, shader this+0x34 == 0.",
+      "mark": "derived",
+      "evidence": "C6 here + 0x007C9230.md B1-B4 (0x007C9252-0x007C9275, palette call 0x007C926E-0x007C9288)"
+     },
+     {
+      "text": "With the default shader this+0xA94 or another shader class, whether slot 13 reaches 0x007C9230/0x007655F0 is not established; which shader is chosen at run time is not in this export.",
+      "mark": "unverified",
+      "evidence": "would be settled by reading the vtable slot 13 of the object at this+0xA94 and of the run-time geometry+0xBC shader objects"
+     },
+     {
+      "text": "this+0x0C is arg 4 of slots 10, 11, 12, 15, 17 and arg 5 of slots 13, 14, 16.",
+      "mark": "read",
+      "evidence": "0x00767590, 0x00767694, 0x007676D9, 0x0076778A"
+     },
+     {
+      "text": "Frame is ESP0-0x28 until PUSH EBP at 0x00767589 and ESP0-0x2C from 0x0076758A to the epilogue 0x00767804.",
+      "mark": "read",
+      "evidence": "asm.s 0x00767566 CALL, 0x00767589 PUSH EBP"
+     },
+     {
+      "text": "One DrawIndexedPrimitive per buf.+0x44 entry; DIP args (primType, buf.+0x34, 0, partition.+0x1C, start, count); pseudo.c's second argument is wrong, instructions win.",
+      "mark": "read",
+      "evidence": "0x00767737-0x0076774E"
+     },
+     {
+      "text": "All partitions use partition 0's primitive type (5 if +0x22 != 0 else 4).",
+      "mark": "derived",
+      "evidence": "0x0076753E-0x0076754E computed once before the pass loop"
+     },
+     {
+      "text": "A null slot 15 result skips slot 16, 19, 17, the +0xFC call and the flags clear.",
+      "mark": "read",
+      "evidence": "0x007676B9 -> 0x00767804"
+     },
+     {
+      "text": "Slot names (PreProcessPipeline ... NextPass) recalled from Gamebryo NiShader.",
+      "mark": "unverified",
+      "evidence": "only slot numbers, order and argument lists are read"
+     }
+    ],
+    "openQuestions": [
+     "What [[this+0x8AC]+0xFF0] slot 1 (0x007676F7) and [this+0x8AC] slot +0xFC (0x00767802) are",
+     "Which slot 14/15 implementations the skinned shaders use and whether they issue SetVertexShaderConstantF/SetStreamSource/SetIndices",
+     "Whether slot 15 returns partition.+0x28 itself (C8)",
+     "Meaning of data.+0x2E low 12 bits and top nibble 0x8000",
+     "Run-time value of this+0x6D8 and slot 13 target of the default shader this+0xA94",
+     "What 0x00768890's byte means in the caller 0x007693E0",
+     "Share of OBVR's 28 % inclusive between slot 13, slots 14/15 and the DIPs"
+    ],
+    "layoutRequests": [
+     "NiDX9Renderer (0x00767520): +0x0C propertyState, +0x10 effectState, +0x280 device, +0x658 currentWorldBound (16 bytes), +0x6D8 maxBonesWithoutShader, +0x8AC renderState object (+0xFF0 sub-object), +0xA94 defaultShader",
+     "NiGeometry: +0x20..+0x2C world bound, +0x64 world transform, +0xB4 data, +0xB8 skin instance, +0xBC shader",
+     "NiGeometryData: +0x2E flags word",
+     "NiSkinInstance: +0x0C skinPartition",
+     "NiSkinPartition: +0x08 partitionCount, +0x0C partitions",
+     "NiSkinPartition::Partition (0x2C): +0x1C vertexCount, +0x20 boneCount, +0x22 stripCount, +0x24 u16, +0x28 bufferData",
+     "Geometry buffer record (slot 15 result): +0x34 baseVertexIndex, +0x3C triangleCount, +0x44 arrayCount, +0x48 arrayLengths",
+     "NiD3DShaderInterface vtable: slots 10-19 at +0x28..+0x4C"
+    ],
+    "mdPath": "/run/media/nadi/Games/Modding/OBNG/re/functions/0x00767520.md"
+   }
+  }
+ ]
+}
