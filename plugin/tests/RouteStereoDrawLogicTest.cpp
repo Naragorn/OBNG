@@ -38,11 +38,11 @@ int main() {
 	Check(s.Asked() == 0 && route::PlanFor(s, true).eyes == 1, "off: nothing asked, a one-eye plan");
 	s.stereoDraw = true;
 	s.stereoEyes = 2;
-	Check(s.Asked() == 2 && route::PlanFor(s, true).eyes == 2 && obng::engine::render::stereo_draw::DrawsTwice(route::PlanFor(s, true)),
-	      "on with two eyes and eye data: two detours, a two-eye plan that draws twice");
+	Check(s.Asked() == 4 && route::PlanFor(s, true).eyes == 2 && obng::engine::render::stereo_draw::DrawsTwice(route::PlanFor(s, true)),
+	      "on with two eyes and eye data: four detours, a two-eye plan that draws twice");
 	Check(route::PlanFor(s, false).eyes == 1, "on with two eyes but no eye data: one eye");
 	s.rangeWalk = true;
-	Check(s.Asked() == 3, "with the range walk: three");
+	Check(s.Asked() == 5, "with the range walk: five");
 
 	Section("The eye switch counters fold into the stats");
 	route::Stats stats;
@@ -64,6 +64,8 @@ int main() {
 	stats.AddSkinned(route::skinned::Outcome::kClosed);
 	stats.AddSkinned(route::skinned::Outcome::kNoSkin);
 	stats.AddSkinned(route::skinned::Outcome::kRecordMissing);
+	stats.directShapeDraws = 30;
+	stats.directStripsDraws = 500;
 	Check(stats.wholeDraws == 3 && stats.wholeOutcome[0] == 2 && stats.wholeOutcome[1] == 1 && stats.wholeOutcome[2] == 0,
 	      "three whole draws: two drawn, one refused");
 	Check(stats.skinnedDraws == 3 && stats.skinnedOutcome[3] == 1 && stats.skinnedOutcome[0] == 1 && stats.skinnedOutcome[2] == 1,
@@ -72,7 +74,7 @@ int main() {
 	route::FormatStats(stats, 0.0, line, sizeof(line));
 	Check(std::string(line) ==
 	          "Route: stereo draw (eyes 2) - 3 whole draws (drawn 2, refused 1, null record 0), 3 skinned draws (closed 1, no skin 1, "
-	          "refused 0, record missing 1), 3 eye switches (applied 2), 4 draws outside eye 0's viewport, eye data set 5, refused 1",
+	          "refused 0, record missing 1), 30 direct shape draws, 500 direct strips draws, 3 eye switches (applied 2), 4 draws outside eye 0's viewport, eye data set 5, refused 1",
 	      "the line");
 	stats.outside.Add(obng::plugin::stereo_eye_switch::Viewport{0, 0, 1024, 1024, 0.0f, 1.0f});
 	stats.outside.Add(obng::plugin::stereo_eye_switch::Viewport{0, 0, 1024, 1024, 0.0f, 1.0f});

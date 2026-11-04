@@ -34,7 +34,7 @@ struct Fake {
 	uint32_t routeMade = 1;
 	int stereoInstalls = 0;
 	RouteSettings stereoInstalled;
-	uint32_t stereoMade = 2;
+	uint32_t stereoMade = 4;
 	int timerStarts = 0;
 	bool timerStarted = true;
 	std::vector<std::string> calls;  // the side effects in the order Load made them
@@ -288,7 +288,7 @@ void TestLoadConstantUploads() {
 }
 
 void TestLoadStereoDraw() {
-	Section("Load with the stereo draw route on: two detours asked, the range walk untouched");
+	Section("Load with the stereo draw route on: four detours asked, the range walk untouched");
 	Fake fake;
 	fake.iniSettings.route.stereoDraw = true;
 	fake.iniSettings.route.stereoEyes = 2;
@@ -297,14 +297,14 @@ void TestLoadStereoDraw() {
 	Check(Load(Game(), kHost), "loads");
 	Check(fake.stereoInstalls == 1 && fake.stereoInstalled.stereoEyes == 2 && fake.routeInstalls == 0,
 	      "the stereo installer is called with the plan, the range walk's is not");
-	Check(fake.Logged("Route: 2 of 2 detours made"), "two asked, two made");
+	Check(fake.Logged("Route: 4 of 4 detours made"), "four asked, four made");
 	Fake both;
 	both.iniSettings.route.stereoDraw = true;
 	both.iniSettings.route.rangeWalk = true;
 	g_fake = &both;
 	ResetForTest();
 	Check(Load(Game(), kHost), "loads");
-	Check(both.stereoInstalls == 1 && both.routeInstalls == 1 && both.Logged("Route: 3 of 3 detours made"), "both routes: three detours");
+	Check(both.stereoInstalls == 1 && both.routeInstalls == 1 && both.Logged("Route: 5 of 5 detours made"), "both routes: five detours");
 	Fake shadowed;
 	shadowed.iniSettings.route.stereoDraw = true;
 	shadowed.iniSettings.route.rangeWalk = true;
@@ -312,7 +312,7 @@ void TestLoadStereoDraw() {
 	g_fake = &shadowed;
 	ResetForTest();
 	Check(Load(Game(), kHost), "loads");
-	Check(shadowed.stereoInstalls == 1 && shadowed.routeInstalls == 0 && shadowed.Logged("skipped") && shadowed.Logged("Route: 2 of 3 detours made"),
+	Check(shadowed.stereoInstalls == 1 && shadowed.routeInstalls == 0 && shadowed.Logged("skipped") && shadowed.Logged("Route: 4 of 5 detours made"),
 	      "the range walk's route yields to its shadow, the stereo draw still installs");
 }
 

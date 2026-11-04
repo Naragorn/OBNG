@@ -65,6 +65,8 @@ struct Stats {
 	std::uint64_t skinnedDraws = 0;  // DrawSkinnedPrimitive 0x00767520 calls routed
 	std::uint64_t wholeOutcome[3] = {0, 0, 0};    // by whole::Outcome
 	std::uint64_t skinnedOutcome[4] = {0, 0, 0, 0};  // by skinned::Outcome
+	std::uint64_t directShapeDraws = 0;   // DrawShapeDirect 0x007694F0 calls routed (slot 90)
+	std::uint64_t directStripsDraws = 0;  // DrawTriStripsDirect 0x00769700 calls routed (slot 91)
 	std::uint64_t eyeSwitches = 0;        // Switch(1) calls: the second eye's draws framed
 	std::uint64_t eyeSwitchesApplied = 0; // of them with eye data: the second eye's state set
 	std::uint64_t drawsOutsideEye = 0;    // draws with eye data whose viewport was not eye 0's: drawn once
@@ -109,7 +111,8 @@ inline int FormatStats(const Stats& s, double ticksPerMillisecond, char* out, st
 	using SO = skinned::Outcome;
 	int at = std::snprintf(out, capacity,
 		"Route: stereo draw (eyes %u) - %llu whole draws (drawn %llu, refused %llu, null record %llu), %llu skinned draws "
-		"(closed %llu, no skin %llu, refused %llu, record missing %llu), %llu eye switches (applied %llu), %llu draws outside eye 0's viewport, "
+		"(closed %llu, no skin %llu, refused %llu, record missing %llu), %llu direct shape draws, %llu direct strips draws, "
+		"%llu eye switches (applied %llu), %llu draws outside eye 0's viewport, "
 		"eye data set %llu, refused %llu",
 		static_cast<unsigned>(s.eyes), static_cast<unsigned long long>(s.wholeDraws),
 		static_cast<unsigned long long>(s.wholeOutcome[static_cast<unsigned>(WO::Drawn)]),
@@ -120,6 +123,7 @@ inline int FormatStats(const Stats& s, double ticksPerMillisecond, char* out, st
 		static_cast<unsigned long long>(s.skinnedOutcome[static_cast<unsigned>(SO::kNoSkin)]),
 		static_cast<unsigned long long>(s.skinnedOutcome[static_cast<unsigned>(SO::kPipelineRefused)]),
 		static_cast<unsigned long long>(s.skinnedOutcome[static_cast<unsigned>(SO::kRecordMissing)]),
+		static_cast<unsigned long long>(s.directShapeDraws), static_cast<unsigned long long>(s.directStripsDraws),
 		static_cast<unsigned long long>(s.eyeSwitches), static_cast<unsigned long long>(s.eyeSwitchesApplied),
 		static_cast<unsigned long long>(s.drawsOutsideEye), static_cast<unsigned long long>(s.eyeDataSets),
 		static_cast<unsigned long long>(s.eyeDataRefused));

@@ -38,7 +38,9 @@
 #include "engine/render/ConstantReapply.h"
 #include "engine/render/NiD3DShaderConstantMap_ApplyConstants.h"
 #include "engine/render/NiDX9Renderer_DrawPrimitive.h"
+#include "engine/render/NiDX9Renderer_DrawShapeDirect.h"
 #include "engine/render/NiDX9Renderer_DrawSkinnedPrimitive.h"
+#include "engine/render/NiDX9Renderer_DrawTriStripsDirect.h"
 
 namespace obng::plugin {
 namespace {
@@ -50,12 +52,22 @@ namespace whole_engine = engine::render::draw_primitive::engine;
 namespace skinned = engine::render::draw_skinned_primitive;
 namespace skinned_engine = engine::render::draw_skinned_primitive::engine;
 namespace apply_engine = engine::render::apply_constants::engine;
+namespace shape_direct = engine::render::draw_shape_direct;
+namespace shape_direct_engine = engine::render::draw_shape_direct::engine;
+namespace strips_direct = engine::render::draw_tri_strips_direct;
+namespace strips_direct_engine = engine::render::draw_tri_strips_direct::engine;
 using engine::render::constant_reapply::EntryFilter;
 
 // The entries (objdump of the reference EXE, 2026-11-04): whole instructions,
 // nothing relative, no jump into them.
 constexpr UInt8 kDrawPrimitiveBytes[] = {0x51, 0x53, 0x55, 0x8B, 0x6C, 0x24, 0x10};  // push ecx; push ebx; push ebp; mov ebp,[esp+10h]
 constexpr UInt8 kDrawSkinnedBytes[] = {0x8B, 0x44, 0x24, 0x0C, 0x83, 0xEC, 0x1C};    // mov eax,[esp+0Ch]; sub esp,1Ch
+// The renderer's direct draw entries (StereoDrawDirect.h; objdump 2026-11-04).
+constexpr UInt8 kDrawShapeDirectBytes[] = {0x83, 0xEC, 0x14, 0x55, 0x8B, 0xE9};      // sub esp,14h; push ebp; mov ebp,ecx
+constexpr UInt8 kDrawTriStripsDirectBytes[] = {0x83, 0xEC, 0x24, 0x55, 0x8B, 0xE9};  // sub esp,24h; push ebp; mov ebp,ecx
+using DrawDirectEntryFn = UInt32(__fastcall*)(void* self, void* edx, UInt32 geometry);
+DrawDirectEntryFn g_originalDrawShapeDirect = nullptr;
+DrawDirectEntryFn g_originalDrawTriStripsDirect = nullptr;
 
 // __fastcall with a dummy edx mirrors __thiscall; the callee cleans the
 // stack arguments as the originals do (RET 0x18 and RET 0x14, read).
@@ -481,6 +493,242 @@ UInt32 __fastcall RouteDrawSkinned(void* self, void* /*edx*/, UInt32 geometry, U
 	return 0;
 }
 
+
+// ---- The direct draw entries (slots 90 / 91) ---------------------------------------
+//
+// No shader slot 14 runs in these; the eye switch's re-apply gets its
+// arguments from the geometry as Do_RenderShape hands them to the shader
+// slots (StereoDrawDirect.h): geometry, skin = geometry+0xB8, the partition
+// (0 for the whole draw), the record, property / effect state = renderer
+// +0x0C / +0x10, world = geometry+0x64, worldBound = geometry+0x20.
+constexpr std::uint32_t kRendererPropertyStateOffset = 0x0C;
+constexpr std::uint32_t kRendererEffectStateOffset = 0x10;
+constexpr std::uint32_t kGeometryWorldBoundOffset = 0x20;
+constexpr std::uint32_t kGeometryWorldOffset = 0x64;
+constexpr std::uint32_t kGeometryDataOffset = 0xB4;
+constexpr std::uint32_t kGeometrySkinOffset = 0xB8;
+constexpr std::uint32_t kGeometryShaderOffset = 0xBC;
+constexpr std::uint32_t kDataFlagsOffset = 0x2E;
+constexpr std::uint32_t kDataRecordOffset = 0x38;
+constexpr std::uint32_t kSkinPartitionOffset = 0x0C;
+constexpr std::uint32_t kSkinPartitionCountOffset = 0x08;
+constexpr std::uint32_t kSkinPartitionsOffset = 0x0C;
+constexpr std::uint32_t kPartitionVertexCountOffset = 0x1C;
+constexpr std::uint32_t kPartitionBoneCountOffset = 0x20;
+constexpr std::uint32_t kPartitionStripCountOffset = 0x22;
+constexpr std::uint32_t kPartitionRecordOffset = 0x28;
+constexpr std::uint32_t kRecordVertexCountOffset = 0x14;
+constexpr std::uint32_t kRecordIndexBufferOffset = 0x30;
+constexpr std::uint32_t kRecordBaseVertexOffset = 0x34;
+constexpr std::uint32_t kRecordPrimitiveTypeOffset = 0x38;
+constexpr std::uint32_t kRecordTriangleCountOffset = 0x3C;
+constexpr std::uint32_t kRecordArrayCountOffset = 0x44;
+constexpr std::uint32_t kRecordArrayLengthsOffset = 0x48;
+
+// What the current direct draw is drawing, for the re-apply.
+struct DirectContext {
+	std::uintptr_t renderer = 0;
+	std::uint32_t geometry = 0;
+	std::uint32_t shader = 0;     // the cast result
+	std::uint32_t partition = 0;  // the partition being drawn, 0 for the whole draw
+	std::uint32_t record = 0;     // its record
+	ReapplySeen seen;
+
+	static void Reapply(void* context) {
+		auto* self = static_cast<DirectContext*>(context);
+		if (self->shader == 0 || g_settings.stereoReapply == StereoReapply::kNone) {
+			return;
+		}
+		const std::uint32_t args[8] = {self->geometry, ReadAt<std::uint32_t>(self->geometry + kGeometrySkinOffset), self->partition,
+		                               self->record, ReadAt<std::uint32_t>(self->renderer + kRendererPropertyStateOffset),
+		                               ReadAt<std::uint32_t>(self->renderer + kRendererEffectStateOffset),
+		                               static_cast<std::uint32_t>(self->geometry + kGeometryWorldOffset),
+		                               static_cast<std::uint32_t>(self->geometry + kGeometryWorldBoundOffset)};
+		ViewReapply(self->shader, args, &self->seen);
+	}
+};
+
+// The reads and calls both direct rebuilds share, over the game's memory.
+struct DirectEngineBase {
+	std::uintptr_t renderer;
+	DirectContext* context;
+	TimedEyeSwitch* eyes;
+
+	using Handle = std::uint32_t;
+	static void* Object(Handle h) { return reinterpret_cast<void*>(static_cast<std::uintptr_t>(h)); }
+
+	Handle geometryData(Handle g) const { return ReadAt<Handle>(g + kGeometryDataOffset); }
+	Handle skinPartition(Handle s) const { return ReadAt<Handle>(s + kSkinPartitionOffset); }
+	std::uint32_t partitionCount(Handle sp) const { return ReadAt<std::uint32_t>(sp + kSkinPartitionCountOffset); }
+	Handle partitions(Handle sp) const { return ReadAt<Handle>(sp + kSkinPartitionsOffset); }
+	Handle partitionAt(Handle array, std::uint32_t i) const { return array + shape_direct_engine::kPartitionStride * i; }
+	std::uint16_t stripCount(Handle p) const { return ReadAt<std::uint16_t>(p + kPartitionStripCountOffset); }
+	std::uint16_t boneCount(Handle p) const { return ReadAt<std::uint16_t>(p + kPartitionBoneCountOffset); }
+	std::uint16_t vertexCount(Handle p) const { return ReadAt<std::uint16_t>(p + kPartitionVertexCountOffset); }
+	Handle defaultShader() const { return ReadAt<Handle>(renderer + 0xA94); }
+	std::uint32_t maxBonesWithoutShader() const { return ReadAt<std::uint32_t>(renderer + 0x6D8); }
+	Handle device() const { return ReadAt<Handle>(renderer + kRendererDeviceOffset); }
+	std::uint32_t recordVertexCount(Handle r) const { return ReadAt<std::uint32_t>(r + kRecordVertexCountOffset); }
+	std::uint32_t indexBuffer(Handle r) const { return ReadAt<std::uint32_t>(r + kRecordIndexBufferOffset); }
+	std::uint32_t baseVertexIndex(Handle r) const { return ReadAt<std::uint32_t>(r + kRecordBaseVertexOffset); }
+	std::uint32_t primitiveType(Handle r) const { return ReadAt<std::uint32_t>(r + kRecordPrimitiveTypeOffset); }
+	std::uint32_t triangleCount(Handle r) const { return ReadAt<std::uint32_t>(r + kRecordTriangleCountOffset); }
+	std::uint32_t arrayCount(Handle r) const { return ReadAt<std::uint32_t>(r + kRecordArrayCountOffset); }
+	Handle arrayLengths(Handle r) const { return ReadAt<Handle>(r + kRecordArrayLengthsOffset); }
+	std::uint16_t arrayLength(Handle lengths, std::uint32_t i) const { return ReadAt<std::uint16_t>(lengths + 2 * i); }
+	std::uint16_t dataFlags(Handle d) const { return ReadAt<std::uint16_t>(d + kDataFlagsOffset); }
+	void writeDataFlags(Handle d, std::uint16_t v) const {
+		*reinterpret_cast<volatile std::uint16_t*>(static_cast<std::uintptr_t>(d) + kDataFlagsOffset) = v;
+	}
+	Handle castToShaderInterface(Handle o) {
+		const Handle shader = reinterpret_cast<shape_direct_engine::RttiCastFn>(shape_direct_engine::kRttiCastAddress)(
+		    shape_direct_engine::kNiRttiNiD3DShaderInterface, o);
+		context->shader = shader;
+		return shader;
+	}
+	void shaderSlot18(Handle shader) const {
+		reinterpret_cast<shape_direct_engine::ShaderSlot18Fn>(VtableSlot(shader, shape_direct_engine::kShaderSlotOffset18))(Object(shader));
+	}
+	void renderStateSubObjectSlot1() const {
+		const std::uint32_t sub = ReadAt<std::uint32_t>(ReadAt<std::uint32_t>(renderer + 0x8AC) + shape_direct_engine::kRenderStateSubObjectOffset);
+		reinterpret_cast<shape_direct_engine::SubObjectSlot1Fn>(VtableSlot(sub, shape_direct_engine::kSubObjectSlot1))(Object(sub));
+	}
+	void cannotRenderPartition(std::uint32_t bones) const {
+		reinterpret_cast<shape_direct_engine::DebugPrintFn>(shape_direct_engine::kDebugPrintAddress)(
+		    reinterpret_cast<const char*>(static_cast<std::uintptr_t>(shape_direct_engine::kCannotRenderPartitionFormat)), bones);
+	}
+	void drawIndexed(Handle device_, std::uint32_t type, std::uint32_t base, std::uint32_t minIndex, std::uint32_t numVertices,
+	                 std::uint32_t start, std::uint32_t count) const {
+		reinterpret_cast<shape_direct_engine::DrawIndexedPrimitiveFn>(VtableSlot(device_, shape_direct_engine::kDeviceDrawIndexedPrimitiveOffset))(
+		    Object(device_), type, static_cast<std::int32_t>(base), minIndex, numVertices, start, count);
+	}
+	void drawPlain(Handle device_, std::uint32_t type, std::uint32_t startVertex, std::uint32_t count) const {
+		reinterpret_cast<shape_direct_engine::DrawPrimitiveFn>(VtableSlot(device_, shape_direct_engine::kDeviceDrawPrimitiveOffset))(
+		    Object(device_), type, startVertex, count);
+	}
+	void eyeSwitch(std::uint8_t e) { eyes->Switch(e); }
+};
+
+// DrawShapeDirect 0x007694F0's ports (NiDX9Renderer_DrawShapeDirectLogic.h).
+struct ShapeDirectEnginePorts : DirectEngineBase {
+	std::uint8_t drawSuppressed() const { return ReadAt<std::uint8_t>(renderer + 0x6F0); }
+	Handle geometrySkin(Handle g) const { return ReadAt<Handle>(g + kGeometrySkinOffset); }
+	Handle geometryShaderCandidate(Handle g) const { return ReadAt<Handle>(g + kGeometryShaderOffset); }
+	Handle dataRecord(Handle d) {
+		const Handle record = ReadAt<Handle>(d + kDataRecordOffset);
+		context->partition = 0;
+		context->record = record;
+		return record;
+	}
+	void setDataFlags(Handle d, std::uint16_t v) const { writeDataFlags(d, v); }
+	Handle partitionRecord(Handle p) {
+		const Handle record = ReadAt<Handle>(p + kPartitionRecordOffset);
+		context->partition = p;
+		context->record = record;
+		return record;
+	}
+	std::uint32_t dataVertexCount(Handle d) const {
+		return reinterpret_cast<shape_direct_engine::DataVertexCountFn>(VtableSlot(d, shape_direct_engine::kDataVertexCountSlot))(
+		    static_cast<shape_direct_engine::NiGeometryDataView*>(Object(d)));
+	}
+	std::uint32_t isSkinned(Handle g, Handle shader) const {
+		return reinterpret_cast<shape_direct_engine::IsSkinnedFn>(shape_direct_engine::kIsSkinnedAddress)(
+		    reinterpret_cast<shape_direct_engine::NiDX9RendererView*>(renderer), static_cast<shape_direct_engine::NiGeometryView*>(Object(g)), shader) ? 1u : 0u;
+	}
+	void drawPartitionIndexed(const shape_direct::DrawIndexedCall& c) const {
+		drawIndexed(c.device, c.primitiveType, c.baseVertexIndex, c.minVertexIndex, c.numVertices, c.startIndex, c.primitiveCount);
+	}
+	void drawWholeIndexed(const shape_direct::DrawIndexedCall& c) const { drawPartitionIndexed(c); }
+	void drawPrimitive(const shape_direct::DrawCall& c) const { drawPlain(c.device, c.primitiveType, c.startVertex, c.primitiveCount); }
+};
+static_assert(shape_direct::DrawShapeDirectPorts<ShapeDirectEnginePorts>, "the engine ports meet the rebuild's concept");
+
+// DrawTriStripsDirect 0x00769700's ports (NiDX9Renderer_DrawTriStripsDirectLogic.h).
+struct StripsDirectEnginePorts : DirectEngineBase {
+	std::uint8_t skipsGeometryDraws() const { return ReadAt<std::uint8_t>(renderer + 0x6F0); }
+	Handle skinInstance(Handle g) const { return ReadAt<Handle>(g + kGeometrySkinOffset); }
+	std::uint32_t worldBoundWord(Handle g, std::uint32_t k) const { return ReadAt<std::uint32_t>(g + kGeometryWorldBoundOffset + 4 * k); }
+	Handle shaderCandidate(Handle g) const { return ReadAt<Handle>(g + kGeometryShaderOffset); }
+	Handle bufferRecord(Handle d) {
+		const Handle record = ReadAt<Handle>(d + kDataRecordOffset);
+		context->partition = 0;
+		context->record = record;
+		return record;
+	}
+	Handle bufferData(Handle p) {
+		const Handle record = ReadAt<Handle>(p + kPartitionRecordOffset);
+		context->partition = p;
+		context->record = record;
+		return record;
+	}
+	void setDataFlags(Handle d, std::uint16_t v, strips_direct::Outcome) const { writeDataFlags(d, v); }
+	void setCurrentWorldBoundWord(std::uint32_t k, std::uint32_t v) const {
+		*reinterpret_cast<volatile std::uint32_t*>(renderer + strips_direct_engine::kCurrentWorldBoundOffset + 4 * k) = v;
+	}
+	std::uint32_t geometryDataSlot20(Handle d) const {
+		return reinterpret_cast<strips_direct_engine::DataVertexCountFn>(VtableSlot(d, strips_direct_engine::kDataVertexCountSlot))(
+		    static_cast<strips_direct_engine::NiGeometryDataView*>(Object(d)));
+	}
+	std::uint32_t selectsPartitions(Handle g) const {
+		return reinterpret_cast<strips_direct_engine::SelectsPartitionsFn>(strips_direct_engine::kSelectsPartitionsAddress)(
+		    reinterpret_cast<strips_direct_engine::NiDX9RendererView*>(renderer), static_cast<strips_direct_engine::NiGeometryView*>(Object(g)), 0) ? 1u : 0u;
+	}
+	void drawIndexedPrimitiveForPartition(const strips_direct::DrawIndexedCall& c) const {
+		drawIndexed(c.device, c.primitiveType, c.baseVertexIndex, c.minVertexIndex, c.numVertices, c.startIndex, c.primitiveCount);
+	}
+	void drawIndexedPrimitiveForRecord(const strips_direct::DrawIndexedCall& c) const { drawIndexedPrimitiveForPartition(c); }
+	void drawPrimitive(const strips_direct::DrawCall& c) const { drawPlain(c.device, c.primitiveType, c.startVertex, c.primitiveCount); }
+};
+static_assert(strips_direct::DrawTriStripsDirectPorts<StripsDirectEnginePorts>, "the engine ports meet the rebuild's concept");
+
+// The two direct detours share everything but the rebuild they call.
+template <class Ports, class Run>
+UInt32 RouteDirect(void* self, UInt32 geometry, Run&& run, std::uint64_t route::Stats::*counter) {
+	eye::SwitchCounters counters;
+	SwitchTicks ticks;
+	DirectContext context;
+	context.renderer = reinterpret_cast<std::uintptr_t>(self);
+	context.geometry = geometry;
+	EyeEnginePort eyePort{reinterpret_cast<std::uintptr_t>(self), &DirectContext::Reapply, &context, &ticks};
+	bool outside = false;
+	eye::Viewport seen;
+	const eye::EyeData* eyes = EyesForDraw(eyePort, &outside, &seen);
+	EngineEyeSwitch eyeSwitch{&eyePort, &counters, eyes, eyes != nullptr ? 0.0f : g_settings.stereoTestEyeShift};
+	TimedEyeSwitch timed{&eyeSwitch, &ticks};
+	Ports ports{{reinterpret_cast<std::uintptr_t>(self), &context, &timed}};
+	run(ports, route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode())));
+	AcquireSRWLockExclusive(&g_statsLock);
+	++(g_stats.*counter);
+	g_stats.AddSwitches(counters);
+	g_stats.AddTicks(ticks.all, ticks.reapply);
+	g_stats.drawsOutsideEye += outside ? 1u : 0u;
+	if (outside) {
+		g_stats.outside.Add(seen);
+	}
+	if (counters.applied != 0 && context.seen.shaderVtable != 0) {
+		g_stats.shaderClasses.Add(context.seen.shaderVtable);
+		g_stats.reappliesType1 += context.seen.type1;
+	}
+	ReleaseSRWLockExclusive(&g_statsLock);
+	return 0;
+}
+
+UInt32 __fastcall RouteDrawShapeDirect(void* self, void* /*edx*/, UInt32 geometry) {
+	return RouteDirect<ShapeDirectEnginePorts>(
+	    self, geometry, [geometry](ShapeDirectEnginePorts& ports, engine::render::stereo_draw::EyePlan plan) {
+		    shape_direct::DrawShapeDirect(ports, geometry, plan);
+	    },
+	    &route::Stats::directShapeDraws);
+}
+
+UInt32 __fastcall RouteDrawTriStripsDirect(void* self, void* /*edx*/, UInt32 geometry) {
+	return RouteDirect<StripsDirectEnginePorts>(
+	    self, geometry, [self, geometry](StripsDirectEnginePorts& ports, engine::render::stereo_draw::EyePlan plan) {
+		    strips_direct::DrawTriStripsDirect(ports, strips_direct::DrawArguments{static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(self)), geometry}, plan);
+	    },
+	    &route::Stats::directStripsDraws);
+}
+
 }  // namespace
 
 UInt32 InstallRouteStereoDraw(const RouteSettings& settings, LogFn log) {
@@ -499,9 +747,15 @@ UInt32 InstallRouteStereoDraw(const RouteSettings& settings, LogFn log) {
 	made += InstallEntryDetour("NiDX9Renderer::DrawSkinnedPrimitive", skinned_engine::kDrawSkinnedPrimitiveAddress, kDrawSkinnedBytes,
 	                           sizeof(kDrawSkinnedBytes), reinterpret_cast<const void*>(&RouteDrawSkinned),
 	                           reinterpret_cast<void**>(&g_originalDrawSkinned), log, DetourRole::Route) ? 1 : 0;
-	g_on = made == 2;
+	made += InstallEntryDetour("NiDX9Renderer::DrawShapeDirect", shape_direct_engine::kDrawShapeDirectAddress, kDrawShapeDirectBytes,
+	                           sizeof(kDrawShapeDirectBytes), reinterpret_cast<const void*>(&RouteDrawShapeDirect),
+	                           reinterpret_cast<void**>(&g_originalDrawShapeDirect), log, DetourRole::Route) ? 1 : 0;
+	made += InstallEntryDetour("NiDX9Renderer::DrawTriStripsDirect", strips_direct_engine::kDrawTriStripsDirectAddress, kDrawTriStripsDirectBytes,
+	                           sizeof(kDrawTriStripsDirectBytes), reinterpret_cast<const void*>(&RouteDrawTriStripsDirect),
+	                           reinterpret_cast<void**>(&g_originalDrawTriStripsDirect), log, DetourRole::Route) ? 1 : 0;
+	g_on = made == kRouteStereoDrawDetours;
 	g_summaryClock = ReadClocks();
-	log("Route: stereo draw %s, eyes %u, test eye shift %.3f (%s), re-apply %s", g_on ? "on" : "off (not both detours made)",
+	log("Route: stereo draw %s, eyes %u, test eye shift %.3f (%s), re-apply %s", g_on ? "on" : "off (not all four detours made)",
 	    static_cast<unsigned>(settings.stereoEyes), static_cast<double>(settings.stereoTestEyeShift),
 	    eye::TestModeOn(settings.stereoTestEyeShift) ? "the viewport split in halves" : "off: eye data from OBVR or none",
 	    StereoReapplyName(settings.stereoReapply));

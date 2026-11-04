@@ -458,3 +458,22 @@ against off 2.4 / 2.2 % (the animations run on between the runs). People
 have their depth in the right eye. Next on OBVR's side: the water (its c13
 reprojection is built in its SetVertexShaderConstantF hook from the
 uploaded view constants) and the path without MSAA.
+
+## A2: the renderer's direct draw entries (2026-11-04 15:50-16:45)
+
+OBVR's water scene (Talos bridge) showed the near terrain and the SpeedTree
+trees missing in the right eye while rocks and distant LOD were there. The
+gate was clean (its outside viewports were the offscreen targets only), the
+slot-14 re-apply changed nothing, and `[Probe] DrawEntries` (run
+single-pass-water-on/20261104-161055) named the path: NiDX9Renderer's
+vtable slots 90 (0x007694F0, about 30 calls a frame) and 91 (0x00769700,
+400-550 a frame) draw with the pipeline the caller set up - NiTriShape's
+and NiTriStrips' slot 34 (RenderImmediate, after 0x00722A10 applies the
+properties; read by the refuters) - and never pass Do_RenderShape; EndBatch
+and slot 93 ran 0 times. Slice draw-entries (wf_aee55f61-eb0: 17 agents, 27
+min, 2.09 M tokens) mapped both at instruction level (the maps held) and
+rebuilt them as units with the two-eye plan (StereoDrawDirect.h); the
+route's third and fourth detours run them with the same eye switch, the
+view re-apply built from the geometry (skin +0xB8, world +0x64, bound
++0x20, the partition and record being drawn, the renderer's property and
+effect state). Built 16:45; OBVR's water run verifies the picture.

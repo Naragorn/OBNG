@@ -14,9 +14,11 @@ namespace obng::plugin {
 // The range walk's route is one detour: the walk's entry 0x007D59E0.
 // AddGeometry 0x007D5790 stays unpatched; the route calls it directly.
 constexpr UInt32 kRouteRangeWalkDetours = 1;
-// The stereo draw's route is two: DrawPrimitive 0x007672F0 and
-// DrawSkinnedPrimitive 0x00767520 (RouteStereoDraw.cpp).
-constexpr UInt32 kRouteStereoDrawDetours = 2;
+// The stereo draw's route is four: DrawPrimitive 0x007672F0,
+// DrawSkinnedPrimitive 0x00767520 and the renderer's two direct draw entries
+// DrawShapeDirect 0x007694F0 and DrawTriStripsDirect 0x00769700
+// (RouteStereoDraw.cpp).
+constexpr UInt32 kRouteStereoDrawDetours = 4;
 
 // [Route] StereoEyes: 1 is the 1:1 gate (the rebuild's port calls are the
 // original's), 2 the double draw (StereoDraw.h). Anything else is unknown
