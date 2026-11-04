@@ -99,8 +99,11 @@ draw-state, read by the architect, no refutation round):
   the view's translation row in +0x980 and the inverse's in +0xA00, the
   device VIEW transform, the viewport, and the re-apply of the V-dependent
   constant ids.** Nothing else.
-- Still open: the render-state sub-object at +0xFF0 whose slot 1 runs before
-  every draw (its class and body; a search for the field's writer runs).
+- The render-state sub-object at +0xFF0 is a NiDX9ShaderConstantManager
+  (RTTI of vtable 0x00A8B3BC, created in the render state's constructor
+  0x0077BB00 through 0x00780B30); its slot 1, called before every device
+  draw, is the empty stub 0x0060D0A0 in this build. Nothing to redo for the
+  second eye. Step 1 is closed.
 
 ## Risks and what settles them
 
