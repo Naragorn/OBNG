@@ -385,11 +385,14 @@ Walkers save), PASS:
   draws per 10 s outside eye 0's viewport (the actor shadow maps and the
   pre-passes, drawn once - the gate works). One RenderScene a frame
   (measured, OBVR's log).
-- **The pictures:** OBVR's eye captures (OBVR-Eye-Left-world.png /
-  OBVR-Eye-Right-world.png in the run) show the hall correctly in both and
-  differ by a parallax consistent with an eye moved to the right (the near
-  pillar at the right edge moves into view, the hand's beam shifts left) -
-  the first picture of the second eye drawn by OBNG's switch. Which half
-  of the target OBVR's capture takes for each eye is its step 5
-  (unverified here); the phase table (frame, scene_pass, GPU) comes with
-  its step 6.
+- **The pictures - corrected by OBVR (14:40):** OBVR's eye captures
+  (OBVR-Eye-Left-world.png / OBVR-Eye-Right-world.png in the run) show the
+  hall correctly, but both are the SAME left half: CaptureEye(right) still
+  reads m_eye[1].source within m_frameWidth, the left half, and the
+  difference between the two files is OBVR's lens placement (each eye
+  cropped at the other edge), not parallax. OBVR measured it: the best x
+  shift left to right is 101 px far and 101 px near (equal, so no depth),
+  against 103 / 113 and 103 / 167 px in the dual-pass runs. My first
+  reading of these two pictures as a consistent parallax was wrong; the
+  second eye's half is unseen until OBVR's step 5 captures the right half.
+  The phase table (frame, scene_pass, GPU) comes with its step 6.
