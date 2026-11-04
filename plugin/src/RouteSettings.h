@@ -26,12 +26,45 @@ constexpr UInt8 StereoEyesFromIni(int value, bool* known) {
 	return *known ? static_cast<UInt8>(value) : UInt8{1};
 }
 
+// [Route] StereoReapply: what the eye switch re-applies for the second eye.
+// slot14 = the shader's slot 14 again (SetupShaderPrograms whole: the
+// program bind, both maps, the palettes); view = the rebuilt ApplyConstants
+// with the view filter on the vertex map only (ConstantReapply.h). Anything
+// else is unknown and read as view, said in the log.
+enum class StereoReapply : UInt8 {
+	kSlot14,
+	kView,
+};
+
+inline StereoReapply StereoReapplyFromIni(const char* value, bool* known) {
+	auto equals = [value](const char* word) {
+		const char* a = value;
+		const char* b = word;
+		while (*a != '\0' && *b != '\0' && *a == *b) {
+			++a;
+			++b;
+		}
+		return *a == '\0' && *b == '\0';
+	};
+	if (equals("slot14")) {
+		*known = true;
+		return StereoReapply::kSlot14;
+	}
+	*known = equals("view");
+	return StereoReapply::kView;
+}
+
+constexpr const char* StereoReapplyName(StereoReapply r) {
+	return r == StereoReapply::kSlot14 ? "slot14" : "view";
+}
+
 struct RouteSettings {
 	bool rangeWalk = false;   // ShadowSceneLight::CollectGeometryInRange 0x007D59E0 runs BatchedWalk; off in play
 	bool stereoDraw = false;  // the two draw functions run OBNG's rebuilds (RouteStereoDraw.cpp); off in play
 	UInt8 stereoEyes = 1;     // the eyes the stereo draw may serve (1 or 2); two need eye data (StereoEyesApi.h)
 	float stereoTestEyeShift = 0.0f;  // the plugin's own eye data: the viewport split in halves, eye 1 this many
 	                                  // game units along the camera's right axis (StereoEyeSwitchLogic.h); 0 = off
+	StereoReapply stereoReapply = StereoReapply::kView;  // the second eye's constants re-apply
 
 	UInt32 Asked() const { return (rangeWalk ? kRouteRangeWalkDetours : 0u) + (stereoDraw ? kRouteStereoDrawDetours : 0u); }
 };

@@ -31,6 +31,8 @@
 #include "ShadowRecorder.h"
 #include "StereoEyeSwitchLogic.h"
 #include "StereoEyesApi.h"
+#include "engine/render/ConstantReapply.h"
+#include "engine/render/NiD3DShaderConstantMap_ApplyConstants.h"
 #include "engine/render/NiDX9Renderer_DrawPrimitive.h"
 #include "engine/render/NiDX9Renderer_DrawSkinnedPrimitive.h"
 
@@ -43,6 +45,8 @@ namespace whole = engine::render::draw_primitive;
 namespace whole_engine = engine::render::draw_primitive::engine;
 namespace skinned = engine::render::draw_skinned_primitive;
 namespace skinned_engine = engine::render::draw_skinned_primitive::engine;
+namespace apply_engine = engine::render::apply_constants::engine;
+using engine::render::constant_reapply::EntryFilter;
 
 // The entries (objdump of the reference EXE, 2026-11-04): whole instructions,
 // nothing relative, no jump into them.
@@ -94,6 +98,45 @@ T ReadAt(std::uintptr_t address) {
 UInt32 VtableSlot(std::uint32_t object, std::uint32_t slotOffset) {
 	const std::uint32_t vtable = ReadAt<std::uint32_t>(object);
 	return ReadAt<std::uint32_t>(vtable + slotOffset);
+}
+
+// The view re-apply ([Route] StereoReapply=view): what SetupShaderPrograms
+// 0x0077A1F0 does for its two maps (V2 / V3: map this+0x2C against
+// [this+0x3C]+0x44, map this+0x30 against [this+0x3C]+0x58, the slot-14
+// arguments 1..8, this+0x34 as the pass index, 1 - read, 0x0077A1F0.md
+// C14 / C19), done by the rebuilt ApplyConstants with the view filter on
+// the map(s) whose vtable is NiD3DSCM_Vertex (StereoEyeSwitchLogic.h
+// ViewReapplyTargets).
+constexpr std::uint32_t kShaderMapAOffset = 0x2C;
+constexpr std::uint32_t kShaderMapBOffset = 0x30;
+constexpr std::uint32_t kShaderPassIndexOffset = 0x34;
+constexpr std::uint32_t kShaderPassObjectOffset = 0x3C;
+constexpr std::uint32_t kPassProgramAOffset = 0x44;
+constexpr std::uint32_t kPassProgramBOffset = 0x58;
+constexpr std::uint32_t kApplyLastArgument = 1;
+
+void ViewReapply(std::uint32_t shader, const std::uint32_t args[8]) {
+	if (shader == 0) {
+		return;
+	}
+	const std::uint32_t pass = ReadAt<std::uint32_t>(shader + kShaderPassObjectOffset);
+	if (pass == 0) {
+		return;
+	}
+	const std::uint32_t mapA = ReadAt<std::uint32_t>(shader + kShaderMapAOffset);
+	const std::uint32_t mapB = ReadAt<std::uint32_t>(shader + kShaderMapBOffset);
+	const std::uint32_t programA = ReadAt<std::uint32_t>(pass + kPassProgramAOffset);
+	const std::uint32_t programB = ReadAt<std::uint32_t>(pass + kPassProgramBOffset);
+	const std::uint32_t passIndex = ReadAt<std::uint32_t>(shader + kShaderPassIndexOffset);
+	const eye::ReapplyTargets targets = eye::ViewReapplyTargets(mapA, programA, mapA != 0 ? ReadAt<std::uint32_t>(mapA) : 0u, mapB, programB,
+	                                                             mapB != 0 ? ReadAt<std::uint32_t>(mapB) : 0u);
+	for (std::uint8_t i = 0; i < targets.count; ++i) {
+		apply_engine::ApplyConstants(apply_engine::FromHandle<apply_engine::ShaderConstantMapView>(targets.target[i].map),
+		                             targets.target[i].program, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7],
+		                             passIndex, kApplyLastArgument, EntryFilter::kView,
+		                             reinterpret_cast<apply_engine::GetExtraDataFn>(static_cast<std::uintptr_t>(apply_engine::kGetExtraDataAddress)),
+		                             apply_engine::FromHandle<const char* const>(apply_engine::kExtraDataNameSlotAddress));
+	}
 }
 
 bool HasEyeData() {
@@ -239,12 +282,20 @@ struct SkinnedEnginePorts {
 	}
 	void eyeSwitch(std::uint8_t e) { eyes->Switch(e); }
 
-	// The re-apply: slot 14 again, as the partition had it.
+	// The re-apply: slot 14 again as the partition had it, or the view
+	// re-apply with the same arguments.
 	static void Reapply(void* context) {
 		auto* self = static_cast<SkinnedEnginePorts*>(context);
-		if (self->lastShader != skinned::kNull) {
-			self->Partition(self->lastShader, skinned_engine::kShaderSlotOffset14, self->lastSetup);
+		if (self->lastShader == skinned::kNull) {
+			return;
 		}
+		if (g_settings.stereoReapply == StereoReapply::kSlot14) {
+			self->Partition(self->lastShader, skinned_engine::kShaderSlotOffset14, self->lastSetup);
+			return;
+		}
+		const skinned::PartitionCall& c = self->lastSetup;
+		const std::uint32_t args[8] = {c.geometry, c.skin, c.partition, c.record, c.propertyState, c.effectState, c.world, c.worldBound};
+		ViewReapply(self->lastShader, args);
 	}
 };
 static_assert(skinned::DrawSkinnedPrimitivePorts<SkinnedEnginePorts>, "the engine ports meet the rebuild's concept");
@@ -266,9 +317,14 @@ struct RecordingShaderPort {
 
 	static void Reapply(void* context) {
 		auto* self = static_cast<RecordingShaderPort*>(context);
-		if (self->lastShader != 0) {
-			self->engine->Slot(self->lastShader, self->lastSetup);
+		if (self->lastShader == 0) {
+			return;
 		}
+		if (g_settings.stereoReapply == StereoReapply::kSlot14) {
+			self->engine->Slot(self->lastShader, self->lastSetup);
+			return;
+		}
+		ViewReapply(self->lastShader, self->lastSetup.arguments);
 	}
 };
 
@@ -323,9 +379,10 @@ UInt32 InstallRouteStereoDraw(const RouteSettings& settings, LogFn log) {
 	                           sizeof(kDrawSkinnedBytes), reinterpret_cast<const void*>(&RouteDrawSkinned),
 	                           reinterpret_cast<void**>(&g_originalDrawSkinned), log, DetourRole::Route) ? 1 : 0;
 	g_on = made == 2;
-	log("Route: stereo draw %s, eyes %u, test eye shift %.3f (%s)", g_on ? "on" : "off (not both detours made)",
+	log("Route: stereo draw %s, eyes %u, test eye shift %.3f (%s), re-apply %s", g_on ? "on" : "off (not both detours made)",
 	    static_cast<unsigned>(settings.stereoEyes), static_cast<double>(settings.stereoTestEyeShift),
-	    eye::TestModeOn(settings.stereoTestEyeShift) ? "the viewport split in halves" : "off: eye data from OBVR or none");
+	    eye::TestModeOn(settings.stereoTestEyeShift) ? "the viewport split in halves" : "off: eye data from OBVR or none",
+	    StereoReapplyName(settings.stereoReapply));
 	return made;
 }
 

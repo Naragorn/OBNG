@@ -197,6 +197,45 @@ constexpr std::uint32_t ReportedPlan(bool routeOn, std::uint8_t allowedEyes) {
 	return routeOn ? allowedEyes : 0u;
 }
 
+// ---- The view re-apply's targets ------------------------------------------------
+//
+// SetupShaderPrograms 0x0077A1F0 applies two maps, shader+0x2C against the
+// pass's program +0x44 and shader+0x30 against +0x58, each skipped when the
+// map or the program is null (re/functions/0x0077A1F0.md B3..B6). Which of
+// the two is the vertex map is unverified there, so the view re-apply
+// decides by the map's vtable: NiD3DSCM_Vertex is 0x00AB2BAC (read in
+// .rdata, re/functions/0x009A8E30.md C1). The pixel map's view ids are
+// unverified and it is left alone.
+
+constexpr std::uint32_t kNiD3DSCMVertexVtable = 0x00AB2BAC;
+
+struct ReapplyTarget {
+	std::uint32_t map = 0;
+	std::uint32_t program = 0;
+	constexpr bool operator==(const ReapplyTarget&) const = default;
+};
+
+struct ReapplyTargets {
+	ReapplyTarget target[2];
+	std::uint8_t count = 0;
+};
+
+constexpr bool IsVertexMap(std::uint32_t map, std::uint32_t program, std::uint32_t vtable) {
+	return map != 0 && program != 0 && vtable == kNiD3DSCMVertexVtable;
+}
+
+constexpr ReapplyTargets ViewReapplyTargets(std::uint32_t mapA, std::uint32_t programA, std::uint32_t vtableA, std::uint32_t mapB,
+                                            std::uint32_t programB, std::uint32_t vtableB) {
+	ReapplyTargets out;
+	if (IsVertexMap(mapA, programA, vtableA)) {
+		out.target[out.count++] = ReapplyTarget{mapA, programA};
+	}
+	if (IsVertexMap(mapB, programB, vtableB)) {
+		out.target[out.count++] = ReapplyTarget{mapB, programB};
+	}
+	return out;
+}
+
 // ---- What one switch does, as a record the tests can read -----------------
 //
 // The engine switch (RouteStereoDraw.cpp) follows these steps in this order

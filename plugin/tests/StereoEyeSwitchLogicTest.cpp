@@ -175,6 +175,19 @@ int main() {
 		Check(!sw::TestModeOn(0.0f) && sw::TestModeOn(4.5f) && sw::TestModeOn(-1.0f), "the test mode is any non-zero shift");
 	}
 
+	Section("ViewReapplyTargets: the maps with the vertex vtable and a program, in the original's order");
+	{
+		const std::uint32_t v = sw::kNiD3DSCMVertexVtable;
+		const sw::ReapplyTargets both = sw::ViewReapplyTargets(0x100, 0x200, v, 0x300, 0x400, v);
+		Check(both.count == 2 && both.target[0] == sw::ReapplyTarget{0x100, 0x200} && both.target[1] == sw::ReapplyTarget{0x300, 0x400},
+		      "two vertex maps: both, A first");
+		const sw::ReapplyTargets pixelB = sw::ViewReapplyTargets(0x100, 0x200, v, 0x300, 0x400, 0x00AB297C);
+		Check(pixelB.count == 1 && pixelB.target[0] == sw::ReapplyTarget{0x100, 0x200}, "B with the pixel vtable: A only");
+		Check(sw::ViewReapplyTargets(0, 0x200, v, 0x300, 0x400, v).count == 1, "a null map A: B only");
+		Check(sw::ViewReapplyTargets(0x100, 0, v, 0x300, 0x400, v).target[0] == sw::ReapplyTarget{0x300, 0x400}, "a null program A: B only");
+		Check(sw::ViewReapplyTargets(0x100, 0x200, 0x00AB2A4C, 0, 0, 0).count == 0, "the base vtable: nothing");
+	}
+
 	Section("EffectivePlan and ReportedPlan");
 	{
 		Check(sw::EffectivePlan(2, true).eyes == 2, "two allowed with data: two");
