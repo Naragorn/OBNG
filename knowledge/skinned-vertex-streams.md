@@ -118,9 +118,14 @@ CPU is unverified (see the end). These figures are for five people (measured):
   - The unlock 0x00776D80 copies that staging memory into the mapped D3D
     pointer `[this+0x48]` with `rep movsd` at 0x00776D8F.
   - Every byte packed is therefore written twice.
-- **The dynamic-buffer ring manager** is 0x007829A0,
-  `thiscall(ring, bytes, ...)`, ret 14h. It creates every dynamic vertex
-  buffer the engine makes, 2048 to 120384 bytes, at 0x00782A08.
+- **The dynamic-buffer ring** is 0x007829A0 (DynamicVertexBufferRing::Reserve,
+  proposal; re/functions/0x007829A0.md, read 2026-11-04),
+  `thiscall(ring; bytes, ...)`, ret 14h, called only from
+  NiDynamicGeometryGroup's allocate slot 0x0077E430. It hands out a slice of
+  the ring's one vertex buffer from the cursor +0x14 and returns the lock
+  flags for it: NOOVERWRITE (0x1000) while appending, DISCARD (0x2000)
+  forced at offset 0 (the wrap). It does not lock. It creates every dynamic
+  vertex buffer the engine makes, 2048 to 120384 bytes, at 0x00782A08.
   - The ring's capacity at +0x08 is the **largest single request seen**,
     rounded to 16, plus 32.
   - A bigger request frees the buffer and creates a new one of that size,
