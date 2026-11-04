@@ -24,7 +24,11 @@
 
 #include <windows.h>
 
+#include <intrin.h>
+
 #include <cstdio>
+
+#include "ProbeLogic.h"
 
 #include "Probes.h"
 #include "RouteStereoDrawLogic.h"
@@ -89,6 +93,25 @@ bool g_eyesSet = false;
 
 SRWLOCK g_statsLock = SRWLOCK_INIT;
 route::Stats g_stats;
+probe::ClockPair g_summaryClock;  // the clocks at the last summary (0: none yet)
+
+probe::ClockPair ReadClocks() {
+	LARGE_INTEGER qpc{};
+	QueryPerformanceCounter(&qpc);
+	return probe::ClockPair{static_cast<std::uint64_t>(__rdtsc()), static_cast<std::uint64_t>(qpc.QuadPart)};
+}
+
+std::uint64_t ClockFrequency() {
+	LARGE_INTEGER f{};
+	QueryPerformanceFrequency(&f);
+	return static_cast<std::uint64_t>(f.QuadPart);
+}
+
+// The ticks one draw call's switches took, split by the re-apply.
+struct SwitchTicks {
+	std::uint64_t all = 0;
+	std::uint64_t reapply = 0;
+};
 
 template <class T>
 T ReadAt(std::uintptr_t address) {
@@ -143,10 +166,11 @@ void ViewReapply(std::uint32_t shader, const std::uint32_t args[8]) {
 // viewport is eye 0's (StereoEyeSwitchLogic.h, the viewport gate), the test
 // mode's otherwise; null when neither. outside counts a gated-out draw.
 template <class Port>
-const eye::EyeData* EyesForDraw(const Port& port, bool* outside) {
+const eye::EyeData* EyesForDraw(const Port& port, bool* outside, eye::Viewport* seen) {
 	*outside = false;
 	if (g_eyesSet) {
-		if (eye::InEyeViewport(port.CurrentViewport(), g_eyes)) {
+		*seen = port.CurrentViewport();
+		if (eye::InEyeViewport(*seen, g_eyes)) {
 			return &g_eyes;
 		}
 		*outside = true;
@@ -166,6 +190,7 @@ struct EyeEnginePort {
 	std::uintptr_t renderer;
 	void (*reapply)(void* context);
 	void* context;
+	SwitchTicks* ticks;
 
 	float* View() const { return reinterpret_cast<float*>(renderer + kRendererViewMatrixOffset); }
 	float* Inverse() const { return reinterpret_cast<float*>(renderer + kRendererInverseViewOffset); }
@@ -200,13 +225,26 @@ struct EyeEnginePort {
 		return viewport;
 	}
 	void ReapplyConstants() const {
+		const std::uint64_t t0 = __rdtsc();
 		SetProbeEyePhase(1);  // the view-dependence probe keys the uploads inside
 		reapply(context);
 		SetProbeEyePhase(0);
+		ticks->reapply += __rdtsc() - t0;
 	}
 };
 
 using EngineEyeSwitch = eye::EyeSwitch<EyeEnginePort>;
+
+// The switch timed as a whole (both Switch calls), for the route's line.
+struct TimedEyeSwitch {
+	EngineEyeSwitch* inner;
+	SwitchTicks* ticks;
+	void Switch(std::uint8_t e) {
+		const std::uint64_t t0 = __rdtsc();
+		inner->Switch(e);
+		ticks->all += __rdtsc() - t0;
+	}
+};
 
 // The skinned rebuild's ports over the game's memory (the views and the
 // function types of NiDX9Renderer_DrawSkinnedPrimitive.h); each member is
@@ -214,7 +252,7 @@ using EngineEyeSwitch = eye::EyeSwitch<EyeEnginePort>;
 // is kept for the eye switch's re-apply.
 struct SkinnedEnginePorts {
 	skinned_engine::NiDX9RendererView* renderer;
-	EngineEyeSwitch* eyes;
+	TimedEyeSwitch* eyes;
 	skinned::Handle lastShader = skinned::kNull;
 	skinned::PartitionCall lastSetup{};
 
@@ -356,17 +394,24 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
 	                                reinterpret_cast<whole_engine::ShaderInterfaceCastFn>(whole_engine::kShaderInterfaceCastAddress)};
 	RecordingShaderPort shader{&ports};
 	eye::SwitchCounters counters;
-	EyeEnginePort eyePort{reinterpret_cast<std::uintptr_t>(self), &RecordingShaderPort::Reapply, &shader};
+	SwitchTicks ticks;
+	EyeEnginePort eyePort{reinterpret_cast<std::uintptr_t>(self), &RecordingShaderPort::Reapply, &shader, &ticks};
 	bool outside = false;
-	const eye::EyeData* eyes = EyesForDraw(eyePort, &outside);
+	eye::Viewport seen;
+	const eye::EyeData* eyes = EyesForDraw(eyePort, &outside, &seen);
 	EngineEyeSwitch eyeSwitch{&eyePort, &counters, eyes, eyes != nullptr ? 0.0f : g_settings.stereoTestEyeShift};
+	TimedEyeSwitch timed{&eyeSwitch, &ticks};
 	const whole::DrawInput in{geometry, data, skin, world, worldBound, record};
 	const whole::Outcome outcome =
-	    whole::Draw(in, route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode())), ports, shader, ports, ports, eyeSwitch);
+	    whole::Draw(in, route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode())), ports, shader, ports, ports, timed);
 	AcquireSRWLockExclusive(&g_statsLock);
 	g_stats.AddWhole(outcome);
 	g_stats.AddSwitches(counters);
+	g_stats.AddTicks(ticks.all, ticks.reapply);
 	g_stats.drawsOutsideEye += outside ? 1u : 0u;
+	if (outside) {
+		g_stats.outside.Add(seen);
+	}
 	ReleaseSRWLockExclusive(&g_statsLock);
 	return 0;
 }
@@ -374,18 +419,25 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
 UInt32 __fastcall RouteDrawSkinned(void* self, void* /*edx*/, UInt32 geometry, UInt32 data, UInt32 skin, UInt32 world, UInt32 worldBound) {
 	eye::SwitchCounters counters;
 	SkinnedEnginePorts ports{static_cast<skinned_engine::NiDX9RendererView*>(self), nullptr};
-	EyeEnginePort eyePort{reinterpret_cast<std::uintptr_t>(self), &SkinnedEnginePorts::Reapply, &ports};
+	SwitchTicks ticks;
+	EyeEnginePort eyePort{reinterpret_cast<std::uintptr_t>(self), &SkinnedEnginePorts::Reapply, &ports, &ticks};
 	bool outside = false;
-	const eye::EyeData* eyes = EyesForDraw(eyePort, &outside);
+	eye::Viewport seen;
+	const eye::EyeData* eyes = EyesForDraw(eyePort, &outside, &seen);
 	EngineEyeSwitch eyeSwitch{&eyePort, &counters, eyes, eyes != nullptr ? 0.0f : g_settings.stereoTestEyeShift};
-	ports.eyes = &eyeSwitch;
+	TimedEyeSwitch timed{&eyeSwitch, &ticks};
+	ports.eyes = &timed;
 	const skinned::DrawArguments args{static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(self)), geometry, data, skin, world, worldBound};
 	const skinned::Outcome outcome =
 	    skinned::DrawSkinnedPrimitive(ports, args, route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode())));
 	AcquireSRWLockExclusive(&g_statsLock);
 	g_stats.AddSkinned(outcome);
 	g_stats.AddSwitches(counters);
+	g_stats.AddTicks(ticks.all, ticks.reapply);
 	g_stats.drawsOutsideEye += outside ? 1u : 0u;
+	if (outside) {
+		g_stats.outside.Add(seen);
+	}
 	ReleaseSRWLockExclusive(&g_statsLock);
 	return 0;
 }
@@ -409,6 +461,7 @@ UInt32 InstallRouteStereoDraw(const RouteSettings& settings, LogFn log) {
 	                           sizeof(kDrawSkinnedBytes), reinterpret_cast<const void*>(&RouteDrawSkinned),
 	                           reinterpret_cast<void**>(&g_originalDrawSkinned), log, DetourRole::Route) ? 1 : 0;
 	g_on = made == 2;
+	g_summaryClock = ReadClocks();
 	log("Route: stereo draw %s, eyes %u, test eye shift %.3f (%s), re-apply %s", g_on ? "on" : "off (not both detours made)",
 	    static_cast<unsigned>(settings.stereoEyes), static_cast<double>(settings.stereoTestEyeShift),
 	    eye::TestModeOn(settings.stereoTestEyeShift) ? "the viewport split in halves" : "off: eye data from OBVR or none",
@@ -445,12 +498,15 @@ void LogStereoDrawSummary() {
 	if (!g_on || g_log == nullptr) {
 		return;
 	}
+	const probe::ClockPair now = ReadClocks();
+	const double ticksPerMillisecond = probe::TicksPerMillisecond(g_summaryClock, now, ClockFrequency());
+	g_summaryClock = now;
 	AcquireSRWLockExclusive(&g_statsLock);
 	const route::Stats stats = g_stats;
 	g_stats.Reset();
 	ReleaseSRWLockExclusive(&g_statsLock);
-	char line[400];
-	route::FormatStats(stats, line, sizeof(line));
+	char line[900];
+	route::FormatStats(stats, ticksPerMillisecond, line, sizeof(line));
 	g_log("%s", line);
 }
 

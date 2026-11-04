@@ -30,6 +30,35 @@ constexpr stereo::EyePlan PlanFor(const RouteSettings& settings, bool hasEyeData
 	return stereo_eye_switch::EffectivePlan(settings.stereoEyes, hasEyeData);
 }
 
+// The distinct viewport rectangles seen by draws the gate kept single
+// (the interface mode), with their counts: which pass draws there.
+struct OutsideViewports {
+	static constexpr std::uint32_t kMaxRows = 8;
+	struct Row {
+		stereo_eye_switch::Viewport rect;
+		std::uint64_t count = 0;
+	};
+	Row rows[kMaxRows] = {};
+	std::uint32_t size = 0;
+	std::uint64_t overflow = 0;
+
+	void Add(const stereo_eye_switch::Viewport& rect) {
+		for (std::uint32_t i = 0; i < size; ++i) {
+			if (stereo_eye_switch::SameRect(rows[i].rect, rect)) {
+				++rows[i].count;
+				return;
+			}
+		}
+		if (size >= kMaxRows) {
+			++overflow;
+			return;
+		}
+		rows[size].rect = rect;
+		rows[size].count = 1;
+		++size;
+	}
+};
+
 // What the route did since the last summary.
 struct Stats {
 	std::uint64_t wholeDraws = 0;    // DrawPrimitive 0x007672F0 calls routed
@@ -39,6 +68,9 @@ struct Stats {
 	std::uint64_t eyeSwitches = 0;        // Switch(1) calls: the second eye's draws framed
 	std::uint64_t eyeSwitchesApplied = 0; // of them with eye data: the second eye's state set
 	std::uint64_t drawsOutsideEye = 0;    // draws with eye data whose viewport was not eye 0's: drawn once
+	OutsideViewports outside;             // their viewports
+	std::uint64_t switchTicks = 0;        // TSC ticks inside Switch(1) and Switch(0), applied switches only
+	std::uint64_t reapplyTicks = 0;       // of them inside the constants re-apply
 	std::uint64_t eyeDataSets = 0;        // ObngStereoSetEyes accepted
 	std::uint64_t eyeDataRefused = 0;     // ObngStereoSetEyes refused
 	std::uint8_t eyes = 1;                // the eyes allowed
@@ -55,6 +87,10 @@ struct Stats {
 		eyeSwitches += c.applied + c.noData;
 		eyeSwitchesApplied += c.applied;
 	}
+	void AddTicks(std::uint64_t switchT, std::uint64_t reapplyT) {
+		switchTicks += switchT;
+		reapplyTicks += reapplyT;
+	}
 	void Reset() {
 		const std::uint8_t keep = eyes;
 		*this = Stats{};
@@ -63,11 +99,13 @@ struct Stats {
 };
 
 // "Route: stereo draw (eyes N) - W whole draws (drawn D, refused R, null record Z), S skinned draws
-// (closed C, no skin K, refused R, record missing M), N eye switches (applied A), N draws outside eye 0's viewport, eye data set S, refused R"
-inline int FormatStats(const Stats& s, char* out, std::size_t capacity) {
+// (closed C, no skin K, refused R, record missing M), N eye switches (applied A), N draws outside eye 0's viewport, eye data set S, refused R;
+// switch X.XX us, re-apply Y.YY us per applied switch" - the last part only with a clock
+// (ticksPerMillisecond > 0 and applied switches).
+inline int FormatStats(const Stats& s, double ticksPerMillisecond, char* out, std::size_t capacity) {
 	using WO = whole::Outcome;
 	using SO = skinned::Outcome;
-	return std::snprintf(out, capacity,
+	int at = std::snprintf(out, capacity,
 		"Route: stereo draw (eyes %u) - %llu whole draws (drawn %llu, refused %llu, null record %llu), %llu skinned draws "
 		"(closed %llu, no skin %llu, refused %llu, record missing %llu), %llu eye switches (applied %llu), %llu draws outside eye 0's viewport, "
 		"eye data set %llu, refused %llu",
@@ -83,6 +121,23 @@ inline int FormatStats(const Stats& s, char* out, std::size_t capacity) {
 		static_cast<unsigned long long>(s.eyeSwitches), static_cast<unsigned long long>(s.eyeSwitchesApplied),
 		static_cast<unsigned long long>(s.drawsOutsideEye), static_cast<unsigned long long>(s.eyeDataSets),
 		static_cast<unsigned long long>(s.eyeDataRefused));
+	if (at >= 0 && static_cast<std::size_t>(at) < capacity && ticksPerMillisecond > 0.0 && s.eyeSwitchesApplied != 0) {
+		const double perSwitch = 1000.0 / ticksPerMillisecond / static_cast<double>(s.eyeSwitchesApplied);
+		at += std::snprintf(out + at, capacity - at, "; switch %.2f us, re-apply %.2f us per applied switch",
+		                    static_cast<double>(s.switchTicks) * perSwitch, static_cast<double>(s.reapplyTicks) * perSwitch);
+	}
+	if (at >= 0 && static_cast<std::size_t>(at) < capacity && s.outside.size != 0) {
+		at += std::snprintf(out + at, capacity - at, "; outside viewports:");
+		for (std::uint32_t i = 0; i < s.outside.size && at >= 0 && static_cast<std::size_t>(at) < capacity; ++i) {
+			const OutsideViewports::Row& r = s.outside.rows[i];
+			at += std::snprintf(out + at, capacity - at, " %u,%u %ux%u x%llu", r.rect.x, r.rect.y, r.rect.width, r.rect.height,
+			                    static_cast<unsigned long long>(r.count));
+		}
+		if (s.outside.overflow != 0 && at >= 0 && static_cast<std::size_t>(at) < capacity) {
+			at += std::snprintf(out + at, capacity - at, " (+%llu in other rects)", static_cast<unsigned long long>(s.outside.overflow));
+		}
+	}
+	return at;
 }
 
 }  // namespace obng::plugin::stereo_draw_route

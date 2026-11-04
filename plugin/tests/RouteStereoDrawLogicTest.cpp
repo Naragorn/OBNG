@@ -69,15 +69,29 @@ int main() {
 	Check(stats.skinnedDraws == 3 && stats.skinnedOutcome[3] == 1 && stats.skinnedOutcome[0] == 1 && stats.skinnedOutcome[2] == 1,
 	      "three skinned draws: closed, no skin, record missing");
 	char line[400];
-	route::FormatStats(stats, line, sizeof(line));
+	route::FormatStats(stats, 0.0, line, sizeof(line));
 	Check(std::string(line) ==
 	          "Route: stereo draw (eyes 2) - 3 whole draws (drawn 2, refused 1, null record 0), 3 skinned draws (closed 1, no skin 1, "
 	          "refused 0, record missing 1), 3 eye switches (applied 2), 4 draws outside eye 0's viewport, eye data set 5, refused 1",
 	      "the line");
+	stats.outside.Add(obng::plugin::stereo_eye_switch::Viewport{0, 0, 1024, 1024, 0.0f, 1.0f});
+	stats.outside.Add(obng::plugin::stereo_eye_switch::Viewport{0, 0, 1024, 1024, 0.0f, 1.0f});
+	stats.outside.Add(obng::plugin::stereo_eye_switch::Viewport{0, 0, 5136, 2568, 0.0f, 1.0f});
+	route::FormatStats(stats, 0.0, line, sizeof(line));
+	Check(std::strstr(line, "; outside viewports: 0,0 1024x1024 x2 0,0 5136x2568 x1") != nullptr, "the outside viewports with their counts");
+	for (std::uint32_t i = 0; i < route::OutsideViewports::kMaxRows + 2; ++i) {
+		stats.outside.Add(obng::plugin::stereo_eye_switch::Viewport{i, 0, 10, 10, 0.0f, 1.0f});
+	}
+	Check(stats.outside.size == route::OutsideViewports::kMaxRows && stats.outside.overflow == 4, "rects beyond the table are counted");
+	stats.AddTicks(6000, 2000);
+	route::FormatStats(stats, 1000.0, line, sizeof(line));  // 1000 ticks a millisecond: a tick is a microsecond
+	Check(std::strstr(line, "; switch 3000.00 us, re-apply 1000.00 us per applied switch") != nullptr, "the timing per applied switch (two applied)");
+	route::FormatStats(stats, 0.0, line, sizeof(line));
+	Check(std::strstr(line, "switch ") == nullptr, "no clock: no timing");
 	stats.Reset();
 	Check(stats.wholeDraws == 0 && stats.skinnedDraws == 0 && stats.eyeSwitches == 0 && stats.eyes == 2, "reset clears the counts, keeps the eyes");
 	char tiny[8];
-	route::FormatStats(stats, tiny, sizeof(tiny));
+	route::FormatStats(stats, 1000.0, tiny, sizeof(tiny));
 	Check(std::strlen(tiny) < sizeof(tiny), "a small buffer is never overrun");
 	return Failures();
 }
