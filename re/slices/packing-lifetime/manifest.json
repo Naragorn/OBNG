@@ -1,0 +1,60 @@
+{
+  "slice": "packing-lifetime",
+  "subsystem": "render",
+  "sharedHeaders": [],
+  "purpose": "Map only: the buffer lifetime under the stream packing, the read facts lever L3 of docs/subsystems/stream-packing.md needs before a cross-frame packing cache is built. Measured 2026-11-04 (artifacts/shadow/obng-walkers-probes/20261104-083110): the fixed Walkers scene packs fourteen volatile streams a frame, 4.15 MB, and 71 % of them carry exactly the bytes of the previous pack of the same (geometry, partition, chip); the chip pointers are stable (35 keys, none new after the warm-up). The cache would skip the pack when the source has not changed - which is only possible if the bytes the last pack put into the D3D buffer are still there. So: per stream chip, which buffer and which range does it own, who assigns the range (at allocation, or per lock from a ring), with which lock flags (D3DLOCK_DISCARD 0x2000 would discard the whole buffer's contents for every chip in it, NOOVERWRITE 0x1000 keeps them), when is a chip released or reallocated, and how does the ring manager 0x007829A0 hand out and reclaim space. No rebuild in this run.",
+  "functions": [
+    {
+      "address": "0x007829A0",
+      "name": "the dynamic-buffer ring manager (proposal from knowledge/skinned-vertex-streams.md: thiscall(ring, bytes, ...), RET 0x14; creates every dynamic vertex buffer the engine makes, 2048 to 120384 bytes, at 0x00782A08; the ring's capacity +0x08 is the largest single request seen, rounded to 16, plus 32; a bigger request frees the buffer and creates a new one)",
+      "mapOnly": true,
+      "known": "One caller 0x0077E430 (meta.json), no callees in Ghidra's table (the D3D CreateVertexBuffer is virtual), 72 asm lines. The knowledge text above is from an earlier pseudocode reading (unverified at instruction level).",
+      "questions": [
+        "What exactly does it return per request: a buffer and an offset (a slice of a ring), or a whole buffer? Where is the write cursor, how does it wrap, and what happens to the bytes of earlier slices when it wraps (is anything told to release or re-lock them)?",
+        "Who calls it (0x0077E430: what is that, and from which lock or allocation path does a request reach it) and how often - per chip allocation, per lock, per frame?",
+        "Does the manager ever lock with D3DLOCK_DISCARD, and for which buffers (the dynamic ones shared by many chips?)."
+      ]
+    },
+    {
+      "address": "0x00776C90",
+      "name": "the buffer manager's Lock (proposal; re/functions/0x0076FE20.md: thiscall(buffer manager [record+0x0C]; vb, offset, size, flags), RET 0x10, calls vb->vt[+0x2C] Lock(vb, offset, size, &mapped, flags), returns 0 on a negative HRESULT; hands out the staging pointer [chip+0x40]; TEST EBP,0x3000 at 0x00776D0E tests the DISCARD/NOOVERWRITE bits)",
+      "mapOnly": true,
+      "known": "Callers 0x00777240, 0x00766880, 0x00769030, 0x007774C0, 0x0076FE20, 0x00776E90; callees memcpy, GetCurrentThreadId, FormHeap_Allocate/Free, EnterCriticalSection (meta.json); 63 asm lines. PackStream 0x0076FE20 calls it with (chip+0x08 vb, chip+0x0C offset, chip+0x14 size, chip+0x10 flags) (read there, 0x0076FF70..0x0076FF79) and the unlock 0x00776D80 then copies [mgr+0x40] staging into the mapped pointer [mgr+0x48] with [mgr+0x4C] bytes and calls vb->vt[+0x30] Unlock (read with objdump 2026-10-30).",
+      "questions": [
+        "What does the lock do with the flags: when 0x3000 bits are set, is the D3D Lock called with DISCARD (0x2000) or NOOVERWRITE (0x1000), and does it ever change the chip's offset (a ring cursor) or always lock the chip's own range?",
+        "Where does the staging memory [mgr+0x40] come from (FormHeap_Allocate per lock? a kept buffer sized to the largest lock?), and what is the critical section for (one manager for all threads?).",
+        "What is written to the manager at +0x40 / +0x48 / +0x4C / +0x80.. (the fields the unlock clears and the lock count it decrements), i.e. the manager's state across a lock/unlock pair."
+      ]
+    },
+    {
+      "address": "0x00776D80",
+      "name": "the buffer manager's Unlock (read with objdump 2026-10-30: thiscall(mgr; vb), RET 4: memcpy([mgr+0x48], [mgr+0x40], [mgr+0x4C]), clears +0x48/+0x4C, decrements [mgr+0xFC], clears [mgr+0xF8] when it reaches 0, LeaveCriticalSection, vb->vt[+0x30] Unlock, returns hr >= 0 in AL)",
+      "mapOnly": true,
+      "known": "Callers 0x00777240, 0x00766880, 0x00769030, 0x0076FE20 (meta.json); 30 asm lines. OBNG's pack-cache probe hashes [mgr+0x40] for [mgr+0x4C] bytes at its entry (Probes.cpp).",
+      "questions": [
+        "Confirm the field roles at instruction level (+0x40 staging, +0x48 mapped, +0x4C bytes, +0xFC a lock depth, +0xF8), and that the mgr is the record's [+0x0C] buffer manager shared by all chips of the record (or one per renderer?).",
+        "Is there any path on which the staging bytes are not copied (a lock without staging) - i.e. does the probe's hash see every packed byte?"
+      ]
+    },
+    {
+      "address": "0x007774C0",
+      "name": "stream allocation for a record (proposal; re/functions/0x00763130.md C19: RET 0x18, called from the packer 0x00763130 and 0x00769030; callees include the lock 0x00776C90, 0x00776DD0, 0x00776C40, 0x007780A0, 0x007282F0, FormHeap, memcpy)",
+      "mapOnly": true,
+      "known": "409 asm lines; callers 0x00763130, 0x00769030 (meta.json). The packer calls it when a stream is not yet allocated (0x00763130.md B-table); the chip's buffer [chip+0x08], offset +0x0C, flags +0x10 and size +0x14 are read by PackStream at the lock - who writes them is the question.",
+      "questions": [
+        "Where do a chip's buffer, offset, size and flags come from: assigned here once per allocation (a fixed slice owned by the chip) or from the ring manager per lock? Which flags does a volatile (0x8000) stream get, which a static one?",
+        "When is a chip released (owner vt+0x1C, 0x0076FE20.md) and reallocated - on a size change only, or every frame for volatile data?",
+        "What else is set up per stream here (the per-stream chip array record+0x24, the 0x28-byte descriptors) that a cache would have to keep valid."
+      ]
+    },
+    {
+      "address": "0x00777F10",
+      "name": "'record has streams allocated' check (proposal; the packer's first call, 0x00763153 with ECX = record, its AL gates the static early-out)",
+      "mapOnly": true,
+      "known": "23 asm lines, no callees; callers 0x00768580, 0x00763130, 0x00768470, 0x0076D200, 0x00767B40, 0x00769B60 (meta.json).",
+      "questions": [
+        "What does it test on the record (which field, which value) and what does its AL mean for the packer's early-out (0x00763130.md B3: static data with streams allocated returns 1 without packing)?"
+      ]
+    }
+  ]
+}
