@@ -267,6 +267,16 @@ rebuild is a 0.2 ms or a 0.8 ms block; without it the ceiling is 1.17 and the fl
 D3D9's 30 ns a call. The per-bone loop alone cannot be far above its floor (0.33 us a
 partition for about ten bones), so "one call per palette" is worth a fraction of 0.53 ms.
 
+Decisions taken after the two redundancy probes (2026-11-04 08:31, run obng-walkers-
+probes/20261104-083110): the packing's cross-frame lever L3 is real on the fixed scene -
+fourteen volatile packs a frame, 4.15 MB, 71 % byte-identical to the previous pack of
+the same stream - and the constant maps' redundancy is 39 % of the uploads within a
+pass with 77 % of the bone palettes in one index run. Neither block is built yet: L3
+needs two read facts first (a change signal for the volatile source, and the chip's
+buffer lifetime under the ring manager 0x007829A0), the constant maps a design for the
+input check. Both are started now: a map slice on the packing's buffer lifetime and the
+block designs.
+
 ## Subsystem replacements
 
 | Subsystem | Replaces | State | Gates | Note |

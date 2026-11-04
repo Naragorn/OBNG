@@ -358,3 +358,48 @@ Walkers save. Routed 1:1, it removes nothing but part of L4: expected gain
     is harmless). Cheapest: the coverage from the emulator cases against
     the declaration's strides; the GPU side stays unverified without a
     rendered-image check.
+
+## The cross-frame probe, run (2026-11-04 08:31)
+
+`[Probe] PackCache=1` (Probes.cpp: the packer 0x00763130 keeps (geometry,
+partition) and the data's consistency word per thread, the unlock
+0x00776D80 hashes the staging bytes before the original copies them, keyed
+by (geometry, partition, chip)), on the fixed Walkers scene with nothing
+routed (`artifacts/shadow/obng-walkers-probes/20261104-083110`, 4496 frames
+in the 60 s watched, medians of the steady windows, per frame):
+
+| What | Per frame |
+|---|---:|
+| packer entries with static data (early-out, nothing packed) | 1 610 |
+| packer entries with volatile data (0x8000), packed every time | 14 |
+| packer entries with mutable data | 4 |
+| packs (unlocks inside a packer call) | 14.1 |
+| packs byte-identical to the key's last pack | **71 %** (by count and by bytes) |
+| bytes packed | **4.15 MB** |
+| distinct keys over the run | 35 (0 evicted, 0 new after the warm-up) |
+| unlocks outside the packer (index and other buffers) | 52 |
+
+So the scene packs fourteen large volatile streams a frame, 0.3 MB each,
+and seven in ten of them carry exactly the bytes of the previous pack of the
+same stream. Lever L3's ceiling on this scene is 71 % of the volatile
+packing - of the 1.00 ms a frame measured for slot 15 (knowledge/
+culling-and-draw-setup.md, round two), the part spent in these fourteen
+packs; the 1 610 static early-outs and the binds are the rest (not split).
+**Derived, unverified:** the fourteen are the Walkers' skinned bodies
+(eighteen bodies, 35 keys); that they are marked volatile while their
+packed bytes rarely change says the engine repacks on a flag, not on a
+change.
+
+What L3 needs before it is built (open from this run, both read questions):
+
+1. **A change signal for the source.** The probe saw the packed bytes
+   repeat; the rebuild must know *before* packing that they will. Either
+   the engine has a writer of the volatile geometry's arrays with a version
+   or dirty mark (unread), or the cache hashes the source arrays at the
+   packer's entry (about the read cost of the pack, half its write cost).
+2. **The chip's lifetime.** The key's chip pointer was stable (35 keys, 0
+   new) but whether the D3D buffer range the unlock copied into survives
+   until the next pack - the ring manager 0x007829A0 hands out slices and
+   wraps (knowledge/skinned-vertex-streams.md) - decides whether "rebind
+   the old bytes" is possible at all, or whether the cache can only skip the
+   copier and must still refill the ring (the staging memcpy stays).

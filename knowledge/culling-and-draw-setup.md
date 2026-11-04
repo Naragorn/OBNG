@@ -478,3 +478,23 @@ frames file under 0x007AD270):
   nanoseconds in a command buffer rather than the 2 us per shape measured
   under Do_RenderShape on 2026-10-30. (reference: the engine behaviour notes
   in ../OBVR/docs/vr-modding; source for the 2 us: round two above)
+
+### The two redundancy probes (measured 2026-11-04 08:31)
+
+Run `artifacts/shadow/obng-walkers-probes/20261104-083110` on the fixed
+Walkers scene, nothing routed, per frame (medians of the steady windows):
+
+- **Packing** (docs/subsystems/stream-packing.md, "The cross-frame probe,
+  run"): 14 volatile packs a frame of 4.15 MB, 71 % byte-identical to the
+  previous pack of the same stream; 1 610 static early-outs.
+- **Constant uploads** through the program's slots 0x007830C0 and
+  0x00783180: 14 046 uploads a frame (2 320 single entries, all of type 2
+  "defined"; 1 629 bone palettes with 11 717 bones, 7.2 a palette, 77 % of
+  the palettes with one consecutive index run), 0.68 MB; **39 % of the
+  uploads (41 % of the bytes) carry what the register already held, every
+  one of them within the same pass** - the previous upload to that register
+  by another partition of the same pass. So a check of the inputs before
+  computing an entry could skip about four in ten of the constant maps'
+  1.17 ms, the single call per palette needs a gather for 23 % of them, and
+  a per-pass cache of the view and projection ids is not what repeats here
+  (those repeat across partitions, which the register check already sees).
