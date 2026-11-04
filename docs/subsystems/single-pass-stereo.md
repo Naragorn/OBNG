@@ -504,3 +504,26 @@ the whole draws (494 639 in the 14:54 run, before the change) and 5 % more
 skinned draws; the Walkers are still there. Comparable within that spread;
 a new original baseline on this scene is owed before the next fine
 comparison.
+
+## The artefact classes of the dual pass, on the single path (2026-11-04 evening, OBVR's measurements)
+
+Measured by OBVR as the best x shift left to right per image band, single
+against dual (runs single-pass-effects-on/-off at the Talos bridge,
+single-pass-torch-on/-off in its test hall):
+
+- **Water reflections:** not off. The reflection is rendered once a frame
+  (WaterStereoPass Single) and serves both eyes; the bands trees / house
+  101 / 102 / 103 px on as off, the water 109 / 115 against 106 / 116 (the
+  waves run on between the runs).
+- **Leaves, distant trees, particles:** face the pass camera, on the single
+  path both eyes face eye 0's. The torch in the hand: 109 / 108 / 125 / 125
+  / 153 / 169 against 109 / 110 / 129 / 129 / 153 / 169 px - the flame band
+  4 px lower, the pure translation expected from the shared facing; the
+  flame is in both eyes.
+- **People / bone palettes, terrain, SpeedTree geometry:** verified earlier
+  today (A1, A2).
+- Open on OBVR's list: A3 (the texture path without MSAA keeps the dual
+  pass), A6 (culling from the pass camera's frustum: very near objects at
+  eye 1's right edge), A7 (release).
+
+No visible difference in these classes; OBVR's spec table A8.
