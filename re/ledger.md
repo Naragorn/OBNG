@@ -377,7 +377,11 @@ filtered walk of the vertex map (type 2, the view ids) through slot +0x54 - a re
 Built and run 13:35 (wf_0fc7705c-dd3; run obng-walkers-stereo/20261104-133458): with the view
 re-apply the switch costs 0.64 ms a pass (3.62 against 2.98), down from 0.95; the pixel maps
 hold no defined entries on the scene (run -133744, tabled keys). Projected single pass about
-3.6 against 5.6 ms. Next: the switch's floor without constants (StereoReapply=none).
+3.6 against 5.6 ms. Floor run 13:43 (StereoReapply=none, obng-walkers-stereo/20261104-134331):
+3.35 ms, so the device calls (SetTransform and SetViewport twice each, GetViewport in the
+test mode) are 0.37 ms of the 0.64 and the view re-apply 0.27. OBNG's half of the single
+pass is complete for OBVR's build; trims (no GetViewport in the interface mode, maybe no
+SetTransform) are later.
 
 ## Subsystem replacements
 

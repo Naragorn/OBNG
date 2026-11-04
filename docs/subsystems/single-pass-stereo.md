@@ -346,3 +346,27 @@ with SetupShaderPrograms' own argument list (0x0077A1F0.md C14 / C19).
 - **Projected single pass** (derived): 2.80 + 0.64 + 0.19 = about 3.6 ms
   against 5.6 ms for the two passes today, about 2.0 ms a frame of CPU on
   the prison scene.
+
+## The switch's floor (2026-11-04 13:43, run obng-walkers-stereo/20261104-134331)
+
+`StereoReapply=none`: the rows, SetTransform(VIEW) and SetViewport twice
+each per partition, GetViewport once (test mode), no constants.
+
+| Run | Re-apply | scene_pass mean / p95 |
+|---|---|---:|
+| -134331 | none (the floor) | 3.35 / 3.68 ms |
+| -133458 | view | 3.62 / 4.02 |
+| -121654 | slot14 | 3.93 / 4.38 |
+| -112320 | no switch | 2.98 / 3.53 |
+
+- **The floor is 0.37 ms a pass, the view re-apply itself 0.27 ms**
+  (measured). Of the 0.64 ms, the per-partition device calls are the larger
+  part: about 160 ns per partition for five dxvk calls, about 30 ns each
+  (derived). The constants are where they should be.
+- Trims left for later, in order of evidence: the interface mode makes no
+  GetViewport (one call of five gone, derived); SetTransform(VIEW) can go
+  only if nothing in the programmable pipeline reads the device's VIEW
+  transform - the constant maps read renderer +0x980 directly (read) - but
+  whether any fixed-function or engine path reads it back is unverified; a
+  headset look with it skipped would settle it. The switch is good enough
+  for OBVR's half as it stands.
