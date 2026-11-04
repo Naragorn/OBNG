@@ -188,6 +188,16 @@ int main() {
 		Check(sw::ViewReapplyTargets(0x100, 0x200, 0x00AB2A4C, 0, 0, 0).count == 0, "the base vtable: nothing");
 	}
 
+	Section("The viewport gate: eye 0's rectangle, the depth range not compared");
+	{
+		const EyeData eyes = sw::FromApi(GoodEyes());
+		Check(sw::InEyeViewport(Viewport{0, 0, 960, 1080, 0.0f, 1.0f}, eyes), "the world pass's viewport: in");
+		Check(sw::InEyeViewport(Viewport{0, 0, 960, 1080, 0.2f, 0.8f}, eyes), "another depth range: still in");
+		Check(!sw::InEyeViewport(Viewport{0, 0, 1024, 1024, 0.0f, 1.0f}, eyes), "a shadow map's viewport: out");
+		Check(!sw::InEyeViewport(Viewport{960, 0, 960, 1080, 0.0f, 1.0f}, eyes), "eye 1's own rectangle: out");
+		Check(!sw::InEyeViewport(Viewport{0, 0, 1920, 1080, 0.0f, 1.0f}, eyes), "the whole target: out");
+	}
+
 	Section("EffectivePlan and ReportedPlan");
 	{
 		Check(sw::EffectivePlan(2, true).eyes == 2, "two allowed with data: two");

@@ -17,10 +17,13 @@
 //     in D3DVIEWPORT9 order; eye 0's must be the one the engine's own
 //     SetViewport would have left (the camera's port rect on that target), as
 //     the first draw of every partition runs before any switch.
-//   - Set the eyes right before the world render and clear them right after:
-//     with eyes set, every draw through the route doubles, in every pass
-//     (water reflections, the 2D layer, menus included) - scoping is the
-//     caller's.
+//   - Set the eyes right before the world render and clear them right after.
+//     While they are set, a draw doubles only when the device's current
+//     viewport rectangle is viewport[0] (one GetViewport per draw call): the
+//     passes inside RenderScene that draw into their own targets - the
+//     actor shadow maps, the water pre-pass - draw once. Passes that share
+//     eye 0's rectangle (the 2D layer over the world target, say) still
+//     double, so the clear after the world render stays the caller's.
 //   - All three functions are called on the render thread only (the thread
 //     that runs the draws); nothing here locks.
 

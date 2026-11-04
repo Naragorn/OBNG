@@ -54,6 +54,7 @@ int main() {
 	Check(stats.eyeSwitches == 3 && stats.eyeSwitchesApplied == 2, "three Switch(1) calls, two of them applied");
 	stats.eyeDataSets = 5;
 	stats.eyeDataRefused = 1;
+	stats.drawsOutsideEye = 4;
 
 	Section("The counters by function and outcome; Reset keeps the plan");
 	stats.eyes = 2;
@@ -71,7 +72,7 @@ int main() {
 	route::FormatStats(stats, line, sizeof(line));
 	Check(std::string(line) ==
 	          "Route: stereo draw (eyes 2) - 3 whole draws (drawn 2, refused 1, null record 0), 3 skinned draws (closed 1, no skin 1, "
-	          "refused 0, record missing 1), 3 eye switches (applied 2), eye data set 5, refused 1",
+	          "refused 0, record missing 1), 3 eye switches (applied 2), 4 draws outside eye 0's viewport, eye data set 5, refused 1",
 	      "the line");
 	stats.Reset();
 	Check(stats.wholeDraws == 0 && stats.skinnedDraws == 0 && stats.eyeSwitches == 0 && stats.eyes == 2, "reset clears the counts, keeps the eyes");

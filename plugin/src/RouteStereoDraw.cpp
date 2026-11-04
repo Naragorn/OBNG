@@ -139,8 +139,24 @@ void ViewReapply(std::uint32_t shader, const std::uint32_t args[8]) {
 	}
 }
 
-bool HasEyeData() {
-	return g_eyesSet || eye::TestModeOn(g_settings.stereoTestEyeShift);
+// The eye data for one draw call: the interface's when the device's
+// viewport is eye 0's (StereoEyeSwitchLogic.h, the viewport gate), the test
+// mode's otherwise; null when neither. outside counts a gated-out draw.
+template <class Port>
+const eye::EyeData* EyesForDraw(const Port& port, bool* outside) {
+	*outside = false;
+	if (g_eyesSet) {
+		if (eye::InEyeViewport(port.CurrentViewport(), g_eyes)) {
+			return &g_eyes;
+		}
+		*outside = true;
+		return nullptr;
+	}
+	return nullptr;
+}
+
+bool TestMode() {
+	return eye::TestModeOn(g_settings.stereoTestEyeShift);
 }
 
 // The eye switch's engine port: the renderer's two matrices, the device's
@@ -341,12 +357,16 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
 	RecordingShaderPort shader{&ports};
 	eye::SwitchCounters counters;
 	EyeEnginePort eyePort{reinterpret_cast<std::uintptr_t>(self), &RecordingShaderPort::Reapply, &shader};
-	EngineEyeSwitch eyeSwitch{&eyePort, &counters, g_eyesSet ? &g_eyes : nullptr, g_settings.stereoTestEyeShift};
+	bool outside = false;
+	const eye::EyeData* eyes = EyesForDraw(eyePort, &outside);
+	EngineEyeSwitch eyeSwitch{&eyePort, &counters, eyes, eyes != nullptr ? 0.0f : g_settings.stereoTestEyeShift};
 	const whole::DrawInput in{geometry, data, skin, world, worldBound, record};
-	const whole::Outcome outcome = whole::Draw(in, route::PlanFor(g_settings, HasEyeData()), ports, shader, ports, ports, eyeSwitch);
+	const whole::Outcome outcome =
+	    whole::Draw(in, route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode())), ports, shader, ports, ports, eyeSwitch);
 	AcquireSRWLockExclusive(&g_statsLock);
 	g_stats.AddWhole(outcome);
 	g_stats.AddSwitches(counters);
+	g_stats.drawsOutsideEye += outside ? 1u : 0u;
 	ReleaseSRWLockExclusive(&g_statsLock);
 	return 0;
 }
@@ -355,13 +375,17 @@ UInt32 __fastcall RouteDrawSkinned(void* self, void* /*edx*/, UInt32 geometry, U
 	eye::SwitchCounters counters;
 	SkinnedEnginePorts ports{static_cast<skinned_engine::NiDX9RendererView*>(self), nullptr};
 	EyeEnginePort eyePort{reinterpret_cast<std::uintptr_t>(self), &SkinnedEnginePorts::Reapply, &ports};
-	EngineEyeSwitch eyeSwitch{&eyePort, &counters, g_eyesSet ? &g_eyes : nullptr, g_settings.stereoTestEyeShift};
+	bool outside = false;
+	const eye::EyeData* eyes = EyesForDraw(eyePort, &outside);
+	EngineEyeSwitch eyeSwitch{&eyePort, &counters, eyes, eyes != nullptr ? 0.0f : g_settings.stereoTestEyeShift};
 	ports.eyes = &eyeSwitch;
 	const skinned::DrawArguments args{static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(self)), geometry, data, skin, world, worldBound};
-	const skinned::Outcome outcome = skinned::DrawSkinnedPrimitive(ports, args, route::PlanFor(g_settings, HasEyeData()));
+	const skinned::Outcome outcome =
+	    skinned::DrawSkinnedPrimitive(ports, args, route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode())));
 	AcquireSRWLockExclusive(&g_statsLock);
 	g_stats.AddSkinned(outcome);
 	g_stats.AddSwitches(counters);
+	g_stats.drawsOutsideEye += outside ? 1u : 0u;
 	ReleaseSRWLockExclusive(&g_statsLock);
 	return 0;
 }

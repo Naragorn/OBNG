@@ -181,6 +181,25 @@ constexpr EyeData SplitHalves(const Viewport& whole, float eyeShift, const ViewA
 	return data;
 }
 
+// ---- The viewport gate (interface mode) ------------------------------------------
+//
+// With eyes set through the interface, every draw through the route would
+// double, in every pass: the actor shadow maps (their own target, e.g.
+// 1024 x 1024) and the water pre-pass run inside RenderScene before the
+// world, where eye 1's rectangle lies outside the target. The gate: a draw
+// doubles only while the device's current viewport rectangle is eye 0's -
+// the one the engine's own SetViewport leaves for the world pass. One
+// GetViewport per draw call (not per partition), the depth range not
+// compared (the engine writes 0 and 1 there, 0x00762640.md C7).
+
+constexpr bool SameRect(const Viewport& a, const Viewport& b) {
+	return a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height;
+}
+
+constexpr bool InEyeViewport(const Viewport& current, const EyeData& eyes) {
+	return SameRect(current, eyes.viewport[0]);
+}
+
 // ---- The plan per draw ---------------------------------------------------------
 //
 // [Route] StereoEyes=2 allows the double draw; it happens only while eye
