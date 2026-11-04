@@ -79,6 +79,29 @@ registration and lists (0.2 ms), the second cull where OBVR's replay does not
 cover it: **about 1.3 to 1.6 ms a frame of CPU on the prison scene**, more
 outdoors where the draw count is higher. The draws and the GPU stay.
 
+## Step 1, done by reading (2026-11-04 10:10)
+
+The open callees were small enough to read without a workflow (ledger rows
+draw-state, read by the architect, no refutation round):
+
+- Shader slot 16 (0x007790E0) is a no-op for every engine shader but the
+  water, pixel and HLSL classes; slot 17 (0x0076C7D0 for the lit shaders)
+  restores D3DRS_COLORWRITEENABLE from the shader's +0x60 and ends the pass
+  object (0x00779790 -> 0x00772720). Neither carries per-draw state the
+  second eye needs: the second draw goes before slot 16 as planned.
+- The render-state object's +0x44 is SetNearFar (state only, +0x78 / +0x7C /
+  +0x80), +0x48 reads the mirror flag [+0xF4], +0xFC stores a draw-flag byte
+  at [+0xFF5]. Near/far and the mirror are the same for both eyes.
+- The world packer 0x00765480 (from slot 13) rebuilds modelCamRight / Up
+  from the camera axes +0x628 / +0x634 per draw; those axes are identical for
+  two eyes that differ by a translation (OBVR's dual shift is a pure
+  translation, read in BetweenScenePasses). **So the per-draw eye switch is:
+  the view's translation row in +0x980 and the inverse's in +0xA00, the
+  device VIEW transform, the viewport, and the re-apply of the V-dependent
+  constant ids.** Nothing else.
+- Still open: the render-state sub-object at +0xFF0 whose slot 1 runs before
+  every draw (its class and body; a search for the field's writer runs).
+
 ## Risks and what settles them
 
 - The render-state slot-1 call and slots 16 / 17 may carry per-draw state
