@@ -300,6 +300,16 @@ scenario, performance-spec.md:735-746). Before OBNG builds anything for the pack
 fixed scene measures OBVR's StreamReuse=1 against 0 - two runs; a gain inside the spread
 retires the packing block for performance.
 
+Decisions taken after the keyed pack probes and the StreamReuse run (2026-11-04 09:15):
+the packing lever is measured at 0.51 ms a frame on the fixed scene (fourteen packs of one
+volatile stream at 36 us), a once-per-frame cache would take about 0.4 ms of it; OBVR's
+StreamReuse cannot take it (DISCARD on every pack). The packing block is NOT built for
+performance; the design and the numbers stay in docs/subsystems/stream-packing.md. The
+constant maps' realistic gain is 0.3 to 0.5 ms (39 % of the uploads repeat within a pass,
+77 % of the palettes are one run). Both are small against the 2.5 ms of the second eye
+pass; the decision which to build, or whether to plan single-pass stereo instead, is put
+to Nadi with these numbers.
+
 ## Subsystem replacements
 
 | Subsystem | Replaces | State | Gates | Note |

@@ -356,6 +356,7 @@ struct PackContext {
 	UInt32 partition = 0;
 	UInt32 chip = 0;    // PackStream's chip while it runs on this thread, else 0
 	UInt32 stream = 0;  // its stream index
+	UInt32 decl = 0;    // the packer's declaration argument
 	bool volatileData = false;  // the data's consistency nibble at the packer's entry was 0x8000
 };
 range_walk_game::ThreadSlots<PackContext> g_packContexts;
@@ -371,6 +372,7 @@ UInt32 __fastcall ProbePacker(void* self, void* /*edx*/, UInt32 record, UInt32 g
 	if (context.depth++ == 0) {
 		context.geometry = geometry;
 		context.partition = partition;
+		context.decl = decl;
 		// The original tests the record and the geometry for null before it
 		// reads either (JE 0x007633BD at 0x0076313F and 0x0076314B, read):
 		// read the consistency word only where it would.
@@ -432,7 +434,7 @@ UInt32 __fastcall ProbeUnlock(void* self, void* /*edx*/, UInt32 d3dBuffer) {
 	}
 	AcquireSRWLockExclusive(&g_packLock);
 	const probe::PackVerdict verdict =
-	    g_packCache->Add(probe::PackKey{context->geometry, context->partition, context->stream}, hash, bytes, g_packStats, slice);
+	    g_packCache->Add(probe::PackKey{context->geometry, context->partition, context->stream, context->decl}, hash, bytes, g_packStats, slice);
 	probe::CountVerdictByConsistency(verdict, context->volatileData, g_packStats);
 	probe::CountLockFlags(flags, g_packStats);
 	g_packStats.hashTicks += hashTicks;
@@ -486,7 +488,7 @@ void LogPackCache() {
 	                       static_cast<unsigned long long>(shape.buffers));
 	g_packCache->VisitChangedKeys(12, [&](probe::PackKey key, std::uint64_t same, std::uint64_t changed) {
 		if (at > 0 && at < 520) {
-			at += std::snprintf(line + at, sizeof(line) - at, " %08X/%08X s%u %llu/%llu", key.geometry, key.partition, key.chip,
+			at += std::snprintf(line + at, sizeof(line) - at, " %08X/%08X s%u d%08X %llu/%llu", key.geometry, key.partition, key.chip, key.decl,
 			                    static_cast<unsigned long long>(same), static_cast<unsigned long long>(changed));
 		}
 	});

@@ -178,12 +178,12 @@ void TestPackCache() {
 	Check(cache.Add(b, 12, 50, stats) == PackVerdict::New && cache.Keys() == 2, "another chip of the same partition is another key");
 	const PackKey aOtherDecl{0x1000, 0x2000, 0x3000, 0x4000};
 	Check(cache.Add(aOtherDecl, 12, 100, stats) == PackVerdict::New && cache.Keys() == 3, "the same stream under another declaration is another key");
-	Check(stats.packs == 5 && stats.bytes == 450, "five packs, 450 bytes hashed");
+	Check(stats.packs == 6 && stats.bytes == 550, "six packs, 550 bytes hashed");
 	Check(stats.sliceSame == 3 && stats.sliceMoved == 0, "a known key with the same (default) slice each time: slice same");
 	{
 		const PackCache::KeyShape k = cache.Shape();
-		Check(k.mixed == 1 && k.untested == 1 && k.alwaysSame == 0 && k.alwaysChanged == 0 && k.buffers == 1,
-		      "key a mixed (same and changed), key b untested (one pack), one distinct buffer (the default slice)");
+		Check(k.mixed == 1 && k.untested == 2 && k.alwaysSame == 0 && k.alwaysChanged == 0 && k.buffers == 1,
+		      "key a mixed (same and changed), keys b and a-under-another-declaration untested (one pack each), one distinct buffer (the default slice)");
 		unsigned visited = 0;
 		cache.VisitChangedKeys(8, [&](PackKey key, std::uint64_t same, std::uint64_t changed) {
 			visited += key == a && same == 2 && changed == 1 ? 1 : 0;

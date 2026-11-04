@@ -1,0 +1,96 @@
+OBNG 1 - xOBSE 22, Oblivion 010201A0, editor=0
+Settings from Z:\home\nadi\.local\share\Steam\steamapps\common\Oblivion\Data\OBSE\Plugins\OBNG-test.ini: TimeInfoUpdate=0 TimeInfoInit=0 TimeInfoFreeze=0 TimeInfoUnfreeze=0 LoadingMenuTick=0 LoadingMenuCtor=0 RangeWalk=0 RangeWalkOrder=original-first FpuControlWord=0 HavokPlanner=0 CallCounters=0 PassSteps=0 PackCache=1 ConstantUploads=1 Memory=1 MismatchLines=20 SummaryEverySeconds=10 SummaryTimer=1 Route RangeWalk=0
+Shadow: every switch is 0, nothing shadowed
+Route: every switch is 0, nothing routed
+Shadow PackSkinnedGeometryBuffer 0x00763130 (pack cache): on at 00763130 - the original runs, the rebuild runs on a copy, both compared bit for bit
+Shadow dynamic buffer unlock 0x00776D80 (pack cache): on at 00776D80 - the original runs, the rebuild runs on a copy, both compared bit for bit
+Shadow PackStream 0x0076FE20 (pack cache): on at 0076FE20 - the original runs, the rebuild runs on a copy, both compared bit for bit
+Shadow SetVertexShaderConstant 0x007830C0 (uploads): on at 007830C0 - the original runs, the rebuild runs on a copy, both compared bit for bit
+Shadow SetVertexShaderConstantArray 0x00783180 (uploads): on at 00783180 - the original runs, the rebuild runs on a copy, both compared bit for bit
+Shadow FinishAccumulating 0x007AE070 (uploads: the pass counter): on at 007AE070 - the original runs, the rebuild runs on a copy, both compared bit for bit
+Probes: 6 of 6 call counters made, memory on
+Log: a summary every 10 s from the summary timer
+Shadow:
+Probe: pack cache - 0 packs, 0 same (0 %), 0 changed, 0 new (0 evictions), 0 keys; 0 MB hashed, 0 % of the bytes same; 0 unlocks outside the packer; data volatile 0, static 0, mutable 0, dirty 0; slice same 0, moved 0; lock flags discard 0, no-overwrite 0, other 0; by data: volatile same 0 changed 0, other same 0 changed 0
+Probe: pack cache time (4192103 ticks per ms) - volatile packer calls without the probe's hashing 0 calls; the probe's hashing 0 calls;
+Probe: pack cache keys - always same 0, always changed 0, mixed 0, untested 0, distinct buffers 0; changed keys (stream same/changed):
+Probe: constant uploads - 0 uploads, 0 same (0 %, 0 in the same pass), 0 changed, 0 fresh, 0 out of range; 0 MB, 0 % of the bytes same; palettes 0 with 0 bones (0 % consecutive); single uploads by type
+Probe: memory commit 389 MB (peak 389), working set 1936 MB (peak 1936), address space 1936 of 4095 MB used (47 %, peak 1936 MB)
+Shadow:
+Probe: pack cache - 8525 packs, 6059 same (71 %), 2430 changed, 36 new (0 evictions), 36 keys; 2506 MB hashed, 71 % of the bytes same; 31801 unlocks outside the packer; data volatile 8491, static 978696, mutable 2424, dirty 1; slice same 8489, moved 0; lock flags discard 8490, no-overwrite 0, other 35; by data: volatile same 6059 changed 2430, other same 0 changed 0
+Probe: pack cache time (4192103 ticks per ms) - volatile packer calls without the probe's hashing 8491 calls, 290.07 ms (34.16 us per call); the probe's hashing 8491 calls, 844.10 ms (99.41 us per call);
+Probe: pack cache keys - always same 0, always changed 0, mixed 2, untested 34, distinct buffers 35; changed keys (stream same/changed): 1FA945B4/3905E6F4 s0 d12000968 2420/5 1FA945B4/3905E6F4 s0 d12004070 3639/2425
+Probe: constant uploads - 8544074 uploads, 3366030 same (39 %, 3366025 in the same pass), 5178022 changed, 22 fresh, 0 out of range; 412 MB, 41 % of the bytes same; palettes 989611 with 7126119 bones (78 % consecutive); single uploads by type 2:1417955
+Probe: memory commit 444 MB (peak 444), working set 2187 MB (peak 2187), address space 2187 of 4095 MB used (53 %, peak 2187 MB)
+Shadow:
+Probe: pack cache - 10510 packs, 7507 same (71 %), 3003 changed, 0 new (0 evictions), 36 keys; 3100 MB hashed, 71 % of the bytes same; 39049 unlocks outside the packer; data volatile 10510, static 1196707, mutable 3002, dirty 0; slice same 10510, moved 0; lock flags discard 10510, no-overwrite 0, other 0; by data: volatile same 7507 changed 3003, other same 0 changed 0
+Probe: pack cache time (4192103 ticks per ms) - volatile packer calls without the probe's hashing 10510 calls, 356.44 ms (33.91 us per call); the probe's hashing 10510 calls, 1042.50 ms (99.19 us per call);
+Probe: pack cache keys - always same 0, always changed 0, mixed 2, untested 34, distinct buffers 35; changed keys (stream same/changed): 1FA945B4/3905E6F4 s0 d12000968 5424/5 1FA945B4/3905E6F4 s0 d12004070 8142/5428
+Probe: constant uploads - 10455786 uploads, 4118221 same (39 %, 4118221 in the same pass), 6337565 changed, 0 fresh, 0 out of range; 505 MB, 41 % of the bytes same; palettes 1210426 with 8722005 bones (78 % consecutive); single uploads by type 2:1733781
+Probe: memory commit 444 MB (peak 444), working set 2187 MB (peak 2187), address space 2187 of 4095 MB used (53 %, peak 2187 MB)
+Shadow:
+Probe: pack cache - 10464 packs, 7475 same (71 %), 2989 changed, 0 new (0 evictions), 36 keys; 3086 MB hashed, 71 % of the bytes same; 38862 unlocks outside the packer; data volatile 10464, static 1191417, mutable 2990, dirty 0; slice same 10464, moved 0; lock flags discard 10464, no-overwrite 0, other 0; by data: volatile same 7475 changed 2989, other same 0 changed 0
+Probe: pack cache time (4192103 ticks per ms) - volatile packer calls without the probe's hashing 10464 calls, 380.84 ms (36.40 us per call); the probe's hashing 10464 calls, 1078.94 ms (103.11 us per call);
+Probe: pack cache keys - always same 0, always changed 0, mixed 2, untested 34, distinct buffers 35; changed keys (stream same/changed): 1FA945B4/3905E6F4 s0 d12000968 8414/5 1FA945B4/3905E6F4 s0 d12004070 12627/8417
+Probe: constant uploads - 10407598 uploads, 4099048 same (39 %, 4099048 in the same pass), 6308550 changed, 0 fresh, 0 out of range; 502 MB, 41 % of the bytes same; palettes 1204787 with 8681766 bones (78 % consecutive); single uploads by type 2:1725832
+Probe: memory commit 471 MB (peak 471), working set 2182 MB (peak 2187), address space 2182 of 4095 MB used (53 %, peak 2187 MB)
+Shadow:
+Probe: pack cache - 10428 packs, 7448 same (71 %), 2980 changed, 0 new (0 evictions), 36 keys; 3076 MB hashed, 71 % of the bytes same; 38725 unlocks outside the packer; data volatile 10428, static 1187218, mutable 2980, dirty 0; slice same 10428, moved 0; lock flags discard 10428, no-overwrite 0, other 0; by data: volatile same 7448 changed 2980, other same 0 changed 0
+Probe: pack cache time (4192103 ticks per ms) - volatile packer calls without the probe's hashing 10428 calls, 386.67 ms (37.08 us per call); the probe's hashing 10428 calls, 1100.12 ms (105.50 us per call);
+Probe: pack cache keys - always same 0, always changed 0, mixed 2, untested 34, distinct buffers 35; changed keys (stream same/changed): 1FA945B4/3905E6F4 s0 d12000968 11392/5 1FA945B4/3905E6F4 s0 d12004070 17097/11397
+Probe: constant uploads - 10370391 uploads, 4085586 same (39 %, 4085586 in the same pass), 6284805 changed, 0 fresh, 0 out of range; 500 MB, 41 % of the bytes same; palettes 1200503 with 8650917 bones (78 % consecutive); single uploads by type 2:1719474
+Probe: memory commit 472 MB (peak 472), working set 2183 MB (peak 2187), address space 2183 of 4095 MB used (53 %, peak 2187 MB)
+Shadow:
+Probe: pack cache - 10486 packs, 7490 same (71 %), 2996 changed, 0 new (0 evictions), 36 keys; 3093 MB hashed, 71 % of the bytes same; 38948 unlocks outside the packer; data volatile 10486, static 1193906, mutable 2996, dirty 0; slice same 10486, moved 0; lock flags discard 10486, no-overwrite 0, other 0; by data: volatile same 7490 changed 2996, other same 0 changed 0
+Probe: pack cache time (4192103 ticks per ms) - volatile packer calls without the probe's hashing 10486 calls, 388.09 ms (37.01 us per call); the probe's hashing 10486 calls, 1100.75 ms (104.97 us per call);
+Probe: pack cache keys - always same 0, always changed 0, mixed 2, untested 34, distinct buffers 35; changed keys (stream same/changed): 1FA945B4/3905E6F4 s0 d12000968 14388/5 1FA945B4/3905E6F4 s0 d12004070 21591/14393
+Probe: constant uploads - 10429825 uploads, 4108265 same (39 %, 4108265 in the same pass), 6321560 changed, 0 fresh, 0 out of range; 503 MB, 41 % of the bytes same; palettes 1207388 with 8700384 bones (78 % consecutive); single uploads by type 2:1729441
+Probe: memory commit 472 MB (peak 472), working set 2151 MB (peak 2187), address space 2151 of 4095 MB used (52 %, peak 2187 MB)
+Shadow:
+Probe: pack cache - 10510 packs, 7507 same (71 %), 3003 changed, 0 new (0 evictions), 36 keys; 3100 MB hashed, 71 % of the bytes same; 39049 unlocks outside the packer; data volatile 10510, static 1196998, mutable 3002, dirty 0; slice same 10510, moved 0; lock flags discard 10510, no-overwrite 0, other 0; by data: volatile same 7507 changed 3003, other same 0 changed 0
+Probe: pack cache time (4192103 ticks per ms) - volatile packer calls without the probe's hashing 10510 calls, 388.30 ms (36.95 us per call); the probe's hashing 10510 calls, 1095.72 ms (104.26 us per call);
+Probe: pack cache keys - always same 0, always changed 0, mixed 2, untested 34, distinct buffers 35; changed keys (stream same/changed): 1FA945B4/3905E6F4 s0 d12000968 17392/5 1FA945B4/3905E6F4 s0 d12004070 26094/17396
+Probe: constant uploads - 10457247 uploads, 4119119 same (39 %, 4119119 in the same pass), 6338128 changed, 0 fresh, 0 out of range; 505 MB, 41 % of the bytes same; palettes 1210591 with 8723300 bones (78 % consecutive); single uploads by type 2:1733947
+Probe: memory commit 473 MB (peak 473), working set 2152 MB (peak 2187), address space 2152 of 4095 MB used (52 %, peak 2187 MB)
+Shadow:
+Probe: pack cache - 10479 packs, 7485 same (71 %), 2994 changed, 0 new (0 evictions), 36 keys; 3091 MB hashed, 71 % of the bytes same; 38922 unlocks outside the packer; data volatile 10479, static 1193166, mutable 2994, dirty 0; slice same 10479, moved 0; lock flags discard 10479, no-overwrite 0, other 0; by data: volatile same 7485 changed 2994, other same 0 changed 0
+Probe: pack cache time (4192103 ticks per ms) - volatile packer calls without the probe's hashing 10479 calls, 383.39 ms (36.59 us per call); the probe's hashing 10479 calls, 1091.61 ms (104.17 us per call);
+Probe: pack cache keys - always same 0, always changed 0, mixed 2, untested 34, distinct buffers 35; changed keys (stream same/changed): 1FA945B4/3905E6F4 s0 d12000968 20386/5 1FA945B4/3905E6F4 s0 d12004070 30585/20390
+Probe: constant uploads - 10423067 uploads, 4105555 same (39 %, 4105555 in the same pass), 6317512 changed, 0 fresh, 0 out of range; 503 MB, 41 % of the bytes same; palettes 1206605 with 8694721 bones (78 % consecutive); single uploads by type 2:1728346
+Probe: memory commit 475 MB (peak 475), working set 2122 MB (peak 2187), address space 2122 of 4095 MB used (51 %, peak 2187 MB)
+Shadow:
+Probe: pack cache - 10511 packs, 7508 same (71 %), 3003 changed, 0 new (0 evictions), 36 keys; 3100 MB hashed, 71 % of the bytes same; 39029 unlocks outside the packer; data volatile 10511, static 1196336, mutable 3004, dirty 0; slice same 10511, moved 0; lock flags discard 10511, no-overwrite 0, other 0; by data: volatile same 7508 changed 3003, other same 0 changed 0
+Probe: pack cache time (4192103 ticks per ms) - volatile packer calls without the probe's hashing 10511 calls, 384.13 ms (36.55 us per call); the probe's hashing 10511 calls, 1094.79 ms (104.16 us per call);
+Probe: pack cache keys - always same 0, always changed 0, mixed 2, untested 34, distinct buffers 35; changed keys (stream same/changed): 1FA945B4/3905E6F4 s0 d12000968 23388/5 1FA945B4/3905E6F4 s0 d12004070 35091/23393
+Probe: constant uploads - 10450936 uploads, 4116576 same (39 %, 4116576 in the same pass), 6334360 changed, 0 fresh, 0 out of range; 504 MB, 41 % of the bytes same; palettes 1209804 with 8717979 bones (78 % consecutive); single uploads by type 2:1732957
+Probe: memory commit 475 MB (peak 475), working set 2123 MB (peak 2187), address space 2123 of 4095 MB used (51 %, peak 2187 MB)
+Shadow:
+Probe: pack cache - 10486 packs, 7490 same (71 %), 2996 changed, 0 new (0 evictions), 36 keys; 3093 MB hashed, 71 % of the bytes same; 38948 unlocks outside the packer; data volatile 10486, static 1193906, mutable 2996, dirty 0; slice same 10486, moved 0; lock flags discard 10486, no-overwrite 0, other 0; by data: volatile same 7490 changed 2996, other same 0 changed 0
+Probe: pack cache time (4192103 ticks per ms) - volatile packer calls without the probe's hashing 10486 calls, 380.14 ms (36.25 us per call); the probe's hashing 10486 calls, 1084.68 ms (103.44 us per call);
+Probe: pack cache keys - always same 0, always changed 0, mixed 2, untested 34, distinct buffers 35; changed keys (stream same/changed): 1FA945B4/3905E6F4 s0 d12000968 26384/5 1FA945B4/3905E6F4 s0 d12004070 39585/26389
+Probe: constant uploads - 10429825 uploads, 4108265 same (39 %, 4108265 in the same pass), 6321560 changed, 0 fresh, 0 out of range; 503 MB, 41 % of the bytes same; palettes 1207388 with 8700384 bones (78 % consecutive); single uploads by type 2:1729441
+Probe: memory commit 476 MB (peak 476), working set 2123 MB (peak 2187), address space 2123 of 4095 MB used (51 %, peak 2187 MB)
+Shadow:
+Probe: pack cache - 10510 packs, 7507 same (71 %), 3003 changed, 0 new (0 evictions), 36 keys; 3100 MB hashed, 71 % of the bytes same; 39049 unlocks outside the packer; data volatile 10510, static 1196923, mutable 3002, dirty 0; slice same 10510, moved 0; lock flags discard 10510, no-overwrite 0, other 0; by data: volatile same 7507 changed 3003, other same 0 changed 0
+Probe: pack cache time (4192103 ticks per ms) - volatile packer calls without the probe's hashing 10510 calls, 382.38 ms (36.38 us per call); the probe's hashing 10510 calls, 1093.40 ms (104.03 us per call);
+Probe: pack cache keys - always same 0, always changed 0, mixed 2, untested 34, distinct buffers 35; changed keys (stream same/changed): 1FA945B4/3905E6F4 s0 d12000968 29388/5 1FA945B4/3905E6F4 s0 d12004070 44088/29392
+Probe: constant uploads - 10457241 uploads, 4119119 same (39 %, 4119119 in the same pass), 6338122 changed, 0 fresh, 0 out of range; 505 MB, 41 % of the bytes same; palettes 1210590 with 8723295 bones (78 % consecutive); single uploads by type 2:1733946
+Probe: memory commit 477 MB (peak 477), working set 2124 MB (peak 2187), address space 2124 of 4095 MB used (51 %, peak 2187 MB)
+Shadow:
+Probe: pack cache - 10479 packs, 7485 same (71 %), 2994 changed, 0 new (0 evictions), 36 keys; 3091 MB hashed, 71 % of the bytes same; 38922 unlocks outside the packer; data volatile 10479, static 1193133, mutable 2994, dirty 0; slice same 10479, moved 0; lock flags discard 10479, no-overwrite 0, other 0; by data: volatile same 7485 changed 2994, other same 0 changed 0
+Probe: pack cache time (4192103 ticks per ms) - volatile packer calls without the probe's hashing 10479 calls, 363.20 ms (34.66 us per call); the probe's hashing 10479 calls, 1054.74 ms (100.65 us per call);
+Probe: pack cache keys - always same 0, always changed 0, mixed 2, untested 34, distinct buffers 35; changed keys (stream same/changed): 1FA945B4/3905E6F4 s0 d12000968 32382/5 1FA945B4/3905E6F4 s0 d12004070 48579/32386
+Probe: constant uploads - 10423067 uploads, 4105555 same (39 %, 4105555 in the same pass), 6317512 changed, 0 fresh, 0 out of range; 503 MB, 41 % of the bytes same; palettes 1206605 with 8694721 bones (78 % consecutive); single uploads by type 2:1728346
+Probe: memory commit 450 MB (peak 477), working set 2098 MB (peak 2187), address space 2098 of 4095 MB used (51 %, peak 2187 MB)
+Shadow:
+Probe: pack cache - 10511 packs, 7508 same (71 %), 3003 changed, 0 new (0 evictions), 36 keys; 3100 MB hashed, 71 % of the bytes same; 39029 unlocks outside the packer; data volatile 10511, static 1196444, mutable 3004, dirty 0; slice same 10511, moved 0; lock flags discard 10511, no-overwrite 0, other 0; by data: volatile same 7508 changed 3003, other same 0 changed 0
+Probe: pack cache time (4192103 ticks per ms) - volatile packer calls without the probe's hashing 10511 calls, 353.63 ms (33.64 us per call); the probe's hashing 10511 calls, 1041.11 ms (99.05 us per call);
+Probe: pack cache keys - always same 0, always changed 0, mixed 2, untested 34, distinct buffers 35; changed keys (stream same/changed): 1FA945B4/3905E6F4 s0 d12000968 35384/5 1FA945B4/3905E6F4 s0 d12004070 53085/35389
+Probe: constant uploads - 10450942 uploads, 4116576 same (39 %, 4116576 in the same pass), 6334366 changed, 0 fresh, 0 out of range; 504 MB, 41 % of the bytes same; palettes 1209805 with 8717984 bones (78 % consecutive); single uploads by type 2:1732958
+Probe: memory commit 450 MB (peak 477), working set 2098 MB (peak 2187), address space 2098 of 4095 MB used (51 %, peak 2187 MB)
+Shadow:
+Probe: pack cache - 10500 packs, 7500 same (71 %), 3000 changed, 0 new (0 evictions), 36 keys; 3097 MB hashed, 71 % of the bytes same; 39000 unlocks outside the packer; data volatile 10500, static 1195500, mutable 3000, dirty 0; slice same 10500, moved 0; lock flags discard 10500, no-overwrite 0, other 0; by data: volatile same 7500 changed 3000, other same 0 changed 0
+Probe: pack cache time (4192103 ticks per ms) - volatile packer calls without the probe's hashing 10500 calls, 355.26 ms (33.83 us per call); the probe's hashing 10500 calls, 1040.73 ms (99.12 us per call);
+Probe: pack cache keys - always same 0, always changed 0, mixed 2, untested 34, distinct buffers 35; changed keys (stream same/changed): 1FA945B4/3905E6F4 s0 d12000968 38384/5 1FA945B4/3905E6F4 s0 d12004070 57585/38389
+Probe: constant uploads - 10443750 uploads, 4113750 same (39 %, 4113750 in the same pass), 6330000 changed, 0 fresh, 0 out of range; 504 MB, 41 % of the bytes same; palettes 1209000 with 8712000 bones (78 % consecutive); single uploads by type 2:1731750
+Probe: memory commit 450 MB (peak 477), working set 2098 MB (peak 2187), address space 2098 of 4095 MB used (51 %, peak 2187 MB)

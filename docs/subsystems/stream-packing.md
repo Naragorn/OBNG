@@ -403,3 +403,44 @@ What L3 needs before it is built (open from this run, both read questions):
    wraps (knowledge/skinned-vertex-streams.md) - decides whether "rebind
    the old bytes" is possible at all, or whether the cache can only skip the
    copier and must still refill the ring (the staging memcpy stays).
+
+## The volatile packing, settled (2026-11-04 09:13)
+
+Five more probe runs (`artifacts/shadow/obng-walkers-probes/20261104-084023`
+to `-091327`, the probe keyed by stream and declaration, the volatile packer
+calls timed without the probe's own hashing) and the packing-lifetime slice
+(`re/functions/0x007829A0.md`, `0x00776C90.md`, `0x00776D80.md`,
+`0x007774C0.md`, `0x00777F10.md`):
+
+- The fixed scene's volatile packing is **one stream of one skinned
+  partition** (geometry 1FA945B4 / partition 3905E6F4 in the last run; the
+  pointers differ per load), packed once per pass that draws it: fourteen
+  times a frame, under two declarations - 4 packs a frame under one layout,
+  always the same bytes (38 384 same, 5 changed over the run), 10 under the
+  other, 6 same and 4 changed a frame. The eighteen Walkers' bodies are
+  static data: packed once, then the early-out 1 610 times a frame.
+- **Measured cost: 36 us a pack, 0.51 ms a frame** for the fourteen (the
+  probe's hashing of the 0.3 MB staging block costs 103 us a pack and was
+  subtracted). That is the whole ceiling of lever L3 on this scene, 3.8 % of
+  the 13.3 ms frame.
+- Every pack reallocates its chip (0x007774C0 excludes 0x8000 data from the
+  reuse path), reserves from a stride-keyed ring at offset 0 and locks with
+  D3DLOCK_DISCARD (the ring's wrap rule, 0x007829A0.md); the slice never
+  moved (buffer, offset, size the same on every pack), one buffer per chip
+  (35 keys, 35 buffers). So the GPU-side bytes are renamed on every pack;
+  a cache that skips the pack keeps the last content only while nothing
+  else reserves from that ring (C13 of 0x007829A0.md). OBVR's StreamReuse
+  never engages here for that reason (run `obng-walkers-reuse/20261104-085236`:
+  "buffer DISCARDs 643, skipped 0 %"; scene_pass 2.50 against 2.45 ms).
+- The 4 "changed" packs a frame under the second layout are **unverified**:
+  the likely cause (derived from OBVR's "staging garbage in the gaps", spec
+  section 5) is a partial dirty mask leaving stale staging bytes, not a
+  changed source. A cache keyed by (record, declaration, dirty mask) once
+  per frame would skip about 11 of the 14 packs: **about 0.4 ms a frame**.
+
+Verdict: lever L3 is real and small. Building it is medium work (a route on
+0x00763130 that owns the volatile records' chips per declaration, skips the
+reallocation, lock and copy within a frame, verified by the unlock-bytes
+shadow in both orders) for 0.4 ms of a frame that is held at 13.3 ms by the
+pose wait. It is not built; the number is on record for the day the frame
+is CPU-bound.
