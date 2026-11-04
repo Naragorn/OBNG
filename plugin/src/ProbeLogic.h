@@ -369,6 +369,117 @@ inline int FormatPackStats(const PackStats& s, std::uint64_t keys, char* out, st
 	                     static_cast<unsigned long long>(s.mutableData), static_cast<unsigned long long>(s.dirtyBits));
 }
 
+// ---- The constant uploads' redundancy probe -----------------------------------------
+//
+// Does a vertex constant upload write what its register range already holds?
+// The uploads that cost computation reach the device through the program's
+// slots 0x007830C0 (one entry: register entry+0x1C, count entry+0x20 vec4s)
+// and 0x00783180 (one bone palette: count bones of stride vec4s from reg0,
+// gathered through a u16 index list; re/functions/0x00783180.md). The probe
+// hashes the bytes of every upload and keeps the last hash per register:
+// "same" means the computation that produced the upload could have been
+// skipped by a check of its inputs; "same in pass" the same within one
+// accumulator finish, which is what a per-pass cache would see. The vertex
+// constant file has at most 256 float4 registers on D3D9 (d3d9caps
+// MaxVertexShaderConst; unverified here - the table holds 1024 and counts
+// anything beyond as out of range).
+
+struct UploadStats {
+	std::uint64_t uploads = 0;        // single-entry uploads plus one per bone
+	std::uint64_t same = 0;
+	std::uint64_t sameInPass = 0;     // same, and the last upload to that register was in this pass
+	std::uint64_t changed = 0;
+	std::uint64_t fresh = 0;          // first upload to a register since the summary
+	std::uint64_t bytes = 0;
+	std::uint64_t sameBytes = 0;
+	std::uint64_t outOfRange = 0;     // register >= kRegisters, not tracked
+	std::uint64_t paletteCalls = 0;   // 0x00783180 calls that passed the type check
+	std::uint64_t bones = 0;          // bones uploaded by them
+	std::uint64_t consecutivePalettes = 0;  // palettes whose indices form one ascending run (one call, no gather)
+	std::uint64_t byType[8] = {};     // single-entry uploads by the entry's type nibble (entry+0x14 >> 28)
+	void Reset() { *this = UploadStats{}; }
+};
+
+struct RegisterCache {
+	static constexpr std::uint32_t kRegisters = 1024;
+	struct Slot {
+		std::uint64_t hash = 0;
+		std::uint32_t pass = 0;
+		bool used = false;
+	};
+
+	RegisterCache() : slots_(kRegisters) {}
+
+	// One upload of `bytes` bytes to `reg` in pass `pass`.
+	PackVerdict Add(std::uint32_t reg, std::uint64_t hash, std::uint32_t bytes, std::uint32_t pass, UploadStats& stats) {
+		++stats.uploads;
+		stats.bytes += bytes;
+		if (reg >= kRegisters) {
+			++stats.outOfRange;
+			return PackVerdict::New;
+		}
+		Slot& slot = slots_[reg];
+		if (!slot.used) {
+			slot = Slot{hash, pass, true};
+			++stats.fresh;
+			return PackVerdict::New;
+		}
+		const bool samePass = slot.pass == pass;
+		slot.pass = pass;
+		if (slot.hash == hash) {
+			++stats.same;
+			stats.sameBytes += bytes;
+			if (samePass) {
+				++stats.sameInPass;
+			}
+			return PackVerdict::Same;
+		}
+		slot.hash = hash;
+		++stats.changed;
+		return PackVerdict::Changed;
+	}
+	void Reset() {
+		for (Slot& s : slots_) {
+			s = Slot{};
+		}
+	}
+
+private:
+	std::vector<Slot> slots_;
+};
+
+// indices[i] == indices[0] + i for every bone: the source blocks are one
+// contiguous run and the single call needs no gather (0x00783180.md C7).
+inline bool ConsecutiveRun(const std::uint16_t* indices, std::uint32_t count) {
+	for (std::uint32_t i = 1; i < count; ++i) {
+		if (indices[i] != static_cast<std::uint16_t>(indices[0] + i)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+// "Probe: constant uploads - N uploads, N same (N %, N in the same pass), N
+// changed, N fresh, N out of range; N MB, N % of the bytes same; palettes N
+// with N bones (N % consecutive); single uploads by type 1:N 2:N ...".
+inline int FormatUploadStats(const UploadStats& s, char* out, std::size_t capacity) {
+	int at = std::snprintf(out, capacity,
+	                       "Probe: constant uploads - %llu uploads, %llu same (%u %%, %llu in the same pass), %llu changed, %llu fresh, "
+	                       "%llu out of range; %u MB, %u %% of the bytes same; palettes %llu with %llu bones (%u %% consecutive); "
+	                       "single uploads by type",
+	                       static_cast<unsigned long long>(s.uploads), static_cast<unsigned long long>(s.same), PercentOf(s.same, s.uploads),
+	                       static_cast<unsigned long long>(s.sameInPass), static_cast<unsigned long long>(s.changed),
+	                       static_cast<unsigned long long>(s.fresh), static_cast<unsigned long long>(s.outOfRange), Megabytes(s.bytes),
+	                       PercentOf(s.sameBytes, s.bytes), static_cast<unsigned long long>(s.paletteCalls),
+	                       static_cast<unsigned long long>(s.bones), PercentOf(s.consecutivePalettes, s.paletteCalls));
+	for (unsigned t = 0; t < 8 && at >= 0 && static_cast<std::size_t>(at) < capacity; ++t) {
+		if (s.byType[t] != 0) {
+			at += std::snprintf(out + at, capacity - at, " %u:%llu", t, static_cast<unsigned long long>(s.byType[t]));
+		}
+	}
+	return at;
+}
+
 // "Probe: memory commit N MB (peak N), working set N MB (peak N), address
 // space N of N MB used (N %, peak N MB)".
 inline int FormatMemory(const MemorySample& now, const MemoryPeak& peak, char* out, std::size_t capacity) {

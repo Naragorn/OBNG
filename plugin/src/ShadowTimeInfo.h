@@ -66,6 +66,7 @@ struct ShadowSettings {
 	bool callCounters = false;   // count the scene pass's hot functions per return site (Probes.cpp); off in play
 	bool passSteps = false;      // time nine steps of the scene pass (calls and TSC ticks per summary, Probes.cpp); off in play
 	bool packCache = false;      // hash every packed stream at its unlock and count the packs equal to the key's last one (Probes.cpp); off in play
+	bool constantUploads = false;  // hash every vertex constant upload and count the ones equal to the register's last (Probes.cpp); off in play
 	bool memoryProbe = true;     // commit, working set and address space in the summary
 	UInt32 mismatchLines = 20;   // mismatches written in full per function
 	UInt32 summaryEverySeconds = 10;

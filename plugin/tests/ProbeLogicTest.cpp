@@ -218,7 +218,44 @@ void TestPackCache() {
 	Check(std::strstr(line, "0 packs, 0 same (0 %)") != nullptr, "no pack: no division");
 }
 
+void TestUploads() {
+	Section("The register cache: fresh, same, same in pass, changed, out of range");
+	RegisterCache cache;
+	UploadStats s;
+	Check(cache.Add(4, 0xAA, 64, 1, s) == PackVerdict::New && s.fresh == 1, "first upload to register 4: fresh");
+	Check(cache.Add(4, 0xAA, 64, 1, s) == PackVerdict::Same && s.same == 1 && s.sameInPass == 1 && s.sameBytes == 64,
+	      "the same bytes in the same pass: same, in pass");
+	Check(cache.Add(4, 0xAA, 64, 2, s) == PackVerdict::Same && s.same == 2 && s.sameInPass == 1, "the same bytes in the next pass: same, not in pass");
+	Check(cache.Add(4, 0xAB, 64, 2, s) == PackVerdict::Changed && s.changed == 1, "other bytes: changed");
+	Check(cache.Add(4, 0xAB, 64, 2, s) == PackVerdict::Same && s.sameInPass == 2, "the changed bytes are now the last ones");
+	Check(cache.Add(5000, 0x1, 16, 2, s) == PackVerdict::New && s.outOfRange == 1 && s.uploads == 6 && s.bytes == 336,
+	      "a register beyond the table: counted out of range, bytes counted");
+	cache.Reset();
+	Check(cache.Add(4, 0xAB, 64, 3, s) == PackVerdict::New && s.fresh == 2, "after a reset every register is fresh again");
+
+	Section("ConsecutiveRun: one ascending run or not");
+	const std::uint16_t run[] = {7, 8, 9, 10};
+	const std::uint16_t gap[] = {7, 8, 10, 11};
+	const std::uint16_t one[] = {3};
+	Check(ConsecutiveRun(run, 4) && ConsecutiveRun(one, 1) && ConsecutiveRun(run, 0), "7..10, a single bone and no bone are runs");
+	Check(!ConsecutiveRun(gap, 4), "7, 8, 10, 11 is not");
+
+	Section("The uploads line");
+	UploadStats u;
+	u.uploads = 2000; u.same = 1500; u.sameInPass = 300; u.changed = 450; u.fresh = 50; u.outOfRange = 0; u.bytes = 4u << 20; u.sameBytes = 2u << 20;
+	u.paletteCalls = 100; u.bones = 1200; u.consecutivePalettes = 80; u.byType[2] = 700; u.byType[6] = 100;
+	char line[400];
+	FormatUploadStats(u, line, sizeof(line));
+	Check(std::string(line) ==
+	          "Probe: constant uploads - 2000 uploads, 1500 same (75 %, 300 in the same pass), 450 changed, 50 fresh, 0 out of range; "
+	          "4 MB, 50 % of the bytes same; palettes 100 with 1200 bones (80 % consecutive); single uploads by type 2:700 6:100",
+	      "the line");
+	FormatUploadStats(UploadStats{}, line, sizeof(line));
+	Check(std::strstr(line, "0 uploads, 0 same (0 %") != nullptr, "no upload: no division");
+}
+
 int main() {
+	TestUploads();
 	TestPackCache();
 	TestStepTiming();
 	TestReturnSites();

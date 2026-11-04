@@ -226,7 +226,11 @@ bool g_stepInstalled[static_cast<int>(Step::Count)] = {};
 bool g_stepsOn = false;
 probe::ClockPair g_stepClock;  // the clocks at the last summary (0: none yet)
 
+volatile LONG g_passFromSteps = 0;  // forwarded to the uploads probe's counter below
+void CountPassFromSteps();
+
 UInt32 __fastcall TimeFinish(void* self, void* /*edx*/) {
+	CountPassFromSteps();
 	const UInt32 site = static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(_ReturnAddress()));
 	const unsigned __int64 start = __rdtsc();
 	const UInt32 eax = g_finish(self, nullptr);
@@ -399,6 +403,123 @@ void LogPackCache() {
 	g_log("%s", line);
 }
 
+// ---- The constant uploads' redundancy probe ----------------------------------------
+//
+// Three detours: SetVertexShaderConstant 0x007830C0 (thiscall(program; entry,
+// data, count), RET 0xC: data defaults to [entry+0x30], count to [entry+0x20]
+// or 1, the register is [entry+0x1C]; re/functions/0x007830C0.md),
+// SetVertexShaderConstantArray 0x00783180 (thiscall(program; entry, base,
+// count, stride, indices), RET 0x14: bone i goes to reg0 + i*stride from
+// base + indices[i]*stride*16, stride vec4s; re/functions/0x00783180.md), and
+// the accumulator's finish 0x007AE070 as the pass counter (shared with the
+// pass steps when those are on). The hashes are taken before the original
+// runs, from the same memory it reads.
+constexpr UInt32 kEntryTypeOffset = 0x14;
+constexpr UInt32 kEntryRegisterOffset = 0x1C;
+constexpr UInt32 kEntryCountOffset = 0x20;
+constexpr UInt32 kEntryDataOffset = 0x30;
+constexpr UInt32 kTypeTable = 0x00B428D8;
+constexpr UInt32 kTypeTableReady = 0x00B4295B;
+
+SetConstantFn g_uploadSetConstant = nullptr;
+SetArrayFn g_uploadSetArray = nullptr;
+FinishFn g_uploadFinish = nullptr;
+bool g_uploadsOn = false;
+SRWLOCK g_uploadLock = SRWLOCK_INIT;
+probe::RegisterCache* g_registers = nullptr;
+probe::UploadStats g_uploadStats;
+volatile LONG g_pass = 0;
+
+template <class T>
+T ReadAt(std::uintptr_t address) {
+	return *reinterpret_cast<volatile const T*>(address);
+}
+
+UInt32 __fastcall UploadSetConstant(void* self, void* /*edx*/, UInt32 entry, UInt32 data, UInt32 count) {
+	if (entry != 0) {
+		const UInt32 reg = ReadAt<UInt32>(entry + kEntryRegisterOffset);
+		const UInt32 source = data != 0 ? data : ReadAt<UInt32>(entry + kEntryDataOffset);
+		UInt32 vec4s = count != 0 ? count : ReadAt<UInt32>(entry + kEntryCountOffset);
+		if (vec4s == 0) {
+			vec4s = 1;
+		}
+		const UInt32 type = ReadAt<UInt32>(entry + kEntryTypeOffset) >> 28;
+		if (source != 0 && vec4s < 4096) {
+			const UInt32 bytes = vec4s * 16;
+			const std::uint64_t hash = probe::HashBytes(reinterpret_cast<const unsigned char*>(static_cast<std::uintptr_t>(source)), bytes);
+			AcquireSRWLockExclusive(&g_uploadLock);
+			g_registers->Add(reg, hash, bytes, static_cast<UInt32>(g_pass), g_uploadStats);
+			++g_uploadStats.byType[type & 7u];
+			ReleaseSRWLockExclusive(&g_uploadLock);
+		}
+	}
+	return g_uploadSetConstant(self, nullptr, entry, data, count);
+}
+
+UInt32 __fastcall UploadSetArray(void* self, void* /*edx*/, UInt32 entry, UInt32 base, UInt32 count, UInt32 stride, UInt32 indices) {
+	// The original's type check: the table value of the entry's type byte is 8 or 9
+	// (0x007831A2 / 0x007831C3, read); the table is filled lazily by 0x00783C70.
+	bool passes = false;
+	if (entry != 0 && ReadAt<UInt8>(kTypeTableReady) != 0) {
+		const UInt32 typeByte = ReadAt<UInt32>(entry + kEntryTypeOffset) & 0xFFu;
+		const UInt32 mapped = ReadAt<UInt32>(kTypeTable + 4 * typeByte);
+		passes = mapped == 8 || mapped == 9;
+	}
+	if (passes && base != 0 && indices != 0 && stride >= 1 && stride <= 4 && count <= 256) {
+		const UInt32 reg0 = ReadAt<UInt32>(entry + kEntryRegisterOffset);
+		const auto index = reinterpret_cast<const std::uint16_t*>(static_cast<std::uintptr_t>(indices));
+		const UInt32 bytesPerBone = stride * 16;
+		AcquireSRWLockExclusive(&g_uploadLock);
+		++g_uploadStats.paletteCalls;
+		g_uploadStats.bones += count;
+		if (probe::ConsecutiveRun(index, count)) {
+			++g_uploadStats.consecutivePalettes;
+		}
+		for (UInt32 i = 0; i < count; ++i) {
+			const auto rows = reinterpret_cast<const unsigned char*>(static_cast<std::uintptr_t>(base) + static_cast<std::uintptr_t>(index[i]) * bytesPerBone);
+			g_registers->Add(reg0 + i * stride, probe::HashBytes(rows, bytesPerBone), bytesPerBone, static_cast<UInt32>(g_pass), g_uploadStats);
+		}
+		ReleaseSRWLockExclusive(&g_uploadLock);
+	}
+	return g_uploadSetArray(self, nullptr, entry, base, count, stride, indices);
+}
+
+UInt32 __fastcall UploadFinish(void* self, void* /*edx*/) {
+	InterlockedIncrement(&g_pass);
+	return g_uploadFinish(self, nullptr);
+}
+
+void CountPassFromSteps() {
+	InterlockedIncrement(&g_pass);
+}
+
+// withFinish: false when the pass steps hold the finish's entry (their detour
+// then counts the passes).
+UInt32 InstallConstantUploads(bool withFinish, LogFn log) {
+	g_registers = new probe::RegisterCache();
+	UInt32 made = 0;
+	made += InstallEntryDetour("SetVertexShaderConstant 0x007830C0 (uploads)", kSetConstant, kSetConstantBytes, sizeof(kSetConstantBytes),
+	                           reinterpret_cast<const void*>(&UploadSetConstant), reinterpret_cast<void**>(&g_uploadSetConstant), log) ? 1 : 0;
+	made += InstallEntryDetour("SetVertexShaderConstantArray 0x00783180 (uploads)", kSetArray, kSetArrayBytes, sizeof(kSetArrayBytes),
+	                           reinterpret_cast<const void*>(&UploadSetArray), reinterpret_cast<void**>(&g_uploadSetArray), log) ? 1 : 0;
+	if (withFinish) {
+		made += InstallEntryDetour("FinishAccumulating 0x007AE070 (uploads: the pass counter)", kFinish, kFinishBytes, sizeof(kFinishBytes),
+		                           reinterpret_cast<const void*>(&UploadFinish), reinterpret_cast<void**>(&g_uploadFinish), log) ? 1 : 0;
+	}
+	g_uploadsOn = made >= 2;
+	return made;
+}
+
+void LogConstantUploads() {
+	AcquireSRWLockExclusive(&g_uploadLock);
+	const probe::UploadStats stats = g_uploadStats;
+	g_uploadStats.Reset();
+	ReleaseSRWLockExclusive(&g_uploadLock);
+	char line[500];
+	probe::FormatUploadStats(stats, line, sizeof(line));
+	g_log("%s", line);
+}
+
 probe::ClockPair ReadClocks() {
 	LARGE_INTEGER qpc{};
 	QueryPerformanceCounter(&qpc);
@@ -553,7 +674,7 @@ bool SampleMemory(probe::MemorySample* out) {
 UInt32 ProbesAsked(const ShadowSettings& settings) {
 	return (settings.callCounters ? static_cast<UInt32>(Probed::Count) : 0u) +
 	       (settings.passSteps ? static_cast<UInt32>(Step::Count) - (settings.callCounters ? 1u : 0u) : 0u) +
-	       (settings.packCache ? 2u : 0u);
+	       (settings.packCache ? 2u : 0u) + (settings.constantUploads ? (settings.passSteps ? 2u : 3u) : 0u);
 }
 
 UInt32 InstallProbes(const ShadowSettings& settings, LogFn log) {
@@ -570,6 +691,9 @@ UInt32 InstallProbes(const ShadowSettings& settings, LogFn log) {
 	}
 	if (settings.packCache) {
 		made += InstallPackCache(log);
+	}
+	if (settings.constantUploads) {
+		made += InstallConstantUploads(!settings.passSteps, log);
 	}
 	if (!settings.callCounters) {
 		return made;
@@ -626,6 +750,9 @@ void LogProbeSummary() {
 	}
 	if (g_packCacheOn) {
 		LogPackCache();
+	}
+	if (g_uploadsOn) {
+		LogConstantUploads();
 	}
 	if (g_memory) {
 		probe::MemorySample sample;

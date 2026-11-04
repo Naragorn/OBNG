@@ -69,9 +69,11 @@ struct Host {
 constexpr uint32_t kProbeDetours = 5;
 constexpr uint32_t kPassStepDetours = 9;
 constexpr uint32_t kPackCacheDetours = 2;  // the packer's entry and the unlock
+constexpr uint32_t kConstantUploadDetours = 3;  // the two upload slots and the finish (the pass counter); two when the pass steps hold the finish
 inline uint32_t ProbesAskedFor(const ShadowSettings& s) {
 	return (s.callCounters ? kProbeDetours : 0u) + (s.passSteps ? (s.callCounters ? kPassStepDetours - 1 : kPassStepDetours) : 0u) +
-	       (s.packCache ? kPackCacheDetours : 0u);
+	       (s.packCache ? kPackCacheDetours : 0u) +
+	       (s.constantUploads ? (s.passSteps ? kConstantUploadDetours - 1 : kConstantUploadDetours) : 0u);
 }
 
 bool Query(const ExtenderInterfaceHead& xse, PluginInfo* info, const Host& host);

@@ -233,6 +233,25 @@ void TestLoadPackCache() {
 	Check(fake.Logged("Probes: 2 of 2 call counters made, memory on"), "two asked");
 }
 
+void TestLoadConstantUploads() {
+	Section("Load with the constant uploads probe on: three detours, two beside the pass steps");
+	Fake fake;
+	fake.iniSettings.shadow.constantUploads = true;
+	fake.probesMade = 3;
+	g_fake = &fake;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(fake.probeInstalls == 1 && fake.probed.constantUploads && fake.Logged("Probes: 3 of 3 call counters made, memory on"), "three asked alone");
+	Fake both;
+	both.iniSettings.shadow.constantUploads = true;
+	both.iniSettings.shadow.passSteps = true;
+	both.probesMade = 11;
+	g_fake = &both;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(both.Logged("Probes: 11 of 11 call counters made, memory on"), "eleven asked with the pass steps: the finish counted once");
+}
+
 void TestLoadProbesOff() {
 	Section("Load with every probe off");
 	Fake fake;
@@ -429,6 +448,7 @@ int main() {
 	TestLoadProbes();
 	TestLoadPassSteps();
 	TestLoadPackCache();
+	TestLoadConstantUploads();
 	TestLoadProbesOff();
 	TestLoadRoute();
 	TestLoadRouteAndShadow();
