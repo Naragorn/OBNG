@@ -293,6 +293,9 @@ struct SkinnedEnginePorts {
 			self->Partition(self->lastShader, skinned_engine::kShaderSlotOffset14, self->lastSetup);
 			return;
 		}
+		if (g_settings.stereoReapply == StereoReapply::kNone) {
+			return;
+		}
 		const skinned::PartitionCall& c = self->lastSetup;
 		const std::uint32_t args[8] = {c.geometry, c.skin, c.partition, c.record, c.propertyState, c.effectState, c.world, c.worldBound};
 		ViewReapply(self->lastShader, args);
@@ -322,6 +325,9 @@ struct RecordingShaderPort {
 		}
 		if (g_settings.stereoReapply == StereoReapply::kSlot14) {
 			self->engine->Slot(self->lastShader, self->lastSetup);
+			return;
+		}
+		if (g_settings.stereoReapply == StereoReapply::kNone) {
 			return;
 		}
 		ViewReapply(self->lastShader, self->lastSetup.arguments);

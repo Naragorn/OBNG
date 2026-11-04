@@ -119,7 +119,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	bool reapplyKnown = false;
 	r.stereoReapply = obng::plugin::StereoReapplyFromIni(reapply, &reapplyKnown);
 	if (!reapplyKnown) {
-		Log("Settings: [Route] StereoReapply=%s is neither slot14 nor view - view used", reapply);
+		Log("Settings: [Route] StereoReapply=%s is neither slot14, view nor none - view used", reapply);
 	}
 	Log("Settings from %s: TimeInfoUpdate=%d TimeInfoInit=%d TimeInfoFreeze=%d TimeInfoUnfreeze=%d LoadingMenuTick=%d "
 	    "LoadingMenuCtor=%d RangeWalk=%d RangeWalkOrder=%s FpuControlWord=%d HavokPlanner=%d CallCounters=%d PassSteps=%d PackCache=%d ConstantUploads=%d ViewConstants=%d Memory=%d MismatchLines=%u SummaryEverySeconds=%u "

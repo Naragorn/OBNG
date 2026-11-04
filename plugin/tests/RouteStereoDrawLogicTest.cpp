@@ -25,6 +25,8 @@ int main() {
 	Section("[Route] StereoReapply: slot14 and view are known, anything else reads as view and is flagged");
 	Check(obng::plugin::StereoReapplyFromIni("slot14", &known) == obng::plugin::StereoReapply::kSlot14 && known, "slot14");
 	Check(obng::plugin::StereoReapplyFromIni("view", &known) == obng::plugin::StereoReapply::kView && known, "view");
+	Check(obng::plugin::StereoReapplyFromIni("none", &known) == obng::plugin::StereoReapply::kNone && known, "none");
+	Check(std::string(obng::plugin::StereoReapplyName(obng::plugin::StereoReapply::kNone)) == "none", "none's name");
 	Check(obng::plugin::StereoReapplyFromIni("slot1", &known) == obng::plugin::StereoReapply::kView && !known, "a prefix: view, unknown");
 	Check(obng::plugin::StereoReapplyFromIni("", &known) == obng::plugin::StereoReapply::kView && !known, "empty: view, unknown");
 	Check(std::string(obng::plugin::StereoReapplyName(obng::plugin::StereoReapply::kSlot14)) == "slot14" &&

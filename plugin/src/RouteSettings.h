@@ -29,11 +29,14 @@ constexpr UInt8 StereoEyesFromIni(int value, bool* known) {
 // [Route] StereoReapply: what the eye switch re-applies for the second eye.
 // slot14 = the shader's slot 14 again (SetupShaderPrograms whole: the
 // program bind, both maps, the palettes); view = the rebuilt ApplyConstants
-// with the view filter on the vertex map only (ConstantReapply.h). Anything
-// else is unknown and read as view, said in the log.
+// with the view filter on the vertex map only (ConstantReapply.h); none = no
+// constants at all (the rows, the VIEW transform and the viewport only: a
+// measurement of the switch's floor, the picture wrong). Anything else is
+// unknown and read as view, said in the log.
 enum class StereoReapply : UInt8 {
 	kSlot14,
 	kView,
+	kNone,
 };
 
 inline StereoReapply StereoReapplyFromIni(const char* value, bool* known) {
@@ -50,12 +53,16 @@ inline StereoReapply StereoReapplyFromIni(const char* value, bool* known) {
 		*known = true;
 		return StereoReapply::kSlot14;
 	}
+	if (equals("none")) {
+		*known = true;
+		return StereoReapply::kNone;
+	}
 	*known = equals("view");
 	return StereoReapply::kView;
 }
 
 constexpr const char* StereoReapplyName(StereoReapply r) {
-	return r == StereoReapply::kSlot14 ? "slot14" : "view";
+	return r == StereoReapply::kSlot14 ? "slot14" : r == StereoReapply::kNone ? "none" : "view";
 }
 
 struct RouteSettings {

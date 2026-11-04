@@ -314,3 +314,35 @@ program rebind, no extra-data lookup. Expected (derived from the
 constant-uploads measurements, 0x007830C0 at about 30 ns a call and
 0x009A8E30 at 0.26 us inclusive): the switch falls from 0.95 ms to about
 0.3-0.4 ms a pass.
+
+## Step 2 built and run: the view re-apply (2026-11-04 13:35, runs obng-walkers-stereo/20261104-133458 and -133744)
+
+ApplyConstants 0x009A8E30 reconstructed as a unit with the entry filter
+(slice view-reapply, wf_0fc7705c-dd3: 4 agents, 15 min, 0.56 M tokens;
+emulator gate green, every branch; ledger row). The eye switch's re-apply
+is now `[Route] StereoReapply=view`: the rebuilt walk with the view filter
+on the map(s) whose vtable is NiD3DSCM_Vertex, against the pass's programs,
+with SetupShaderPrograms' own argument list (0x0077A1F0.md C14 / C19).
+
+| Run | Re-apply | scene_pass mean / p95 | Switches per 10 s |
+|---|---|---:|---:|
+| -133458 | view (the rebuild, view ids only) | 3.62 / 4.02 ms | 1 728 211 applied, 0 refused |
+| -121654 | slot14 (everything again) | 3.93 / 4.38 | 1 742 692 |
+| -112320 | none applied (counting only, no switch) | 2.98 / 3.53 | - |
+
+- **The switch costs 0.64 ms a pass with the view re-apply** (measured:
+  3.62 against 2.98), down from 0.95 with slot 14. Less than the 0.3-0.4
+  derived before: the remainder is the per-partition device calls
+  (SetTransform and SetViewport twice each) and the view walk's own
+  products; `StereoReapply=none` (the rows and the device calls only, no
+  constants) measures that floor next.
+- **The pixel maps hold no defined entries on this scene** (measured, run
+  -133744 with the view probe counting the tabled keys: the only entries
+  tabled without a seen upload are type 1, 10.9 M + 1.6 M per 10 s, the
+  fixed-buffer constants; no type-2 key without uploads). So there is
+  nothing view-dependent to re-apply on the pixel side here; type-1 entries
+  cannot depend on the eye (0x009A8E30.md C10). Run -133744's scene_pass
+  (4.72 ms) carries the two probes' hashing and is not a cost figure.
+- **Projected single pass** (derived): 2.80 + 0.64 + 0.19 = about 3.6 ms
+  against 5.6 ms for the two passes today, about 2.0 ms a frame of CPU on
+  the prison scene.
