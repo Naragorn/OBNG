@@ -397,7 +397,8 @@ Decisions taken after OBVR's water-scene finding A2 (2026-11-04 15:50-16:45): th
 and the SpeedTree trees were missing in the right eye; [Probe] DrawEntries showed they draw
 through the renderer's direct entries slots 90 / 91 (not through Do_RenderShape), EndBatch and
 slot 93 never run. Slice draw-entries mapped and rebuilt both (wf_aee55f61-eb0, 2.09 M tokens);
-the stereo route now holds four detours. Verified by OBVR's water run 16:48 (single-pass-water-on/20261104-164829): terrain, tree and house back in the right eye, equal to the dual pass; 4 of 4 detours, 411 k switches per 10 s, 0 refused. A2 closed.
+the stereo route now holds four detours; its per-call lock removed 17:05 (scene_pass 3.47 against
+3.62 ms in the split mode, run obng-walkers-stereo/20261104-170535). Verified by OBVR's water run 16:48 (single-pass-water-on/20261104-164829): terrain, tree and house back in the right eye, equal to the dual pass; 4 of 4 detours, 411 k switches per 10 s, 0 refused. A2 closed.
 
 ## Subsystem replacements
 

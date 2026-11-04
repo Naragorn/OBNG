@@ -486,3 +486,21 @@ outside viewports are the offscreen targets only. The right eye shows the
 near terrain, the tree and the house again, equal to the dual pass (RMSE
 3.7 % in the static upper part; the rest is wind and clouds between the
 runs). A2 closed.
+
+## The route's lock trimmed, and the fixed scene after the load-order change (2026-11-04 17:05, run obng-walkers-stereo/20261104-170535)
+
+The route's per-call SRW lock is gone (the stats belong to the render
+thread; the summary thread asks for a line and the next routed draw writes
+it). Split mode, view re-apply, four detours: scene_pass 3.47 / 4.06 ms
+against 3.62 / 4.02 with the lock (run -133458) - 0.15 ms a pass back, of
+the 0.19 the route's overhead measured in step 3. Switch 0.29 us, re-apply
+0.10 us; 1.77 M switches per 10 s, 0 refused; 0 direct draws in the prison
+(expected: no terrain or trees there).
+
+The fixed scene after Unique Landscapes (plugin indices after MOO shifted by
+one, OBVR 15:20): 495 569 whole + 1 249 039 skinned draws per 10 s against
+523 551 + 1 184 918 on the morning's runs - within the run-to-run spread of
+the whole draws (494 639 in the 14:54 run, before the change) and 5 % more
+skinned draws; the Walkers are still there. Comparable within that spread;
+a new original baseline on this scene is owed before the next fine
+comparison.
