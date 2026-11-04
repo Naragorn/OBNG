@@ -1,0 +1,34 @@
+OBNG 1 - xOBSE 22, Oblivion 010201A0, editor=0
+Settings from Z:\home\nadi\.local\share\Steam\steamapps\common\Oblivion\Data\OBSE\Plugins\OBNG-test.ini: TimeInfoUpdate=0 TimeInfoInit=0 TimeInfoFreeze=0 TimeInfoUnfreeze=0 LoadingMenuTick=0 LoadingMenuCtor=0 RangeWalk=0 RangeWalkOrder=original-first FpuControlWord=0 HavokPlanner=0 CallCounters=0 PassSteps=0 PackCache=0 ConstantUploads=0 Memory=1 MismatchLines=20 SummaryEverySeconds=10 SummaryTimer=1 Route RangeWalk=0
+Shadow: every switch is 0, nothing shadowed
+Route: every switch is 0, nothing routed
+Probes: 0 of 0 call counters made, memory on
+Log: a summary every 10 s from the summary timer
+Shadow:
+Probe: memory commit 386 MB (peak 386), working set 1934 MB (peak 1934), address space 1934 of 4095 MB used (47 %, peak 1934 MB)
+Shadow:
+Probe: memory commit 441 MB (peak 441), working set 2185 MB (peak 2185), address space 2185 of 4095 MB used (53 %, peak 2185 MB)
+Shadow:
+Probe: memory commit 441 MB (peak 441), working set 2185 MB (peak 2185), address space 2185 of 4095 MB used (53 %, peak 2185 MB)
+Shadow:
+Probe: memory commit 468 MB (peak 468), working set 2180 MB (peak 2185), address space 2180 of 4095 MB used (53 %, peak 2185 MB)
+Shadow:
+Probe: memory commit 468 MB (peak 468), working set 2180 MB (peak 2185), address space 2180 of 4095 MB used (53 %, peak 2185 MB)
+Shadow:
+Probe: memory commit 469 MB (peak 469), working set 2149 MB (peak 2185), address space 2149 of 4095 MB used (52 %, peak 2185 MB)
+Shadow:
+Probe: memory commit 470 MB (peak 470), working set 2150 MB (peak 2185), address space 2150 of 4095 MB used (52 %, peak 2185 MB)
+Shadow:
+Probe: memory commit 470 MB (peak 470), working set 2118 MB (peak 2185), address space 2118 of 4095 MB used (51 %, peak 2185 MB)
+Shadow:
+Probe: memory commit 472 MB (peak 472), working set 2120 MB (peak 2185), address space 2120 of 4095 MB used (51 %, peak 2185 MB)
+Shadow:
+Probe: memory commit 473 MB (peak 473), working set 2121 MB (peak 2185), address space 2121 of 4095 MB used (51 %, peak 2185 MB)
+Shadow:
+Probe: memory commit 473 MB (peak 473), working set 2122 MB (peak 2185), address space 2122 of 4095 MB used (51 %, peak 2185 MB)
+Shadow:
+Probe: memory commit 447 MB (peak 473), working set 2095 MB (peak 2185), address space 2095 of 4095 MB used (51 %, peak 2185 MB)
+Shadow:
+Probe: memory commit 447 MB (peak 473), working set 2095 MB (peak 2185), address space 2095 of 4095 MB used (51 %, peak 2185 MB)
+Shadow:
+Probe: memory commit 447 MB (peak 473), working set 2095 MB (peak 2185), address space 2095 of 4095 MB used (51 %, peak 2185 MB)

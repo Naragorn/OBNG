@@ -1,0 +1,44 @@
+# OBVR's StreamReuse measured on the fixed scene: the original side's body
+# (obng-walkers-original.txt, the save OBVRHarnessWalkers, OBNG.dll with
+# nothing patched) plus OBVR's [Render] StreamReuse=1 - OBVR's lever 2, the
+# second pass's packs skipped when the first pass packed the same bytes
+# (../OBVR/docs/performance-spec.md:694-746, "92 % skipped, no measurable
+# gain" in the placed-anew scenario). The fixed scene packs one volatile
+# stream fourteen times a frame (artifacts/shadow/obng-walkers-probes/
+# 20261104-084733); this run says what skipping them is worth, against an
+# original run of the same day.
+#
+# Run, from OBNG's folder:
+#   tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-original.ini tools/hand-scripts/obng-walkers-reuse.txt --save OBVRHarnessWalkers
+# then tools/measure-summary.py over this run and the original run.
+
+ini Render StreamReuse=1
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Render Stereo=dual
+ini Performance Enabled=1
+ini Performance GpuTiming=0
+ini Performance StartAfterSeconds=40
+ini Performance CaptureSeconds=80
+ini Performance MaxRecords=262144
+console-at ready tgm
+console-at ready tcl
+console-at ready player.setrestrained 1
+console-at ready SetNumericINISetting "fVanityModeAutoDelay:Camera" 100000
+console-at ready tai
+
+expect HandScript: finished
+expect Performance: capture armed, it starts in 40 seconds
+expect Performance: capture 1 started
+expect Performance: export
+reject menu Container
+reject HandScript: WARNING
+
+wait 1
+mark ready
+wait 29
+mark settled
+wait 60
+mark watched
+wait 35
+mark done
