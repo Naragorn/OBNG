@@ -434,3 +434,14 @@ single-pass-measure-off/20261104-150032 (the dual pass).
   A first-run effect to watch for in later measurements.
 - Still owed: the look in the headset (Nadi), the Windows outdoor run, and
   OBVR's switch of SinglePassStereo to its default.
+
+## Outdoors on Linux (2026-11-04 15:40, OBVR's gold-road runs, Unique Landscapes installed)
+
+Measured by OBVR on the Gold Road scene (MOO save), single pass on
+against off: scene_pass per frame 3.26 ms against 2 x 2.40 = 4.80 ms,
+app GPU before submit 5.54 against 6.38 ms; the frame held at vsync on
+this machine. OBNG's switch 0.26 us, re-apply 0.09 us per partition. The
+first "on" run's outlier (-143932) stayed unreproduced over four more
+runs (3.7-4.3 ms); it ran the whole capture at SteamVR's half rate and
+even its full-rate frames were slow (11.15 ms) - cause open. The CPU-bound
+frame is the Windows outdoor machine's; that run is still owed.
