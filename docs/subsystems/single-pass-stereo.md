@@ -476,4 +476,13 @@ rebuilt them as units with the two-eye plan (StereoDrawDirect.h); the
 route's third and fourth detours run them with the same eye switch, the
 view re-apply built from the geometry (skin +0xB8, world +0x64, bound
 +0x20, the partition and record being drawn, the renderer's property and
-effect state). Built 16:45; OBVR's water run verifies the picture.
+effect state). Built 16:45.
+
+**Verified by OBVR (run single-pass-water-on/20261104-164829):** "Route: 4
+of 4 detours made"; per 10 s 245 315 whole, 11 095 skinned, 23 170 direct
+shape and 302 078 direct strips draws, 411 031 eye switches all applied, 0
+refused, eyes set 748 / 0 refused; switch 0.24 us, re-apply 0.09 us; the
+outside viewports are the offscreen targets only. The right eye shows the
+near terrain, the tree and the house again, equal to the dual pass (RMSE
+3.7 % in the static upper part; the rest is wind and clouds between the
+runs). A2 closed.
