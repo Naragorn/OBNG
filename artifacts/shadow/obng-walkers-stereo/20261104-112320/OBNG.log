@@ -1,0 +1,51 @@
+OBNG 1 - xOBSE 22, Oblivion 010201A0, editor=0
+Settings from Z:\home\nadi\.local\share\Steam\steamapps\common\Oblivion\Data\OBSE\Plugins\OBNG-test.ini: TimeInfoUpdate=0 TimeInfoInit=0 TimeInfoFreeze=0 TimeInfoUnfreeze=0 LoadingMenuTick=0 LoadingMenuCtor=0 RangeWalk=0 RangeWalkOrder=original-first FpuControlWord=0 HavokPlanner=0 CallCounters=0 PassSteps=0 PackCache=0 ConstantUploads=0 Memory=1 MismatchLines=20 SummaryEverySeconds=10 SummaryTimer=1 Route RangeWalk=0 StereoDraw=1 StereoEyes=2
+Shadow: every switch is 0, nothing shadowed
+Route NiDX9Renderer::DrawPrimitive: on at 007672F0 - the game runs OBNG's rebuild instead of the original
+Route NiDX9Renderer::DrawSkinnedPrimitive: on at 00767520 - the game runs OBNG's rebuild instead of the original
+Route: stereo draw on, eyes 2
+Route: 2 of 2 detours made
+Probes: 0 of 0 call counters made, memory on
+Log: a summary every 10 s from the summary timer
+Shadow:
+Probe: memory commit 388 MB (peak 388), working set 1938 MB (peak 1938), address space 1938 of 4095 MB used (47 %, peak 1938 MB)
+Route: stereo draw (eyes 2) - 37508 whole draws (drawn 37508, refused 0, null record 0), 0 skinned draws (closed 0, no skin 0, refused 0, record missing 0), 37508 eye switches
+Shadow:
+Probe: memory commit 442 MB (peak 442), working set 2188 MB (peak 2189), address space 2188 of 4095 MB used (53 %, peak 2188 MB)
+Route: stereo draw (eyes 2) - 434498 whole draws (drawn 434498, refused 0, null record 0), 973402 skinned draws (closed 973402, no skin 0, refused 0, record missing 0), 1432173 eye switches
+Shadow:
+Probe: memory commit 442 MB (peak 442), working set 2188 MB (peak 2189), address space 2188 of 4095 MB used (53 %, peak 2188 MB)
+Route: stereo draw (eyes 2) - 517197 whole draws (drawn 517197, refused 0, null record 0), 1170464 skinned draws (closed 1170464, no skin 0, refused 0, record missing 0), 1717259 eye switches
+Shadow:
+Probe: memory commit 469 MB (peak 469), working set 2184 MB (peak 2189), address space 2184 of 4095 MB used (53 %, peak 2188 MB)
+Route: stereo draw (eyes 2) - 523551 whole draws (drawn 523551, refused 0, null record 0), 1184918 skinned draws (closed 1184918, no skin 0, refused 0, record missing 0), 1738429 eye switches
+Shadow:
+Probe: memory commit 470 MB (peak 470), working set 2184 MB (peak 2189), address space 2184 of 4095 MB used (53 %, peak 2188 MB)
+Route: stereo draw (eyes 2) - 524715 whole draws (drawn 524715, refused 0, null record 0), 1187482 skinned draws (closed 1187482, no skin 0, refused 0, record missing 0), 1742219 eye switches
+Shadow:
+Probe: memory commit 471 MB (peak 471), working set 2153 MB (peak 2189), address space 2153 of 4095 MB used (52 %, peak 2188 MB)
+Route: stereo draw (eyes 2) - 523788 whole draws (drawn 523788, refused 0, null record 0), 1185567 skinned draws (closed 1185567, no skin 0, refused 0, record missing 0), 1739333 eye switches
+Shadow:
+Probe: memory commit 471 MB (peak 471), working set 2153 MB (peak 2189), address space 2153 of 4095 MB used (52 %, peak 2188 MB)
+Route: stereo draw (eyes 2) - 517956 whole draws (drawn 517956, refused 0, null record 0), 1172213 skinned draws (closed 1172213, no skin 0, refused 0, record missing 0), 1719809 eye switches
+Shadow:
+Probe: memory commit 473 MB (peak 473), working set 2123 MB (peak 2189), address space 2123 of 4095 MB used (51 %, peak 2188 MB)
+Route: stereo draw (eyes 2) - 523543 whole draws (drawn 523543, refused 0, null record 0), 1184918 skinned draws (closed 1184918, no skin 0, refused 0, record missing 0), 1738421 eye switches
+Shadow:
+Probe: memory commit 473 MB (peak 473), working set 2124 MB (peak 2189), address space 2124 of 4095 MB used (51 %, peak 2188 MB)
+Route: stereo draw (eyes 2) - 521806 whole draws (drawn 521806, refused 0, null record 0), 1180986 skinned draws (closed 1180986, no skin 0, refused 0, record missing 0), 1732652 eye switches
+Shadow:
+Probe: memory commit 474 MB (peak 474), working set 2125 MB (peak 2189), address space 2125 of 4095 MB used (51 %, peak 2188 MB)
+Route: stereo draw (eyes 2) - 523207 whole draws (drawn 523207, refused 0, null record 0), 1184104 skinned draws (closed 1184104, no skin 0, refused 0, record missing 0), 1737251 eye switches
+Shadow:
+Probe: memory commit 475 MB (peak 475), working set 2125 MB (peak 2189), address space 2125 of 4095 MB used (51 %, peak 2188 MB)
+Route: stereo draw (eyes 2) - 524879 whole draws (drawn 524879, refused 0, null record 0), 1188072 skinned draws (closed 1188072, no skin 0, refused 0, record missing 0), 1742983 eye switches
+Shadow:
+Probe: memory commit 448 MB (peak 475), working set 2099 MB (peak 2189), address space 2099 of 4095 MB used (51 %, peak 2188 MB)
+Route: stereo draw (eyes 2) - 525019 whole draws (drawn 525019, refused 0, null record 0), 1188092 skinned draws (closed 1188092, no skin 0, refused 0, record missing 0), 1743159 eye switches
+Shadow:
+Probe: memory commit 448 MB (peak 475), working set 2099 MB (peak 2189), address space 2099 of 4095 MB used (51 %, peak 2188 MB)
+Route: stereo draw (eyes 2) - 524825 whole draws (drawn 524825, refused 0, null record 0), 1188070 skinned draws (closed 1188070, no skin 0, refused 0, record missing 0), 1742927 eye switches
+Shadow:
+Probe: memory commit 448 MB (peak 475), working set 2099 MB (peak 2189), address space 2099 of 4095 MB used (51 %, peak 2188 MB)
+Route: stereo draw (eyes 2) - 515515 whole draws (drawn 515515, refused 0, null record 0), 1166385 skinned draws (closed 1166385, no skin 0, refused 0, record missing 0), 1711393 eye switches

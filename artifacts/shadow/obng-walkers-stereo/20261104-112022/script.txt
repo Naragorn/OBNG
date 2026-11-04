@@ -1,0 +1,45 @@
+# The STEREO DRAW route on the fixed scene (docs/subsystems/single-pass-stereo.md,
+# step 3b): OBNG.dll draws through its rebuilt DrawPrimitive 0x007672F0 and
+# DrawSkinnedPrimitive 0x00767520 ([Route] StereoDraw=1) with the eye plan of
+# [Route] StereoEyes - 1 is the 1:1 gate (the same call sequence as the
+# original), 2 the double draw: every partition drawn twice in the same pass,
+# the eye switch a no-op until OBVR's double-wide target exists, so the picture
+# is unchanged and the draw count doubles. The run measures what the second
+# draw costs against the original run of the same day. The body is the
+# measurement pair's (obng-walkers-{original,routed}.txt, the save
+# OBVRHarnessWalkers); only the OBNG-test.ini differs
+# (tools/hand-scripts/obng-measure-stereo.ini).
+#
+# Run, from OBNG's folder (OBNG.dll deployed, the save made):
+#   tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-stereo.ini tools/hand-scripts/obng-walkers-stereo.txt --save OBVRHarnessWalkers
+# then tools/measure-summary.py over this run and the original run.
+
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Render Stereo=dual
+ini Performance Enabled=1
+ini Performance GpuTiming=0
+ini Performance StartAfterSeconds=40
+ini Performance CaptureSeconds=80
+ini Performance MaxRecords=262144
+console-at ready tgm
+console-at ready tcl
+console-at ready player.setrestrained 1
+console-at ready SetNumericINISetting "fVanityModeAutoDelay:Camera" 100000
+console-at ready tai
+
+expect HandScript: finished
+expect Performance: capture armed, it starts in 40 seconds
+expect Performance: capture 1 started
+expect Performance: export
+reject menu Container
+reject HandScript: WARNING
+
+wait 1
+mark ready
+wait 29
+mark settled
+wait 60
+mark watched
+wait 35
+mark done

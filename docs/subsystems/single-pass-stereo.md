@@ -118,3 +118,39 @@ draw-state, read by the architect, no refutation round):
   both eyes at once and need the bounds too (OBVR's side).
 - The fixed scene cannot show the frame gain (pose-wait held); only the
   outdoor Windows scene can, and that run needs the Windows machine.
+
+## Step 3, built and run (2026-11-04 11:30)
+
+Both draw functions are reconstructed as units with the two-eye plan (slice
+stereo-draw, wf_abe17fcf-c30: 7 agents, 16 min, 1.0 M tokens; both reviews
+approved first time; emulator gates green) and routed in the game through
+`[Route] StereoDraw=1` with `[Route] StereoEyes` (RouteStereoDraw.cpp: the
+rebuilds over the game's objects, the eye switch counting only).
+
+| Run | Plan | scene_pass | p95 | Draws per 10 s through the rebuilds |
+|---|---|---:|---:|---|
+| obng-walkers-stereo/20261104-112022 | one eye (the 1:1 gate) | 2.99 ms | 3.68 | 523 551 whole + 1 184 918 skinned, 0 refused, 0 null record |
+| obng-walkers-stereo/20261104-112320 | two eyes (double draw, same target) | 2.98 ms | 3.53 | 523 788 + 1 185 567, 1.74 M eye switches |
+| obng-walkers-original/20261104-112634 | the original | 2.80 ms | 3.33 | - |
+
+- **The gate holds in the game** (measured): every draw of the scene goes
+  through the rebuilds, none refused, the counts equal the pass-steps
+  probe's (700 whole + 1 588 skinned a frame). The headless screenshots show
+  the 2D layer only; the picture in the headset is still to be looked at.
+- **The second draw costs nothing measurable** (measured): two eyes 2.98 ms
+  against one eye 2.99. The device's DrawIndexedPrimitive is cheap here
+  (Proton's D3D9 over DXVK); the 2.1 ms the pass-steps round left "under the
+  draws" are the palette build, the dispatch and OBVR's hooks, not the
+  draws. For the single pass that means the second eye costs only its eye
+  switch.
+- **The route costs 0.19 ms a pass** over the original (its per-call lock
+  and counters); to be trimmed when the route becomes the block.
+
+Step 4 is OBVR's: the double-wide target, one viewport per eye, the submit
+with bounds, and the eye switch's body - the second eye's view translation
+in renderer +0x980 / +0xA00, SetTransform(VIEW), SetViewport, and the
+constants re-applied (ApplyConstants for both maps through a port). The eye
+data (the IPD shift, the viewport rects, the render target) lives in OBVR;
+how it reaches OBNG's eye switch (an exported function, a shared memory
+block, or the switch built on OBVR's side against OBNG's port) is the design
+decision before step 4.
