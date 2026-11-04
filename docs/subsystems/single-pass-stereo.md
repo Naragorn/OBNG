@@ -445,3 +445,16 @@ first "on" run's outlier (-143932) stayed unreproduced over four more
 runs (3.7-4.3 ms); it ran the whole capture at SteamVR's half rate and
 even its full-rate frames were slow (11.15 ms) - cause open. The CPU-bound
 frame is the Windows outdoor machine's; that run is still owed.
+
+## People in the second eye (2026-11-04 15:55, OBVR's single-pass-people on / off, Walkers save)
+
+The bone palettes need no rebase in the single pass (derived from
+0x00762640.md C14: the origin 0x00B3F92C stays one for both eyes, the
+skinned vertex goes palette x the skin constants S x V (x P), ids 25-32,
+which the switch re-applies - the probe saw 27 and 31 change with the eye,
+33 the palette not). Measured by OBVR: the x shift left to right is 106 px
+on the far wall and 114 px on a near Walker, identical on and off; RMSE on
+against off 2.4 / 2.2 % (the animations run on between the runs). People
+have their depth in the right eye. Next on OBVR's side: the water (its c13
+reprojection is built in its SetVertexShaderConstantF hook from the
+uploaded view constants) and the path without MSAA.
