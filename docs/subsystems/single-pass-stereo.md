@@ -370,3 +370,26 @@ each per partition, GetViewport once (test mode), no constants.
   whether any fixed-function or engine path reads it back is unverified; a
   headset look with it skipped would settle it. The switch is good enough
   for OBVR's half as it stands.
+
+## The first single-pass frames in the game (2026-11-04 14:30, OBVR's step 4; run artifacts/shadow/single-pass-one/20261104-143042)
+
+OBVR's SceneRenderHook hands the eyes over before the world render (eye 0
+the left half, eye 1 the right half of the 5136 x 2568 target, the offset
+g_dualShift = 4.339 units along the head's right) and renders once; OBNG's
+route with `[Route] StereoDraw=1 StereoEyes=2 StereoReapply=view` draws
+every partition twice. OBVR's own harness scene (its test hall, not the
+Walkers save), PASS:
+
+- ObngStereoPlan returned 2; ObngStereoSetEyes accepted every frame (746
+  per 10 s, 0 refused); 253 640 eye switches per 10 s, all applied; 799
+  draws per 10 s outside eye 0's viewport (the actor shadow maps and the
+  pre-passes, drawn once - the gate works). One RenderScene a frame
+  (measured, OBVR's log).
+- **The pictures:** OBVR's eye captures (OBVR-Eye-Left-world.png /
+  OBVR-Eye-Right-world.png in the run) show the hall correctly in both and
+  differ by a parallax consistent with an eye moved to the right (the near
+  pillar at the right edge moves into view, the hand's beam shifts left) -
+  the first picture of the second eye drawn by OBNG's switch. Which half
+  of the target OBVR's capture takes for each eye is its step 5
+  (unverified here); the phase table (frame, scene_pass, GPU) comes with
+  its step 6.
