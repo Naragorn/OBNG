@@ -281,44 +281,144 @@ struct PackStats {
 	std::uint64_t staticData = 0;     // 0x4000
 	std::uint64_t mutableData = 0;    // any other nibble
 	std::uint64_t dirtyBits = 0;      // packer entries with dirty bits set (low 12 bits of +0x2E)
+	std::uint64_t sliceSame = 0;      // packs whose (buffer, offset, size) equal the key's last pack's
+	std::uint64_t sliceMoved = 0;     // packs whose slice differs from the key's last
+	std::uint64_t lockDiscard = 0;    // packs whose chip flags hold D3DLOCK_DISCARD 0x2000
+	std::uint64_t lockNoOverwrite = 0;  // ... D3DLOCK_NOOVERWRITE 0x1000
+	std::uint64_t lockOther = 0;      // neither bit
+	std::uint64_t volatileSame = 0;   // Same verdicts on packs whose data was volatile at the packer's entry
+	std::uint64_t volatileChanged = 0;
+	std::uint64_t otherSame = 0;      // Same verdicts on mutable or static data
+	std::uint64_t otherChanged = 0;
 	void Reset() { *this = PackStats{}; }
 };
+
+// The verdict split by the data's consistency at the packer's entry.
+inline void CountVerdictByConsistency(PackVerdict verdict, bool volatileData, PackStats& stats) {
+	if (verdict == PackVerdict::Same) {
+		++(volatileData ? stats.volatileSame : stats.otherSame);
+	} else if (verdict == PackVerdict::Changed) {
+		++(volatileData ? stats.volatileChanged : stats.otherChanged);
+	}
+}
+
+// The D3D slice a pack went into: the chip's buffer, lock offset and size.
+struct PackSlice {
+	std::uint32_t buffer;
+	std::uint32_t offset;
+	std::uint32_t size;
+	bool operator==(const PackSlice&) const = default;
+};
+
+inline constexpr std::uint32_t kLockDiscard = 0x2000u;
+inline constexpr std::uint32_t kLockNoOverwrite = 0x1000u;
+
+inline void CountLockFlags(std::uint32_t flags, PackStats& stats) {
+	if ((flags & kLockDiscard) != 0) {
+		++stats.lockDiscard;
+	} else if ((flags & kLockNoOverwrite) != 0) {
+		++stats.lockNoOverwrite;
+	} else {
+		++stats.lockOther;
+	}
+}
 
 struct PackCache {
 	struct Slot {
 		PackKey key{};
 		std::uint64_t hash = 0;
+		PackSlice slice{};
 		bool used = false;
+		std::uint64_t same = 0;     // per key, over the table's life
+		std::uint64_t changed = 0;
 	};
 
 	explicit PackCache(std::uint32_t slotsPowerOfTwo = 16) : slots_(std::size_t{1} << slotsPowerOfTwo), mask_((1u << slotsPowerOfTwo) - 1) {}
 
-	PackVerdict Add(PackKey key, std::uint64_t hash, std::uint32_t bytes, PackStats& stats) {
+	// slice: where the bytes went; its stability against the key's last pack
+	// is counted (sliceSame / sliceMoved) for a known key.
+	PackVerdict Add(PackKey key, std::uint64_t hash, std::uint32_t bytes, PackStats& stats, PackSlice slice = PackSlice{}) {
 		++stats.packs;
 		stats.bytes += bytes;
 		Slot& slot = slots_[Index(key)];
 		if (!slot.used) {
-			slot = Slot{key, hash, true};
+			slot = Slot{key, hash, slice, true};
 			++stats.fresh;
 			++keys_;
 			return PackVerdict::New;
 		}
 		if (!(slot.key == key)) {
-			slot = Slot{key, hash, true};
+			slot = Slot{key, hash, slice, true};
 			++stats.fresh;
 			++stats.evictions;
 			return PackVerdict::New;
 		}
+		if (slot.slice == slice) {
+			++stats.sliceSame;
+		} else {
+			++stats.sliceMoved;
+			slot.slice = slice;
+		}
 		if (slot.hash == hash) {
 			++stats.same;
 			stats.sameBytes += bytes;
+			++slot.same;
 			return PackVerdict::Same;
 		}
 		slot.hash = hash;
 		++stats.changed;
+		++slot.changed;
 		return PackVerdict::Changed;
 	}
 	std::uint64_t Keys() const { return keys_; }
+
+	// The keys by their history: never changed, never the same, mixed; and
+	// how many distinct buffers they went into. Over the table's life.
+	struct KeyShape {
+		std::uint64_t alwaysSame = 0;
+		std::uint64_t alwaysChanged = 0;
+		std::uint64_t mixed = 0;
+		std::uint64_t untested = 0;  // one pack only
+		std::uint64_t buffers = 0;   // distinct slice buffers among the keys
+	};
+	KeyShape Shape() const {
+		KeyShape k;
+		std::vector<std::uint32_t> buffers;
+		for (const Slot& s : slots_) {
+			if (!s.used) {
+				continue;
+			}
+			if (s.same == 0 && s.changed == 0) {
+				++k.untested;
+			} else if (s.changed == 0) {
+				++k.alwaysSame;
+			} else if (s.same == 0) {
+				++k.alwaysChanged;
+			} else {
+				++k.mixed;
+			}
+			bool seen = false;
+			for (std::uint32_t b : buffers) {
+				seen = seen || b == s.slice.buffer;
+			}
+			if (!seen) {
+				buffers.push_back(s.slice.buffer);
+			}
+		}
+		k.buffers = buffers.size();
+		return k;
+	}
+	// The first `limit` keys that ever changed, for the log: (stream, same, changed).
+	template <class Visit>
+	void VisitChangedKeys(unsigned limit, Visit&& visit) const {
+		unsigned n = 0;
+		for (const Slot& s : slots_) {
+			if (s.used && s.changed != 0 && n < limit) {
+				visit(s.key, s.same, s.changed);
+				++n;
+			}
+		}
+	}
 
 private:
 	std::uint32_t Index(PackKey k) const {
@@ -360,13 +460,19 @@ inline int FormatPackStats(const PackStats& s, std::uint64_t keys, char* out, st
 	return std::snprintf(out, capacity,
 	                     "Probe: pack cache - %llu packs, %llu same (%u %%), %llu changed, %llu new (%llu evictions), %llu keys; "
 	                     "%u MB hashed, %u %% of the bytes same; %llu unlocks outside the packer; data volatile %llu, static %llu, "
-	                     "mutable %llu, dirty %llu",
+	                     "mutable %llu, dirty %llu; slice same %llu, moved %llu; lock flags discard %llu, no-overwrite %llu, other %llu; "
+	                     "by data: volatile same %llu changed %llu, other same %llu changed %llu",
 	                     static_cast<unsigned long long>(s.packs), static_cast<unsigned long long>(s.same), PercentOf(s.same, s.packs),
 	                     static_cast<unsigned long long>(s.changed), static_cast<unsigned long long>(s.fresh),
 	                     static_cast<unsigned long long>(s.evictions), static_cast<unsigned long long>(keys), Megabytes(s.bytes),
 	                     PercentOf(s.sameBytes, s.bytes), static_cast<unsigned long long>(s.outside),
 	                     static_cast<unsigned long long>(s.volatileData), static_cast<unsigned long long>(s.staticData),
-	                     static_cast<unsigned long long>(s.mutableData), static_cast<unsigned long long>(s.dirtyBits));
+	                     static_cast<unsigned long long>(s.mutableData), static_cast<unsigned long long>(s.dirtyBits),
+	                     static_cast<unsigned long long>(s.sliceSame), static_cast<unsigned long long>(s.sliceMoved),
+	                     static_cast<unsigned long long>(s.lockDiscard), static_cast<unsigned long long>(s.lockNoOverwrite),
+	                     static_cast<unsigned long long>(s.lockOther), static_cast<unsigned long long>(s.volatileSame),
+	                     static_cast<unsigned long long>(s.volatileChanged), static_cast<unsigned long long>(s.otherSame),
+	                     static_cast<unsigned long long>(s.otherChanged));
 }
 
 // ---- The constant uploads' redundancy probe -----------------------------------------

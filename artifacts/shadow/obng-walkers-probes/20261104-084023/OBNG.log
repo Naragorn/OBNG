@@ -1,0 +1,68 @@
+OBNG 1 - xOBSE 22, Oblivion 010201A0, editor=0
+Settings from Z:\home\nadi\.local\share\Steam\steamapps\common\Oblivion\Data\OBSE\Plugins\OBNG-test.ini: TimeInfoUpdate=0 TimeInfoInit=0 TimeInfoFreeze=0 TimeInfoUnfreeze=0 LoadingMenuTick=0 LoadingMenuCtor=0 RangeWalk=0 RangeWalkOrder=original-first FpuControlWord=0 HavokPlanner=0 CallCounters=0 PassSteps=0 PackCache=1 ConstantUploads=1 Memory=1 MismatchLines=20 SummaryEverySeconds=10 SummaryTimer=1 Route RangeWalk=0
+Shadow: every switch is 0, nothing shadowed
+Route: every switch is 0, nothing routed
+Shadow PackSkinnedGeometryBuffer 0x00763130 (pack cache): on at 00763130 - the original runs, the rebuild runs on a copy, both compared bit for bit
+Shadow dynamic buffer unlock 0x00776D80 (pack cache): on at 00776D80 - the original runs, the rebuild runs on a copy, both compared bit for bit
+Shadow PackStream 0x0076FE20 (pack cache): on at 0076FE20 - the original runs, the rebuild runs on a copy, both compared bit for bit
+Shadow SetVertexShaderConstant 0x007830C0 (uploads): on at 007830C0 - the original runs, the rebuild runs on a copy, both compared bit for bit
+Shadow SetVertexShaderConstantArray 0x00783180 (uploads): on at 00783180 - the original runs, the rebuild runs on a copy, both compared bit for bit
+Shadow FinishAccumulating 0x007AE070 (uploads: the pass counter): on at 007AE070 - the original runs, the rebuild runs on a copy, both compared bit for bit
+Probes: 6 of 6 call counters made, memory on
+Log: a summary every 10 s from the summary timer
+Shadow:
+Probe: pack cache - 0 packs, 0 same (0 %), 0 changed, 0 new (0 evictions), 0 keys; 0 MB hashed, 0 % of the bytes same; 0 unlocks outside the packer; data volatile 0, static 0, mutable 0, dirty 0; slice same 0, moved 0; lock flags discard 0, no-overwrite 0, other 0
+Probe: constant uploads - 0 uploads, 0 same (0 %, 0 in the same pass), 0 changed, 0 fresh, 0 out of range; 0 MB, 0 % of the bytes same; palettes 0 with 0 bones (0 % consecutive); single uploads by type
+Probe: memory commit 389 MB (peak 389), working set 1938 MB (peak 1938), address space 1938 of 4095 MB used (47 %, peak 1938 MB)
+Shadow:
+Probe: pack cache - 7573 packs, 5384 same (71 %), 2154 changed, 35 new (0 evictions), 35 keys; 2225 MB hashed, 71 % of the bytes same; 28265 unlocks outside the packer; data volatile 7539, static 870115, mutable 2152, dirty 1; slice same 7538, moved 0; lock flags discard 7538, no-overwrite 0, other 35
+Probe: constant uploads - 7591470 uploads, 2994667 same (39 %, 2994662 in the same pass), 4596781 changed, 22 fresh, 0 out of range; 366 MB, 41 % of the bytes same; palettes 879806 with 6333355 bones (78 % consecutive); single uploads by type 2:1258115
+Probe: memory commit 443 MB (peak 443), working set 2189 MB (peak 2189), address space 2189 of 4095 MB used (53 %, peak 2189 MB)
+Shadow:
+Probe: pack cache - 10507 packs, 7505 same (71 %), 3002 changed, 0 new (0 evictions), 35 keys; 3099 MB hashed, 71 % of the bytes same; 39023 unlocks outside the packer; data volatile 10507, static 1200810, mutable 3000, dirty 0; slice same 10507, moved 0; lock flags discard 10507, no-overwrite 0, other 0
+Probe: constant uploads - 10482176 uploads, 4134529 same (39 %, 4134529 in the same pass), 6347647 changed, 0 fresh, 0 out of range; 506 MB, 41 % of the bytes same; palettes 1214319 with 8746223 bones (78 % consecutive); single uploads by type 2:1735953
+Probe: memory commit 443 MB (peak 443), working set 2189 MB (peak 2189), address space 2189 of 4095 MB used (53 %, peak 2189 MB)
+Shadow:
+Probe: pack cache - 10493 packs, 7495 same (71 %), 2998 changed, 0 new (0 evictions), 35 keys; 3095 MB hashed, 71 % of the bytes same; 38977 unlocks outside the packer; data volatile 10493, static 1199190, mutable 3000, dirty 0; slice same 10493, moved 0; lock flags discard 10493, no-overwrite 0, other 0
+Probe: constant uploads - 10468324 uploads, 4128971 same (39 %, 4128971 in the same pass), 6339353 changed, 0 fresh, 0 out of range; 505 MB, 41 % of the bytes same; palettes 1212681 with 8734777 bones (78 % consecutive); single uploads by type 2:1733547
+Probe: memory commit 470 MB (peak 470), working set 2184 MB (peak 2189), address space 2184 of 4095 MB used (53 %, peak 2189 MB)
+Shadow:
+Probe: pack cache - 10514 packs, 7510 same (71 %), 3004 changed, 0 new (0 evictions), 35 keys; 3101 MB hashed, 71 % of the bytes same; 39052 unlocks outside the packer; data volatile 10514, static 1201600, mutable 3004, dirty 0; slice same 10514, moved 0; lock flags discard 10514, no-overwrite 0, other 0
+Probe: constant uploads - 10489217 uploads, 4137259 same (39 %, 4137259 in the same pass), 6351958 changed, 0 fresh, 0 out of range; 506 MB, 41 % of the bytes same; palettes 1215118 with 8752154 bones (78 % consecutive); single uploads by type 2:1737063
+Probe: memory commit 471 MB (peak 471), working set 2184 MB (peak 2189), address space 2184 of 4095 MB used (53 %, peak 2189 MB)
+Shadow:
+Probe: pack cache - 10510 packs, 7507 same (71 %), 3003 changed, 0 new (0 evictions), 35 keys; 3100 MB hashed, 71 % of the bytes same; 39049 unlocks outside the packer; data volatile 10510, static 1201510, mutable 3002, dirty 0; slice same 10510, moved 0; lock flags discard 10510, no-overwrite 0, other 0
+Probe: constant uploads - 10488586 uploads, 4140630 same (39 %, 4140630 in the same pass), 6347956 changed, 0 fresh, 0 out of range; 506 MB, 41 % of the bytes same; palettes 1215080 with 8751652 bones (78 % consecutive); single uploads by type 2:1736934
+Probe: memory commit 471 MB (peak 471), working set 2153 MB (peak 2189), address space 2153 of 4095 MB used (52 %, peak 2189 MB)
+Shadow:
+Probe: pack cache - 10509 packs, 7506 same (71 %), 3003 changed, 0 new (0 evictions), 35 keys; 3100 MB hashed, 71 % of the bytes same; 39026 unlocks outside the packer; data volatile 10510, static 1200900, mutable 3002, dirty 0; slice same 10509, moved 0; lock flags discard 10509, no-overwrite 0, other 0
+Probe: constant uploads - 10482676 uploads, 4139178 same (39 %, 4139178 in the same pass), 6343498 changed, 0 fresh, 0 out of range; 506 MB, 41 % of the bytes same; palettes 1214354 with 8746687 bones (78 % consecutive); single uploads by type 2:1735989
+Probe: memory commit 472 MB (peak 472), working set 2154 MB (peak 2189), address space 2154 of 4095 MB used (52 %, peak 2189 MB)
+Shadow:
+Probe: pack cache - 10481 packs, 7487 same (71 %), 2994 changed, 0 new (0 evictions), 35 keys; 3091 MB hashed, 71 % of the bytes same; 38925 unlocks outside the packer; data volatile 10480, static 1197590, mutable 2996, dirty 0; slice same 10481, moved 0; lock flags discard 10481, no-overwrite 0, other 0
+Probe: constant uploads - 10454488 uploads, 4128036 same (39 %, 4128036 in the same pass), 6326452 changed, 0 fresh, 0 out of range; 504 MB, 41 % of the bytes same; palettes 1211066 with 8723161 bones (78 % consecutive); single uploads by type 2:1731327
+Probe: memory commit 474 MB (peak 474), working set 2124 MB (peak 2189), address space 2124 of 4095 MB used (51 %, peak 2189 MB)
+Shadow:
+Probe: pack cache - 10514 packs, 7510 same (71 %), 3004 changed, 0 new (0 evictions), 35 keys; 3101 MB hashed, 71 % of the bytes same; 39052 unlocks outside the packer; data volatile 10514, static 1201600, mutable 3004, dirty 0; slice same 10514, moved 0; lock flags discard 10514, no-overwrite 0, other 0
+Probe: constant uploads - 10489217 uploads, 4141765 same (39 %, 4141765 in the same pass), 6347452 changed, 0 fresh, 0 out of range; 506 MB, 41 % of the bytes same; palettes 1215118 with 8752154 bones (78 % consecutive); single uploads by type 2:1737063
+Probe: memory commit 475 MB (peak 475), working set 2124 MB (peak 2189), address space 2124 of 4095 MB used (51 %, peak 2189 MB)
+Shadow:
+Probe: pack cache - 10451 packs, 7465 same (71 %), 2986 changed, 0 new (0 evictions), 35 keys; 3082 MB hashed, 71 % of the bytes same; 38823 unlocks outside the packer; data volatile 10451, static 1194563, mutable 2986, dirty 0; slice same 10451, moved 0; lock flags discard 10451, no-overwrite 0, other 0
+Probe: constant uploads - 10427833 uploads, 4117191 same (39 %, 4117191 in the same pass), 6310642 changed, 0 fresh, 0 out of range; 503 MB, 41 % of the bytes same; palettes 1208017 with 8700932 bones (78 % consecutive); single uploads by type 2:1726901
+Probe: memory commit 475 MB (peak 475), working set 2125 MB (peak 2189), address space 2125 of 4095 MB used (51 %, peak 2189 MB)
+Shadow:
+Probe: pack cache - 10403 packs, 7430 same (71 %), 2973 changed, 0 new (0 evictions), 35 keys; 3068 MB hashed, 71 % of the bytes same; 38636 unlocks outside the packer; data volatile 10403, static 1188817, mutable 2972, dirty 0; slice same 10403, moved 0; lock flags discard 10403, no-overwrite 0, other 0
+Probe: constant uploads - 10377825 uploads, 4097727 same (39 %, 4097727 in the same pass), 6280098 changed, 0 fresh, 0 out of range; 501 MB, 41 % of the bytes same; palettes 1202210 with 8659149 bones (78 % consecutive); single uploads by type 2:1718676
+Probe: memory commit 476 MB (peak 476), working set 2125 MB (peak 2189), address space 2125 of 4095 MB used (51 %, peak 2189 MB)
+Shadow:
+Probe: pack cache - 10494 packs, 7496 same (71 %), 2998 changed, 0 new (0 evictions), 35 keys; 3095 MB hashed, 71 % of the bytes same; 38984 unlocks outside the packer; data volatile 10494, static 1199325, mutable 2998, dirty 0; slice same 10494, moved 0; lock flags discard 10494, no-overwrite 0, other 0
+Probe: constant uploads - 10469645 uploads, 4133756 same (39 %, 4133756 in the same pass), 6335889 changed, 0 fresh, 0 out of range; 505 MB, 41 % of the bytes same; palettes 1212857 with 8735825 bones (78 % consecutive); single uploads by type 2:1733820
+Probe: memory commit 450 MB (peak 476), working set 2099 MB (peak 2189), address space 2099 of 4095 MB used (51 %, peak 2189 MB)
+Shadow:
+Probe: pack cache - 10512 packs, 7509 same (71 %), 3003 changed, 0 new (0 evictions), 35 keys; 3100 MB hashed, 71 % of the bytes same; 39037 unlocks outside the packer; data volatile 10512, static 1201295, mutable 3004, dirty 0; slice same 10512, moved 0; lock flags discard 10512, no-overwrite 0, other 0
+Probe: constant uploads - 10486027 uploads, 4141176 same (39 %, 4141176 in the same pass), 6344851 changed, 0 fresh, 0 out of range; 506 MB, 41 % of the bytes same; palettes 1214736 with 8749554 bones (78 % consecutive); single uploads by type 2:1736473
+Probe: memory commit 450 MB (peak 476), working set 2099 MB (peak 2189), address space 2099 of 4095 MB used (51 %, peak 2189 MB)
+Shadow:
+Probe: pack cache - 10486 packs, 7490 same (71 %), 2996 changed, 0 new (0 evictions), 35 keys; 3093 MB hashed, 71 % of the bytes same; 38948 unlocks outside the packer; data volatile 10486, static 1198400, mutable 2996, dirty 0; slice same 10486, moved 0; lock flags discard 10486, no-overwrite 0, other 0
+Probe: constant uploads - 10461283 uploads, 4130735 same (39 %, 4130735 in the same pass), 6330548 changed, 0 fresh, 0 out of range; 505 MB, 41 % of the bytes same; palettes 1211882 with 8728846 bones (78 % consecutive); single uploads by type 2:1732437
+Probe: memory commit 450 MB (peak 476), working set 2099 MB (peak 2189), address space 2099 of 4095 MB used (51 %, peak 2189 MB)

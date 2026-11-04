@@ -1,0 +1,48 @@
+# The two REDUNDANCY PROBES on the fixed scene, in one run: the game runs its
+# own code (nothing routed, nothing shadowed) and OBNG.dll (1) hashes every
+# packed vertex stream at its unlock 0x00776D80 against the last pack of the
+# same (geometry, partition, chip) - the share a cross-frame packing cache
+# would skip (docs/subsystems/stream-packing.md, L3) - and (2) hashes every
+# vertex constant upload through 0x007830C0 and 0x00783180 against the
+# register's last upload, per pass - the share of the constant maps' work
+# (1.17 ms a frame) that a check of its inputs could skip, and whether the
+# bone palettes' index runs allow one device call without a gather
+# (re/functions/0x009A8E30.md, 0x00783180.md). The body is the measurement
+# pair's (obng-walkers-{original,routed}.txt, the save OBVRHarnessWalkers);
+# only the OBNG-test.ini differs (tools/hand-scripts/obng-measure-probes.ini).
+# Both probes hash every byte they see: this run measures shares, not time.
+#
+# Run, from OBNG's folder (OBNG.dll deployed, the save made):
+#   tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-probes.ini tools/hand-scripts/obng-walkers-probes.txt --save OBVRHarnessWalkers
+# In OBNG.log look for the "Probe: pack cache - ..." and "Probe: constant
+# uploads - ..." lines.
+
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Render Stereo=dual
+ini Performance Enabled=1
+ini Performance GpuTiming=0
+ini Performance StartAfterSeconds=40
+ini Performance CaptureSeconds=80
+ini Performance MaxRecords=262144
+console-at ready tgm
+console-at ready tcl
+console-at ready player.setrestrained 1
+console-at ready SetNumericINISetting "fVanityModeAutoDelay:Camera" 100000
+console-at ready tai
+
+expect HandScript: finished
+expect Performance: capture armed, it starts in 40 seconds
+expect Performance: capture 1 started
+expect Performance: export
+reject menu Container
+reject HandScript: WARNING
+
+wait 1
+mark ready
+wait 29
+mark settled
+wait 60
+mark watched
+wait 35
+mark done

@@ -225,12 +225,12 @@ void TestLoadPackCache() {
 	Section("Load with the pack cache on: two more detours asked");
 	Fake fake;
 	fake.iniSettings.shadow.packCache = true;
-	fake.probesMade = 2;
+	fake.probesMade = 3;
 	g_fake = &fake;
 	ResetForTest();
 	Check(Load(Game(), kHost), "loads");
 	Check(fake.probeInstalls == 1 && fake.probed.packCache && !fake.probed.passSteps, "the pack cache reaches the probe installer");
-	Check(fake.Logged("Probes: 2 of 2 call counters made, memory on"), "two asked");
+	Check(fake.Logged("Probes: 3 of 3 call counters made, memory on"), "three asked");
 }
 
 void TestLoadConstantUploads() {

@@ -177,6 +177,35 @@ void TestPackCache() {
 	Check(cache.Add(a, 12, 100, stats) == PackVerdict::Same && stats.same == 2, "the changed hash is now the last one");
 	Check(cache.Add(b, 12, 50, stats) == PackVerdict::New && cache.Keys() == 2, "another chip of the same partition is another key");
 	Check(stats.packs == 5 && stats.bytes == 450, "five packs, 450 bytes hashed");
+	Check(stats.sliceSame == 3 && stats.sliceMoved == 0, "a known key with the same (default) slice each time: slice same");
+	{
+		const PackCache::KeyShape k = cache.Shape();
+		Check(k.mixed == 1 && k.untested == 1 && k.alwaysSame == 0 && k.alwaysChanged == 0 && k.buffers == 1,
+		      "key a mixed (same and changed), key b untested (one pack), one distinct buffer (the default slice)");
+		unsigned visited = 0;
+		cache.VisitChangedKeys(8, [&](PackKey key, std::uint64_t same, std::uint64_t changed) {
+			visited += key == a && same == 2 && changed == 1 ? 1 : 0;
+		});
+		Check(visited == 1, "the changed key is visited with its counts");
+	}
+	PackCache sl(4);
+	PackStats st;
+	sl.Add(a, 1, 10, st, PackSlice{0x100, 0, 512});
+	Check(sl.Add(a, 1, 10, st, PackSlice{0x100, 0, 512}) == PackVerdict::Same && st.sliceSame == 1, "the same buffer, offset and size: slice same");
+	Check(sl.Add(a, 1, 10, st, PackSlice{0x100, 512, 512}) == PackVerdict::Same && st.sliceMoved == 1, "another offset: slice moved, the bytes still the same");
+	Check(sl.Add(a, 1, 10, st, PackSlice{0x100, 512, 512}) == PackVerdict::Same && st.sliceSame == 2, "the moved slice is now the last one");
+	PackStats lf;
+	CountLockFlags(0x2000, lf);
+	CountLockFlags(0x3000, lf);
+	CountLockFlags(0x1000, lf);
+	CountLockFlags(0x0, lf);
+	Check(lf.lockDiscard == 2 && lf.lockNoOverwrite == 1 && lf.lockOther == 1, "lock flags: discard wins over no-overwrite, other counted");
+	PackStats bc;
+	CountVerdictByConsistency(PackVerdict::Same, true, bc);
+	CountVerdictByConsistency(PackVerdict::Changed, true, bc);
+	CountVerdictByConsistency(PackVerdict::Same, false, bc);
+	CountVerdictByConsistency(PackVerdict::New, true, bc);
+	Check(bc.volatileSame == 1 && bc.volatileChanged == 1 && bc.otherSame == 1 && bc.otherChanged == 0, "verdicts split by consistency; New is not counted");
 	PackCache tiny(0);  // one slot: every other key evicts
 	PackStats t;
 	tiny.Add(a, 1, 10, t);
@@ -208,11 +237,14 @@ void TestPackCache() {
 	PackStats s;
 	s.packs = 1000; s.same = 750; s.changed = 200; s.fresh = 50; s.evictions = 5; s.bytes = 3u << 20; s.sameBytes = 1u << 20;
 	s.outside = 7; s.volatileData = 900; s.staticData = 10; s.mutableData = 90; s.dirtyBits = 95;
+	s.sliceSame = 940; s.sliceMoved = 10; s.lockDiscard = 1; s.lockNoOverwrite = 998; s.lockOther = 1;
+	s.volatileSame = 700; s.volatileChanged = 150; s.otherSame = 50; s.otherChanged = 50;
 	char line[400];
 	FormatPackStats(s, 60, line, sizeof(line));
 	Check(std::string(line) ==
 	          "Probe: pack cache - 1000 packs, 750 same (75 %), 200 changed, 50 new (5 evictions), 60 keys; 3 MB hashed, 33 % of the "
-	          "bytes same; 7 unlocks outside the packer; data volatile 900, static 10, mutable 90, dirty 95",
+	          "bytes same; 7 unlocks outside the packer; data volatile 900, static 10, mutable 90, dirty 95; slice same 940, moved 10; "
+	          "lock flags discard 1, no-overwrite 998, other 1; by data: volatile same 700 changed 150, other same 50 changed 50",
 	      "the line");
 	FormatPackStats(PackStats{}, 0, line, sizeof(line));
 	Check(std::strstr(line, "0 packs, 0 same (0 %)") != nullptr, "no pack: no division");

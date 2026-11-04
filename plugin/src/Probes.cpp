@@ -101,6 +101,11 @@ struct AtomicCounts {
 AtomicCounts g_counts[static_cast<int>(Probed::Count)];
 LogFn g_log = nullptr;
 
+template <class T>
+T ReadAt(std::uintptr_t address) {
+	return *reinterpret_cast<volatile const T*>(address);
+}
+
 // ---- The pass steps: four timed detours (slice pass-drivers, 2026-10-30) ----------
 //
 // Each detour reads the TSC before and after the original (RDTSC, no
@@ -314,8 +319,26 @@ constexpr UInt32 kPacker = 0x00763130;
 constexpr UInt8 kPackerBytes[] = {0x83, 0xEC, 0x1C, 0x53, 0x56};  // sub esp,1Ch; push ebx; push esi
 constexpr UInt32 kUnlock = 0x00776D80;
 constexpr UInt8 kUnlockBytes[] = {0x56, 0x8B, 0xF1, 0x8B, 0x46, 0x4C};  // push esi; mov esi,ecx; mov eax,[esi+4Ch]
-constexpr UInt32 kChipStagingOffset = 0x40;
-constexpr UInt32 kChipBytesOffset = 0x4C;
+// The unlock's `this` is the declaration's buffer manager (PackStream's
+// [this+0x0C], re/functions/0x0076FE20.md), whose +0x40 holds the staging
+// pointer and +0x4C the bytes. The chip whose range was locked is PackStream's
+// fifth argument; PackStream passes (chip+0x08 vb, +0x0C offset, +0x14 size,
+// +0x10 flags) to the lock (read there, 0x0076FF70..0x0076FF79). A third
+// detour on PackStream 0x0076FE20 (thiscall(decl; geometry, skin, partition,
+// dirty, chip, streamIndex, lockedDest), RET 0x1C; entry bytes read with
+// objdump, no jump into them) keeps the chip and the stream index for the
+// thread, so the key is (geometry, partition, stream) and the slice the
+// chip's own (buffer, offset, size).
+constexpr UInt32 kManagerStagingOffset = 0x40;
+constexpr UInt32 kManagerBytesOffset = 0x4C;
+constexpr UInt32 kChipBufferOffset = 0x08;
+constexpr UInt32 kChipOffsetOffset = 0x0C;
+constexpr UInt32 kChipFlagsOffset = 0x10;
+constexpr UInt32 kChipSizeOffset = 0x14;
+constexpr UInt32 kPackStream = 0x0076FE20;
+constexpr UInt8 kPackStreamBytes[] = {0x83, 0xEC, 0x38, 0x53, 0x8B, 0x5C, 0x24, 0x40};  // sub esp,38h; push ebx; mov ebx,[esp+40h]
+using PackStreamFn = UInt32(__fastcall*)(void* self, void* edx, UInt32, UInt32, UInt32, UInt32, UInt32, UInt32, UInt32);
+PackStreamFn g_packStream = nullptr;
 constexpr UInt32 kGeometryConsistencyOffset = 0x2E;
 
 using PackerFn = UInt32(__fastcall*)(void* self, void* edx, UInt32, UInt32, UInt32, UInt32, UInt32, UInt32);
@@ -329,6 +352,9 @@ struct PackContext {
 	UInt32 depth = 0;
 	UInt32 geometry = 0;
 	UInt32 partition = 0;
+	UInt32 chip = 0;    // PackStream's chip while it runs on this thread, else 0
+	UInt32 stream = 0;  // its stream index
+	bool volatileData = false;  // the data's consistency nibble at the packer's entry was 0x8000
 };
 range_walk_game::ThreadSlots<PackContext> g_packContexts;
 SRWLOCK g_packLock = SRWLOCK_INIT;
@@ -344,8 +370,10 @@ UInt32 __fastcall ProbePacker(void* self, void* /*edx*/, UInt32 record, UInt32 g
 		// The original tests the record and the geometry for null before it
 		// reads either (JE 0x007633BD at 0x0076313F and 0x0076314B, read):
 		// read the consistency word only where it would.
+		context.volatileData = false;
 		if (record != 0 && geometry != 0) {
 			const auto consistency = *reinterpret_cast<volatile UInt16*>(static_cast<std::uintptr_t>(geometry) + kGeometryConsistencyOffset);
+			context.volatileData = (consistency & 0xF000u) == 0x8000u;
 			AcquireSRWLockExclusive(&g_packLock);
 			probe::CountConsistency(consistency, g_packStats);
 			ReleaseSRWLockExclusive(&g_packLock);
@@ -353,6 +381,19 @@ UInt32 __fastcall ProbePacker(void* self, void* /*edx*/, UInt32 record, UInt32 g
 	}
 	const UInt32 eax = g_packer(self, nullptr, record, geometry, skin, partition, decl, force);
 	--context.depth;
+	return eax;
+}
+
+UInt32 __fastcall ProbePackStream(void* self, void* /*edx*/, UInt32 geometry, UInt32 skin, UInt32 partition, UInt32 dirty, UInt32 chip,
+                                  UInt32 stream, UInt32 lockedDest) {
+	PackContext& context = g_packContexts.Get();
+	const UInt32 chipBefore = context.chip;
+	const UInt32 streamBefore = context.stream;
+	context.chip = chip;
+	context.stream = stream;
+	const UInt32 eax = g_packStream(self, nullptr, geometry, skin, partition, dirty, chip, stream, lockedDest);
+	context.chip = chipBefore;
+	context.stream = streamBefore;
 	return eax;
 }
 
@@ -364,12 +405,24 @@ UInt32 __fastcall ProbeUnlock(void* self, void* /*edx*/, UInt32 d3dBuffer) {
 		ReleaseSRWLockExclusive(&g_packLock);
 		return g_unlock(self, nullptr, d3dBuffer);
 	}
-	const auto chip = reinterpret_cast<std::uintptr_t>(self);
-	const auto staging = *reinterpret_cast<const unsigned char* volatile*>(chip + kChipStagingOffset);
-	const UInt32 bytes = *reinterpret_cast<volatile UInt32*>(chip + kChipBytesOffset);
+	const auto manager = reinterpret_cast<std::uintptr_t>(self);
+	const auto staging = *reinterpret_cast<const unsigned char* volatile*>(manager + kManagerStagingOffset);
+	const UInt32 bytes = *reinterpret_cast<volatile UInt32*>(manager + kManagerBytesOffset);
 	const std::uint64_t hash = staging != nullptr ? probe::HashBytes(staging, bytes) : 0;
+	// The slice from the chip PackStream is packing into (its buffer should be
+	// the vb the unlock receives); without a chip on this thread the vb alone.
+	probe::PackSlice slice{d3dBuffer, 0, bytes};
+	UInt32 flags = 0;
+	if (context->chip != 0) {
+		const std::uintptr_t chip = context->chip;
+		slice = probe::PackSlice{ReadAt<UInt32>(chip + kChipBufferOffset), ReadAt<UInt32>(chip + kChipOffsetOffset), ReadAt<UInt32>(chip + kChipSizeOffset)};
+		flags = ReadAt<UInt32>(chip + kChipFlagsOffset);
+	}
 	AcquireSRWLockExclusive(&g_packLock);
-	g_packCache->Add(probe::PackKey{context->geometry, context->partition, static_cast<UInt32>(chip)}, hash, bytes, g_packStats);
+	const probe::PackVerdict verdict =
+	    g_packCache->Add(probe::PackKey{context->geometry, context->partition, context->stream}, hash, bytes, g_packStats, slice);
+	probe::CountVerdictByConsistency(verdict, context->volatileData, g_packStats);
+	probe::CountLockFlags(flags, g_packStats);
 	ReleaseSRWLockExclusive(&g_packLock);
 	return g_unlock(self, nullptr, d3dBuffer);
 }
@@ -385,9 +438,11 @@ UInt32 InstallPackCache(LogFn log) {
 	                           reinterpret_cast<const void*>(&ProbePacker), reinterpret_cast<void**>(&g_packer), log) ? 1 : 0;
 	made += InstallEntryDetour("dynamic buffer unlock 0x00776D80 (pack cache)", kUnlock, kUnlockBytes, sizeof(kUnlockBytes),
 	                           reinterpret_cast<const void*>(&ProbeUnlock), reinterpret_cast<void**>(&g_unlock), log) ? 1 : 0;
-	g_packCacheOn = made == 2;
-	if (made != 2) {
-		log("Probe: pack cache - %u of 2 detours made; the counts need both, so it is off", made);
+	made += InstallEntryDetour("PackStream 0x0076FE20 (pack cache)", kPackStream, kPackStreamBytes, sizeof(kPackStreamBytes),
+	                           reinterpret_cast<const void*>(&ProbePackStream), reinterpret_cast<void**>(&g_packStream), log) ? 1 : 0;
+	g_packCacheOn = made == 3;
+	if (made != 3) {
+		log("Probe: pack cache - %u of 3 detours made; the counts need all three, so it is off", made);
 	}
 	return made;
 }
@@ -398,8 +453,22 @@ void LogPackCache() {
 	g_packStats.Reset();
 	const std::uint64_t keys = g_packCache->Keys();
 	ReleaseSRWLockExclusive(&g_packLock);
-	char line[400];
+	char line[600];
 	probe::FormatPackStats(stats, keys, line, sizeof(line));
+	g_log("%s", line);
+	AcquireSRWLockExclusive(&g_packLock);
+	const probe::PackCache::KeyShape shape = g_packCache->Shape();
+	int at = std::snprintf(line, sizeof(line), "Probe: pack cache keys - always same %llu, always changed %llu, mixed %llu, untested %llu, distinct buffers %llu; changed keys (stream same/changed):",
+	                       static_cast<unsigned long long>(shape.alwaysSame), static_cast<unsigned long long>(shape.alwaysChanged),
+	                       static_cast<unsigned long long>(shape.mixed), static_cast<unsigned long long>(shape.untested),
+	                       static_cast<unsigned long long>(shape.buffers));
+	g_packCache->VisitChangedKeys(12, [&](probe::PackKey key, std::uint64_t same, std::uint64_t changed) {
+		if (at > 0 && at < 520) {
+			at += std::snprintf(line + at, sizeof(line) - at, " %08X/%08X s%u %llu/%llu", key.geometry, key.partition, key.chip,
+			                    static_cast<unsigned long long>(same), static_cast<unsigned long long>(changed));
+		}
+	});
+	ReleaseSRWLockExclusive(&g_packLock);
 	g_log("%s", line);
 }
 
@@ -430,10 +499,6 @@ probe::RegisterCache* g_registers = nullptr;
 probe::UploadStats g_uploadStats;
 volatile LONG g_pass = 0;
 
-template <class T>
-T ReadAt(std::uintptr_t address) {
-	return *reinterpret_cast<volatile const T*>(address);
-}
 
 UInt32 __fastcall UploadSetConstant(void* self, void* /*edx*/, UInt32 entry, UInt32 data, UInt32 count) {
 	if (entry != 0) {
@@ -674,7 +739,7 @@ bool SampleMemory(probe::MemorySample* out) {
 UInt32 ProbesAsked(const ShadowSettings& settings) {
 	return (settings.callCounters ? static_cast<UInt32>(Probed::Count) : 0u) +
 	       (settings.passSteps ? static_cast<UInt32>(Step::Count) - (settings.callCounters ? 1u : 0u) : 0u) +
-	       (settings.packCache ? 2u : 0u) + (settings.constantUploads ? (settings.passSteps ? 2u : 3u) : 0u);
+	       (settings.packCache ? 3u : 0u) + (settings.constantUploads ? (settings.passSteps ? 2u : 3u) : 0u);
 }
 
 UInt32 InstallProbes(const ShadowSettings& settings, LogFn log) {
