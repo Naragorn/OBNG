@@ -46,12 +46,17 @@ bool Load(const ExtenderInterfaceHead& xse, const Host& host) {
 	}
 	if (r.Asked() == 0) {
 		host.log("Route: every switch is 0, nothing routed");
-	} else if (RouteSkippedForShadow(s.rangeWalk, r.rangeWalk)) {
-		host.log("Route: ShadowSceneLight::CollectGeometryInRange skipped - the RangeWalk shadow takes the same entry "
-		         "and wins (a route without a prior clean shadow run makes nothing safer)");
-		host.log("Route: 0 of %u detours made", r.Asked());
 	} else {
-		const uint32_t made = host.installRouteRangeWalk(r);
+		uint32_t made = 0;
+		if (r.rangeWalk && RouteSkippedForShadow(s.rangeWalk, r.rangeWalk)) {
+			host.log("Route: ShadowSceneLight::CollectGeometryInRange skipped - the RangeWalk shadow takes the same entry "
+			         "and wins (a route without a prior clean shadow run makes nothing safer)");
+		} else if (r.rangeWalk) {
+			made += host.installRouteRangeWalk(r);
+		}
+		if (r.stereoDraw) {
+			made += host.installRouteStereoDraw(r);
+		}
 		host.log("Route: %u of %u detours made", made, r.Asked());
 	}
 	const uint32_t probesAsked = ProbesAskedFor(s);

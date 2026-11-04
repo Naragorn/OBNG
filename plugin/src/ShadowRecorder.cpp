@@ -4,6 +4,7 @@
 
 #include "Probes.h"
 #include "RouteRangeWalk.h"
+#include "RouteStereoDraw.h"
 #include "ShadowRangeWalk.h"
 
 #include <cstdio>
@@ -107,6 +108,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogProbeSummary();
 	LogRangeWalkSummary();
 	LogRouteSummary();
+	LogStereoDrawSummary();
 	if (planner != nullptr && g_settings.havokPlanner && sample.frames != 0) {
 		const float stepSeconds = *reinterpret_cast<volatile float*>(0x00BA790C);
 		g_log("Probe: Havok planner over %u frames - update type %u, steps per frame 0:%u 1:%u 2:%u 3+:%u, last step %.6f s",

@@ -60,6 +60,8 @@ struct Host {
 	bool (*startSummaryTimer)(const ShadowSettings& settings);
 	// The counting probes (Probes.cpp); returns how many detours were made.
 	uint32_t (*installProbes)(const ShadowSettings& settings);
+	// The stereo draw's route (RouteStereoDraw.cpp); returns how many detours were made.
+	uint32_t (*installRouteStereoDraw)(const RouteSettings& settings);
 };
 
 // How many counting detours the settings ask for: five hot functions of the

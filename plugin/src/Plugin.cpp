@@ -4,6 +4,7 @@
 #include "PluginEntry.h"
 #include "Probes.h"
 #include "RouteRangeWalk.h"
+#include "RouteStereoDraw.h"
 #include "ShadowRangeWalk.h"
 #include "ShadowRecorder.h"
 #include "ShadowTimeInfo.h"
@@ -99,12 +100,18 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	s.summaryTimer = GetPrivateProfileIntA("Log", "SummaryTimer", 0, path) != 0;
 	obng::plugin::RouteSettings& r = settings->route;
 	r.rangeWalk = GetPrivateProfileIntA("Route", "RangeWalk", 0, path) != 0;
+	r.stereoDraw = GetPrivateProfileIntA("Route", "StereoDraw", 0, path) != 0;
+	bool eyesKnown = false;
+	r.stereoEyes = obng::plugin::StereoEyesFromIni(GetPrivateProfileIntA("Route", "StereoEyes", 1, path), &eyesKnown);
+	if (!eyesKnown) {
+		Log("Settings: [Route] StereoEyes is neither 1 nor 2 - 1 used");
+	}
 	Log("Settings from %s: TimeInfoUpdate=%d TimeInfoInit=%d TimeInfoFreeze=%d TimeInfoUnfreeze=%d LoadingMenuTick=%d "
 	    "LoadingMenuCtor=%d RangeWalk=%d RangeWalkOrder=%s FpuControlWord=%d HavokPlanner=%d CallCounters=%d PassSteps=%d PackCache=%d ConstantUploads=%d Memory=%d MismatchLines=%u SummaryEverySeconds=%u "
-	    "SummaryTimer=%d Route RangeWalk=%d",
+	    "SummaryTimer=%d Route RangeWalk=%d StereoDraw=%d StereoEyes=%u",
 	    path, s.update ? 1 : 0, s.init ? 1 : 0, s.freeze ? 1 : 0, s.unfreeze ? 1 : 0, s.loadingMenuTick ? 1 : 0,
 	    s.loadingMenuCtor ? 1 : 0, s.rangeWalk ? 1 : 0, obng::plugin::RangeWalkOrderName(s.rangeWalkOrder), s.fpuControlWord ? 1 : 0, s.havokPlanner ? 1 : 0, s.callCounters ? 1 : 0,
-	    s.passSteps ? 1 : 0, s.packCache ? 1 : 0, s.constantUploads ? 1 : 0, s.memoryProbe ? 1 : 0, s.mismatchLines, s.summaryEverySeconds, s.summaryTimer ? 1 : 0, r.rangeWalk ? 1 : 0);
+	    s.passSteps ? 1 : 0, s.packCache ? 1 : 0, s.constantUploads ? 1 : 0, s.memoryProbe ? 1 : 0, s.mismatchLines, s.summaryEverySeconds, s.summaryTimer ? 1 : 0, r.rangeWalk ? 1 : 0, r.stereoDraw ? 1 : 0, static_cast<unsigned>(r.stereoEyes));
 	return true;
 }
 
@@ -128,6 +135,10 @@ uint32_t InstallRouteRangeWalkSideEffect(const obng::plugin::RouteSettings& sett
 	return obng::plugin::InstallRouteRangeWalk(settings, &Log);
 }
 
+uint32_t InstallRouteStereoDrawSideEffect(const obng::plugin::RouteSettings& settings) {
+	return obng::plugin::InstallRouteStereoDraw(settings, &Log);
+}
+
 bool StartSummaryTimerSideEffect(const obng::plugin::ShadowSettings&) {
 	return obng::plugin::StartSummaryTimer();
 }
@@ -145,7 +156,8 @@ const obng::plugin::Host kHost{&ResetLog,
                                &InstallShadowRangeWalkSideEffect,
                                &InstallRouteRangeWalkSideEffect,
                                &StartSummaryTimerSideEffect,
-                               &InstallProbesSideEffect};
+                               &InstallProbesSideEffect,
+                               &InstallRouteStereoDrawSideEffect};
 
 }  // namespace
 

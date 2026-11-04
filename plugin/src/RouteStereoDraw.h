@@ -1,0 +1,21 @@
+#pragma once
+
+// The stereo draw's route (RouteStereoDraw.cpp): the game runs OBNG's
+// rebuilt DrawPrimitive 0x007672F0 and DrawSkinnedPrimitive 0x00767520 (the
+// stereo-draw slice) instead of the originals, with the eye plan [Route]
+// StereoEyes. The decisions are in RouteStereoDrawLogic.h.
+
+#include "RouteSettings.h"
+#include "ShadowTimeInfo.h"
+#include "Types.h"
+
+namespace obng::plugin {
+
+// Puts the two detours when settings.stereoDraw is on; returns how many were
+// made (0..2). With one made the route is off (both or none).
+UInt32 InstallRouteStereoDraw(const RouteSettings& settings, LogFn log);
+
+// The route's line since the last summary; nothing when the route is off.
+void LogStereoDrawSummary();
+
+}  // namespace obng::plugin

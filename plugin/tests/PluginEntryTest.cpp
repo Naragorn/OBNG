@@ -32,6 +32,9 @@ struct Fake {
 	int routeInstalls = 0;
 	RouteSettings routeInstalled;
 	uint32_t routeMade = 1;
+	int stereoInstalls = 0;
+	RouteSettings stereoInstalled;
+	uint32_t stereoMade = 2;
 	int timerStarts = 0;
 	bool timerStarted = true;
 	std::vector<std::string> calls;  // the side effects in the order Load made them
@@ -94,6 +97,13 @@ uint32_t FakeInstallRoute(const RouteSettings& settings) {
 	return g_fake->routeMade;
 }
 
+uint32_t FakeInstallStereo(const RouteSettings& settings) {
+	g_fake->calls.emplace_back("stereo");
+	++g_fake->stereoInstalls;
+	g_fake->stereoInstalled = settings;
+	return g_fake->stereoMade;
+}
+
 bool FakeStartSummaryTimer(const ShadowSettings&) {
 	g_fake->calls.emplace_back("timer");
 	++g_fake->timerStarts;
@@ -109,7 +119,7 @@ uint32_t FakeInstallProbes(const ShadowSettings& settings) {
 
 const Host kHost{&FakeReset,          &FakeLog,          &FakeReadSettings, &FakeInitRecorder,
                  &FakeInstall,        &FakeInstallMenu,  &FakeInstallRangeWalk, &FakeInstallRoute,
-                 &FakeStartSummaryTimer, &FakeInstallProbes};
+                 &FakeStartSummaryTimer, &FakeInstallProbes, &FakeInstallStereo};
 
 // Every TimeInfo and LoadingMenu shadow off.
 ShadowSettings NoShadow() {
@@ -250,6 +260,35 @@ void TestLoadConstantUploads() {
 	ResetForTest();
 	Check(Load(Game(), kHost), "loads");
 	Check(both.Logged("Probes: 11 of 11 call counters made, memory on"), "eleven asked with the pass steps: the finish counted once");
+}
+
+void TestLoadStereoDraw() {
+	Section("Load with the stereo draw route on: two detours asked, the range walk untouched");
+	Fake fake;
+	fake.iniSettings.route.stereoDraw = true;
+	fake.iniSettings.route.stereoEyes = 2;
+	g_fake = &fake;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(fake.stereoInstalls == 1 && fake.stereoInstalled.stereoEyes == 2 && fake.routeInstalls == 0,
+	      "the stereo installer is called with the plan, the range walk's is not");
+	Check(fake.Logged("Route: 2 of 2 detours made"), "two asked, two made");
+	Fake both;
+	both.iniSettings.route.stereoDraw = true;
+	both.iniSettings.route.rangeWalk = true;
+	g_fake = &both;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(both.stereoInstalls == 1 && both.routeInstalls == 1 && both.Logged("Route: 3 of 3 detours made"), "both routes: three detours");
+	Fake shadowed;
+	shadowed.iniSettings.route.stereoDraw = true;
+	shadowed.iniSettings.route.rangeWalk = true;
+	shadowed.iniSettings.shadow.rangeWalk = true;
+	g_fake = &shadowed;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(shadowed.stereoInstalls == 1 && shadowed.routeInstalls == 0 && shadowed.Logged("skipped") && shadowed.Logged("Route: 2 of 3 detours made"),
+	      "the range walk's route yields to its shadow, the stereo draw still installs");
 }
 
 void TestLoadProbesOff() {
@@ -449,6 +488,7 @@ int main() {
 	TestLoadPassSteps();
 	TestLoadPackCache();
 	TestLoadConstantUploads();
+	TestLoadStereoDraw();
 	TestLoadProbesOff();
 	TestLoadRoute();
 	TestLoadRouteAndShadow();
