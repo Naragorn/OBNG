@@ -67,6 +67,7 @@ struct ShadowSettings {
 	bool passSteps = false;      // time nine steps of the scene pass (calls and TSC ticks per summary, Probes.cpp); off in play
 	bool packCache = false;      // hash every packed stream at its unlock and count the packs equal to the key's last one (Probes.cpp); off in play
 	bool constantUploads = false;  // hash every vertex constant upload and count the ones equal to the register's last (Probes.cpp); off in play
+	bool viewConstants = false;    // key the second eye's re-applied uploads by constant-map entry: which depend on the view (Probes.cpp; needs ConstantUploads, which Plugin.cpp turns on with it); off in play
 	bool memoryProbe = true;     // commit, working set and address space in the summary
 	UInt32 mismatchLines = 20;   // mismatches written in full per function
 	UInt32 summaryEverySeconds = 10;

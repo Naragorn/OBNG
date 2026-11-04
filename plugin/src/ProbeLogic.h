@@ -613,4 +613,160 @@ inline int FormatMemory(const MemorySample& now, const MemoryPeak& peak, char* o
 	                     PercentOf(VirtualUsedBytes(now), now.virtualTotalBytes), Megabytes(VirtualUsedBytes(p)));
 }
 
+// ---- The view-dependence of the constant uploads ------------------------------------
+//
+// In the stereo route's test mode the second eye re-applies the shader's
+// constants (slot 14 again) with the view shifted by the eye offset. The
+// uploads inside that re-apply are compared with the register's bytes from
+// the first eye's apply (the RegisterCache above): a register whose bytes
+// changed depends on the view, one whose bytes are the same does not. To
+// say WHICH entries those are, the apply's entries (NiD3DShaderConstantMap
+// +0x10 pointer array, +0x16 count; entry +0x08 live, +0x10 predefined id,
+// +0x14 type nibble, +0x1C register, +0x20 register count -
+// re/functions/0x009A8E30.md) are tabled at the apply's entry, and every
+// phase-1 upload is keyed by the row that holds its register.
+
+struct ApplyRow {
+	std::uint32_t reg = 0;
+	std::uint32_t count = 1;  // registers from reg on
+	std::uint8_t type = 0;    // the type nibble 1..6
+	std::uint16_t id = 0;     // the predefined id (meaningful for type 2)
+};
+
+struct ApplyTable {
+	static constexpr std::uint32_t kMaxRows = 256;
+	ApplyRow rows[kMaxRows] = {};
+	std::uint32_t size = 0;
+	std::uint64_t dropped = 0;  // rows beyond kMaxRows
+
+	void Clear() { size = 0; }
+	void Add(const ApplyRow& row) {
+		if (size >= kMaxRows) {
+			++dropped;
+			return;
+		}
+		rows[size++] = row;
+	}
+	// The row whose register range holds reg; null when none does.
+	const ApplyRow* Find(std::uint32_t reg) const {
+		for (std::uint32_t i = 0; i < size; ++i) {
+			const ApplyRow& r = rows[i];
+			const std::uint32_t span = r.count != 0 ? r.count : 1u;
+			if (reg >= r.reg && reg < r.reg + span) {
+				return &r;
+			}
+		}
+		return nullptr;
+	}
+};
+
+struct ViewKey {
+	std::uint8_t type = 0;
+	std::uint16_t id = 0;
+	constexpr bool operator==(const ViewKey&) const = default;
+};
+
+struct ViewKeyStats {
+	ViewKey key;
+	std::uint64_t tabled = 0;   // entries of this key seen in the phase-1 applies (uploaded or not: the pixel map's uploads are unseen)
+	std::uint64_t uploads = 0;
+	std::uint64_t same = 0;     // bytes equal to the first eye's: view-independent
+	std::uint64_t changed = 0;  // bytes differ: view-dependent
+	std::uint64_t fresh = 0;    // no first-eye bytes to compare with
+	std::uint64_t bytes = 0;
+};
+
+struct ViewStats {
+	static constexpr std::uint32_t kMaxKeys = 128;
+	ViewKeyStats keys[kMaxKeys] = {};
+	std::uint32_t keyCount = 0;
+	std::uint64_t uploads = 0;   // phase-1 uploads in all
+	std::uint64_t unknown = 0;   // uploads to a register no tabled row holds
+	std::uint64_t overflow = 0;  // uploads whose key found no free slot
+	std::uint64_t applies = 0;   // phase-1 applies tabled
+
+	ViewKeyStats* Slot(ViewKey key) {
+		for (std::uint32_t i = 0; i < keyCount; ++i) {
+			if (keys[i].key == key) {
+				return &keys[i];
+			}
+		}
+		if (keyCount >= kMaxKeys) {
+			return nullptr;
+		}
+		keys[keyCount] = ViewKeyStats{};
+		keys[keyCount].key = key;
+		return &keys[keyCount++];
+	}
+
+	// An entry tabled at a phase-1 apply (counted whether or not it uploads
+	// through the probed slots).
+	void Tabled(const ApplyRow& row) {
+		ViewKeyStats* k = Slot(ViewKey{row.type, row.id});
+		if (k == nullptr) {
+			++overflow;
+			return;
+		}
+		++k->tabled;
+	}
+
+	void Add(const ApplyRow* row, PackVerdict verdict, std::uint32_t bytes) {
+		++uploads;
+		if (row == nullptr) {
+			++unknown;
+			return;
+		}
+		ViewKeyStats* k = Slot(ViewKey{row->type, row->id});
+		if (k == nullptr) {
+			++overflow;
+			return;
+		}
+		++k->uploads;
+		k->bytes += bytes;
+		switch (verdict) {
+		case PackVerdict::Same: ++k->same; break;
+		case PackVerdict::Changed: ++k->changed; break;
+		default: ++k->fresh; break;
+		}
+	}
+	void Reset() { *this = ViewStats{}; }
+};
+
+// "Probe: view constants - N applies, N re-apply uploads (N unknown, N overflow); changed: t2:i3 1200/0/0, ...; same only: t2:i1 500, ...; tabled, no upload: t2:i5 300, ..."
+// (changed/same/fresh per key; keys with any changed upload first, then the
+// keys with uploads but none changed, then the keys only tabled - entries
+// whose uploads the probe does not see, the pixel map's among them).
+inline int FormatViewStats(const ViewStats& s, char* out, std::size_t capacity) {
+	int at = std::snprintf(out, capacity, "Probe: view constants - %llu applies, %llu re-apply uploads (%llu unknown, %llu overflow); changed:",
+	                       static_cast<unsigned long long>(s.applies), static_cast<unsigned long long>(s.uploads),
+	                       static_cast<unsigned long long>(s.unknown), static_cast<unsigned long long>(s.overflow));
+	auto room = [&] { return at >= 0 && static_cast<std::size_t>(at) < capacity; };
+	for (std::uint32_t i = 0; i < s.keyCount && room(); ++i) {
+		const ViewKeyStats& k = s.keys[i];
+		if (k.changed != 0) {
+			at += std::snprintf(out + at, capacity - at, " t%u:i%u %llu/%llu/%llu", k.key.type, k.key.id, static_cast<unsigned long long>(k.changed),
+			                    static_cast<unsigned long long>(k.same), static_cast<unsigned long long>(k.fresh));
+		}
+	}
+	if (room()) {
+		at += std::snprintf(out + at, capacity - at, "; same only:");
+	}
+	for (std::uint32_t i = 0; i < s.keyCount && room(); ++i) {
+		const ViewKeyStats& k = s.keys[i];
+		if (k.changed == 0 && k.uploads != 0) {
+			at += std::snprintf(out + at, capacity - at, " t%u:i%u %llu", k.key.type, k.key.id, static_cast<unsigned long long>(k.same + k.fresh));
+		}
+	}
+	if (room()) {
+		at += std::snprintf(out + at, capacity - at, "; tabled, no upload:");
+	}
+	for (std::uint32_t i = 0; i < s.keyCount && room(); ++i) {
+		const ViewKeyStats& k = s.keys[i];
+		if (k.uploads == 0) {
+			at += std::snprintf(out + at, capacity - at, " t%u:i%u %llu", k.key.type, k.key.id, static_cast<unsigned long long>(k.tabled));
+		}
+	}
+	return at;
+}
+
 }  // namespace obng::plugin::probe

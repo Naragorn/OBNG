@@ -523,6 +523,65 @@ probe::RegisterCache* g_registers = nullptr;
 probe::UploadStats g_uploadStats;
 volatile LONG g_pass = 0;
 
+// The view-dependence probe ([Probe] ViewConstants): the stereo route's eye
+// switch marks the second eye's re-apply (phase 1, SetProbeEyePhase); the
+// apply's entries are tabled at ApplyConstants 0x009A8E30's entry and the
+// phase-1 uploads are keyed by them (ProbeLogic.h ViewStats).
+constexpr UInt32 kEntryLiveOffset = 0x08;
+constexpr UInt32 kEntryIdOffset = 0x10;
+constexpr UInt32 kMapEntriesOffset = 0x10;
+constexpr UInt32 kMapCountOffset = 0x16;
+ApplyMapFn g_viewApply = nullptr;
+bool g_viewOn = false;
+volatile LONG g_eyePhase = 0;
+probe::ApplyTable g_applyTable;
+probe::ViewStats g_viewStats;
+
+void TableApply(UInt32 map) {
+	g_applyTable.Clear();
+	const UInt32 entries = ReadAt<UInt32>(map + kMapEntriesOffset);
+	const UInt32 count = ReadAt<UInt16>(map + kMapCountOffset);
+	if (entries == 0) {
+		return;
+	}
+	for (UInt32 i = 0; i < count; ++i) {
+		const UInt32 entry = ReadAt<UInt32>(entries + 4 * i);
+		if (entry == 0) {
+			continue;
+		}
+		if (ReadAt<UInt8>(entry + kEntryLiveOffset) == 0) {
+			break;  // the original's loop ends here too (0x009A8E30.md B3)
+		}
+		const UInt32 reg = ReadAt<UInt32>(entry + kEntryRegisterOffset);
+		if (reg == 0xFFFFFFFFu) {
+			continue;
+		}
+		const probe::ApplyRow row{reg, ReadAt<UInt32>(entry + kEntryCountOffset),
+		                          static_cast<std::uint8_t>(ReadAt<UInt32>(entry + kEntryTypeOffset) >> 28),
+		                          static_cast<std::uint16_t>(ReadAt<UInt32>(entry + kEntryIdOffset))};
+		g_applyTable.Add(row);
+		g_viewStats.Tabled(row);
+	}
+}
+
+UInt32 __fastcall ViewApplyMap(void* self, void* /*edx*/, UInt32 a1, UInt32 a2, UInt32 a3, UInt32 a4, UInt32 a5, UInt32 a6, UInt32 a7,
+                               UInt32 a8, UInt32 a9, UInt32 a10, UInt32 a11) {
+	if (g_eyePhase == 1 && self != nullptr) {
+		AcquireSRWLockExclusive(&g_uploadLock);
+		TableApply(static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(self)));
+		++g_viewStats.applies;
+		ReleaseSRWLockExclusive(&g_uploadLock);
+	}
+	return g_viewApply(self, nullptr, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11);
+}
+
+// Under g_uploadLock: one upload's verdict keyed for the view probe.
+void NoteViewUpload(UInt32 reg, probe::PackVerdict verdict, UInt32 bytes) {
+	if (g_viewOn && g_eyePhase == 1) {
+		g_viewStats.Add(g_applyTable.Find(reg), verdict, bytes);
+	}
+}
+
 
 UInt32 __fastcall UploadSetConstant(void* self, void* /*edx*/, UInt32 entry, UInt32 data, UInt32 count) {
 	if (entry != 0) {
@@ -537,7 +596,7 @@ UInt32 __fastcall UploadSetConstant(void* self, void* /*edx*/, UInt32 entry, UIn
 			const UInt32 bytes = vec4s * 16;
 			const std::uint64_t hash = probe::HashBytes(reinterpret_cast<const unsigned char*>(static_cast<std::uintptr_t>(source)), bytes);
 			AcquireSRWLockExclusive(&g_uploadLock);
-			g_registers->Add(reg, hash, bytes, static_cast<UInt32>(g_pass), g_uploadStats);
+			NoteViewUpload(reg, g_registers->Add(reg, hash, bytes, static_cast<UInt32>(g_pass), g_uploadStats), bytes);
 			++g_uploadStats.byType[type & 7u];
 			ReleaseSRWLockExclusive(&g_uploadLock);
 		}
@@ -566,7 +625,8 @@ UInt32 __fastcall UploadSetArray(void* self, void* /*edx*/, UInt32 entry, UInt32
 		}
 		for (UInt32 i = 0; i < count; ++i) {
 			const auto rows = reinterpret_cast<const unsigned char*>(static_cast<std::uintptr_t>(base) + static_cast<std::uintptr_t>(index[i]) * bytesPerBone);
-			g_registers->Add(reg0 + i * stride, probe::HashBytes(rows, bytesPerBone), bytesPerBone, static_cast<UInt32>(g_pass), g_uploadStats);
+			NoteViewUpload(reg0 + i * stride, g_registers->Add(reg0 + i * stride, probe::HashBytes(rows, bytesPerBone), bytesPerBone,
+			                                                   static_cast<UInt32>(g_pass), g_uploadStats), bytesPerBone);
 		}
 		ReleaseSRWLockExclusive(&g_uploadLock);
 	}
@@ -597,6 +657,29 @@ UInt32 InstallConstantUploads(bool withFinish, LogFn log) {
 	}
 	g_uploadsOn = made >= 2;
 	return made;
+}
+
+// One detour: ApplyConstants 0x009A8E30 (shared with the pass steps, which
+// hold it when they are on: then this probe is skipped, said in the log).
+UInt32 InstallViewConstants(bool passStepsOn, LogFn log) {
+	if (passStepsOn) {
+		log("Probe: view constants skipped - the pass steps hold ApplyConstants 0x009A8E30");
+		return 0;
+	}
+	const UInt32 made = InstallEntryDetour("ApplyConstants 0x009A8E30 (view constants)", kApplyMap, kApplyMapBytes, sizeof(kApplyMapBytes),
+	                                       reinterpret_cast<const void*>(&ViewApplyMap), reinterpret_cast<void**>(&g_viewApply), log) ? 1 : 0;
+	g_viewOn = made == 1 && g_uploadsOn;
+	return made;
+}
+
+void LogViewConstants() {
+	AcquireSRWLockExclusive(&g_uploadLock);
+	const probe::ViewStats stats = g_viewStats;
+	g_viewStats.Reset();
+	ReleaseSRWLockExclusive(&g_uploadLock);
+	char line[1500];
+	probe::FormatViewStats(stats, line, sizeof(line));
+	g_log("%s", line);
 }
 
 void LogConstantUploads() {
@@ -760,10 +843,15 @@ bool SampleMemory(probe::MemorySample* out) {
 
 }  // namespace
 
+void SetProbeEyePhase(UInt8 phase) {
+	InterlockedExchange(&g_eyePhase, phase);
+}
+
 UInt32 ProbesAsked(const ShadowSettings& settings) {
 	return (settings.callCounters ? static_cast<UInt32>(Probed::Count) : 0u) +
 	       (settings.passSteps ? static_cast<UInt32>(Step::Count) - (settings.callCounters ? 1u : 0u) : 0u) +
-	       (settings.packCache ? 3u : 0u) + (settings.constantUploads ? (settings.passSteps ? 2u : 3u) : 0u);
+	       (settings.packCache ? 3u : 0u) + (settings.constantUploads ? (settings.passSteps ? 2u : 3u) : 0u) +
+	       (settings.viewConstants && !settings.passSteps ? 1u : 0u);
 }
 
 UInt32 InstallProbes(const ShadowSettings& settings, LogFn log) {
@@ -783,6 +871,9 @@ UInt32 InstallProbes(const ShadowSettings& settings, LogFn log) {
 	}
 	if (settings.constantUploads) {
 		made += InstallConstantUploads(!settings.passSteps, log);
+	}
+	if (settings.viewConstants) {
+		made += InstallViewConstants(settings.passSteps, log);
 	}
 	if (!settings.callCounters) {
 		return made;
@@ -842,6 +933,9 @@ void LogProbeSummary() {
 	}
 	if (g_uploadsOn) {
 		LogConstantUploads();
+	}
+	if (g_viewOn) {
+		LogViewConstants();
 	}
 	if (g_memory) {
 		probe::MemorySample sample;

@@ -26,6 +26,7 @@
 
 #include <cstdio>
 
+#include "Probes.h"
 #include "RouteStereoDrawLogic.h"
 #include "ShadowRecorder.h"
 #include "StereoEyeSwitchLogic.h"
@@ -139,7 +140,11 @@ struct EyeEnginePort {
 		reinterpret_cast<GetViewportFn>(VtableSlot(device, kDeviceGetViewportOffset))(reinterpret_cast<void*>(device), &viewport);
 		return viewport;
 	}
-	void ReapplyConstants() const { reapply(context); }
+	void ReapplyConstants() const {
+		SetProbeEyePhase(1);  // the view-dependence probe keys the uploads inside
+		reapply(context);
+		SetProbeEyePhase(0);
+	}
 };
 
 using EngineEyeSwitch = eye::EyeSwitch<EyeEnginePort>;

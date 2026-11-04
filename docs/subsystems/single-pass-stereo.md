@@ -269,3 +269,48 @@ StereoTestEyeShift=4.5`; phase settled to watched, 4 491 frames.
 - The picture: the headless screenshots show the 2D layer in the left half
   (the test mode doubles the 2D pass too, as the contract says); the world
   is in the headset and still to be looked at.
+
+## Step 2 measured: which constants the second eye needs (2026-11-04 12:48, run obng-walkers-stereo/20261104-124811)
+
+`[Probe] ViewConstants` (Probes.cpp, ProbeLogic.h ViewStats) on the split
+test mode: the eye switch marks its re-apply (slot 14 again), the apply's
+entries are tabled at ApplyConstants 0x009A8E30's entry, and every upload
+through the program slots 0x007830C0 / 0x00783180 inside the re-apply is
+compared with the register's bytes from the first eye and keyed by its
+entry (type nibble, predefined id). Per 10 s, 3.39 M applies, 10.4 M
+re-apply uploads, 0 unknown:
+
+| Key (type:id) | changed (view-dependent) | same |
+|---|---:|---:|
+| t2:i31 | 1 211 882 | 0 |
+| t2:i23 | 471 121 | 0 |
+| t2:i27 | 47 936 | 0 |
+| t2:i19 | 2 996 | 0 |
+| t2:i33 (the bone palettes) | 0 | 8 700 384 |
+
+- **Only defined entries (type 2) with the ids 19, 23, 27, 31 change with
+  the eye** (measured): the odd members of the map's W x V (19-20),
+  W x V x P (23-24) and S x V (x P) (27-28, 31-32) pairs (0x009A56D0.md id
+  table). No entry of the types 1, 3, 4, 5, 6 uploaded through the probed
+  slots in the re-apply at all on this scene; the pure V and V x P ids
+  (3-4, 9-12, 15-16, 21-22) are not in these shaders' maps.
+- **83 % of the re-apply's uploads are the bone palettes** (t2:i33, 8.7 M
+  per 10 s), re-uploaded unchanged - that is where the switch's 0.95 ms go,
+  with the program rebind and the extra-data lookup. The view-dependent
+  share is 1.7 M uploads per 10 s, about 1 900 a frame.
+- Unverified, settled by the next run (the probe now also counts the keys
+  tabled without an upload): whether the pixel maps hold view-dependent
+  ids - their uploads go through the pixel program's own slots, which the
+  probe does not hook. Type-1 entries upload fixed buffers ([entry+0x30],
+  no argument) and cannot depend on the eye (read, 0x009A8E30.md C10).
+
+**So step 2 is:** a re-apply that walks the vertex map once and dispatches
+only the type-2 entries whose id is in the view set {19, 23, 27, 31} plus
+the map's other view ids for shaders this scene lacks {3, 4, 7, 8, 9, 10,
+11, 12, 15, 16, 20, 21, 22, 24, 25, 26, 28, 29, 30, 32} (derived from the
+id table; harmless when absent) through the map's slot +0x54
+(SetDefinedConstant) with the apply's own arguments - no palette, no
+program rebind, no extra-data lookup. Expected (derived from the
+constant-uploads measurements, 0x007830C0 at about 30 ns a call and
+0x009A8E30 at 0.26 us inclusive): the switch falls from 0.95 ms to about
+0.3-0.4 ms a pass.

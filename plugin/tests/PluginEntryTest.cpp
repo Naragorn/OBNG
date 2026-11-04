@@ -260,6 +260,24 @@ void TestLoadConstantUploads() {
 	ResetForTest();
 	Check(Load(Game(), kHost), "loads");
 	Check(both.Logged("Probes: 11 of 11 call counters made, memory on"), "eleven asked with the pass steps: the finish counted once");
+	Fake view;
+	view.iniSettings.shadow.constantUploads = true;
+	view.iniSettings.shadow.viewConstants = true;
+	view.probesMade = 4;
+	g_fake = &view;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(view.probeInstalls == 1 && view.probed.viewConstants && view.Logged("Probes: 4 of 4 call counters made, memory on"),
+	      "the view constants add one detour to the uploads' three");
+	Fake viewSteps;
+	viewSteps.iniSettings.shadow.constantUploads = true;
+	viewSteps.iniSettings.shadow.viewConstants = true;
+	viewSteps.iniSettings.shadow.passSteps = true;
+	viewSteps.probesMade = 11;
+	g_fake = &viewSteps;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(viewSteps.Logged("Probes: 11 of 11 call counters made, memory on"), "with the pass steps the view probe asks for nothing (they hold its entry)");
 }
 
 void TestLoadStereoDraw() {

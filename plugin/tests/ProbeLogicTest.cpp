@@ -297,6 +297,58 @@ void TestUploads() {
 	Check(std::strstr(line, "0 uploads, 0 same (0 %") != nullptr, "no upload: no division");
 }
 
+void TestViewConstants() {
+	Section("ApplyTable: a row holds its register range; beyond the rows is dropped");
+	ApplyTable t;
+	t.Add(ApplyRow{4, 1, 2, 3});
+	t.Add(ApplyRow{20, 4, 2, 7});
+	t.Add(ApplyRow{100, 0, 6, 0});
+	Check(t.Find(4) != nullptr && t.Find(4)->id == 3, "register 4: the first row");
+	Check(t.Find(5) == nullptr, "register 5: no row");
+	Check(t.Find(23) != nullptr && t.Find(23)->id == 7 && t.Find(24) == nullptr, "a four-register row holds 20..23");
+	Check(t.Find(100) != nullptr && t.Find(100)->type == 6, "count 0 reads as one register");
+	for (std::uint32_t i = 0; i < ApplyTable::kMaxRows; ++i) {
+		t.Add(ApplyRow{1000 + i, 1, 1, 0});
+	}
+	Check(t.size == ApplyTable::kMaxRows && t.dropped == 3, "the table holds kMaxRows, the rest is counted");
+	t.Clear();
+	Check(t.size == 0 && t.Find(4) == nullptr, "cleared");
+
+	Section("ViewStats: keyed by (type, id), the verdict sorts into changed / same / fresh");
+	ViewStats v;
+	const ApplyRow view{4, 1, 2, 3};
+	const ApplyRow world{8, 1, 2, 1};
+	v.Add(&view, PackVerdict::Changed, 64);
+	v.Add(&view, PackVerdict::Changed, 64);
+	v.Add(&view, PackVerdict::Same, 64);
+	v.Add(&world, PackVerdict::Same, 64);
+	v.Add(&world, PackVerdict::New, 64);
+	v.Add(nullptr, PackVerdict::Same, 16);
+	Check(v.uploads == 6 && v.unknown == 1 && v.keyCount == 2, "six uploads, one unknown, two keys");
+	Check(v.keys[0].key == ViewKey{2, 3} && v.keys[0].changed == 2 && v.keys[0].same == 1 && v.keys[0].bytes == 192, "the view key");
+	Check(v.keys[1].key == ViewKey{2, 1} && v.keys[1].same == 1 && v.keys[1].fresh == 1, "the world key");
+	v.applies = 10;
+	v.Tabled(view);
+	v.Tabled(ApplyRow{40, 1, 2, 5});
+	v.Tabled(ApplyRow{40, 1, 2, 5});
+	Check(v.keys[0].tabled == 1 && v.keyCount == 3 && v.keys[2].tabled == 2 && v.keys[2].uploads == 0, "tabled entries count, with or without uploads");
+	char line[600];
+	FormatViewStats(v, line, sizeof(line));
+	Check(std::string(line) == "Probe: view constants - 10 applies, 6 re-apply uploads (1 unknown, 0 overflow); changed: t2:i3 2/1/0; same only: t2:i1 2; "
+	                           "tabled, no upload: t2:i5 2",
+	      "the line");
+	for (std::uint32_t i = 0; i < ViewStats::kMaxKeys + 5; ++i) {
+		const ApplyRow r{i, 1, 1, static_cast<std::uint16_t>(i)};
+		v.Add(&r, PackVerdict::Same, 16);
+	}
+	Check(v.keyCount == ViewStats::kMaxKeys && v.overflow == 8, "keys beyond the table are counted as overflow");
+	v.Reset();
+	Check(v.uploads == 0 && v.keyCount == 0, "reset");
+	FormatViewStats(v, line, sizeof(line));
+	Check(std::string(line) == "Probe: view constants - 0 applies, 0 re-apply uploads (0 unknown, 0 overflow); changed:; same only:; tabled, no upload:",
+	      "the empty line");
+}
+
 int main() {
 	TestUploads();
 	TestPackCache();
@@ -307,5 +359,6 @@ int main() {
 	TestArithmetic();
 	TestFormatCalls();
 	TestFormatMemory();
+	TestViewConstants();
 	return Failures();
 }

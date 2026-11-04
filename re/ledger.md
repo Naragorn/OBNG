@@ -368,6 +368,11 @@ the OBVR session; the go is Nadi's. Run 12:17 (obng-walkers-stereo/20261104-1216
 3.93 against 2.98), the GPU 1.9 ms more a frame in the test mode only (four eye-views of
 vertex work against two; neutral in the single pass by construction). Projected single pass
 about 3.9 against 5.6 ms today; the view-only re-apply (step 2) is the next OBNG block.
+Run 12:48 ([Probe] ViewConstants on the split mode, obng-walkers-stereo/20261104-124811): of the
+re-apply's 10.4 M uploads per 10 s only the defined entries with ids 19, 23, 27, 31 change with
+the eye (1.7 M); 8.7 M are the bone palettes re-uploaded unchanged. Step 2 is therefore a
+filtered walk of the vertex map (type 2, the view ids) through slot +0x54 - a rebuild of
+0x009A8E30 with one documented deviation, the entry predicate; slice view-reapply.
 
 ## Subsystem replacements
 

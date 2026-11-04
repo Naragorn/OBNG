@@ -21,4 +21,9 @@ UInt32 ProbesAsked(const ShadowSettings& settings);
 // a summary is due; does nothing when no probe is on.
 void LogProbeSummary();
 
+// The stereo route's eye switch marks the second eye's constants re-apply
+// (1 while it runs, 0 otherwise) for the view-dependence probe
+// ([Probe] ViewConstants); a store, nothing else.
+void SetProbeEyePhase(UInt8 phase);
+
 }  // namespace obng::plugin
