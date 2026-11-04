@@ -363,7 +363,11 @@ the design's step 2, later). A test mode ([Route] StereoTestEyeShift, the viewpo
 halves) runs the switch without OBVR's side; its run is next and gives the switch's cost
 per pass against 2.98 ms. OBVR's half (the double-wide target, one pass, the capture per
 half, the submit with bounds) is written up in docs/subsystems/single-pass-stereo.md for
-the OBVR session; the go is Nadi's.
+the OBVR session; the go is Nadi's. Run 12:17 (obng-walkers-stereo/20261104-121654, PASS,
+1.74 M switches applied per 10 s, 0 refused): the switch costs 0.95 ms a pass (scene_pass
+3.93 against 2.98), the GPU 1.9 ms more a frame in the test mode only (four eye-views of
+vertex work against two; neutral in the single pass by construction). Projected single pass
+about 3.9 against 5.6 ms today; the view-only re-apply (step 2) is the next OBNG block.
 
 ## Subsystem replacements
 

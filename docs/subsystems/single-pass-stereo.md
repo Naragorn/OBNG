@@ -1,6 +1,6 @@
 # Single-pass stereo: the eye pass as one unit
 
-Status 2026-11-04 12:10: **steps 1 and 3 done, OBNG's half of step 4 built (the interface and the eye switch), OBVR's half open.** The engine side is read (slice
+Status 2026-11-04 12:25: **steps 1 and 3 done, OBNG's half of step 4 built and run (the interface, the eye switch at 0.95 ms a pass in its first version), OBVR's half open.** The engine side is read (slice
 eye-pass, five mappings held: `re/functions/0x00762640.md`, `0x007C78D0.md`,
 `0x0070E0A0.md`, `0x007672F0.md`, `0x0070E040.md`); the numbers are measured
 on the fixed Walkers scene; OBVR's side is read in its code. Marks as in
@@ -238,3 +238,34 @@ the cull from a union frustum. Cost: medium to large - the pieces exist,
 new is the single-pass branch and switching five mechanisms off, the risk
 sits in the capture and the HUD path, the test is the harness and the
 headset.
+
+## Step 4, the switch run in the test mode (2026-11-04 12:17, run obng-walkers-stereo/20261104-121654)
+
+Same scene, same OBVR.dll and hour as the step-3 runs; `[Route] StereoEyes=2
+StereoTestEyeShift=4.5`; phase settled to watched, 4 491 frames.
+
+| Run | Switch | scene_pass mean / p95 | app GPU before submit | poses_wait | frame |
+|---|---|---:|---:|---:|---:|
+| -121654 split | the real switch, 1 742 692 applied per 10 s, 0 refused | 3.93 / 4.38 ms | 8.80 ms | 4.14 ms | 13.36 ms |
+| -112320 two eyes | counting only | 2.98 / 3.53 | 6.86 | 6.01 | 13.39 |
+| -112634 original | - | 2.80 / 3.33 | 6.56 | 6.34 | 13.36 |
+
+- **The switch costs 0.95 ms a pass** in this version (measured: 3.93
+  against 2.98), the upper bound: slot 14 again is most of it (1.42 ms
+  measured for the first call, so the second is cheaper, the programs
+  already bound), plus the device GetViewport the test mode alone makes.
+  Every switch applied, no refusal, no crash, PASS: the repeated slot 14
+  (its pass-0 tail, SpeedTree's own) is harmless on this scene (measured).
+- **The GPU took 1.9 ms more a frame** (8.80 against 6.86): the test mode
+  draws every partition's vertices twice in each of OBVR's two passes, so
+  four eye-views of vertex work a frame against two. In the single pass it
+  is two again (each eye once, as today) - neutral by construction, to be
+  measured when OBVR's half exists. The frame stayed at the pose wait.
+- **Projected for the single pass** (derived): one pass 2.80 + the switch
+  0.95 + the route's 0.19 = about 3.9 ms against two passes 5.6 ms today -
+  about 1.7 ms a frame of CPU on the prison scene before the view-only
+  re-apply (step 2), which takes most of the 0.95 ms back; the ceiling then
+  is about 2.3 ms.
+- The picture: the headless screenshots show the 2D layer in the left half
+  (the test mode doubles the 2D pass too, as the contract says); the world
+  is in the headset and still to be looked at.
