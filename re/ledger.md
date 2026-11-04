@@ -383,6 +383,14 @@ test mode) are 0.37 ms of the 0.64 and the view re-apply 0.27. OBNG's half of th
 pass is complete for OBVR's build; trims (no GetViewport in the interface mode, maybe no
 SetTransform) are later.
 
+Decisions taken after OBVR's step 6 (2026-11-04 15:05, runs single-pass-measure-on/20261104-145734
+and -150318, -off/20261104-150032, Walkers save): the single pass is built on both sides and
+measured - one pass a frame at 4.2 ms against 2 x 3.23 ms, GPU before submit 5.07 against 7.10
+ms, the second eye's picture equal to the dual pass's (RMSE 0.26 %), OBNG's switch 0.27 us
+(re-apply 0.10 us) per partition in both modes. The first "on" run's 14.78 ms is not reproduced
+(cause open). The goal of the stereo work is reached as CPU and GPU headroom on the prison
+scene; the frame gain shows where the CPU bounds the frame (Windows outdoors, to be run).
+
 ## Subsystem replacements
 
 | Subsystem | Replaces | State | Gates | Note |

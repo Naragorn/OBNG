@@ -1,6 +1,6 @@
 # Single-pass stereo: the eye pass as one unit
 
-Status 2026-11-04 12:25: **steps 1 and 3 done, OBNG's half of step 4 built and run (the interface, the eye switch at 0.95 ms a pass in its first version), OBVR's half open.** The engine side is read (slice
+Status 2026-11-04 15:05: **built on both sides and measured in the game: one pass a frame, the second eye's picture equal to the dual pass's, about 2.0-2.3 ms of CPU and 2 ms of GPU a frame saved on the Walkers save (OBVR's step 6).** The pose wait still holds the frame on that scene; the outdoor Windows scene is where it shows. The engine side is read (slice
 eye-pass, five mappings held: `re/functions/0x00762640.md`, `0x007C78D0.md`,
 `0x0070E0A0.md`, `0x007672F0.md`, `0x0070E040.md`); the numbers are measured
 on the fixed Walkers scene; OBVR's side is read in its code. Marks as in
@@ -407,3 +407,30 @@ RMSE of 0.07 % (left) and 0.26 % (right). **So the eye switch draws eye 1
 right** - the view translation, its sign and size, and the re-applied
 constants - in the game, in one pass. Step 6 (the numbers, on against off)
 is next on OBVR's side.
+
+## Step 5 measured: the single pass against the dual pass (2026-11-04 14:57-15:03, OBVR's step 6; Walkers save, settled to watched, Linux, MSAA 4, HDR off)
+
+Runs under artifacts/shadow/: single-pass-measure-on/20261104-145734 and
+-150318 (SinglePassStereo on, OBNG `StereoReapply=view`),
+single-pass-measure-off/20261104-150032 (the dual pass).
+
+| | Dual pass | Single pass |
+|---|---:|---:|
+| scene_pass per frame | 2 x 3.23 = 6.46 ms | 4.26 / 4.19 ms (one pass) |
+| app GPU before submit | 7.10 ms | 5.07 ms |
+| frame mean | 13.6 ms (held by the pose wait) | 13.57 ms |
+| OBNG's switch (TSC timer in the route's line) | - | 0.27 us per switch, re-apply 0.10 us; 808 k switches per 10 s, eyes set 741 per 10 s, 0 refused |
+
+- **About 2.0 to 2.3 ms of CPU and 2 ms of GPU a frame** (measured by
+  OBVR, two "on" runs). The frame mean stays at the pose wait on this
+  scene; the gain is headroom here and frame time where the CPU bounds
+  the frame (the outdoor Windows scene, knowledge/culling-and-draw-setup.md
+  2026-11-02).
+- The switch's own cost in OBVR's mode equals OBNG's split-mode baseline
+  (run obng-walkers-stereo/20261104-145435: 0.28 / 0.09 us): the first "on"
+  run's 14.78 ms (single-pass-measure-on/20261104-143932) is **not
+  reproduced**; its cause is open (OBVR's guess, unverified: DXVK pipeline
+  compilation on the first use of the 5136-wide MSAA frame in that scene).
+  A first-run effect to watch for in later measurements.
+- Still owed: the look in the headset (Nadi), the Windows outdoor run, and
+  OBVR's switch of SinglePassStereo to its default.
