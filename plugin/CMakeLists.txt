@@ -32,4 +32,5 @@ add_library(plugin_entry STATIC src/PluginEntry.cpp)
 target_include_directories(plugin_entry PUBLIC src)
 
 add_library(OBNG SHARED src/Plugin.cpp)
+target_compile_definitions(OBNG PRIVATE OBNG_BUILDING_DLL)
 target_link_libraries(OBNG PRIVATE plugin_entry shadow)

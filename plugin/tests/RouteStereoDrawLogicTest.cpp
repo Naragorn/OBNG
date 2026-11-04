@@ -24,21 +24,25 @@ int main() {
 
 	Section("The plan and the detour count follow the settings");
 	RouteSettings s;
-	Check(s.Asked() == 0 && route::PlanFor(s).eyes == 1, "off: nothing asked, a one-eye plan");
+	Check(s.Asked() == 0 && route::PlanFor(s, true).eyes == 1, "off: nothing asked, a one-eye plan");
 	s.stereoDraw = true;
 	s.stereoEyes = 2;
-	Check(s.Asked() == 2 && route::PlanFor(s).eyes == 2 && obng::engine::render::stereo_draw::DrawsTwice(route::PlanFor(s)),
-	      "on with two eyes: two detours, a two-eye plan that draws twice");
+	Check(s.Asked() == 2 && route::PlanFor(s, true).eyes == 2 && obng::engine::render::stereo_draw::DrawsTwice(route::PlanFor(s, true)),
+	      "on with two eyes and eye data: two detours, a two-eye plan that draws twice");
+	Check(route::PlanFor(s, false).eyes == 1, "on with two eyes but no eye data: one eye");
 	s.rangeWalk = true;
 	Check(s.Asked() == 3, "with the range walk: three");
 
-	Section("The counting eye switch counts Switch(1) only");
+	Section("The eye switch counters fold into the stats");
 	route::Stats stats;
-	route::CountingEyeSwitch sw{&stats};
-	sw.Switch(1);
-	sw.Switch(0);
-	sw.Switch(1);
-	Check(stats.eyeSwitches == 2, "two second-eye frames");
+	obng::plugin::stereo_eye_switch::SwitchCounters counters;
+	counters.applied = 2;
+	counters.noData = 1;
+	counters.restored = 2;
+	stats.AddSwitches(counters);
+	Check(stats.eyeSwitches == 3 && stats.eyeSwitchesApplied == 2, "three Switch(1) calls, two of them applied");
+	stats.eyeDataSets = 5;
+	stats.eyeDataRefused = 1;
 
 	Section("The counters by function and outcome; Reset keeps the plan");
 	stats.eyes = 2;
@@ -56,7 +60,7 @@ int main() {
 	route::FormatStats(stats, line, sizeof(line));
 	Check(std::string(line) ==
 	          "Route: stereo draw (eyes 2) - 3 whole draws (drawn 2, refused 1, null record 0), 3 skinned draws (closed 1, no skin 1, "
-	          "refused 0, record missing 1), 2 eye switches",
+	          "refused 0, record missing 1), 3 eye switches (applied 2), eye data set 5, refused 1",
 	      "the line");
 	stats.Reset();
 	Check(stats.wholeDraws == 0 && stats.skinnedDraws == 0 && stats.eyeSwitches == 0 && stats.eyes == 2, "reset clears the counts, keeps the eyes");

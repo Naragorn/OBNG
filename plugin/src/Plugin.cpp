@@ -13,6 +13,7 @@
 
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 namespace {
@@ -106,12 +107,15 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	if (!eyesKnown) {
 		Log("Settings: [Route] StereoEyes is neither 1 nor 2 - 1 used");
 	}
+	char shift[32] = {};
+	GetPrivateProfileStringA("Route", "StereoTestEyeShift", "0", shift, sizeof(shift), path);
+	r.stereoTestEyeShift = static_cast<float>(std::strtod(shift, nullptr));
 	Log("Settings from %s: TimeInfoUpdate=%d TimeInfoInit=%d TimeInfoFreeze=%d TimeInfoUnfreeze=%d LoadingMenuTick=%d "
 	    "LoadingMenuCtor=%d RangeWalk=%d RangeWalkOrder=%s FpuControlWord=%d HavokPlanner=%d CallCounters=%d PassSteps=%d PackCache=%d ConstantUploads=%d Memory=%d MismatchLines=%u SummaryEverySeconds=%u "
-	    "SummaryTimer=%d Route RangeWalk=%d StereoDraw=%d StereoEyes=%u",
+	    "SummaryTimer=%d Route RangeWalk=%d StereoDraw=%d StereoEyes=%u StereoTestEyeShift=%.3f",
 	    path, s.update ? 1 : 0, s.init ? 1 : 0, s.freeze ? 1 : 0, s.unfreeze ? 1 : 0, s.loadingMenuTick ? 1 : 0,
 	    s.loadingMenuCtor ? 1 : 0, s.rangeWalk ? 1 : 0, obng::plugin::RangeWalkOrderName(s.rangeWalkOrder), s.fpuControlWord ? 1 : 0, s.havokPlanner ? 1 : 0, s.callCounters ? 1 : 0,
-	    s.passSteps ? 1 : 0, s.packCache ? 1 : 0, s.constantUploads ? 1 : 0, s.memoryProbe ? 1 : 0, s.mismatchLines, s.summaryEverySeconds, s.summaryTimer ? 1 : 0, r.rangeWalk ? 1 : 0, r.stereoDraw ? 1 : 0, static_cast<unsigned>(r.stereoEyes));
+	    s.passSteps ? 1 : 0, s.packCache ? 1 : 0, s.constantUploads ? 1 : 0, s.memoryProbe ? 1 : 0, s.mismatchLines, s.summaryEverySeconds, s.summaryTimer ? 1 : 0, r.rangeWalk ? 1 : 0, r.stereoDraw ? 1 : 0, static_cast<unsigned>(r.stereoEyes), static_cast<double>(r.stereoTestEyeShift));
 	return true;
 }
 
@@ -178,6 +182,19 @@ __declspec(dllexport) bool OBSEPlugin_Query(const obng::plugin::ExtenderInterfac
 
 __declspec(dllexport) bool OBSEPlugin_Load(const obng::plugin::ExtenderInterfaceHead* xse) {
 	return obng::plugin::Load(*xse, kHost);
+}
+
+// The stereo eye interface for OBVR (StereoEyesApi.h).
+uint32_t ObngStereoPlan(void) {
+	return obng::plugin::StereoPlan();
+}
+
+uint32_t ObngStereoSetEyes(const ObngStereoEyes* eyes) {
+	return obng::plugin::SetStereoEyes(eyes);
+}
+
+void ObngStereoClearEyes(void) {
+	obng::plugin::ClearStereoEyes();
 }
 
 }  // extern "C"

@@ -51,3 +51,8 @@ add_executable(RouteRangeWalkLogicTest RouteRangeWalkLogicTest.cpp)
 target_include_directories(RouteRangeWalkLogicTest PRIVATE ../src ../../src ../../tests)
 target_compile_options(RouteRangeWalkLogicTest PRIVATE -Wall -Wextra -Werror)
 add_test(NAME RouteRangeWalkLogicTest COMMAND RouteRangeWalkLogicTest)
+
+add_executable(StereoEyeSwitchLogicTest StereoEyeSwitchLogicTest.cpp)
+target_include_directories(StereoEyeSwitchLogicTest PRIVATE ../src ../../src ../../tests)
+target_compile_options(StereoEyeSwitchLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME StereoEyeSwitchLogicTest COMMAND StereoEyeSwitchLogicTest)

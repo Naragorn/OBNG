@@ -1,6 +1,6 @@
 # Single-pass stereo: the eye pass as one unit
 
-Status 2026-11-04: **designed, not built.** The engine side is read (slice
+Status 2026-11-04 12:10: **steps 1 and 3 done, OBNG's half of step 4 built (the interface and the eye switch), OBVR's half open.** The engine side is read (slice
 eye-pass, five mappings held: `re/functions/0x00762640.md`, `0x007C78D0.md`,
 `0x0070E0A0.md`, `0x007672F0.md`, `0x0070E040.md`); the numbers are measured
 on the fixed Walkers scene; OBVR's side is read in its code. Marks as in
@@ -154,3 +154,87 @@ data (the IPD shift, the viewport rects, the render target) lives in OBVR;
 how it reaches OBNG's eye switch (an exported function, a shared memory
 block, or the switch built on OBVR's side against OBNG's port) is the design
 decision before step 4.
+
+## Step 4, OBNG's half (built 2026-11-04 12:05; not yet run)
+
+**The interface decision.** The eye data lives in OBVR and reaches OBNG
+through three C functions exported by OBNG.dll (`plugin/src/StereoEyesApi.h`,
+bound by GetProcAddress, no other OBNG header needed):
+
+| Function | Does |
+|---|---|
+| `ObngStereoPlan()` | 0 = the stereo draw route is off, 1 = on with one eye (the 1:1 gate), 2 = on and allowed to draw twice. OBVR renders one pass only when this is 2 and SetEyes returned ok. |
+| `ObngStereoSetEyes(const ObngStereoEyes*)` | the eye data for every draw until Clear: `secondEyeOffset[3]` (world space, game units, from eye 0 = the pass camera to eye 1 - OBVR's g_dualShift as it stands), `viewport[2]` in pixels of the target (D3DVIEWPORT9 order; eye 0's must be the one the engine's own SetViewport leaves, as the first draw of every partition runs before any switch). Copied; validated (size, version, viewports, finite offset, the route's plan); a refusal keeps the previous data. |
+| `ObngStereoClearEyes()` | back to one draw per partition. |
+
+Why this and not a shared memory block or the switch on OBVR's side: OBVR
+stays the owner of the VR quantities (the pupil distance, the target, the
+viewports) and OBNG the owner of the draw and the engine state it touches;
+each side builds and tests alone (OBNG's eye switch runs on its own test
+eye data, OBVR can call the interface against a stub); the three functions
+are the whole coupling and are versioned (`size`, `version`). Scoping is the
+caller's: with eyes set, every draw through the route doubles, in every
+pass - OBVR sets the eyes right before the world render and clears them
+right after, so the 2D layer, the water reflections and the menus draw once.
+
+**The eye switch's body** (`plugin/src/StereoEyeSwitchLogic.h` the decisions,
+tested in `plugin/tests/StereoEyeSwitchLogicTest.cpp` over a recording port;
+`plugin/src/RouteStereoDraw.cpp` the engine port). Switch(1), in this order:
+read the view +0x980 (the axes from its columns, the translation row) and
+the inverse view's row 4 at +0xA00; write the second eye's rows
+(`_4k - axis_k . e`, `T + e`, derived from 0x00762640.md C2 and C3); device
+SetTransform(VIEW, +0x980) as the engine's K1; SetViewport(eye 1);
+re-apply the constants. Switch(0): the saved rows back bit for bit,
+SetTransform(VIEW), SetViewport(eye 0). Without eye data Switch(1) only
+counts, so the draws stay what step 3b measured, and the plan per draw
+falls back to one eye (no second draw without data: a second draw into
+the same viewport is a double alpha blend at worst).
+
+**The constants re-apply, first version:** the shader's slot 14 called
+again with the partition's own arguments - the whole of
+NiD3DShader::SetupShaderPrograms 0x0077A1F0 (the extra-data cursor reset,
+the program bind, both constant maps), captured by the route's shader port
+when the rebuild makes the call. Chosen over a direct ApplyConstants pair
+because the cursor reset (0x0077A1F0.md C12) must precede the maps and its
+meaning is unverified, and over the view-only re-apply (step 2 of the
+design) because that needs the entry types mapped first. Its cost is the
+measured slot 14: 1.42 ms a pass on the fixed scene - the upper bound of
+what the single pass gives back; step 2 takes most of it. Unverified and
+settled by the first run: that 0x0077A1F0's pass-0 tail (this+0x24's slot
+29 into this+0x18's slot 42) and SpeedTreeBranchShader's own slot 14
+0x0080FC20 are harmless when repeated; that the shadow-light clip planes of
+slot 13 (0x007C9230 C14), which stay eye 0's, do not show; that the light
+constants are not view-space (0x007C9140, unverified).
+
+**The test mode** `[Route] StereoTestEyeShift=<units>`
+(tools/hand-scripts/obng-measure-stereo-split.ini: 4.5 units, about 64 mm at
+OBVR's 69.99 units a metre, read in OBVR's HeadTracker.h): the viewport the
+engine set is split in halves (eye 0 left, eye 1 right) and eye 1 sits the
+shift along the camera's right axis. It runs the whole switch without
+OBVR's side, so the fixed scene can cost it now: scene_pass against the
+two-eye run of step 3b (2.98 ms) is the switch's price per pass, an upper
+bound (the test mode reads the viewport from the device per switch; the
+interface mode does not). The picture in the headset: each eye shows two
+squeezed half-views with the parallax between them - a sanity check of the
+sign and size of the shift and of the constants, not a VR frame. What it
+cannot show: the frame gain (the pose wait holds the prison scene).
+
+**OBVR's half (step 4b), what is read and what is OBVR's to read.** Read in
+OBVR's code: HookedRenderScene (`src/render/SceneRenderHook.cpp`) renders
+the world twice with betweenPasses in the middle and skips the second pass
+for renders into a texture; BetweenScenePasses (`camera/CameraHook.cpp`)
+moves the camera node by g_dualShift = finalRotation x (toSecondEye, 0, 0)
+and rebases the palettes; HeadsetRenderer keeps m_boundsLeft / m_boundsRight
+(VRTextureBounds) for the submit; ResolutionHook, EyeMirror, InteropBracket
+and WaterReflectionHook exist by name - their bodies are unread here. The
+task, as far as OBNG can state it: bind the three functions (absent OBNG.dll
+or plan != 2: the dual pass as today); a double-wide game target with the
+camera's port rect on its left half so the engine's own viewport is eye 0's;
+SetEyes before the world render with g_dualShift and the two halves, Clear
+after it; one RenderScene a frame; the capture per half and the submit with
+the bounds; the dual-pass machinery off on that path (the camera shift, the
+bone rebase, the culling replay, the shadow share, the water stereo pass);
+the cull from a union frustum. Cost: medium to large - the pieces exist,
+new is the single-pass branch and switching five mechanisms off, the risk
+sits in the capture and the HUD path, the test is the harness and the
+headset.

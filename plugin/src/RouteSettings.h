@@ -29,7 +29,9 @@ constexpr UInt8 StereoEyesFromIni(int value, bool* known) {
 struct RouteSettings {
 	bool rangeWalk = false;   // ShadowSceneLight::CollectGeometryInRange 0x007D59E0 runs BatchedWalk; off in play
 	bool stereoDraw = false;  // the two draw functions run OBNG's rebuilds (RouteStereoDraw.cpp); off in play
-	UInt8 stereoEyes = 1;     // the eye plan of the stereo draw (1 or 2)
+	UInt8 stereoEyes = 1;     // the eyes the stereo draw may serve (1 or 2); two need eye data (StereoEyesApi.h)
+	float stereoTestEyeShift = 0.0f;  // the plugin's own eye data: the viewport split in halves, eye 1 this many
+	                                  // game units along the camera's right axis (StereoEyeSwitchLogic.h); 0 = off
 
 	UInt32 Asked() const { return (rangeWalk ? kRouteRangeWalkDetours : 0u) + (stereoDraw ? kRouteStereoDrawDetours : 0u); }
 };
