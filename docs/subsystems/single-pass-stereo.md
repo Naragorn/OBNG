@@ -396,3 +396,14 @@ Walkers save), PASS:
   reading of these two pictures as a consistent parallax was wrong; the
   second eye's half is unseen until OBVR's step 5 captures the right half.
   The phase table (frame, scene_pass, GPU) comes with its step 6.
+
+## The second eye verified in the picture (2026-11-04 14:40, OBVR's step 5; run artifacts/shadow/single-pass-one/20261104-143625)
+
+OBVR's capture now takes the right eye from the right half of the target.
+Measured by OBVR against its dual-pass run of the same scenario (the
+Esc-menu mark): the parallax left to right is 103 px far and 167 px near,
+exactly the dual pass's; the eye dumps differ from the dual pass by an
+RMSE of 0.07 % (left) and 0.26 % (right). **So the eye switch draws eye 1
+right** - the view translation, its sign and size, and the re-applied
+constants - in the game, in one pass. Step 6 (the numbers, on against off)
+is next on OBVR's side.
