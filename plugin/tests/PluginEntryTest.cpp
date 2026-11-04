@@ -278,6 +278,13 @@ void TestLoadConstantUploads() {
 	ResetForTest();
 	Check(Load(Game(), kHost), "loads");
 	Check(viewSteps.Logged("Probes: 11 of 11 call counters made, memory on"), "with the pass steps the view probe asks for nothing (they hold its entry)");
+	Fake entries;
+	entries.iniSettings.shadow.drawEntries = true;
+	entries.probesMade = 4;
+	g_fake = &entries;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(entries.probed.drawEntries && entries.Logged("Probes: 4 of 4 call counters made, memory on"), "the draw entries ask for four");
 }
 
 void TestLoadStereoDraw() {

@@ -575,6 +575,72 @@ UInt32 __fastcall ViewApplyMap(void* self, void* /*edx*/, UInt32 a1, UInt32 a2, 
 	return g_viewApply(self, nullptr, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11);
 }
 
+// ---- The renderer's other draw entries ([Probe] DrawEntries) ----------------------
+//
+// NiDX9Renderer (vtable 0x00A88EA4) draws through six entries: Do_RenderShape
+// 0x007693E0 (slots 88/89, routed through DrawPrimitive / DrawSkinnedPrimitive)
+// and four that go to the device with the pipeline the caller set up: slots 90
+// 0x007694F0 and 91 0x00769700 (thiscall(geometry), RET 4), slot 85 0x00766F30
+// (EndBatch, by its string; plain RET) and slot 93 0x00766880 (thiscall(one
+// argument), RET 4) - read in the vtable and with objdump (2026-11-04). The
+// probe counts their calls, to say which of them draws what the stereo route
+// misses (the near terrain and the SpeedTree trees of OBVR's water scene).
+constexpr UInt32 kDrawSlot90 = 0x007694F0;
+constexpr UInt8 kDrawSlot90Bytes[] = {0x83, 0xEC, 0x14, 0x55, 0x8B, 0xE9};  // sub esp,14h; push ebp; mov ebp,ecx
+constexpr UInt32 kDrawSlot91 = 0x00769700;
+constexpr UInt8 kDrawSlot91Bytes[] = {0x83, 0xEC, 0x24, 0x55, 0x8B, 0xE9};  // sub esp,24h; push ebp; mov ebp,ecx
+constexpr UInt32 kEndBatch = 0x00766F30;
+constexpr UInt8 kEndBatchBytes[] = {0x83, 0xEC, 0x14, 0x53, 0x56, 0x8B, 0xF1};  // sub esp,14h; push ebx; push esi; mov esi,ecx
+constexpr UInt32 kDrawSlot93 = 0x00766880;
+constexpr UInt8 kDrawSlot93Bytes[] = {0x83, 0xEC, 0x74, 0x53, 0x8B, 0xD9};  // sub esp,74h; push ebx; mov ebx,ecx
+using DrawOneArgFn = UInt32(__fastcall*)(void* self, void* edx, UInt32);
+using DrawNoArgFn = UInt32(__fastcall*)(void* self, void* edx);
+DrawOneArgFn g_drawSlot90 = nullptr;
+DrawOneArgFn g_drawSlot91 = nullptr;
+DrawNoArgFn g_endBatch = nullptr;
+DrawOneArgFn g_drawSlot93 = nullptr;
+bool g_drawEntriesOn = false;
+volatile LONG g_drawEntryCalls[4] = {0, 0, 0, 0};
+
+UInt32 __fastcall ProbeDrawSlot90(void* self, void* /*edx*/, UInt32 geometry) {
+	InterlockedIncrement(&g_drawEntryCalls[0]);
+	return g_drawSlot90(self, nullptr, geometry);
+}
+UInt32 __fastcall ProbeDrawSlot91(void* self, void* /*edx*/, UInt32 geometry) {
+	InterlockedIncrement(&g_drawEntryCalls[1]);
+	return g_drawSlot91(self, nullptr, geometry);
+}
+UInt32 __fastcall ProbeEndBatch(void* self, void* /*edx*/) {
+	InterlockedIncrement(&g_drawEntryCalls[2]);
+	return g_endBatch(self, nullptr);
+}
+UInt32 __fastcall ProbeDrawSlot93(void* self, void* /*edx*/, UInt32 a1) {
+	InterlockedIncrement(&g_drawEntryCalls[3]);
+	return g_drawSlot93(self, nullptr, a1);
+}
+
+UInt32 InstallDrawEntries(LogFn log) {
+	UInt32 made = 0;
+	made += InstallEntryDetour("NiDX9Renderer slot 90 0x007694F0 (draw entries)", kDrawSlot90, kDrawSlot90Bytes, sizeof(kDrawSlot90Bytes),
+	                           reinterpret_cast<const void*>(&ProbeDrawSlot90), reinterpret_cast<void**>(&g_drawSlot90), log) ? 1 : 0;
+	made += InstallEntryDetour("NiDX9Renderer slot 91 0x00769700 (draw entries)", kDrawSlot91, kDrawSlot91Bytes, sizeof(kDrawSlot91Bytes),
+	                           reinterpret_cast<const void*>(&ProbeDrawSlot91), reinterpret_cast<void**>(&g_drawSlot91), log) ? 1 : 0;
+	made += InstallEntryDetour("NiDX9Renderer::EndBatch 0x00766F30 (draw entries)", kEndBatch, kEndBatchBytes, sizeof(kEndBatchBytes),
+	                           reinterpret_cast<const void*>(&ProbeEndBatch), reinterpret_cast<void**>(&g_endBatch), log) ? 1 : 0;
+	made += InstallEntryDetour("NiDX9Renderer slot 93 0x00766880 (draw entries)", kDrawSlot93, kDrawSlot93Bytes, sizeof(kDrawSlot93Bytes),
+	                           reinterpret_cast<const void*>(&ProbeDrawSlot93), reinterpret_cast<void**>(&g_drawSlot93), log) ? 1 : 0;
+	g_drawEntriesOn = made != 0;
+	return made;
+}
+
+void LogDrawEntries() {
+	const LONG c0 = InterlockedExchange(&g_drawEntryCalls[0], 0);
+	const LONG c1 = InterlockedExchange(&g_drawEntryCalls[1], 0);
+	const LONG c2 = InterlockedExchange(&g_drawEntryCalls[2], 0);
+	const LONG c3 = InterlockedExchange(&g_drawEntryCalls[3], 0);
+	g_log("Probe: draw entries - slot 90 0x007694F0 %ld, slot 91 0x00769700 %ld, EndBatch 0x00766F30 %ld, slot 93 0x00766880 %ld", c0, c1, c2, c3);
+}
+
 // Under g_uploadLock: one upload's verdict keyed for the view probe.
 void NoteViewUpload(UInt32 reg, probe::PackVerdict verdict, UInt32 bytes) {
 	if (g_viewOn && g_eyePhase == 1) {
@@ -851,7 +917,7 @@ UInt32 ProbesAsked(const ShadowSettings& settings) {
 	return (settings.callCounters ? static_cast<UInt32>(Probed::Count) : 0u) +
 	       (settings.passSteps ? static_cast<UInt32>(Step::Count) - (settings.callCounters ? 1u : 0u) : 0u) +
 	       (settings.packCache ? 3u : 0u) + (settings.constantUploads ? (settings.passSteps ? 2u : 3u) : 0u) +
-	       (settings.viewConstants && !settings.passSteps ? 1u : 0u);
+	       (settings.viewConstants && !settings.passSteps ? 1u : 0u) + (settings.drawEntries ? 4u : 0u);
 }
 
 UInt32 InstallProbes(const ShadowSettings& settings, LogFn log) {
@@ -874,6 +940,9 @@ UInt32 InstallProbes(const ShadowSettings& settings, LogFn log) {
 	}
 	if (settings.viewConstants) {
 		made += InstallViewConstants(settings.passSteps, log);
+	}
+	if (settings.drawEntries) {
+		made += InstallDrawEntries(log);
 	}
 	if (!settings.callCounters) {
 		return made;
@@ -936,6 +1005,9 @@ void LogProbeSummary() {
 	}
 	if (g_viewOn) {
 		LogViewConstants();
+	}
+	if (g_drawEntriesOn) {
+		LogDrawEntries();
 	}
 	if (g_memory) {
 		probe::MemorySample sample;

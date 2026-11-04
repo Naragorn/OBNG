@@ -96,6 +96,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	s.packCache = GetPrivateProfileIntA("Probe", "PackCache", 0, path) != 0;
 	s.constantUploads = GetPrivateProfileIntA("Probe", "ConstantUploads", 0, path) != 0;
 	s.viewConstants = GetPrivateProfileIntA("Probe", "ViewConstants", 0, path) != 0;
+	s.drawEntries = GetPrivateProfileIntA("Probe", "DrawEntries", 0, path) != 0;
 	if (s.viewConstants && !s.constantUploads) {
 		s.constantUploads = true;  // the view probe keys the uploads probe's verdicts
 	}
@@ -122,11 +123,11 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 		Log("Settings: [Route] StereoReapply=%s is neither slot14, view nor none - view used", reapply);
 	}
 	Log("Settings from %s: TimeInfoUpdate=%d TimeInfoInit=%d TimeInfoFreeze=%d TimeInfoUnfreeze=%d LoadingMenuTick=%d "
-	    "LoadingMenuCtor=%d RangeWalk=%d RangeWalkOrder=%s FpuControlWord=%d HavokPlanner=%d CallCounters=%d PassSteps=%d PackCache=%d ConstantUploads=%d ViewConstants=%d Memory=%d MismatchLines=%u SummaryEverySeconds=%u "
+	    "LoadingMenuCtor=%d RangeWalk=%d RangeWalkOrder=%s FpuControlWord=%d HavokPlanner=%d CallCounters=%d PassSteps=%d PackCache=%d ConstantUploads=%d ViewConstants=%d DrawEntries=%d Memory=%d MismatchLines=%u SummaryEverySeconds=%u "
 	    "SummaryTimer=%d Route RangeWalk=%d StereoDraw=%d StereoEyes=%u StereoTestEyeShift=%.3f StereoReapply=%s",
 	    path, s.update ? 1 : 0, s.init ? 1 : 0, s.freeze ? 1 : 0, s.unfreeze ? 1 : 0, s.loadingMenuTick ? 1 : 0,
 	    s.loadingMenuCtor ? 1 : 0, s.rangeWalk ? 1 : 0, obng::plugin::RangeWalkOrderName(s.rangeWalkOrder), s.fpuControlWord ? 1 : 0, s.havokPlanner ? 1 : 0, s.callCounters ? 1 : 0,
-	    s.passSteps ? 1 : 0, s.packCache ? 1 : 0, s.constantUploads ? 1 : 0, s.viewConstants ? 1 : 0, s.memoryProbe ? 1 : 0, s.mismatchLines, s.summaryEverySeconds, s.summaryTimer ? 1 : 0, r.rangeWalk ? 1 : 0, r.stereoDraw ? 1 : 0, static_cast<unsigned>(r.stereoEyes), static_cast<double>(r.stereoTestEyeShift), obng::plugin::StereoReapplyName(r.stereoReapply));
+	    s.passSteps ? 1 : 0, s.packCache ? 1 : 0, s.constantUploads ? 1 : 0, s.viewConstants ? 1 : 0, s.drawEntries ? 1 : 0, s.memoryProbe ? 1 : 0, s.mismatchLines, s.summaryEverySeconds, s.summaryTimer ? 1 : 0, r.rangeWalk ? 1 : 0, r.stereoDraw ? 1 : 0, static_cast<unsigned>(r.stereoEyes), static_cast<double>(r.stereoTestEyeShift), obng::plugin::StereoReapplyName(r.stereoReapply));
 	return true;
 }
 
