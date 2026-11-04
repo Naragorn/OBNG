@@ -238,7 +238,8 @@ inline int FormatStepSites(const char* name, const StepSites& s, double ticksPer
 struct PackKey {
 	std::uint32_t geometry;
 	std::uint32_t partition;
-	std::uint32_t chip;
+	std::uint32_t chip;  // the stream index since the keyed probe (the field name stayed)
+	std::uint32_t decl = 0;  // the shader declaration the pack ran under (its layout)
 	bool operator==(const PackKey&) const = default;
 };
 
@@ -290,6 +291,9 @@ struct PackStats {
 	std::uint64_t volatileChanged = 0;
 	std::uint64_t otherSame = 0;      // Same verdicts on mutable or static data
 	std::uint64_t otherChanged = 0;
+	std::uint64_t volatileCalls = 0;  // packer calls with volatile data (timed)
+	std::uint64_t volatileTicks = 0;  // their TSC ticks, inclusive (the whole 0x00763130 call, the probe's hashing included)
+	std::uint64_t hashTicks = 0;      // the probe's own hashing inside those calls, to subtract
 	void Reset() { *this = PackStats{}; }
 };
 
@@ -425,6 +429,7 @@ private:
 		std::uint32_t h = k.geometry * 0x9E3779B1u;
 		h ^= k.partition * 0x85EBCA77u;
 		h ^= k.chip * 0xC2B2AE3Du;
+		h ^= k.decl * 0x27D4EB2Fu;
 		h ^= h >> 15;
 		return h & mask_;
 	}
@@ -473,6 +478,17 @@ inline int FormatPackStats(const PackStats& s, std::uint64_t keys, char* out, st
 	                     static_cast<unsigned long long>(s.lockOther), static_cast<unsigned long long>(s.volatileSame),
 	                     static_cast<unsigned long long>(s.volatileChanged), static_cast<unsigned long long>(s.otherSame),
 	                     static_cast<unsigned long long>(s.otherChanged));
+}
+
+// " volatile packer calls N, X.XX ms (Y.YY us per call)" with a calibration,
+// ticks without one.
+inline int FormatVolatilePackTime(const PackStats& s, double ticksPerMillisecond, char* out, std::size_t capacity) {
+	const std::uint64_t own = s.volatileTicks > s.hashTicks ? s.volatileTicks - s.hashTicks : 0;
+	int at = FormatStepTiming("volatile packer calls without the probe's hashing", StepTiming{s.volatileCalls, own}, ticksPerMillisecond, out, capacity);
+	if (at >= 0 && static_cast<std::size_t>(at) < capacity) {
+		at += FormatStepTiming("the probe's hashing", StepTiming{s.volatileCalls, s.hashTicks}, ticksPerMillisecond, out + at, capacity - at);
+	}
+	return at;
 }
 
 // ---- The constant uploads' redundancy probe -----------------------------------------

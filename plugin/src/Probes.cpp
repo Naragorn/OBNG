@@ -304,6 +304,8 @@ UInt32 __fastcall TimeSetConstant(void* self, void* /*edx*/, UInt32 a1, UInt32 a
 	return eax;
 }
 
+probe::ClockPair ReadClocks();
+std::uint64_t ClockFrequency();
 // ---- The packing's cross-frame probe (docs/subsystems/stream-packing.md, L3) -------
 //
 // Two detours: the packer 0x00763130 (thiscall(renderer; record, geometry,
@@ -360,10 +362,12 @@ range_walk_game::ThreadSlots<PackContext> g_packContexts;
 SRWLOCK g_packLock = SRWLOCK_INIT;
 probe::PackCache* g_packCache = nullptr;  // 65 536 slots, made at install
 probe::PackStats g_packStats;
+probe::ClockPair g_packClock;  // the clocks at the last pack summary
 
 UInt32 __fastcall ProbePacker(void* self, void* /*edx*/, UInt32 record, UInt32 geometry, UInt32 skin, UInt32 partition, UInt32 decl,
                               UInt32 force) {
 	PackContext& context = g_packContexts.Get();
+	const unsigned __int64 start = __rdtsc();
 	if (context.depth++ == 0) {
 		context.geometry = geometry;
 		context.partition = partition;
@@ -380,7 +384,13 @@ UInt32 __fastcall ProbePacker(void* self, void* /*edx*/, UInt32 record, UInt32 g
 		}
 	}
 	const UInt32 eax = g_packer(self, nullptr, record, geometry, skin, partition, decl, force);
-	--context.depth;
+	if (--context.depth == 0 && context.volatileData) {
+		const unsigned __int64 elapsed = __rdtsc() - start;
+		AcquireSRWLockExclusive(&g_packLock);
+		++g_packStats.volatileCalls;
+		g_packStats.volatileTicks += elapsed;
+		ReleaseSRWLockExclusive(&g_packLock);
+	}
 	return eax;
 }
 
@@ -408,7 +418,9 @@ UInt32 __fastcall ProbeUnlock(void* self, void* /*edx*/, UInt32 d3dBuffer) {
 	const auto manager = reinterpret_cast<std::uintptr_t>(self);
 	const auto staging = *reinterpret_cast<const unsigned char* volatile*>(manager + kManagerStagingOffset);
 	const UInt32 bytes = *reinterpret_cast<volatile UInt32*>(manager + kManagerBytesOffset);
+	const unsigned __int64 hashStart = __rdtsc();
 	const std::uint64_t hash = staging != nullptr ? probe::HashBytes(staging, bytes) : 0;
+	const unsigned __int64 hashTicks = __rdtsc() - hashStart;
 	// The slice from the chip PackStream is packing into (its buffer should be
 	// the vb the unlock receives); without a chip on this thread the vb alone.
 	probe::PackSlice slice{d3dBuffer, 0, bytes};
@@ -423,6 +435,7 @@ UInt32 __fastcall ProbeUnlock(void* self, void* /*edx*/, UInt32 d3dBuffer) {
 	    g_packCache->Add(probe::PackKey{context->geometry, context->partition, context->stream}, hash, bytes, g_packStats, slice);
 	probe::CountVerdictByConsistency(verdict, context->volatileData, g_packStats);
 	probe::CountLockFlags(flags, g_packStats);
+	g_packStats.hashTicks += hashTicks;
 	ReleaseSRWLockExclusive(&g_packLock);
 	return g_unlock(self, nullptr, d3dBuffer);
 }
@@ -441,6 +454,7 @@ UInt32 InstallPackCache(LogFn log) {
 	made += InstallEntryDetour("PackStream 0x0076FE20 (pack cache)", kPackStream, kPackStreamBytes, sizeof(kPackStreamBytes),
 	                           reinterpret_cast<const void*>(&ProbePackStream), reinterpret_cast<void**>(&g_packStream), log) ? 1 : 0;
 	g_packCacheOn = made == 3;
+	g_packClock = ReadClocks();
 	if (made != 3) {
 		log("Probe: pack cache - %u of 3 detours made; the counts need all three, so it is off", made);
 	}
@@ -456,6 +470,14 @@ void LogPackCache() {
 	char line[600];
 	probe::FormatPackStats(stats, keys, line, sizeof(line));
 	g_log("%s", line);
+	{
+		const probe::ClockPair now = ReadClocks();
+		const double ticksPerMs = probe::TicksPerMillisecond(g_packClock, now, ClockFrequency());
+		g_packClock = now;
+		int at = std::snprintf(line, sizeof(line), "Probe: pack cache time (%.0f ticks per ms) -", ticksPerMs);
+		probe::FormatVolatilePackTime(stats, ticksPerMs, line + at, sizeof(line) - at);
+		g_log("%s", line);
+	}
 	AcquireSRWLockExclusive(&g_packLock);
 	const probe::PackCache::KeyShape shape = g_packCache->Shape();
 	int at = std::snprintf(line, sizeof(line), "Probe: pack cache keys - always same %llu, always changed %llu, mixed %llu, untested %llu, distinct buffers %llu; changed keys (stream same/changed):",

@@ -176,6 +176,8 @@ void TestPackCache() {
 	Check(cache.Add(a, 12, 100, stats) == PackVerdict::Changed && stats.changed == 1, "a different hash: changed");
 	Check(cache.Add(a, 12, 100, stats) == PackVerdict::Same && stats.same == 2, "the changed hash is now the last one");
 	Check(cache.Add(b, 12, 50, stats) == PackVerdict::New && cache.Keys() == 2, "another chip of the same partition is another key");
+	const PackKey aOtherDecl{0x1000, 0x2000, 0x3000, 0x4000};
+	Check(cache.Add(aOtherDecl, 12, 100, stats) == PackVerdict::New && cache.Keys() == 3, "the same stream under another declaration is another key");
 	Check(stats.packs == 5 && stats.bytes == 450, "five packs, 450 bytes hashed");
 	Check(stats.sliceSame == 3 && stats.sliceMoved == 0, "a known key with the same (default) slice each time: slice same");
 	{
@@ -206,6 +208,15 @@ void TestPackCache() {
 	CountVerdictByConsistency(PackVerdict::Same, false, bc);
 	CountVerdictByConsistency(PackVerdict::New, true, bc);
 	Check(bc.volatileSame == 1 && bc.volatileChanged == 1 && bc.otherSame == 1 && bc.otherChanged == 0, "verdicts split by consistency; New is not counted");
+	PackStats vt;
+	vt.volatileCalls = 100; vt.volatileTicks = 300000; vt.hashTicks = 60000;
+	char vline[240];
+	FormatVolatilePackTime(vt, 3000.0, vline, sizeof(vline));
+	Check(std::string(vline) == " volatile packer calls without the probe's hashing 100 calls, 80.00 ms (800.00 us per call); the probe's hashing 100 calls, 20.00 ms (200.00 us per call);",
+	      "the volatile packer time line: the hashing subtracted and shown");
+	vt.hashTicks = 400000;
+	FormatVolatilePackTime(vt, 3000.0, vline, sizeof(vline));
+	Check(std::strstr(vline, "100 calls, 0.00 ms") != nullptr, "hashing beyond the total clamps to 0");
 	PackCache tiny(0);  // one slot: every other key evicts
 	PackStats t;
 	tiny.Add(a, 1, 10, t);
