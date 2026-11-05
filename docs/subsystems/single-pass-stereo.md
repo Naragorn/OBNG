@@ -527,3 +527,83 @@ single-pass-torch-on/-off in its test hall):
   eye 1's right edge), A7 (release).
 
 No visible difference in these classes; OBVR's spec table A8.
+
+## The headset look on Windows and what it found (2026-11-05)
+
+Nadi, Windows, headset, single pass on: the performance good; sky and clouds
+"unconnected to the world"; spell effects in the left eye only and most of
+the torch; the right eye sometimes with more ground texture than the left;
+distant grass coming and going as the head turns. Reproduced and taken apart
+on Linux the same evening (the eye pictures are OBVR's EyeDump; the Windows
+install has the game's blur shader on, the Linux one off - set for the runs
+with tools/with-game-ini.sh).
+
+**The sky (fixed, [Route] StereoFollowers).** The scene render 0x0040C830
+puts two roots ([0x00B333D8], [0x00B333DC]) at the camera's position at the
+start of every pass (read, re/functions/0x0040C830.md step 6; the sky's node
+is attached to the second, re/functions/0x00406360.md). In the dual pass
+each eye's pass centred them on its own eye: no disparity, the sky at no
+distance. The single pass centres them once, on eye 0, and the view shift
+then showed the second eye the sky from 6.4 cm beside its centre. The sky's
+meshes are near - measured in run obng-single-pass-sky/20261105-193948:
+`Atmosphere Mesh` radius 522 units, `CloudDome:0/1` 515 / 502, `Atmosphere
+Quad` 1000, `Sun Geometry` 396 units from the camera - so the second eye saw
+the sky some 7 m away, in front of every mountain. A geometry with one of
+the two roots among its ancestors (NiAVObject +0x1C) now gets the second
+eye's viewport and nothing else (EyeSwitch.viewportOnly). The sky's shift
+between the two eye pictures: 99 to 104 px with the rule, 105 to 110 and
+more without it (run 20261105-194137; the search ended at 110). A dual-pass
+picture of the same scene as the reference is owed.
+
+**The ground (fixed, [Route] StereoRestoreDirect).** The route's own fault.
+The direct entries (slots 90/91: terrain, SpeedTree, grass) draw with the
+constants their caller set up once for a run of geometries. The second eye's
+re-apply overwrote the view constants and nothing put the first eye's back
+(the draw functions with a shader setup per partition upload everything
+again and never showed it), so every later geometry of a run was drawn for
+the first eye with the second eye's constants, and a pass that tests for
+equal depth failed there. Run obng-grass-turn-single/20261105-194324: the
+left eye shows a ground layer that the right eye, the dual pass through the
+route and the dual pass without OBNG (run obng-grass-turn-dual/
+20261105-194847) do not. EyeSwitch.reapplyOnRestore re-applies the first
+eye's view constants after the switch back, for the direct entries; run
+20261105-195203 shows both eyes as the dual pass. The switch costs 0.31 us
+(re-apply 0.15) per applied switch there against 0.24 (0.10) before; the
+fixed-scene number is owed.
+
+**The particles (routed, [Route] StereoParticles; the picture owed).** The
+unrouted-draw probe ([Probe] UnroutedDraws: the device's four draw methods
+hooked, every call sorted by the route's depth, the eye data and the
+viewport, a row per calling site) found one device draw of a single-pass
+frame in eye 0's viewport outside the route: DrawIndexedPrimitive at
+0x007667FE, 72 calls in 5 s while a spell is cast (run
+obng-single-pass-spell/20261105-193815). The site lies in the renderer's
+vtable slot 92, 0x00765990 (read in the vtable 0x00A88EA4; Ghidra had no
+function there, which is why the survey of 2026-11-04 named six draw entries
+and missed the seventh): thiscall(geometry), RET 4, 1 050 instructions that
+build a particle system's quads into a dynamic buffer and draw them through
+the renderer's shader at +0xA94 with the device's transforms. It is routed
+at its one device call - the eight bytes `mov eax,[ecx+148h]; call eax` at
+0x007667F6 become a call to the route, which makes the device call once per
+eye with the switch between - rather than rebuilt: nothing else of the
+function changes, and no float of its vertex building is touched. The quads
+face the pass camera in both eyes.
+
+**The blur shader (open).** With bUseBlurShader=1 the left eye gets the
+bloom and the right eye none (run single-pass-torch-on/20261105-192827) -
+which is also "more ground texture in the right eye" where the ground is
+bright. The image-space draws run through the route, outside every eye
+viewport: three a frame at 256x256, one at 5136x2568. The image space
+manager 0x008037D0 (behind 0x007B48E0) draws one screen quad per active
+effect; why the last draw's result lies in the left half only is not read
+yet. The frame's targets are OBVR's: asked.
+
+**The grass (not reproduced).** The grass builds are the same in both modes
+(49 patches at every mark of OBVR's grass-turn scenario, single and dual)
+and the eye pictures equal within the grass's sway. The direct entries'
+restore above touches exactly the grass's draw path; whether it was the
+cause on Windows is unverified.
+
+Also seen: FoliageAA.dll hooks the device's DrawPrimitive and
+DrawIndexedPrimitive after OBNG's probe; the probe puts its hooks back on
+top so the game's call sites stay visible.

@@ -75,6 +75,7 @@ struct RouteSettings {
 	                                  // game units along the camera's right axis (StereoEyeSwitchLogic.h); 0 = off
 	StereoReapply stereoReapply = StereoReapply::kView;  // the second eye's constants re-apply
 	bool stereoRestoreDirect = true;  // [Route] StereoRestoreDirect: the direct entries re-apply the first eye's view constants after the second eye's draw; 0 for the comparison
+	bool stereoParticles = true;  // [Route] StereoParticles: the particle renderer's device call (0x007667F6) runs through the eye plan; 0 leaves the game's call, particles in the first eye only
 	bool stereoFollowers = true;  // [Route] StereoFollowers: geometry below the camera-following roots (the sky) gets the second eye's viewport without the view shift; 0 for the comparison
 
 	UInt32 Asked() const { return (rangeWalk ? kRouteRangeWalkDetours : 0u) + (stereoDraw ? kRouteStereoDrawDetours : 0u); }

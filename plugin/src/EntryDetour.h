@@ -38,4 +38,14 @@ UInt32 BuildEntryTrampoline(UInt8* buffer, UInt32 capacity, UInt32 trampolineAdd
 UInt32 BuildEntryPatch(UInt8* buffer, UInt32 capacity, UInt32 entryAddress,
                        UInt32 replacementAddress, UInt32 entryLength);
 
+// Writes the patch for a call site inside a function: a call to the
+// replacement, padded with nops out to siteLength. The displaced bytes must
+// be an indirect call's own instructions (the load of the target and the
+// call) with the arguments already pushed, so the replacement - a function
+// of the callee's signature and convention - is entered exactly as the
+// callee was and returns to the first byte after the patch. Returns the
+// number of bytes written - always siteLength - or 0 when the capacity is
+// too small or siteLength is shorter than five bytes.
+UInt32 BuildCallPatch(UInt8* buffer, UInt32 capacity, UInt32 siteAddress, UInt32 replacementAddress, UInt32 siteLength);
+
 }  // namespace obng::plugin

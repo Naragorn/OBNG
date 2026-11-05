@@ -33,6 +33,8 @@
 
 #include "Probes.h"
 #include "RouteStereoDrawLogic.h"
+#include "EntryDetour.h"
+#include "Memory.h"
 #include "OcclusionProbe.h"
 #include "ShadowRecorder.h"
 #include "StereoEyeSwitchLogic.h"
@@ -804,6 +806,96 @@ UInt32 __fastcall RouteDrawTriStripsDirect(void* self, void* /*edx*/, UInt32 geo
 	    &route::Stats::directStripsDraws);
 }
 
+// ---- The particle renderer's device call ---------------------------------------
+//
+// NiDX9Renderer's vtable slot 92 (0x00765990, read in the vtable
+// 0x00A88EA4; thiscall(geometry), RET 4) builds a particle system's quads
+// into a dynamic buffer and draws them through the renderer's own shader at
+// +0xA94 with the device's transforms (it sets D3DTS_WORLD itself at
+// 0x00765B63): 1 050 instructions around one DrawIndexedPrimitive, the
+// `mov eax,[ecx+148h]; call eax` at 0x007667F6..0x007667FD inside its pass
+// loop (re/export/draw-particles/0x00765990/asm.s; nothing jumps into those
+// eight bytes). The unrouted-draw probe found it as the one device draw of
+// a single-pass frame outside the route (run obng-single-pass-spell/
+// 20261105-193815): spell effects and sparks reached the first eye only.
+//
+// It is routed at that call, not rebuilt: the eight bytes become a call to
+// RouteParticleDraw, which is entered as the device's method was (the seven
+// arguments pushed, stdcall) and makes the call - for two eyes twice, with
+// the eye switch between. The quads face the pass camera in both eyes, as
+// the other camera-facing geometry does. No constants are re-applied: the
+// draw runs on the device's VIEW transform, which the switch sets.
+constexpr UInt32 kParticleDrawSite = 0x007667F6;
+constexpr UInt8 kParticleDrawSiteBytes[] = {0x8B, 0x81, 0x48, 0x01, 0x00, 0x00, 0xFF, 0xD0};  // mov eax,[ecx+148h]; call eax
+constexpr UInt32 kRendererGlobal = 0x00B3F928;  // re/functions/0x007C78D0.md
+constexpr std::uint32_t kDeviceDrawIndexedPrimitiveOffset = 0x148;  // slot 82, d3d9.h
+using DrawIndexedPrimitiveFn =
+    std::int32_t(__stdcall*)(void* device, UInt32 type, std::int32_t baseVertex, UInt32 minIndex, UInt32 vertices, UInt32 start, UInt32 count);
+
+std::int32_t __stdcall RouteParticleDraw(void* device, UInt32 type, std::int32_t baseVertex, UInt32 minIndex, UInt32 vertices, UInt32 start,
+                                         UInt32 count) {
+	struct DeviceDraw {
+		void* device;
+		UInt32 type;
+		std::int32_t baseVertex;
+		UInt32 minIndex;
+		UInt32 vertices;
+		UInt32 start;
+		UInt32 count;
+		std::int32_t Draw() const {
+			const std::uint32_t handle = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(device));
+			return reinterpret_cast<DrawIndexedPrimitiveFn>(VtableSlot(handle, kDeviceDrawIndexedPrimitiveOffset))(device, type, baseVertex,
+			                                                                                                     minIndex, vertices, start, count);
+		}
+	};
+	DeviceDraw draw{device, type, baseVertex, minIndex, vertices, start, count};
+	const std::uint32_t renderer = ReadAt<std::uint32_t>(kRendererGlobal);
+	if (renderer == 0) {
+		return draw.Draw();
+	}
+	const RoutedDrawScope routed{reinterpret_cast<void*>(static_cast<std::uintptr_t>(renderer))};
+	eye::SwitchCounters counters;
+	SwitchTicks ticks;
+	EyeEnginePort eyePort{renderer, [](void*) {}, nullptr, &ticks};
+	bool outside = false;
+	eye::Viewport seen;
+	const eye::EyeData* eyes = EyesForDraw(eyePort, &outside, &seen);
+	EngineEyeSwitch eyeSwitch{&eyePort, &counters, eyes, eyes != nullptr ? 0.0f : g_settings.stereoTestEyeShift};
+	TimedEyeSwitch timed{&eyeSwitch, &ticks};
+	const std::int32_t result = route::DrawWithPlan(route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode())), draw, timed);
+	++g_stats.particleDraws;
+	g_stats.AddSwitches(counters);
+	g_stats.AddTicks(ticks.all, ticks.reapply);
+	g_stats.drawsOutsideEye += outside ? 1u : 0u;
+	if (outside) {
+		g_stats.outside.Add(seen);
+	}
+	FlushSummaryIfRequested();
+	return result;
+}
+
+// Patches the particle draw's device call; false when the bytes there are
+// not the game's own or could not be written (the particles then stay as
+// they were: in the first eye only).
+bool InstallParticleDraw(LogFn log) {
+	if (!Verify(kParticleDrawSite, kParticleDrawSiteBytes, sizeof(kParticleDrawSiteBytes))) {
+		char have[32];
+		DescribeBytes(kParticleDrawSite, have, sizeof(have));
+		log("Route particle draw: the call at %08X reads %s, not the game's own bytes; particles stay in the first eye only", kParticleDrawSite,
+		    have);
+		return false;
+	}
+	UInt8 patch[sizeof(kParticleDrawSiteBytes)];
+	if (BuildCallPatch(patch, sizeof(patch), kParticleDrawSite, static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(&RouteParticleDraw)),
+	                   sizeof(patch)) == 0 ||
+	    !SafeWrite(kParticleDrawSite, patch, sizeof(patch))) {
+		log("Route particle draw: the call at %08X could not be patched; particles stay in the first eye only", kParticleDrawSite);
+		return false;
+	}
+	log("Route particle draw: on at %08X - the particle renderer's device call runs through the eye plan", kParticleDrawSite);
+	return true;
+}
+
 }  // namespace
 
 UInt32 InstallRouteStereoDraw(const RouteSettings& settings, LogFn log) {
@@ -829,6 +921,9 @@ UInt32 InstallRouteStereoDraw(const RouteSettings& settings, LogFn log) {
 	                           sizeof(kDrawTriStripsDirectBytes), reinterpret_cast<const void*>(&RouteDrawTriStripsDirect),
 	                           reinterpret_cast<void**>(&g_originalDrawTriStripsDirect), log, DetourRole::Route) ? 1 : 0;
 	g_on = made == kRouteStereoDrawDetours;
+	if (g_on && settings.stereoParticles) {
+		InstallParticleDraw(log);
+	}
 	g_summaryClock = ReadClocks();
 	log("Route: stereo draw %s, eyes %u, test eye shift %.3f (%s), re-apply %s, camera followers %s",
 	    g_on ? "on" : "off (not all four detours made)", static_cast<unsigned>(settings.stereoEyes),

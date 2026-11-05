@@ -67,6 +67,7 @@ struct Stats {
 	std::uint64_t skinnedOutcome[4] = {0, 0, 0, 0};  // by skinned::Outcome
 	std::uint64_t directShapeDraws = 0;   // DrawShapeDirect 0x007694F0 calls routed (slot 90)
 	std::uint64_t directStripsDraws = 0;  // DrawTriStripsDirect 0x00769700 calls routed (slot 91)
+	std::uint64_t particleDraws = 0;      // the particle draw's device call 0x007667F6 routed (slot 92's)
 	std::uint64_t eyeSwitches = 0;        // Switch(1) calls: the second eye's draws framed
 	std::uint64_t eyeSwitchesApplied = 0; // of them with eye data: the second eye's state set
 	std::uint64_t eyeSwitchesViewportOnly = 0;  // of the applied: camera followers (the sky), no view shift
@@ -104,6 +105,24 @@ struct Stats {
 	}
 };
 
+// One device draw under the eye plan: the call as the game made it; with a
+// plan of two eyes the second eye's state, the same call again, the first
+// eye's state back. The result is the first draw's (what the game's call
+// returned). For the draw paths that are routed at their device call
+// instead of being rebuilt - the particle renderer, vtable slot 92
+// 0x00765990: 1 050 instructions of vertex building around one
+// DrawIndexedPrimitive at 0x007667F6..0x007667FD.
+template <class Device, class Switch>
+std::int32_t DrawWithPlan(engine::render::stereo_draw::EyePlan plan, Device& device, Switch& eyeSwitch) {
+	const std::int32_t result = device.Draw();
+	if (engine::render::stereo_draw::DrawsTwice(plan)) {
+		eyeSwitch.Switch(1);
+		device.Draw();
+		eyeSwitch.Switch(0);
+	}
+	return result;
+}
+
 // "Route: stereo draw (eyes N) - W whole draws (drawn D, refused R, null record Z), S skinned draws
 // (closed C, no skin K, refused R, record missing M), N eye switches (applied A), N draws outside eye 0's viewport, eye data set S, refused R;
 // switch X.XX us, re-apply Y.YY us per applied switch" - the last part only with a clock
@@ -113,7 +132,7 @@ inline int FormatStats(const Stats& s, double ticksPerMillisecond, char* out, st
 	using SO = skinned::Outcome;
 	int at = std::snprintf(out, capacity,
 		"Route: stereo draw (eyes %u) - %llu whole draws (drawn %llu, refused %llu, null record %llu), %llu skinned draws "
-		"(closed %llu, no skin %llu, refused %llu, record missing %llu), %llu direct shape draws, %llu direct strips draws, "
+		"(closed %llu, no skin %llu, refused %llu, record missing %llu), %llu direct shape draws, %llu direct strips draws, %llu particle draws, "
 		"%llu eye switches (applied %llu, %llu of them without a view shift), %llu draws outside eye 0's viewport, "
 		"eye data set %llu, refused %llu",
 		static_cast<unsigned>(s.eyes), static_cast<unsigned long long>(s.wholeDraws),
@@ -126,6 +145,7 @@ inline int FormatStats(const Stats& s, double ticksPerMillisecond, char* out, st
 		static_cast<unsigned long long>(s.skinnedOutcome[static_cast<unsigned>(SO::kPipelineRefused)]),
 		static_cast<unsigned long long>(s.skinnedOutcome[static_cast<unsigned>(SO::kRecordMissing)]),
 		static_cast<unsigned long long>(s.directShapeDraws), static_cast<unsigned long long>(s.directStripsDraws),
+		static_cast<unsigned long long>(s.particleDraws),
 		static_cast<unsigned long long>(s.eyeSwitches), static_cast<unsigned long long>(s.eyeSwitchesApplied),
 		static_cast<unsigned long long>(s.eyeSwitchesViewportOnly),
 		static_cast<unsigned long long>(s.drawsOutsideEye), static_cast<unsigned long long>(s.eyeDataSets),

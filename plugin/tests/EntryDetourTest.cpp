@@ -165,9 +165,29 @@ void TestRefusals() {
 	      "patch refuses a buffer one byte short");
 }
 
+void TestCallPatch() {
+	std::printf("Call-site patch\n");
+
+	// The particle draw's device call (0x007667F6): mov eax,[ecx+148h]; call
+	// eax - eight bytes - becomes call <replacement> and three nops.
+	// call rel32 at 0x007667F6: 0x30000000 - 0x007667FB = 0x2F899805.
+	UInt8 buffer[8] = {};
+	const UInt32 size = obng::plugin::BuildCallPatch(buffer, sizeof(buffer), 0x007667F6u, kReplacementAddress, 8);
+	Check(size == 8, "the patch covers exactly the displaced bytes");
+	const UInt8 expected[8] = {0xE8, 0x05, 0x98, 0x89, 0x2F, 0x90, 0x90, 0x90};
+	CheckBytes(buffer, expected, sizeof(expected), "call to the replacement, nop padded");
+
+	UInt8 exact[5] = {};
+	Check(obng::plugin::BuildCallPatch(exact, sizeof(exact), 0x007667F6u, kReplacementAddress, 5) == 5 && exact[0] == 0xE8,
+	      "exactly five bytes: the call alone");
+	Check(obng::plugin::BuildCallPatch(buffer, sizeof(buffer), 0x007667F6u, kReplacementAddress, 4) == 0, "refuses a site shorter than a call");
+	Check(obng::plugin::BuildCallPatch(buffer, 7, 0x007667F6u, kReplacementAddress, 8) == 0, "refuses a buffer one byte short");
+}
+
 }  // namespace
 
 int main() {
+	TestCallPatch();
 	TestTrampoline();
 	TestPatch();
 	TestExactlyFiveBytes();

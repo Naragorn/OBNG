@@ -42,4 +42,19 @@ UInt32 BuildEntryPatch(UInt8* buffer, UInt32 capacity, UInt32 entryAddress,
 	return code.Size();
 }
 
+UInt32 BuildCallPatch(UInt8* buffer, UInt32 capacity, UInt32 siteAddress, UInt32 replacementAddress, UInt32 siteLength) {
+	if (siteLength < kJumpSize) {
+		return 0;
+	}
+
+	CodeWriter code(buffer, capacity, siteAddress);
+	code.CallRelative(replacementAddress);
+	code.Nop(siteLength - kJumpSize);
+
+	if (code.Overflowed() || code.Size() != siteLength) {
+		return 0;
+	}
+	return code.Size();
+}
+
 }  // namespace obng::plugin

@@ -44,6 +44,25 @@ int main() {
 	s.rangeWalk = true;
 	Check(s.Asked() == 5, "with the range walk: five");
 
+	Section("The particle draw's device call: once for one eye; for two the draw, the switch, the draw again, the switch back");
+	{
+		struct Recorder {
+			std::string steps;
+			int results[2] = {17, 99};
+			int draws = 0;
+			std::int32_t Draw() {
+				steps += "draw ";
+				return results[draws++];
+			}
+			void Switch(std::uint8_t eye) { steps += eye == 1 ? "switch1 " : "switch0 "; }
+		};
+		Recorder one;
+		Check(route::DrawWithPlan(obng::engine::render::stereo_draw::EyePlan{1}, one, one) == 17 && one.steps == "draw ", "one eye: the call as it was");
+		Recorder two;
+		Check(route::DrawWithPlan(obng::engine::render::stereo_draw::EyePlan{2}, two, two) == 17 && two.steps == "draw switch1 draw switch0 ",
+		      "two eyes: the second draw between the switches; the first draw's result returned");
+	}
+
 	Section("The eye switch counters fold into the stats");
 	route::Stats stats;
 	obng::plugin::stereo_eye_switch::SwitchCounters counters;
@@ -68,6 +87,7 @@ int main() {
 	stats.AddSkinned(route::skinned::Outcome::kRecordMissing);
 	stats.directShapeDraws = 30;
 	stats.directStripsDraws = 500;
+	stats.particleDraws = 7;
 	Check(stats.wholeDraws == 3 && stats.wholeOutcome[0] == 2 && stats.wholeOutcome[1] == 1 && stats.wholeOutcome[2] == 0,
 	      "three whole draws: two drawn, one refused");
 	Check(stats.skinnedDraws == 3 && stats.skinnedOutcome[3] == 1 && stats.skinnedOutcome[0] == 1 && stats.skinnedOutcome[2] == 1,
@@ -76,7 +96,7 @@ int main() {
 	route::FormatStats(stats, 0.0, line, sizeof(line));
 	Check(std::string(line) ==
 	          "Route: stereo draw (eyes 2) - 3 whole draws (drawn 2, refused 1, null record 0), 3 skinned draws (closed 1, no skin 1, "
-	          "refused 0, record missing 1), 30 direct shape draws, 500 direct strips draws, 3 eye switches (applied 2, 1 of them without a view shift), 4 draws outside eye 0's viewport, eye data set 5, refused 1",
+	          "refused 0, record missing 1), 30 direct shape draws, 500 direct strips draws, 7 particle draws, 3 eye switches (applied 2, 1 of them without a view shift), 4 draws outside eye 0's viewport, eye data set 5, refused 1",
 	      "the line");
 	stats.outside.Add(obng::plugin::stereo_eye_switch::Viewport{0, 0, 1024, 1024, 0.0f, 1.0f});
 	stats.outside.Add(obng::plugin::stereo_eye_switch::Viewport{0, 0, 1024, 1024, 0.0f, 1.0f});
