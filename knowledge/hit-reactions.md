@@ -105,3 +105,31 @@ Read with `dumpbin /disasm` on the Steam EXE.
   (which skill and which formula), the progression (which skill gains), the AI/crime response
   (whether the victim perceives an attack). Each is replaceable on its own; OBVR had to reroute
   three call sites inside one function to get there.
+
+### Which stagger animation plays (read 2026-11-05)
+
+- **Read:** the stagger start `0x005F4FD0` takes only the actor. It asks `0x005E5690(actor,
+  0x1F, 0, 0)` for the group code (group 0x1F plus the weapon-type part), then plays it
+  through `0x00477B60(animData, code, 1, -1)`. No direction, side or attacker goes in.
+- **Read (vanilla `Oblivion - Meshes.bsa`):** one stagger file per stance and no
+  left/right pair: `onehandstagger.kf`, `twohandstagger.kf`, `handtohandstagger.kf`,
+  `staffstagger.kf`, `stagger.kf`, `swimstagger.kf`, `swimhandtohandstagger.kf`.
+- **Read:** the sequence is looked up in `ActorAnimData+0x9C`, a
+  `NiTPointerMap<UInt16, AnimSequenceBase*>` (`0x00476260` -> `0x00470960`), and fetched
+  by the entry's vtable slot +0x10 with index -1 (`0x0047628D`).
+  - `AnimSequenceSingle` vtable `0x00A3C72C`; `AnimSequenceMultiple` vtable `0x00A3C758`
+    (both from the RTTI).
+  - `AnimSequenceMultiple` slot +0x10 is `0x00470BF0`: index 0xFF draws a random number
+    (`0x0047DF80`) modulo the count, any other index in range picks that entry. So the
+    engine already holds several files per group and picks one at random; a caller that
+    passes an index picks a given one.
+  - The next function, `0x00470C40`, looks an entry up by its file name (`strrchr '\\'`,
+    then a case-blind compare) - a name-based pick, unverified as a vtable slot.
+- **Prior art (read):** Blockhead appends `.kf` names to the NPC base form's
+  `TESAnimation` list and reloads with `0x004E3490` (its hook at `0x004E34AB`,
+  https://github.com/shadeMe/Blockhead/blob/master/AnimationOverride.cpp). A Blockhead
+  user reports that several variants of one group (`_1`, `_2`) are picked at random
+  (http://tbsk.blog.shinobi.jp/Page/7/), which matches the `AnimSequenceMultiple` read.
+- **Unverified:** which side the vanilla stagger animations lean to (a player's
+  observation says left), and whether a loose extra `.kf` in `_male` (not SpecialAnims)
+  joins the group without the base-form list.
