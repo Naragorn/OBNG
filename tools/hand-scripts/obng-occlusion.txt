@@ -27,6 +27,9 @@ ini Render Stereo=dual
 ini Render SinglePassStereo=0
 ini Performance Enabled=0
 console-at ready tgm
+# AI off: a passer-by who greets the player opens the Dialog menu, the console lines
+# stop and the run stays in the Market District (run obng-occlusion-headcull-off/20261105-103908).
+console-at ready tai
 console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
 console-at ready coc ICMarketDistrict01
 console-at market-done coc ICTalosPlazaDistrict01

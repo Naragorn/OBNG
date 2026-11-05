@@ -1,0 +1,158 @@
+# obng-occlusion.txt with OBVR's head cull on ([Body] CullHiddenHead=1, OBVR
+# DLL bdc19174 and later): the counter-measurement of the player's own head
+# drawn in every eye pass (knowledge/culling-and-draw-setup.md, "Where the
+# draws without a pixel come from"). Compare with a run of obng-occlusion.txt.
+#
+# The OCCLUSION probe over four kinds of place: which share of the geometries an
+# eye's world pass draws lies wholly behind other geometry (plugin/src/
+# OcclusionProbeLogic.h has the measure). The game runs its own code in the
+# dual pass ([Route] StereoDraw=0, so OBVR draws each eye in its own pass);
+# OBNG.dll samples one eye pass in 31. At each place the head is turned
+# through eight directions for 2.5 s apiece:
+#   market   coc ICMarketDistrict01      the Imperial City's Market District (a walled city worldspace)
+#   plaza    coc ICTalosPlazaDistrict01  the Imperial City's Talos Plaza District (a walled city worldspace)
+#   dungeon  coc ImperialDungeon01       the Imperial Prison's first dungeon level (an interior of corridors)
+#   house    coc WeynonPrioryHouse       Weynon Priory's house (a small interior)
+#   road     cow Tamriel -27 -3          the Gold Road midway between Kvatch and Skingrad (open country)
+# The cell names are CELL records' editor ids read in Oblivion.esm
+# ("coc ICMarketDistrict", the worldspace's id, leaves the player where he is:
+# run 20261105-085711). Where the player stood is in OBVR.log ("Camera: at the
+# mark - the eyes at"); the harness's pictures of a headless run are black.
+# The probe's lines carry the performance counter ("qpc"), the marks carry the
+# same clock ("tick"), so tools/occlusion-summary.py sums the lines between a
+# place's mark and its "-done" mark.
+#
+# Run, from OBNG's folder (OBNG.dll deployed):
+#   tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-occlusion.ini tools/hand-scripts/obng-occlusion-headcull.txt --save OBVRHarnessMOO --run-timeout 480
+# then: python3 tools/occlusion-summary.py artifacts/shadow/obng-occlusion-headcull/<run>
+
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Render Stereo=dual
+ini Render SinglePassStereo=0
+ini Performance Enabled=0
+ini Body CullHiddenHead=1
+console-at ready tgm
+# AI off: a passer-by who greets the player opens the Dialog menu, the console lines
+# stop and the run stays in the Market District (run obng-occlusion-headcull-off/20261105-103908).
+console-at ready tai
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at ready coc ICMarketDistrict01
+console-at market-done coc ICTalosPlazaDistrict01
+console-at plaza-done coc ImperialDungeon01
+console-at dungeon-done coc WeynonPrioryHouse
+console-at house-done cow Tamriel -27 -3
+
+expect HandScript: finished
+reject menu Container
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 16
+head yaw 0
+wait 0.5
+mark market
+wait 2.5
+head yaw -45
+wait 2.5
+head yaw -90
+wait 2.5
+head yaw -135
+wait 2.5
+head yaw 180
+wait 2.5
+head yaw 135
+wait 2.5
+head yaw 90
+wait 2.5
+head yaw 45
+wait 2.5
+head yaw 0
+mark market-done
+wait 16
+head yaw 0
+wait 0.5
+mark plaza
+wait 2.5
+head yaw -45
+wait 2.5
+head yaw -90
+wait 2.5
+head yaw -135
+wait 2.5
+head yaw 180
+wait 2.5
+head yaw 135
+wait 2.5
+head yaw 90
+wait 2.5
+head yaw 45
+wait 2.5
+head yaw 0
+mark plaza-done
+wait 16
+head yaw 0
+wait 0.5
+mark dungeon
+wait 2.5
+head yaw -45
+wait 2.5
+head yaw -90
+wait 2.5
+head yaw -135
+wait 2.5
+head yaw 180
+wait 2.5
+head yaw 135
+wait 2.5
+head yaw 90
+wait 2.5
+head yaw 45
+wait 2.5
+head yaw 0
+mark dungeon-done
+wait 16
+head yaw 0
+wait 0.5
+mark house
+wait 2.5
+head yaw -45
+wait 2.5
+head yaw -90
+wait 2.5
+head yaw -135
+wait 2.5
+head yaw 180
+wait 2.5
+head yaw 135
+wait 2.5
+head yaw 90
+wait 2.5
+head yaw 45
+wait 2.5
+head yaw 0
+mark house-done
+wait 16
+head yaw 0
+wait 0.5
+mark road
+wait 2.5
+head yaw -45
+wait 2.5
+head yaw -90
+wait 2.5
+head yaw -135
+wait 2.5
+head yaw 180
+wait 2.5
+head yaw 135
+wait 2.5
+head yaw 90
+wait 2.5
+head yaw 45
+wait 2.5
+head yaw 0
+mark road-done
+wait 8
+mark done

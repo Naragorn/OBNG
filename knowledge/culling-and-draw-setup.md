@@ -613,3 +613,29 @@ pass, the time in the three draw entries:
 - The times are from disturbed passes (see above); draws with an untestable
   bound, the body's among them, have no state block applied right before
   them and are the least disturbed.
+
+### OBVR's head cull, counter-measured (2026-11-05)
+
+OBVR 6d055dd (DLL e3bf3e61) sets the app-cull bit on the player's two
+FaceGen nodes for each world render (`[Body] CullHiddenHead`, default 1).
+The same DLL with the key 0 and 1, the probe's scenario in both (runs
+`obng-occlusion-headcull-off/20261105-104658` and
+`obng-occlusion-headcull/20261105-103457`), per sampled eye pass:
+
+| place | the player's draws, off / on | their time, off / on | all draw entries, off / on |
+|---|---:|---:|---:|
+| Market District | 16.4 / 5.9 | 0.168 / 0.017 ms | 1.43 / 1.44 ms |
+| Talos Plaza | 17.2 / 6.1 | 0.192 / 0.021 ms | 0.87 / 0.65 ms |
+| dungeon | 53.6 / 25.0 | 0.538 / 0.073 ms | 1.45 / 1.01 ms |
+| house | 56.0 / 20.3 | 0.517 / 0.059 ms | 1.36 / 0.96 ms |
+| Gold Road | 13.3 / 6.0 | 0.178 / 0.018 ms | 0.96 / 0.86 ms |
+
+With the key on no FaceGen geometry of the player is drawn in an eye pass
+(the name table lists none); 0.15 to 0.47 ms an eye pass are gone, in the
+two interiors about 30 % of the time in the draw entries. What is left of
+the body (6 draws a pass outdoors, 20 to 25 indoors, most still without a
+pixel while the head is level) is 0.02 to 0.07 ms. The gates were clean in
+both runs. Not equal between the two runs: the off run had the NPCs' AI off
+(`tai`, added after a passer-by's greeting opened the Dialog menu and ended
+run 20261105-103908 in the Market District); the player's own draws do not
+depend on it (derived). The times are from probe passes, an indication.
