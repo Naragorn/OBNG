@@ -337,6 +337,210 @@ void TestFormat() {
 	      "the kinds' names");
 }
 
+Sample Classified(DrawKind kind, RectKind rect, std::uint32_t drawPixels, std::uint32_t atDraw, std::uint32_t pass, float radius,
+                  oc::Owner owner, const char* name, std::uint64_t ticks) {
+	Sample s = Of(kind, rect, drawPixels, atDraw, true, atDraw, ticks);
+	s.passId = pass;
+	s.radius = radius;
+	s.owner = owner;
+	oc::CopyName(name, s.name);
+	return s;
+}
+
+void TestOwner() {
+	Section("Whose geometry it is: the player's third-person or first-person node among its ancestors, itself included");
+	// 10 -> 20 -> 30 (third) -> 40 -> 0;  50 -> 60 (first) -> 0;  70 -> 80 -> 0
+	const auto parentOf = [](std::uint32_t object) -> std::uint32_t {
+		switch (object) {
+			case 10: return 20;
+			case 20: return 30;
+			case 30: return 40;
+			case 50: return 60;
+			case 70: return 80;
+			default: return 0;
+		}
+	};
+	Check(oc::OwnerOf(10, 30, 60, parentOf) == oc::Owner::kPlayerThird, "two levels below the third-person node");
+	Check(oc::OwnerOf(30, 30, 60, parentOf) == oc::Owner::kPlayerThird, "the node itself");
+	Check(oc::OwnerOf(50, 30, 60, parentOf) == oc::Owner::kPlayerFirst, "below the first-person node");
+	Check(oc::OwnerOf(70, 30, 60, parentOf) == oc::Owner::kOther, "neither");
+	Check(oc::OwnerOf(40, 30, 60, parentOf) == oc::Owner::kOther, "above the third-person node is not below it");
+	Check(oc::OwnerOf(0, 30, 60, parentOf) == oc::Owner::kOther, "no object");
+	Check(oc::OwnerOf(10, 0, 0, parentOf) == oc::Owner::kOther, "no player nodes: nothing matches a null");
+	std::uint32_t steps = 0;
+	const auto loop = [&steps](std::uint32_t) -> std::uint32_t {
+		++steps;
+		return 5;
+	};
+	Check(oc::OwnerOf(5, 30, 60, loop) == oc::Owner::kOther && steps == oc::kMaxAncestors, "a cycle ends after the depth limit");
+	Check(std::string(oc::OwnerName(oc::Owner::kOther)) == "others" && std::string(oc::OwnerName(oc::Owner::kPlayerThird)) == "player third person" &&
+	          std::string(oc::OwnerName(oc::Owner::kPlayerFirst)) == "player first person" && std::string(oc::OwnerName(oc::Owner::kCount)) == "?",
+	      "the owners' names");
+}
+
+void TestNames() {
+	Section("A name is copied up to the row's width, made printable, and null reads as empty");
+	char name[oc::kNameWidth];
+	oc::CopyName("Tri UpperBody 0", name);
+	Check(std::string(name) == "Tri UpperBody 0", "a short name");
+	oc::CopyName("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop", name);
+	Check(std::string(name) == "ABCDEFGHIJKLMNOPQRSTUVWXYZabcde" && std::strlen(name) == oc::kNameWidth - 1, "a long one is cut");
+	oc::CopyName(nullptr, name);
+	Check(name[0] == '\0', "null");
+	oc::CopyName("a\tb\x01" "c\"d", name);
+	Check(std::string(name) == "a?b?c'd", "control characters and the quote are replaced");
+}
+
+void TestClasses() {
+	Section("A draw without a pixel falls into one class: why the probe's bound could or could not show it");
+	Check(oc::ClassOf(Of(DrawKind::kShape, RectKind::kTestable, 0, 0, true, 0)) == oc::NoPixelClass::kBoundHidden, "the bound hidden at the draw");
+	Check(oc::ClassOf(Of(DrawKind::kShape, RectKind::kTestable, 0, 7, true, 0)) == oc::NoPixelClass::kBoundSeen, "the bound seen at the draw");
+	Check(oc::ClassOf(Of(DrawKind::kShape, RectKind::kCrossesNear, 0, 0, false, 0)) == oc::NoPixelClass::kNearPlane, "the bound at the near plane");
+	Check(oc::ClassOf(Of(DrawKind::kShape, RectKind::kNoBound, 0, 0, false, 0)) == oc::NoPixelClass::kNoBound, "no bound");
+	Check(oc::ClassOf(Of(DrawKind::kShape, RectKind::kOutsideFrustum, 0, 0, false, 0)) == oc::NoPixelClass::kOutsideFrustum, "outside the frustum");
+	Check(oc::ClassOf(Of(DrawKind::kShape, RectKind::kViewport, 0, 0, false, 0)) == oc::NoPixelClass::kViewport, "no usable viewport");
+
+	Section("The classes are counted per kind, with the draws' time, for draws without a pixel only");
+	Stats stats;
+	stats.Add(Classified(DrawKind::kShape, RectKind::kTestable, 0, 0, 0x101, 10.0f, oc::Owner::kOther, "a", 5));
+	stats.Add(Classified(DrawKind::kShape, RectKind::kTestable, 0, 9, 0x101, 10.0f, oc::Owner::kOther, "a", 7));
+	stats.Add(Classified(DrawKind::kShape, RectKind::kTestable, 3, 9, 0x101, 10.0f, oc::Owner::kOther, "a", 100));
+	stats.Add(Classified(DrawKind::kSkinned, RectKind::kCrossesNear, 0, 0, 0x102, 10.0f, oc::Owner::kPlayerThird, "b", 11));
+	const auto& shapeClasses = stats.classes[static_cast<int>(DrawKind::kShape)];
+	Check(shapeClasses[static_cast<int>(oc::NoPixelClass::kBoundHidden)].draws == 1 &&
+	          shapeClasses[static_cast<int>(oc::NoPixelClass::kBoundHidden)].ticks == 5,
+	      "bound hidden");
+	Check(shapeClasses[static_cast<int>(oc::NoPixelClass::kBoundSeen)].draws == 1 && shapeClasses[static_cast<int>(oc::NoPixelClass::kBoundSeen)].ticks == 7,
+	      "bound seen; the draw with pixels is in no class");
+	Check(stats.classes[static_cast<int>(DrawKind::kSkinned)][static_cast<int>(oc::NoPixelClass::kNearPlane)].draws == 1, "the skinned one at the near plane");
+	char line[900];
+	Check(oc::FormatClasses(stats, DrawKind::kShape, 1.0, line, sizeof(line)) > 0, "a line for the shapes");
+	Check(std::string(line) ==
+	          "Probe: occlusion no-pixel shapes - bound hidden 1 (5.000 ms), bound seen 1 (7.000 ms), near plane 0 (0.000 ms), no bound 0 (0.000 ms), "
+	          "outside the frustum 0 (0.000 ms), viewport 0 (0.000 ms)",
+	      "the classes' line");
+	Check(oc::FormatClasses(stats, DrawKind::kShape, 0.0, line, sizeof(line)) > 0 &&
+	          std::string(line).find("bound hidden 1 (5 ticks), bound seen 1 (7 ticks)") != std::string::npos,
+	      "without a calibration the ticks");
+	Check(oc::FormatClasses(stats, DrawKind::kDirectShape, 1.0, line, sizeof(line)) == 0, "no line for a kind without such a draw");
+	Check(oc::FormatClasses(stats, DrawKind::kCount, 1.0, line, sizeof(line)) == 0, "a kind out of range writes nothing");
+}
+
+void TestPasses() {
+	Section("The draws by the shader pass they ran under");
+	Stats stats;
+	stats.Add(Classified(DrawKind::kShape, RectKind::kTestable, 0, 0, 0x101, 10.0f, oc::Owner::kOther, "a", 5));
+	stats.Add(Classified(DrawKind::kShape, RectKind::kTestable, 0, 9, 0x101, 10.0f, oc::Owner::kOther, "a", 7));
+	stats.Add(Classified(DrawKind::kShape, RectKind::kTestable, 3, 9, 0x101, 10.0f, oc::Owner::kOther, "a", 100));
+	stats.Add(Classified(DrawKind::kSkinned, RectKind::kCrossesNear, 0, 0, 0x102, 10.0f, oc::Owner::kPlayerThird, "b", 11));
+	Check(stats.passes.used == 2, "two passes");
+	const oc::PassRow* first = stats.passes.Find(0x101);
+	Check(first != nullptr && first->tally.draws == 3 && first->tally.noPixel == 2 && first->tally.ticks == 112 && first->tally.ticksNoPixel == 12 &&
+	          first->noPixelBoundSeen == 1 && first->hiddenAtEnd == 1,
+	      "pass 0x101: three draws, two without a pixel, one of those with the bound seen, one bound hidden at the end");
+	Check(stats.passes.Find(0x999) == nullptr, "an unseen pass has no row");
+	char line[900];
+	Check(oc::FormatPass(stats, 0, 1.0, line, sizeof(line)) > 0, "the first row");
+	Check(std::string(line) ==
+	          "Probe: occlusion pass 0x101 - 3 draws, 2 without a pixel (1 with the bound seen), 1 hidden at the end, time 112.000 ms, 12.000 ms "
+	          "without a pixel",
+	      "the pass line");
+	Check(oc::FormatPass(stats, 2, 1.0, line, sizeof(line)) == 0, "no row past the used ones");
+
+	Section("More passes than rows: the rest is counted in one row");
+	Stats full;
+	for (std::uint32_t pass = 0; pass < oc::kPassRows + 3; ++pass) {
+		full.Add(Classified(DrawKind::kShape, RectKind::kTestable, 0, 0, 0x200 + pass, 10.0f, oc::Owner::kOther, "a", 1));
+	}
+	Check(full.passes.used == oc::kPassRows && full.passes.beyond.draws == 3 && full.passes.beyond.noPixel == 3, "three beyond the table");
+	Check(oc::FormatPassesBeyond(full, 1.0, line, sizeof(line)) > 0 &&
+	          std::string(line) == "Probe: occlusion passes beyond the table - 3 draws, 3 without a pixel, time 3.000 ms, 3.000 ms without a pixel",
+	      "their line");
+	Check(oc::FormatPassesBeyond(stats, 1.0, line, sizeof(line)) == 0, "no line when the table held all");
+}
+
+void TestRadius() {
+	Section("The draws by the bound's radius");
+	Check(oc::RadiusBucket(0.0f) == 0 && oc::RadiusBucket(63.9f) == 0 && oc::RadiusBucket(64.0f) == 1 && oc::RadiusBucket(255.0f) == 1 &&
+	          oc::RadiusBucket(256.0f) == 2 && oc::RadiusBucket(1023.0f) == 2 && oc::RadiusBucket(1024.0f) == 3 && oc::RadiusBucket(4095.0f) == 3 &&
+	          oc::RadiusBucket(4096.0f) == 4 && oc::RadiusBucket(1.0e9f) == 4,
+	      "the buckets' edges");
+	Check(oc::RadiusBucket(std::numeric_limits<float>::quiet_NaN()) == 0 && oc::RadiusBucket(-5.0f) == 0, "a radius that is none goes to the first");
+	Stats stats;
+	stats.Add(Classified(DrawKind::kShape, RectKind::kTestable, 0, 0, 0x101, 10.0f, oc::Owner::kOther, "a", 5));
+	stats.Add(Classified(DrawKind::kShape, RectKind::kTestable, 4, 9, 0x101, 5000.0f, oc::Owner::kOther, "a", 7));
+	stats.Add(Classified(DrawKind::kShape, RectKind::kTestable, 0, 9, 0x101, 5000.0f, oc::Owner::kOther, "a", 9));
+	char line[900];
+	Check(oc::FormatRadius(stats, 1.0, line, sizeof(line)) > 0, "a line");
+	Check(std::string(line) ==
+	          "Probe: occlusion radius - below 64: 1 draws, 1 without a pixel (5.000 ms of 5.000 ms); below 256: 0 draws, 0 without a pixel (0.000 ms "
+	          "of 0.000 ms); below 1024: 0 draws, 0 without a pixel (0.000 ms of 0.000 ms); below 4096: 0 draws, 0 without a pixel (0.000 ms of 0.000 "
+	          "ms); 4096 and above: 2 draws, 1 without a pixel (9.000 ms of 16.000 ms)",
+	      "the radius line");
+	Stats none;
+	Check(oc::FormatRadius(none, 1.0, line, sizeof(line)) == 0, "no line without a draw");
+}
+
+void TestOwners() {
+	Section("The draws by kind and owner");
+	Stats stats;
+	stats.Add(Classified(DrawKind::kSkinned, RectKind::kCrossesNear, 0, 0, 0x102, 10.0f, oc::Owner::kPlayerThird, "b", 11));
+	stats.Add(Classified(DrawKind::kSkinned, RectKind::kCrossesNear, 8, 0, 0x102, 10.0f, oc::Owner::kPlayerThird, "b", 20));
+	stats.Add(Classified(DrawKind::kSkinned, RectKind::kTestable, 0, 0, 0x102, 10.0f, oc::Owner::kOther, "c", 30));
+	char line[900];
+	Check(oc::FormatOwner(stats, DrawKind::kSkinned, oc::Owner::kPlayerThird, 1.0, line, sizeof(line)) > 0, "the player's skinned draws");
+	Check(std::string(line) ==
+	          "Probe: occlusion owner player third person, skinned shapes - 2 draws, 1 without a pixel, time 31.000 ms, 11.000 ms without a pixel",
+	      "the owner line");
+	Check(oc::FormatOwner(stats, DrawKind::kSkinned, oc::Owner::kOther, 1.0, line, sizeof(line)) > 0 &&
+	          std::string(line).find("owner others, skinned shapes - 1 draws, 1 without a pixel") != std::string::npos,
+	      "the others'");
+	Check(oc::FormatOwner(stats, DrawKind::kSkinned, oc::Owner::kPlayerFirst, 1.0, line, sizeof(line)) == 0, "no line for an owner without a draw");
+	Check(oc::FormatOwner(stats, DrawKind::kCount, oc::Owner::kOther, 1.0, line, sizeof(line)) == 0 &&
+	          oc::FormatOwner(stats, DrawKind::kShape, oc::Owner::kCount, 1.0, line, sizeof(line)) == 0,
+	      "out of range writes nothing");
+	Stats bad;
+	Sample odd = Classified(DrawKind::kShape, RectKind::kTestable, 0, 0, 0x101, 10.0f, oc::Owner::kCount, "a", 5);
+	bad.Add(odd);
+	Check(bad.owners[static_cast<int>(DrawKind::kShape)][static_cast<int>(oc::Owner::kOther)].draws == 1, "an owner out of range counts with the others");
+}
+
+void TestNameTable() {
+	Section("The geometries' names: one row per name, kind and owner; the rows with the most time without a pixel first");
+	Stats stats;
+	stats.Add(Classified(DrawKind::kSkinned, RectKind::kCrossesNear, 0, 0, 0x102, 10.0f, oc::Owner::kPlayerThird, "UpperBody", 11));
+	stats.Add(Classified(DrawKind::kSkinned, RectKind::kCrossesNear, 0, 0, 0x102, 10.0f, oc::Owner::kPlayerThird, "UpperBody", 12));
+	stats.Add(Classified(DrawKind::kSkinned, RectKind::kCrossesNear, 0, 0, 0x102, 10.0f, oc::Owner::kOther, "UpperBody", 50));
+	stats.Add(Classified(DrawKind::kShape, RectKind::kTestable, 0, 0, 0x101, 10.0f, oc::Owner::kOther, "UpperBody", 1));
+	stats.Add(Classified(DrawKind::kShape, RectKind::kTestable, 9, 9, 0x101, 10.0f, oc::Owner::kOther, "Wall", 500));
+	Check(stats.names.used == 4, "four rows: the name alone is not the key");
+	char line[900];
+	Check(oc::FormatName(stats, 0, 1.0, line, sizeof(line)) > 0, "the first");
+	Check(std::string(line) ==
+	          "Probe: occlusion name \"UpperBody\" (skinned shapes, others) - 1 draws, 1 without a pixel, time 50.000 ms, 50.000 ms without a pixel",
+	      "the row with the most time without a pixel");
+	Check(oc::FormatName(stats, 1, 1.0, line, sizeof(line)) > 0 &&
+	          std::string(line).find("\"UpperBody\" (skinned shapes, player third person) - 2 draws, 2 without a pixel, time 23.000 ms, 23.000 ms") !=
+	              std::string::npos,
+	      "the second");
+	Check(oc::FormatName(stats, 2, 1.0, line, sizeof(line)) > 0 && std::string(line).find("\"UpperBody\" (shapes, others)") != std::string::npos, "the third");
+	Check(oc::FormatName(stats, 3, 1.0, line, sizeof(line)) == 0, "a row that always drew pixels is not listed");
+	Check(oc::FormatName(stats, 9, 1.0, line, sizeof(line)) == 0, "no rank past the rows");
+
+	Section("More names than rows: the rest is counted");
+	Stats full;
+	for (std::uint32_t i = 0; i < oc::kNameRows + 2; ++i) {
+		char name[oc::kNameWidth];
+		std::snprintf(name, sizeof(name), "n%u", i);
+		full.Add(Classified(DrawKind::kShape, RectKind::kTestable, 0, 0, 0x101, 10.0f, oc::Owner::kOther, name, 1));
+	}
+	Check(full.names.used == oc::kNameRows && full.names.beyond.draws == 2, "two beyond the table");
+	Check(oc::FormatNamesBeyond(full, 1.0, line, sizeof(line)) > 0 &&
+	          std::string(line) == "Probe: occlusion names beyond the table - 2 draws, 2 without a pixel, time 2.000 ms, 2.000 ms without a pixel",
+	      "their line");
+	Check(oc::FormatNamesBeyond(stats, 1.0, line, sizeof(line)) == 0, "no line when the table held all");
+}
+
 }  // namespace
 
 int main() {
@@ -349,5 +553,12 @@ int main() {
 	TestClassify();
 	TestBlocked();
 	TestFormat();
+	TestOwner();
+	TestNames();
+	TestClasses();
+	TestPasses();
+	TestRadius();
+	TestOwners();
+	TestNameTable();
 	return Failures();
 }

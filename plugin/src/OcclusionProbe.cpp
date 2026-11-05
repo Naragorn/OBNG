@@ -63,6 +63,20 @@ constexpr UInt32 kRendererProjOffset = 0x9C0;
 constexpr UInt32 kOriginGlobal = 0x00B3F92C;
 constexpr UInt32 kGeometryBoundOffset = 0x20;
 constexpr UInt32 kGeometrySkinOffset = 0xB8;
+// For the classification of the draws: the shader pass id the accumulator
+// publishes before it draws a pass's list (re/functions/0x007A9820.md C3,
+// C4), the object's name and parent (NiObjectNET +0x08: OBVR
+// GameAddresses.h kNiObjectNameOffset and xOBSE NiNodes.h; NiAVObject +0x1C:
+// re/functions/0x0055D4C0.md and xOBSE), and the player's two scene roots
+// (OBVR GameAddresses.h: kPlayerPointer, TESObjectREFR::niNode +0x3C,
+// kPlayerFirstPersonNodeOffset).
+constexpr UInt32 kPassIdGlobal = 0x00B42E90;
+constexpr UInt32 kObjectNameOffset = 0x08;
+constexpr UInt32 kObjectParentOffset = 0x1C;
+constexpr UInt32 kPlayerGlobal = 0x00B333C4;
+constexpr UInt32 kPlayerThirdPersonNodeOffset = 0x3C;
+constexpr UInt32 kPlayerFirstPersonNodeOffset = 0x5D0;
+constexpr UInt32 kNamesListed = 16;
 
 static_assert(sizeof(D3DVIEWPORT9) == sizeof(oc::Viewport), "the logic's viewport is D3DVIEWPORT9");
 
@@ -99,6 +113,8 @@ oc::Stats g_stats;
 IDirect3DDevice9* g_device = nullptr;
 IDirect3DStateBlock9* g_block = nullptr;
 UInt32 g_renderer = 0;  // the sampled pass's renderer
+UInt32 g_playerThird = 0;  // the player's scene roots at the sampled pass's start (0: none)
+UInt32 g_playerFirst = 0;
 bool g_refusedLogged = false;
 bool g_firstLogged = false;
 volatile LONG g_summaryRequested = 0;
@@ -133,7 +149,54 @@ void FlushSummaryIfRequested() {
 			g_log("%s", line);
 		}
 	}
+	for (int kind = 0; kind < static_cast<int>(oc::DrawKind::kCount); ++kind) {
+		if (oc::FormatClasses(g_stats, static_cast<oc::DrawKind>(kind), ticksPerMillisecond, line, sizeof(line)) > 0) {
+			g_log("%s", line);
+		}
+	}
+	for (UInt32 row = 0; oc::FormatPass(g_stats, row, ticksPerMillisecond, line, sizeof(line)) > 0; ++row) {
+		g_log("%s", line);
+	}
+	if (oc::FormatPassesBeyond(g_stats, ticksPerMillisecond, line, sizeof(line)) > 0) {
+		g_log("%s", line);
+	}
+	if (oc::FormatRadius(g_stats, ticksPerMillisecond, line, sizeof(line)) > 0) {
+		g_log("%s", line);
+	}
+	for (int kind = 0; kind < static_cast<int>(oc::DrawKind::kCount); ++kind) {
+		for (int owner = 0; owner < static_cast<int>(oc::Owner::kCount); ++owner) {
+			if (oc::FormatOwner(g_stats, static_cast<oc::DrawKind>(kind), static_cast<oc::Owner>(owner), ticksPerMillisecond, line, sizeof(line)) > 0) {
+				g_log("%s", line);
+			}
+		}
+	}
+	for (UInt32 rank = 0; rank < kNamesListed && oc::FormatName(g_stats, rank, ticksPerMillisecond, line, sizeof(line)) > 0; ++rank) {
+		g_log("%s", line);
+	}
+	if (oc::FormatNamesBeyond(g_stats, ticksPerMillisecond, line, sizeof(line)) > 0) {
+		g_log("%s", line);
+	}
 	g_stats.Reset();
+}
+
+// The geometry's name into a table key; a pointer that cannot be read gives
+// the empty name (the name is the engine's own string, but nothing here has
+// proved the pointer).
+void ReadName(UInt32 geometry, char out[oc::kNameWidth]) {
+	char raw[oc::kNameWidth] = {};
+	__try {
+		const char* name = *reinterpret_cast<const char* const*>(static_cast<std::uintptr_t>(geometry + kObjectNameOffset));
+		for (std::size_t i = 0; name != nullptr && i + 1 < oc::kNameWidth && name[i] != '\0'; ++i) {
+			raw[i] = name[i];
+		}
+	} __except (EXCEPTION_EXECUTE_HANDLER) {
+		raw[0] = '\0';
+	}
+	oc::CopyName(raw, out);
+}
+
+UInt32 ParentOf(std::uint32_t object) {
+	return ReadAt<UInt32>(object + kObjectParentOffset);
 }
 
 void RefuseOnce(const char* what, HRESULT result) {
@@ -155,6 +218,9 @@ bool BeginPass() {
 	if (device == nullptr) {
 		return false;
 	}
+	const UInt32 player = ReadAt<UInt32>(kPlayerGlobal);
+	g_playerThird = player != 0 ? ReadAt<UInt32>(player + kPlayerThirdPersonNodeOffset) : 0;
+	g_playerFirst = player != 0 ? ReadAt<UInt32>(player + kPlayerFirstPersonNodeOffset) : 0;
 	if (device != g_device) {
 		for (Entry& e : g_entries) {
 			e.atDraw = e.draw = e.atEnd = e.control = nullptr;
@@ -270,6 +336,10 @@ UInt32 SampleDraw(DrawFn original, oc::DrawKind kind, void* self, UInt32 geometr
 	std::memcpy(origin, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(kOriginGlobal)), sizeof(origin));
 	std::memcpy(view, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(g_renderer + kRendererViewOffset)), sizeof(view));
 	std::memcpy(proj, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(g_renderer + kRendererProjOffset)), sizeof(proj));
+	e.sample.passId = ReadAt<UInt32>(kPassIdGlobal);
+	e.sample.radius = bound.radius;
+	e.sample.owner = oc::OwnerOf(geometry, g_playerThird, g_playerFirst, &ParentOf);
+	ReadName(geometry, e.sample.name);
 	e.sample.rect = e.target.depthBuffer == 0 ? oc::RectKind::kViewport : oc::BoundRect(bound, origin, view, proj, e.target.port, &e.rect);
 	if (!g_firstLogged) {
 		g_firstLogged = true;

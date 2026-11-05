@@ -36,9 +36,11 @@
 // is what measures it).
 
 #include <cmath>
+#include <cstdarg>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 
 namespace obng::plugin::occlusion {
 
@@ -72,8 +74,8 @@ struct ScreenRect {
 };
 
 enum class RectKind : std::uint8_t {
+	kNoBound,         // radius not above 0, or a value that is not finite (0: a sample's zero state)
 	kTestable,        // a rectangle inside the viewport
-	kNoBound,         // radius not above 0, or a value that is not finite
 	kCrossesNear,     // the bound's box reaches the near plane or the camera: no rectangle encloses it
 	kOutsideFrustum,  // the box lies beside the viewport or beyond the far plane
 	kViewport,        // the viewport has no area or a depth range other than 0..1
@@ -232,7 +234,57 @@ inline const char* KindName(DrawKind kind) {
 	return "?";
 }
 
-// One sampled draw with its three results.
+// Whose geometry a draw is: the player's third-person node (TESObjectREFR
+// +0x3C) or first-person node (PlayerCharacter +0x5D0) among the geometry's
+// ancestors (NiAVObject +0x1C), the geometry itself included; everything
+// else is the others'. Objects are 32-bit handles, the parent is read
+// through a port. The walk ends after kMaxAncestors steps.
+enum class Owner : std::uint8_t { kOther, kPlayerThird, kPlayerFirst, kCount };
+constexpr std::uint32_t kMaxAncestors = 48;
+
+template <class ParentOf>
+Owner OwnerOf(std::uint32_t object, std::uint32_t playerThird, std::uint32_t playerFirst, ParentOf&& parentOf) {
+	for (std::uint32_t step = 0; step < kMaxAncestors && object != 0; ++step) {
+		if (object == playerThird) {
+			return Owner::kPlayerThird;
+		}
+		if (object == playerFirst) {
+			return Owner::kPlayerFirst;
+		}
+		object = parentOf(object);
+	}
+	return Owner::kOther;
+}
+
+inline const char* OwnerName(Owner owner) {
+	switch (owner) {
+		case Owner::kOther:
+			return "others";
+		case Owner::kPlayerThird:
+			return "player third person";
+		case Owner::kPlayerFirst:
+			return "player first person";
+		case Owner::kCount:
+			break;
+	}
+	return "?";
+}
+
+// A geometry's name (NiObjectNET +0x08) as a table key and a log word: cut
+// to the row's width, control characters and the quote replaced.
+constexpr std::size_t kNameWidth = 32;
+inline void CopyName(const char* name, char out[kNameWidth]) {
+	std::size_t i = 0;
+	for (; name != nullptr && i + 1 < kNameWidth && name[i] != '\0'; ++i) {
+		const unsigned char c = static_cast<unsigned char>(name[i]);
+		out[i] = c < 0x20 || c == 0x7F ? '?' : (c == '"' ? '\'' : static_cast<char>(c));
+	}
+	for (; i < kNameWidth; ++i) {
+		out[i] = '\0';
+	}
+}
+
+// One sampled draw with its results.
 struct Sample {
 	DrawKind kind = DrawKind::kShape;
 	RectKind rect = RectKind::kNoBound;
@@ -242,6 +294,169 @@ struct Sample {
 	std::uint32_t boundAtEnd = 0;   // C, when endTested
 	std::uint32_t controlAtEnd = 0; // D, when endTested
 	std::uint64_t ticks = 0;        // the original draw's time
+	std::uint32_t passId = 0;       // the shader pass the draw ran under ([0x00B42E90], re/functions/0x007A9820.md)
+	float radius = 0.0f;            // the bound's
+	Owner owner = Owner::kOther;
+	char name[kNameWidth] = {};
+};
+
+// Why a draw without a pixel was or was not shown by its bound.
+enum class NoPixelClass : std::uint8_t {
+	kBoundHidden,     // the bound was hidden at the draw: a bound test finds it
+	kBoundSeen,       // the bound was seen: the sphere is larger than what the geometry covers
+	kNearPlane,       // the bound reaches the near plane: no bound test possible
+	kNoBound,
+	kOutsideFrustum,
+	kViewport,
+	kCount,
+};
+
+inline NoPixelClass ClassOf(const Sample& s) {
+	switch (s.rect) {
+		case RectKind::kTestable:
+			return s.boundAtDraw == 0 ? NoPixelClass::kBoundHidden : NoPixelClass::kBoundSeen;
+		case RectKind::kCrossesNear:
+			return NoPixelClass::kNearPlane;
+		case RectKind::kNoBound:
+			return NoPixelClass::kNoBound;
+		case RectKind::kOutsideFrustum:
+			return NoPixelClass::kOutsideFrustum;
+		case RectKind::kViewport:
+			break;
+	}
+	return NoPixelClass::kViewport;
+}
+
+// Draws and their time, all and those without a pixel.
+struct Tally {
+	std::uint64_t draws = 0;
+	std::uint64_t noPixel = 0;
+	std::uint64_t ticks = 0;
+	std::uint64_t ticksNoPixel = 0;
+
+	void Add(const Sample& s) {
+		++draws;
+		ticks += s.ticks;
+		if (s.drawPixels == 0) {
+			++noPixel;
+			ticksNoPixel += s.ticks;
+		}
+	}
+};
+
+// The draws by shader pass id.
+constexpr std::uint32_t kPassRows = 64;
+struct PassRow {
+	std::uint32_t id = 0;
+	Tally tally;
+	std::uint64_t noPixelBoundSeen = 0;  // without a pixel though the bound was seen at the draw
+	std::uint64_t hiddenAtEnd = 0;       // the bound hidden at the pass's end
+};
+struct PassTable {
+	PassRow rows[kPassRows];
+	std::uint32_t used = 0;
+	Tally beyond;
+
+	const PassRow* Find(std::uint32_t id) const {
+		for (std::uint32_t i = 0; i < used; ++i) {
+			if (rows[i].id == id) {
+				return &rows[i];
+			}
+		}
+		return nullptr;
+	}
+	void Add(const Sample& s) {
+		PassRow* row = const_cast<PassRow*>(Find(s.passId));
+		if (row == nullptr) {
+			if (used == kPassRows) {
+				beyond.Add(s);
+				return;
+			}
+			row = &rows[used++];
+			row->id = s.passId;
+		}
+		row->tally.Add(s);
+		if (s.rect != RectKind::kTestable) {
+			return;
+		}
+		if (s.drawPixels == 0 && s.boundAtDraw != 0) {
+			++row->noPixelBoundSeen;
+		}
+		if (s.endTested && s.controlAtEnd != 0 && s.boundAtEnd == 0) {
+			++row->hiddenAtEnd;
+		}
+	}
+};
+
+// The draws by the bound's radius: below 64, 256, 1024, 4096 units, and above.
+constexpr int kRadiusBuckets = 5;
+inline int RadiusBucket(float radius) {
+	if (!(radius >= 64.0f)) {
+		return 0;
+	}
+	return radius < 256.0f ? 1 : (radius < 1024.0f ? 2 : (radius < 4096.0f ? 3 : 4));
+}
+
+// The draws by geometry name, kind and owner.
+constexpr std::uint32_t kNameRows = 192;
+struct NameRow {
+	char name[kNameWidth] = {};
+	DrawKind kind = DrawKind::kShape;
+	Owner owner = Owner::kOther;
+	Tally tally;
+};
+struct NameTable {
+	NameRow rows[kNameRows];
+	std::uint32_t used = 0;
+	Tally beyond;
+
+	void Add(const Sample& s, Owner owner) {
+		for (std::uint32_t i = 0; i < used; ++i) {
+			if (rows[i].kind == s.kind && rows[i].owner == owner && std::memcmp(rows[i].name, s.name, kNameWidth) == 0) {
+				rows[i].tally.Add(s);
+				return;
+			}
+		}
+		if (used == kNameRows) {
+			beyond.Add(s);
+			return;
+		}
+		NameRow& row = rows[used++];
+		std::memcpy(row.name, s.name, kNameWidth);
+		row.kind = s.kind;
+		row.owner = owner;
+		row.tally.Add(s);
+	}
+	// The row at `rank` among the rows with a draw without a pixel, ordered
+	// by their time without a pixel (then by their place); null past them.
+	const NameRow* Ranked(std::uint32_t rank) const {
+		const NameRow* last = nullptr;
+		for (std::uint32_t taken = 0; taken <= rank; ++taken) {
+			const NameRow* best = nullptr;
+			for (std::uint32_t i = 0; i < used; ++i) {
+				const NameRow& row = rows[i];
+				if (row.tally.noPixel == 0) {
+					continue;
+				}
+				const bool afterLast = last == nullptr || row.tally.ticksNoPixel < last->tally.ticksNoPixel ||
+				                       (row.tally.ticksNoPixel == last->tally.ticksNoPixel && &row > last);
+				if (afterLast && (best == nullptr || row.tally.ticksNoPixel > best->tally.ticksNoPixel)) {
+					best = &row;
+				}
+			}
+			if (best == nullptr) {
+				return nullptr;
+			}
+			last = best;
+		}
+		return last;
+	}
+};
+
+// A draw's count and time in one class.
+struct ClassTally {
+	std::uint64_t draws = 0;
+	std::uint64_t ticks = 0;
 };
 
 struct KindStats {
@@ -270,11 +485,26 @@ struct Stats {
 	std::uint64_t drawsBeyondCapacity = 0;   // draws of a sampled pass past kMaxDraws
 	std::uint64_t drawsInInnerPasses = 0;    // draws of a pass that ran inside a sampled eye pass
 	std::uint64_t batchesLost = 0;
+	ClassTally classes[static_cast<int>(DrawKind::kCount)][static_cast<int>(NoPixelClass::kCount)];
+	PassTable passes;
+	Tally radius[kRadiusBuckets];
+	Tally owners[static_cast<int>(DrawKind::kCount)][static_cast<int>(Owner::kCount)];
+	NameTable names;
 
 	void Add(const Sample& s) {
 		if (static_cast<int>(s.kind) >= static_cast<int>(DrawKind::kCount)) {
 			return;
 		}
+		const Owner owner = static_cast<int>(s.owner) < static_cast<int>(Owner::kCount) ? s.owner : Owner::kOther;
+		if (s.drawPixels == 0) {
+			ClassTally& c = classes[static_cast<int>(s.kind)][static_cast<int>(ClassOf(s))];
+			++c.draws;
+			c.ticks += s.ticks;
+		}
+		passes.Add(s);
+		radius[RadiusBucket(s.radius)].Add(s);
+		owners[static_cast<int>(s.kind)][static_cast<int>(owner)].Add(s);
+		names.Add(s, owner);
 		KindStats& k = kinds[static_cast<int>(s.kind)];
 		++k.draws;
 		k.ticks += s.ticks;
@@ -393,6 +623,154 @@ inline int FormatKind(const Stats& stats, DrawKind kind, double ticksPerMillisec
 		                    static_cast<unsigned long long>(k.ticksDrewNothing));
 	}
 	return at;
+}
+
+
+// A line written piece by piece; a piece that does not fit ends the line.
+struct LineWriter {
+	char* out;
+	std::size_t capacity;
+	int at = 0;
+
+	void Text(const char* format, ...) {
+		if (at < 0 || static_cast<std::size_t>(at) >= capacity) {
+			return;
+		}
+		va_list arguments;
+		va_start(arguments, format);
+		const int written = std::vsnprintf(out + at, capacity - static_cast<std::size_t>(at), format, arguments);
+		va_end(arguments);
+		at = written < 0 ? -1 : at + written;
+	}
+	// "X.XXX ms" with the calibration, "N ticks" without one.
+	void Time(std::uint64_t ticks, double ticksPerMillisecond) {
+		if (ticksPerMillisecond > 0.0) {
+			Text("%.3f ms", static_cast<double>(ticks) / ticksPerMillisecond);
+		} else {
+			Text("%llu ticks", static_cast<unsigned long long>(ticks));
+		}
+	}
+	// "N draws, M without a pixel, time T, T without a pixel"
+	void TallyText(const Tally& t, double ticksPerMillisecond) {
+		Text("%llu draws, %llu without a pixel, time ", static_cast<unsigned long long>(t.draws), static_cast<unsigned long long>(t.noPixel));
+		Time(t.ticks, ticksPerMillisecond);
+		Text(", ");
+		Time(t.ticksNoPixel, ticksPerMillisecond);
+		Text(" without a pixel");
+	}
+};
+
+// One kind's draws without a pixel by class, or nothing (0) when it has none.
+inline int FormatClasses(const Stats& stats, DrawKind kind, double ticksPerMillisecond, char* out, std::size_t capacity) {
+	if (static_cast<int>(kind) >= static_cast<int>(DrawKind::kCount)) {
+		return 0;
+	}
+	const ClassTally* classes = stats.classes[static_cast<int>(kind)];
+	std::uint64_t draws = 0;
+	for (int c = 0; c < static_cast<int>(NoPixelClass::kCount); ++c) {
+		draws += classes[c].draws;
+	}
+	if (draws == 0) {
+		return 0;
+	}
+	static const char* const kClassNames[] = {"bound hidden", "bound seen", "near plane", "no bound", "outside the frustum", "viewport"};
+	LineWriter line{out, capacity};
+	line.Text("Probe: occlusion no-pixel %s - ", KindName(kind));
+	for (int c = 0; c < static_cast<int>(NoPixelClass::kCount); ++c) {
+		line.Text("%s%s %llu (", c == 0 ? "" : ", ", kClassNames[c], static_cast<unsigned long long>(classes[c].draws));
+		line.Time(classes[c].ticks, ticksPerMillisecond);
+		line.Text(")");
+	}
+	return line.at;
+}
+
+// The pass table's row `index`, or nothing (0) past the used rows.
+inline int FormatPass(const Stats& stats, std::uint32_t index, double ticksPerMillisecond, char* out, std::size_t capacity) {
+	if (index >= stats.passes.used) {
+		return 0;
+	}
+	const PassRow& row = stats.passes.rows[index];
+	LineWriter line{out, capacity};
+	line.Text("Probe: occlusion pass 0x%X - %llu draws, %llu without a pixel (%llu with the bound seen), %llu hidden at the end, time ", row.id,
+	          static_cast<unsigned long long>(row.tally.draws), static_cast<unsigned long long>(row.tally.noPixel),
+	          static_cast<unsigned long long>(row.noPixelBoundSeen), static_cast<unsigned long long>(row.hiddenAtEnd));
+	line.Time(row.tally.ticks, ticksPerMillisecond);
+	line.Text(", ");
+	line.Time(row.tally.ticksNoPixel, ticksPerMillisecond);
+	line.Text(" without a pixel");
+	return line.at;
+}
+
+inline int FormatPassesBeyond(const Stats& stats, double ticksPerMillisecond, char* out, std::size_t capacity) {
+	if (stats.passes.beyond.draws == 0) {
+		return 0;
+	}
+	LineWriter line{out, capacity};
+	line.Text("Probe: occlusion passes beyond the table - ");
+	line.TallyText(stats.passes.beyond, ticksPerMillisecond);
+	return line.at;
+}
+
+// The draws by the bound's radius, or nothing (0) without a draw.
+inline int FormatRadius(const Stats& stats, double ticksPerMillisecond, char* out, std::size_t capacity) {
+	std::uint64_t draws = 0;
+	for (const Tally& t : stats.radius) {
+		draws += t.draws;
+	}
+	if (draws == 0) {
+		return 0;
+	}
+	static const char* const kBucketNames[kRadiusBuckets] = {"below 64", "below 256", "below 1024", "below 4096", "4096 and above"};
+	LineWriter line{out, capacity};
+	line.Text("Probe: occlusion radius - ");
+	for (int b = 0; b < kRadiusBuckets; ++b) {
+		const Tally& t = stats.radius[b];
+		line.Text("%s%s: %llu draws, %llu without a pixel (", b == 0 ? "" : "; ", kBucketNames[b], static_cast<unsigned long long>(t.draws),
+		          static_cast<unsigned long long>(t.noPixel));
+		line.Time(t.ticksNoPixel, ticksPerMillisecond);
+		line.Text(" of ");
+		line.Time(t.ticks, ticksPerMillisecond);
+		line.Text(")");
+	}
+	return line.at;
+}
+
+// One kind's draws of one owner, or nothing (0) without a draw.
+inline int FormatOwner(const Stats& stats, DrawKind kind, Owner owner, double ticksPerMillisecond, char* out, std::size_t capacity) {
+	if (static_cast<int>(kind) >= static_cast<int>(DrawKind::kCount) || static_cast<int>(owner) >= static_cast<int>(Owner::kCount)) {
+		return 0;
+	}
+	const Tally& t = stats.owners[static_cast<int>(kind)][static_cast<int>(owner)];
+	if (t.draws == 0) {
+		return 0;
+	}
+	LineWriter line{out, capacity};
+	line.Text("Probe: occlusion owner %s, %s - ", OwnerName(owner), KindName(kind));
+	line.TallyText(t, ticksPerMillisecond);
+	return line.at;
+}
+
+// The name table's row at `rank` by time without a pixel, or nothing (0)
+// past the rows that have such a draw.
+inline int FormatName(const Stats& stats, std::uint32_t rank, double ticksPerMillisecond, char* out, std::size_t capacity) {
+	const NameRow* row = stats.names.Ranked(rank);
+	if (row == nullptr) {
+		return 0;
+	}
+	LineWriter line{out, capacity};
+	line.Text("Probe: occlusion name \"%s\" (%s, %s) - ", row->name, KindName(row->kind), OwnerName(row->owner));
+	line.TallyText(row->tally, ticksPerMillisecond);
+	return line.at;
+}
+
+inline int FormatNamesBeyond(const Stats& stats, double ticksPerMillisecond, char* out, std::size_t capacity) {
+	if (stats.names.beyond.draws == 0) {
+		return 0;
+	}
+	LineWriter line{out, capacity};
+	line.Text("Probe: occlusion names beyond the table - ");
+	line.TallyText(stats.names.beyond, ticksPerMillisecond);
+	return line.at;
 }
 
 }  // namespace obng::plugin::occlusion

@@ -564,3 +564,52 @@ by the cell ids and eye positions in OBVR.log). Per sampled eye pass:
 probe shares entries with PassSteps, DrawEntries, ConstantUploads and the
 stereo route and is off beside them; its queries are never released, so it
 is a measurement and never on in play.
+
+### Where the draws without a pixel come from (measured 2026-11-05, run 20261105-095111)
+
+The probe classifies every sampled draw by the shader pass id it ran under
+([0x00B42E90]), the bound's radius, the geometry's name (+0x08) and its
+owner - the player's third-person node ([[0x00B333C4]+0x3C]) or first-person
+node (+0x5D0) among its ancestors (+0x1C) - and a draw without a pixel by
+why its bound did or did not show it. Third run, the same five places, the
+gates clean again (0 contradictions, 0 failed controls). Per sampled eye
+pass, the time in the three draw entries:
+
+| place | draw time | without a pixel | bound hidden at the draw | bound seen | bound at the near plane or none | of that the player's body |
+|---|---:|---:|---:|---:|---:|---:|
+| Market District | 1.86 ms | 0.92 ms | 0.28 ms | 0.30 ms | 0.34 ms | 0.15 ms |
+| Talos Plaza | 0.79 ms | 0.42 ms | 0.12 ms | 0.07 ms | 0.23 ms | 0.16 ms |
+| dungeon | 1.74 ms | 1.35 ms | 0.60 ms | 0.13 ms | 0.62 ms | 0.54 ms |
+| house | 1.45 ms | 1.17 ms | 0.49 ms | 0.11 ms | 0.57 ms | 0.51 ms |
+| Gold Road | 0.95 ms | 0.69 ms | 0.30 ms | 0.15 ms | 0.24 ms | 0.18 ms |
+
+- **The player's own body** (owner: the third-person node; no draw was owned
+  by the first-person node): 13 draws a pass outdoors and in the cities, 54
+  in the two interiors (more passes a geometry under more lights), 95 % and
+  more of them without a pixel while the head is level - 0.15 to 0.56 ms an
+  eye pass. Most of it is the head: `FaceGenFace` (skinned) alone 0.06 to
+  0.37 ms a pass at 45 to 78 us a draw, then `FaceGenEyeLeft/Right`,
+  `FaceGenEars`, `FaceGenMouth`, `FaceGenTeethUpper/Lower`, `FaceGenTongue`,
+  `FaceGenHair`; the listed FaceGen parts sum to 0.08 to 0.45 ms a pass
+  (a lower bound: the probe lists its 16 costliest names a summary). A head
+  the first-person view can never show is drawn in every eye pass. Its cost
+  per draw fits the volatile pack of the packing probe (36 us a pack,
+  docs/subsystems/stream-packing.md) - derived, not shown to be the same
+  draws. **For OBVR:** leaving the player's head geometries out of the eye
+  passes (not out of the shadow pass) is worth up to about 0.45 ms an eye
+  pass indoors; how OBVR hides the head today is not read here.
+- **Bound hidden at the draw** (what a sphere test against the depth drawn
+  so far finds; the end-of-pass figure above adds the draws covered later):
+  0.12 to 0.60 ms a pass.
+- **Bound seen** (the sphere is larger than what the geometry covers; a
+  tighter bound would be needed): 0.07 to 0.30 ms a pass, largest in the
+  Market District.
+- NPC heads are the costliest hidden draws of the others (`FaceGenFace`
+  0.12 to 0.16 ms a pass in the interiors); distant-tree `Billboard`s on the
+  Gold Road are 83 draws a pass, 78 without a pixel, 0.04 ms.
+- The Market District's hidden share moved between the runs (50.4 % of the
+  testable in the second, 37.6 % in the third; people walk there); the other
+  places repeat within three points.
+- The times are from disturbed passes (see above); draws with an untestable
+  bound, the body's among them, have no state block applied right before
+  them and are the least disturbed.

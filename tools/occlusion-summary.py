@@ -28,6 +28,21 @@ KIND = re.compile(
     r"\((\d+) of them drew no pixel\); contradictions (\d+), failed controls (\d+); draw time ([\d.]+) (ms|ticks), ([\d.]+) (?:ms|ticks) hidden at the end, "
     r"([\d.]+) (?:ms|ticks) without a pixel"
 )
+TIME = r"([\d.]+) (?:ms|ticks)"
+CLASSES = re.compile(
+    r"Probe: occlusion no-pixel (.+?) - bound hidden (\d+) \(" + TIME + r"\), bound seen (\d+) \(" + TIME + r"\), near plane (\d+) \(" + TIME
+    + r"\), no bound (\d+) \(" + TIME + r"\), outside the frustum (\d+) \(" + TIME + r"\), viewport (\d+) \(" + TIME + r"\)"
+)
+CLASS_NAMES = ("bound hidden", "bound seen", "near plane", "no bound", "outside the frustum", "viewport")
+PASS = re.compile(
+    r"Probe: occlusion pass (0x[0-9A-F]+) - (\d+) draws, (\d+) without a pixel \((\d+) with the bound seen\), (\d+) hidden at the end, time "
+    + TIME + ", " + TIME + " without a pixel"
+)
+TALLY = r"(\d+) draws, (\d+) without a pixel, time " + TIME + ", " + TIME + " without a pixel"
+OWNER = re.compile(r"Probe: occlusion owner (.+?), (.+?) - " + TALLY)
+NAME = re.compile(r'Probe: occlusion name "(.*?)" \((.+?), (.+?)\) - ' + TALLY)
+RADIUS = re.compile(r"Probe: occlusion radius - (.*)")
+RADIUS_PART = re.compile(r"(below \d+|\d+ and above): (\d+) draws, (\d+) without a pixel \(" + TIME + " of " + TIME + r"\)")
 MARK = re.compile(r"HandScript: mark (\S+) \(.*tick (\d+)\)")
 KIND_FIELDS = (
     "draws", "testable", "near", "outside", "no_bound", "viewport", "no_pixel", "hidden_at_draw", "hidden_at_end", "end_tested",
@@ -62,7 +77,43 @@ def read_blocks(log):
             values["time_hidden"] = float(m.group(17))
             values["time_no_pixel"] = float(m.group(18))
             blocks[-1]["kinds"][m.group(1)] = values
+            continue
+        if not blocks:
+            continue
+        extra = blocks[-1].setdefault("extra", {})
+        m = CLASSES.search(line)
+        if m:
+            g = m.groups()
+            for i, name in enumerate(CLASS_NAMES):
+                add(extra, ("class", g[0], name), (int(g[1 + 2 * i]), float(g[2 + 2 * i])))
+            continue
+        m = PASS.search(line)
+        if m:
+            g = m.groups()
+            add(extra, ("pass", g[0]), (int(g[1]), int(g[2]), int(g[3]), int(g[4]), float(g[5]), float(g[6])))
+            continue
+        m = OWNER.search(line)
+        if m:
+            g = m.groups()
+            add(extra, ("owner", g[1], g[0]), (int(g[2]), int(g[3]), float(g[4]), float(g[5])))
+            continue
+        m = NAME.search(line)
+        if m:
+            g = m.groups()
+            add(extra, ("name", g[0], g[1], g[2]), (int(g[3]), int(g[4]), float(g[5]), float(g[6])))
+            continue
+        m = RADIUS.search(line)
+        if m:
+            for part in RADIUS_PART.finditer(m.group(1)):
+                g = part.groups()
+                add(extra, ("radius", g[0]), (int(g[1]), int(g[2]), float(g[3]), float(g[4])))
     return blocks
+
+
+def add(table, key, values):
+    """Adds a tuple of numbers to the tuple under key."""
+    old = table.get(key)
+    table[key] = values if old is None else tuple(a + b for a, b in zip(old, values))
 
 
 def places(marks):
@@ -74,6 +125,7 @@ def places(marks):
 def sum_place(blocks, start, end):
     head = dict.fromkeys(HEAD_FIELDS, 0)
     kinds = {}
+    extra = {}
     used = 0
     for before, block in zip([None] + blocks[:-1], blocks):
         if before is None or before["qpc"] < start or block["qpc"] > end:
@@ -86,6 +138,9 @@ def sum_place(blocks, start, end):
             for key in total:
                 total[key] += values[key]
             total["unit"] = values["unit"]
+        for key, values in block.get("extra", {}).items():
+            add(extra, key, values)
+    head["extra"] = extra
     return head, kinds, used
 
 
@@ -135,7 +190,53 @@ def main():
               f"{share(total['time_hidden'], total['time'])} of the draw time; no pixel at the draw {share(total['no_pixel'], total['draws'])}; "
               f"contradictions {total['contradictions']} of {total['hidden_at_draw']} bounds hidden at the draw, "
               f"failed controls {total['control_failed']}")
+        print_extra(head["extra"], passes)
     return 0
+
+
+def print_extra(extra, passes):
+    """The classification of the draws without a pixel, per sampled pass."""
+    if not extra:
+        return
+    classes = {k: v for k, v in extra.items() if k[0] == "class"}
+    if classes:
+        print("\nDraws without a pixel by class (draws / ms, per sampled pass):\n")
+        print("| kind | " + " | ".join(CLASS_NAMES) + " |")
+        print("|---|" + "---:|" * len(CLASS_NAMES))
+        for kind in sorted({k[1] for k in classes}):
+            cells = [classes.get(("class", kind, name), (0, 0.0)) for name in CLASS_NAMES]
+            print(f"| {kind} | " + " | ".join(f"{c[0] / passes:.1f} / {c[1] / passes:.3f}" for c in cells) + " |")
+    owners = {k: v for k, v in extra.items() if k[0] == "owner"}
+    if owners:
+        print("\nBy owner (per sampled pass):\n")
+        print("| kind | owner | draws | without a pixel | time ms | ms without a pixel |")
+        print("|---|---|---:|---:|---:|---:|")
+        for key in sorted(owners):
+            v = owners[key]
+            print(f"| {key[1]} | {key[2]} | {v[0] / passes:.1f} | {v[1] / passes:.1f} | {v[2] / passes:.3f} | {v[3] / passes:.3f} |")
+    radius = {k: v for k, v in extra.items() if k[0] == "radius"}
+    if radius:
+        print("\nBy the bound's radius (per sampled pass):\n")
+        print("| radius | draws | without a pixel | time ms | ms without a pixel |")
+        print("|---|---:|---:|---:|---:|")
+        for name in ("below 64", "below 256", "below 1024", "below 4096", "4096 and above"):
+            v = radius.get(("radius", name), (0, 0, 0.0, 0.0))
+            print(f"| {name} | {v[0] / passes:.1f} | {v[1] / passes:.1f} | {v[3] / passes:.3f} | {v[2] / passes:.3f} |")
+    rows = {k: v for k, v in extra.items() if k[0] == "pass"}
+    if rows:
+        print("\nBy shader pass id (per sampled pass; the passes with the most time without a pixel first):\n")
+        print("| pass | draws | without a pixel | of those with the bound seen | bound hidden at the end | time ms | ms without a pixel |")
+        print("|---|---:|---:|---:|---:|---:|---:|")
+        for key, v in sorted(rows.items(), key=lambda item: -item[1][5])[:24]:
+            print(f"| {key[1]} | {v[0] / passes:.1f} | {v[1] / passes:.1f} | {v[2] / passes:.1f} | {v[3] / passes:.1f} | {v[4] / passes:.3f} | "
+                  f"{v[5] / passes:.3f} |")
+    names = {k: v for k, v in extra.items() if k[0] == "name"}
+    if names:
+        print("\nBy geometry name (only the names the probe listed, its top 16 a block; per sampled pass):\n")
+        print("| name | kind | owner | draws | without a pixel | ms without a pixel |")
+        print("|---|---|---|---:|---:|---:|")
+        for key, v in sorted(names.items(), key=lambda item: -item[1][3])[:24]:
+            print(f"| {key[1] or '(none)'} | {key[2]} | {key[3]} | {v[0] / passes:.1f} | {v[1] / passes:.1f} | {v[3] / passes:.3f} |")
 
 
 def row(kind, v, unit):
