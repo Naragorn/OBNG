@@ -14,9 +14,11 @@ namespace obng::plugin {
 // Whether the probe is on (set once by InstallUnroutedDrawProbe).
 extern bool g_unroutedDrawProbeOn;
 
-// Turns the probe on. The hooks on the device's four draw methods are put at
-// the first routed draw, when the device is known.
-void InstallUnroutedDrawProbe(LogFn log);
+// Turns the probe on and puts its one entry detour (the image space step
+// 0x007B48E0, whose draws the probe writes out on its first calls); returns
+// how many detours were made. The hooks on the device's four draw methods
+// are put at the first routed draw, when the device is known.
+UInt32 InstallUnroutedDrawProbe(LogFn log);
 
 // Asks for the probe's summary lines; the render thread writes them at the
 // next device draw. Does nothing when the probe is off.

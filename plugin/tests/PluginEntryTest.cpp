@@ -292,6 +292,13 @@ void TestLoadConstantUploads() {
 	ResetForTest();
 	Check(Load(Game(), kHost), "loads");
 	Check(occlusion.probed.occlusion && occlusion.Logged("Probes: 4 of 4 call counters made, memory on"), "the occlusion probe asks for four");
+	Fake unrouted;
+	unrouted.iniSettings.shadow.unroutedDraws = true;
+	unrouted.probesMade = 1;
+	g_fake = &unrouted;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(unrouted.probed.unroutedDraws && unrouted.Logged("Probes: 1 of 1 call counters made, memory on"), "the unrouted-draw probe asks for one");
 }
 
 void TestLoadStereoDraw() {

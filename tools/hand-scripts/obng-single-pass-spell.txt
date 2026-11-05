@@ -11,6 +11,11 @@
 ini Render SinglePassStereo=1
 ini Debug EyeDump=1
 ini Hands Enabled=1
+# A shirt on the player (Sack Cloth Shirt 00027319, LowerShirt05, read in Oblivion.esm): the harness save's
+# player wears no top, and the bare upper body stands in the pictures as a pale shape stretched from the
+# camera into the distance (Nadi, 2026-11-05: with a top on it is gone).
+console player.additem 00027319 1
+console player.equipitem 00027319
 console player.addspell 000A97DF
 console SetActiveSpell 000A97DF
 

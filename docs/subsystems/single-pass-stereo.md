@@ -551,9 +551,11 @@ Quad` 1000, `Sun Geometry` 396 units from the camera - so the second eye saw
 the sky some 7 m away, in front of every mountain. A geometry with one of
 the two roots among its ancestors (NiAVObject +0x1C) now gets the second
 eye's viewport and nothing else (EyeSwitch.viewportOnly). The sky's shift
-between the two eye pictures: 99 to 104 px with the rule, 105 to 110 and
-more without it (run 20261105-194137; the search ended at 110). A dual-pass
-picture of the same scene as the reference is owed.
+between the two eye pictures at the five marks: 101.0 / 103.9 / 99.3 /
+100.9 / 102.7 px with the rule, 101.0 / 103.9 / 99.3 / 101.0 / 102.7 in the
+dual pass (run obng-dual-pass-sky/20261105-200524) - the same to a tenth of
+a pixel - and 105.4 / 109.7 / 106.6 / 107.1 / 113.9 without the rule (run
+20261105-194137): 7 px nearer in a 642 px picture.
 
 **The ground (fixed, [Route] StereoRestoreDirect).** The route's own fault.
 The direct entries (slots 90/91: terrain, SpeedTree, grass) draw with the
@@ -571,7 +573,7 @@ eye's view constants after the switch back, for the direct entries; run
 (re-apply 0.15) per applied switch there against 0.24 (0.10) before; the
 fixed-scene number is owed.
 
-**The particles (routed, [Route] StereoParticles; the picture owed).** The
+**The particles (routed, [Route] StereoParticles).** The
 unrouted-draw probe ([Probe] UnroutedDraws: the device's four draw methods
 hooked, every call sorted by the route's depth, the eye data and the
 viewport, a row per calling site) found one device draw of a single-pass
@@ -587,7 +589,19 @@ at its one device call - the eight bytes `mov eax,[ecx+148h]; call eax` at
 0x007667F6 become a call to the route, which makes the device call once per
 eye with the switch between - rather than rebuilt: nothing else of the
 function changes, and no float of its vertex building is touched. The quads
-face the pass camera in both eyes.
+face the pass camera in both eyes. Runs obng-single-pass-torch/
+20261105-200255 and obng-single-pass-spell/20261105-200413: the hand's
+casting effect is in both eye pictures, 860 particle draws in 5 s with the
+torches, and the probe counts 0 device draws in eye 0's viewport outside the
+route.
+
+**The fixed scene with all of it on** (OBVR's single-pass-measure-on, run
+single-pass-measure-on/20261105-200706, settled to watched): scene_pass 3.28
+ms (p95 3.58), the frame 13.34 ms, GPU 4.52 ms; switch 0.28 us, re-apply
+0.10 us per applied switch. Yesterday's 4.2 ms is not its pair - OBVR's head
+cull and the route's lock removal lie between - so the day's three rules
+have no measured price of their own yet; the scene has neither sky nor
+terrain, where they act.
 
 **The blur shader (open).** With bUseBlurShader=1 the left eye gets the
 bloom and the right eye none (run single-pass-torch-on/20261105-192827) -
@@ -607,3 +621,17 @@ cause on Windows is unverified.
 Also seen: FoliageAA.dll hooks the device's DrawPrimitive and
 DrawIndexedPrimitive after OBNG's probe; the probe puts its hooks back on
 top so the game's call sites stay visible.
+
+**The player's body as a wedge (open, whose is not known).** In the test
+hall the player's upper body stands in both eye pictures as a pale shape
+stretched from the camera into the distance; with a shirt equipped through
+the console (Sack Cloth Shirt 00027319) the shirt is stretched instead (run
+obng-single-pass-torch/20261105-200255; OBVR measured the same with a
+cuirass and with another shirt). OBVR's runs date its first appearance
+between 2026-11-03 16:04 and 2026-11-04 16:39 and see it in the dual pass
+too; in that window the route came into use. With [Route] StereoDraw=1 the
+four draw functions are OBNG's rebuilds in every mode, so anything that
+relied on the originals' bodies running - a patch inside them, a check of a
+return address in them - no longer holds. Not seen in the meadow runs of
+the same evening. The run that decides it: the scenario with the route off
+(tools/hand-scripts/obng-measure-original.ini).

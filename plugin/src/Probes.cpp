@@ -919,7 +919,7 @@ UInt32 ProbesAsked(const ShadowSettings& settings) {
 	return (settings.callCounters ? static_cast<UInt32>(Probed::Count) : 0u) +
 	       (settings.passSteps ? static_cast<UInt32>(Step::Count) - (settings.callCounters ? 1u : 0u) : 0u) +
 	       (settings.packCache ? 3u : 0u) + (settings.constantUploads ? (settings.passSteps ? 2u : 3u) : 0u) +
-	       (settings.viewConstants && !settings.passSteps ? 1u : 0u) + (settings.drawEntries ? 4u : 0u) + (settings.occlusion ? 4u : 0u);
+	       (settings.viewConstants && !settings.passSteps ? 1u : 0u) + (settings.drawEntries ? 4u : 0u) + (settings.occlusion ? 4u : 0u) + (settings.unroutedDraws ? 1u : 0u);
 }
 
 UInt32 InstallProbes(const ShadowSettings& settings, LogFn log) {
@@ -950,7 +950,7 @@ UInt32 InstallProbes(const ShadowSettings& settings, LogFn log) {
 		made += InstallOcclusionProbe(settings.occlusionEvery, log);
 	}
 	if (settings.unroutedDraws) {
-		InstallUnroutedDrawProbe(log);  // no entry detour: the device's vtable is hooked at the first routed draw
+		made += InstallUnroutedDrawProbe(log);  // one entry detour; the device's vtable is hooked at the first routed draw
 	}
 	if (!settings.callCounters) {
 		return made;

@@ -1,0 +1,41 @@
+# ../OBVR/tools/hand-scripts/single-pass-torch-on.txt (a placed FireTorchLarge and Torch02 in the left hand, the single
+# pass, OBVR's eye pictures) with a shirt on the player: Sack Cloth Shirt 00027319 (LowerShirt05, read in Oblivion.esm).
+# Without a top the save's player shows his bare upper body as a pale shape stretched from the camera into the
+# distance, in the middle of both eye pictures (Nadi, 2026-11-05: with a top on it is gone).
+#   tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-unrouted.ini tools/hand-scripts/obng-single-pass-torch.txt
+# With the game's blur shader on: tools/with-game-ini.sh BlurShader:bUseBlurShader=1 -- (the same)
+#
+# Single-pass stereo, A8: torch flames (a placed FireTorchLarge and Torch02 in the left hand), single against dual - fire-placed.txt with [Render] SinglePassStereo=1 and OBVR's eye dumps.
+#   python3 tools/hand-script-run.py tools/hand-scripts/single-pass-torch-on.txt --headless
+ini Render SinglePassStereo=1
+ini Debug EyeDump=1
+
+ini Hands Enabled=1
+ini Hands TorchGraceSeconds=0
+ini Render MirrorMenusToMonitor=1
+console-at ready player.additem 00027319 1
+console-at ready player.equipitem 00027319
+console-at ready player.placeatme 0002CF89 1
+console-at ready player.additem 0002CF9F 1
+console-at ready player.equipitem 0002CF9F
+
+expect HandScript: finished
+expect a world frame while the game loads
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 16
+left pos -0.25 -0.30 -0.45
+left rot 0 0 0
+left curl 0.8
+right pos 0.30 -0.40 -0.30
+head pitch -10
+wait 3
+mark fire-1
+wait 2
+mark fire-2
+wait 2
+mark fire-3
+wait 2
+mark fire-4

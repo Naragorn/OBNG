@@ -96,6 +96,103 @@ void NameSite(std::uint32_t site, char* out, std::size_t capacity) {
 	std::snprintf(out, capacity, "%s+0x%X", name, static_cast<unsigned>(site - static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(module))));
 }
 
+// ---- The image space step's draws, written out ---------------------------------
+//
+// 0x007B48E0 (cdecl(renderer, target, arg); it loads the image space manager
+// [0x00B42D7C] and calls 0x008037D0 - objdump 2026-11-05) runs the frame's
+// screen effects (the blur shader's bloom, HDR) at the end of the scene
+// render. On the first few calls made while eye data is set, every device
+// draw inside it is written with where it goes and what it reads: the
+// viewport, the render target's and the first texture's size, the blend
+// state, the scissor, and whether the stereo route issued it. That is what
+// says why a screen effect reaches one eye only.
+constexpr UInt32 kImageSpace = 0x007B48E0;
+constexpr UInt8 kImageSpaceBytes[] = {0x8B, 0x44, 0x24, 0x0C, 0x8B, 0x4C, 0x24, 0x08};  // mov eax,[esp+0Ch]; mov ecx,[esp+8]
+constexpr UInt32 kWorldSceneGraph = 0x00B333CC;        // re/functions/0x0040C830.md; OBVR GameAddresses.h kWorldSceneGraph
+constexpr UInt32 kSceneGraphCameraOffset = 0xDC;       // OBVR GameAddresses.h:1084
+constexpr UInt32 kCameraPortOffset = 0x110;            // re/functions/0x0040C830.md (left, right, top, bottom)
+constexpr UInt32 kImageSpaceCallsTraced = 3;
+using ImageSpaceFn = void(__cdecl*)(UInt32 renderer, UInt32 target, UInt32 argument);
+ImageSpaceFn g_imageSpace = nullptr;
+UInt32 g_imageSpaceTraced = 0;
+bool g_tracing = false;
+UInt32 g_traceDraw = 0;
+
+void TraceDraw(IDirect3DDevice9* device, un::Method method, std::uint32_t site, UINT primitives) {
+	D3DVIEWPORT9 port{};
+	device->GetViewport(&port);
+	D3DSURFACE_DESC target{};
+	IDirect3DSurface9* surface = nullptr;
+	if (SUCCEEDED(device->GetRenderTarget(0, &surface)) && surface != nullptr) {
+		surface->GetDesc(&target);
+		surface->Release();
+	}
+	D3DSURFACE_DESC source{};
+	IDirect3DBaseTexture9* base = nullptr;
+	if (SUCCEEDED(device->GetTexture(0, &base)) && base != nullptr) {
+		if (base->GetType() == D3DRTYPE_TEXTURE) {
+			static_cast<IDirect3DTexture9*>(base)->GetLevelDesc(0, &source);
+		}
+		base->Release();
+	}
+	DWORD blend = 0, sourceBlend = 0, destBlend = 0, scissor = 0, colorWrite = 0, depth = 0;
+	device->GetRenderState(D3DRS_ALPHABLENDENABLE, &blend);
+	device->GetRenderState(D3DRS_SRCBLEND, &sourceBlend);
+	device->GetRenderState(D3DRS_DESTBLEND, &destBlend);
+	device->GetRenderState(D3DRS_SCISSORTESTENABLE, &scissor);
+	device->GetRenderState(D3DRS_COLORWRITEENABLE, &colorWrite);
+	device->GetRenderState(D3DRS_ZENABLE, &depth);
+	RECT cut{};
+	device->GetScissorRect(&cut);
+	IDirect3DVertexShader9* vertexShader = nullptr;
+	IDirect3DPixelShader9* pixelShader = nullptr;
+	device->GetVertexShader(&vertexShader);
+	device->GetPixelShader(&pixelShader);
+	char name[96];
+	NameSite(site, name, sizeof(name));
+	g_log("Probe: image space draw %u - %s %u primitives from %08X (%s), %s; viewport %lu,%lu %lux%lu; target %ux%u (samples %u); texture 0 %ux%u; "
+	      "blend %lu (%lu -> %lu), colour write %lX, depth %lu, scissor %lu (%ld,%ld..%ld,%ld), vertex shader %s, pixel shader %s",
+	      ++g_traceDraw, un::MethodName(method), primitives, site, name, g_depth != 0 ? "inside the route" : "outside the route",
+	      static_cast<unsigned long>(port.X), static_cast<unsigned long>(port.Y), static_cast<unsigned long>(port.Width),
+	      static_cast<unsigned long>(port.Height), target.Width, target.Height, static_cast<unsigned>(target.MultiSampleType), source.Width,
+	      source.Height, static_cast<unsigned long>(blend), static_cast<unsigned long>(sourceBlend), static_cast<unsigned long>(destBlend),
+	      static_cast<unsigned long>(colorWrite), static_cast<unsigned long>(depth), static_cast<unsigned long>(scissor), cut.left, cut.top,
+	      cut.right, cut.bottom, vertexShader != nullptr ? "set" : "none", pixelShader != nullptr ? "set" : "none");
+	if (vertexShader != nullptr) {
+		vertexShader->Release();
+	}
+	if (pixelShader != nullptr) {
+		pixelShader->Release();
+	}
+}
+
+void __cdecl ProbeImageSpace(UInt32 renderer, UInt32 target, UInt32 argument) {
+	ObngStereoViewport eyeZero{};
+	const bool trace = g_imageSpaceTraced < kImageSpaceCallsTraced && StereoEyeZeroViewport(&eyeZero);
+	if (trace) {
+		++g_imageSpaceTraced;
+		g_traceDraw = 0;
+		float port[4] = {};
+		const UInt32 sceneGraph = *reinterpret_cast<volatile const UInt32*>(static_cast<std::uintptr_t>(kWorldSceneGraph));
+		const UInt32 camera = sceneGraph != 0 ? *reinterpret_cast<volatile const UInt32*>(static_cast<std::uintptr_t>(sceneGraph + kSceneGraphCameraOffset)) : 0;
+		if (camera != 0) {
+			for (int i = 0; i < 4; ++i) {
+				port[i] = *reinterpret_cast<volatile const float*>(static_cast<std::uintptr_t>(camera + kCameraPortOffset + 4 * i));
+			}
+		}
+		g_log("Probe: image space call %u (renderer %08X, target %08X, argument %08X) with eye data set - eye 0's viewport %u,%u %ux%u, the main "
+		      "camera's port %.3f %.3f %.3f %.3f",
+		      g_imageSpaceTraced, renderer, target, argument, eyeZero.x, eyeZero.y, eyeZero.width, eyeZero.height, static_cast<double>(port[0]),
+		      static_cast<double>(port[1]), static_cast<double>(port[2]), static_cast<double>(port[3]));
+		g_tracing = true;
+	}
+	g_imageSpace(renderer, target, argument);
+	if (trace) {
+		g_tracing = false;
+		g_log("Probe: image space call %u done - %u device draws", g_imageSpaceTraced, g_traceDraw);
+	}
+}
+
 void FlushSummaryIfRequested() {
 	if (g_summaryRequested == 0) {
 		return;
@@ -114,6 +211,9 @@ void FlushSummaryIfRequested() {
 
 void Note(IDirect3DDevice9* device, un::Method method, void** returnSlot, UINT primitives) {
 	auto site = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(*returnSlot));
+	if (g_tracing) {
+		TraceDraw(device, method, site, primitives);
+	}
 	std::uint32_t via = 0;
 	if (g_depth == 0 && !un::InImage(site, kGameCodeLow, kGameCodeHigh)) {
 		// Another module's hook called through: the game's own call site lies above it on the stack.
@@ -231,9 +331,13 @@ void EnsureHooks(void* renderer) {
 
 }  // namespace
 
-void InstallUnroutedDrawProbe(LogFn log) {
+UInt32 InstallUnroutedDrawProbe(LogFn log) {
 	g_log = log;
 	g_unroutedDrawProbeOn = true;
+	return InstallEntryDetour("the image space step 0x007B48E0 (device draws: its draws written out)", kImageSpace, kImageSpaceBytes,
+	                          sizeof(kImageSpaceBytes), reinterpret_cast<const void*>(&ProbeImageSpace), reinterpret_cast<void**>(&g_imageSpace), log)
+	           ? 1u
+	           : 0u;
 }
 
 void LogUnroutedDrawSummary() {

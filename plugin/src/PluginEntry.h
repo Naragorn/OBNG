@@ -74,13 +74,14 @@ constexpr uint32_t kPackCacheDetours = 3;  // the packer's entry, PackStream and
 constexpr uint32_t kConstantUploadDetours = 3;  // the two upload slots and the finish (the pass counter); two when the pass steps hold the finish
 constexpr uint32_t kViewConstantDetours = 1;    // ApplyConstants 0x009A8E30; none when the pass steps hold it
 constexpr uint32_t kDrawEntryDetours = 4;       // the renderer's other draw entries
+constexpr uint32_t kUnroutedDrawDetours = 1;    // the image space step, for the unrouted-draw probe's trace
 constexpr uint32_t kOcclusionDetours = 4;       // the finish and the three draw entries that take a geometry
 inline uint32_t ProbesAskedFor(const ShadowSettings& s) {
 	return (s.callCounters ? kProbeDetours : 0u) + (s.passSteps ? (s.callCounters ? kPassStepDetours - 1 : kPassStepDetours) : 0u) +
 	       (s.packCache ? kPackCacheDetours : 0u) +
 	       (s.constantUploads ? (s.passSteps ? kConstantUploadDetours - 1 : kConstantUploadDetours) : 0u) +
 	       (s.viewConstants && !s.passSteps ? kViewConstantDetours : 0u) + (s.drawEntries ? kDrawEntryDetours : 0u) +
-	       (s.occlusion ? kOcclusionDetours : 0u);
+	       (s.occlusion ? kOcclusionDetours : 0u) + (s.unroutedDraws ? kUnroutedDrawDetours : 0u);
 }
 
 bool Query(const ExtenderInterfaceHead& xse, PluginInfo* info, const Host& host);
