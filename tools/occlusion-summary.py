@@ -25,13 +25,13 @@ HEAD = re.compile(
 KIND = re.compile(
     r"Probe: occlusion (.+?) - (\d+) draws: (\d+) testable \(near plane (\d+), outside the frustum (\d+), no bound (\d+), "
     r"viewport (\d+)\); no pixel drawn (\d+); bound hidden at the draw (\d+), at the pass's end (\d+) of (\d+) tested "
-    r"\((\d+) of them drew no pixel\); contradictions (\d+); draw time ([\d.]+) (ms|ticks), ([\d.]+) (?:ms|ticks) hidden at the end, "
+    r"\((\d+) of them drew no pixel\); contradictions (\d+), failed controls (\d+); draw time ([\d.]+) (ms|ticks), ([\d.]+) (?:ms|ticks) hidden at the end, "
     r"([\d.]+) (?:ms|ticks) without a pixel"
 )
 MARK = re.compile(r"HandScript: mark (\S+) \(.*tick (\d+)\)")
 KIND_FIELDS = (
     "draws", "testable", "near", "outside", "no_bound", "viewport", "no_pixel", "hidden_at_draw", "hidden_at_end", "end_tested",
-    "hidden_end_no_pixel", "contradictions",
+    "hidden_end_no_pixel", "contradictions", "control_failed",
 )
 HEAD_FIELDS = ("passes", "draws", "beyond", "inner", "lost", "unsampled")
 
@@ -56,11 +56,11 @@ def read_blocks(log):
             continue
         m = KIND.search(line)
         if m and blocks:
-            values = dict(zip(KIND_FIELDS, (int(x) for x in m.groups()[1:13])))
-            values["unit"] = m.group(15)
-            values["time"] = float(m.group(14))
-            values["time_hidden"] = float(m.group(16))
-            values["time_no_pixel"] = float(m.group(17))
+            values = dict(zip(KIND_FIELDS, (int(x) for x in m.groups()[1:14])))
+            values["unit"] = m.group(16)
+            values["time"] = float(m.group(15))
+            values["time_hidden"] = float(m.group(17))
+            values["time_no_pixel"] = float(m.group(18))
             blocks[-1]["kinds"][m.group(1)] = values
     return blocks
 
@@ -117,8 +117,8 @@ def main():
             print("no draws sampled")
             continue
         print("| kind | draws | testable | near plane | outside frustum | no bound | no pixel drawn | bound hidden at the draw | "
-              "bound hidden at the end (of tested) | contradictions | draw time | time hidden at the end |")
-        print("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+              "bound hidden at the end (of tested) | contradictions | failed controls | draw time | time hidden at the end |")
+        print("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
         total = dict.fromkeys(KIND_FIELDS + ("time", "time_hidden", "time_no_pixel"), 0)
         unit = "ticks"
         rows = [k for k in order if k in kinds] + [k for k in kinds if k not in order]
@@ -133,14 +133,15 @@ def main():
         print(f"\n{name}: per sampled pass {total['draws'] / passes:.0f} draws; bound hidden at the pass's end "
               f"{share(total['hidden_at_end'], total['draws'])} of all draws ({share(total['hidden_at_end'], total['end_tested'])} of the tested), "
               f"{share(total['time_hidden'], total['time'])} of the draw time; no pixel at the draw {share(total['no_pixel'], total['draws'])}; "
-              f"contradictions {total['contradictions']} of {total['hidden_at_draw']} bounds hidden at the draw")
+              f"contradictions {total['contradictions']} of {total['hidden_at_draw']} bounds hidden at the draw, "
+              f"failed controls {total['control_failed']}")
     return 0
 
 
 def row(kind, v, unit):
     return (f"| {kind} | {v['draws']} | {v['testable']} | {v['near']} | {v['outside']} | {v['no_bound']} | "
             f"{v['no_pixel']} ({share(v['no_pixel'], v['draws'])}) | {v['hidden_at_draw']} | "
-            f"{v['hidden_at_end']} of {v['end_tested']} ({share(v['hidden_at_end'], v['end_tested'])}) | {v['contradictions']} | "
+            f"{v['hidden_at_end']} of {v['end_tested']} ({share(v['hidden_at_end'], v['end_tested'])}) | {v['contradictions']} | {v['control_failed']} | "
             f"{v['time']:.1f} {unit} | {v['time_hidden']:.1f} {unit} ({share(v['time_hidden'], v['time'])}) |")
 
 

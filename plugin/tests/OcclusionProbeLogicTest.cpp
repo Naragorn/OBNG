@@ -215,7 +215,7 @@ void TestSampler() {
 }
 
 Sample Of(DrawKind kind, RectKind rect, std::uint32_t drawPixels, std::uint32_t atDraw, bool endTested, std::uint32_t atEnd,
-          std::uint64_t ticks = 100) {
+          std::uint64_t ticks = 100, std::uint32_t control = 1) {
 	Sample s;
 	s.kind = kind;
 	s.rect = rect;
@@ -223,6 +223,7 @@ Sample Of(DrawKind kind, RectKind rect, std::uint32_t drawPixels, std::uint32_t 
 	s.boundAtDraw = atDraw;
 	s.endTested = endTested;
 	s.boundAtEnd = atEnd;
+	s.controlAtEnd = control;
 	s.ticks = ticks;
 	return s;
 }
@@ -256,6 +257,14 @@ void TestClassify() {
 	stats.Add(Of(DrawKind::kShape, RectKind::kTestable, 5, 5, false, 0));
 	Check(shape.testable == 6 && shape.endTested == 5 && shape.hiddenAtEnd == 3, "testable, untested at the end, not hidden");
 
+	Section("The control: the end rectangle again at depth 0 must put pixels down, or the end test cannot be read");
+	Check(shape.controlFailed == 0, "none so far");
+	stats.Add(Of(DrawKind::kShape, RectKind::kTestable, 5, 5, true, 0, 0, 0));
+	Check(shape.controlFailed == 1 && shape.hiddenAtEnd == 3 && shape.endTested == 5 && shape.testable == 7,
+	      "a failed control is counted and its end result left out");
+	stats.Add(Of(DrawKind::kShape, RectKind::kTestable, 5, 5, false, 0, 0, 0));
+	Check(shape.controlFailed == 1, "a draw that was not tested at the end has no control");
+
 	Section("Draws without a rectangle are counted by the reason and by their pixels only");
 	stats.Add(Of(DrawKind::kSkinned, RectKind::kNoBound, 0, 0, false, 0, 7));
 	stats.Add(Of(DrawKind::kSkinned, RectKind::kCrossesNear, 9, 0, false, 0, 7));
@@ -275,7 +284,7 @@ void TestClassify() {
 	Check(stats.kinds[static_cast<int>(DrawKind::kDirectShape)].draws == 1 && stats.kinds[static_cast<int>(DrawKind::kDirectStrips)].hiddenAtEnd == 1,
 	      "the direct entries");
 	stats.Add(Of(DrawKind::kCount, RectKind::kTestable, 1, 1, true, 0));
-	Check(shape.draws == 6 && skinned.draws == 4, "nothing added");
+	Check(shape.draws == 8 && skinned.draws == 4, "nothing added");
 
 	Section("Reset clears everything");
 	stats.passesSampled = 3;
@@ -314,7 +323,7 @@ void TestFormat() {
 	Check(oc::FormatKind(stats, DrawKind::kShape, 1000.0, line, sizeof(line)) > 0, "the shapes drew");
 	Check(std::string(line) ==
 	          "Probe: occlusion shapes - 3 draws: 2 testable (near plane 1, outside the frustum 0, no bound 0, viewport 0); no pixel drawn 1; "
-	          "bound hidden at the draw 1, at the pass's end 1 of 2 tested (1 of them drew no pixel); contradictions 0; draw time 4.000 ms, "
+	          "bound hidden at the draw 1, at the pass's end 1 of 2 tested (1 of them drew no pixel); contradictions 0, failed controls 0; draw time 4.000 ms, "
 	          "1.000 ms hidden at the end, 1.000 ms without a pixel",
 	      "the kind's line with the calibration");
 	Check(oc::FormatKind(stats, DrawKind::kShape, 0.0, line, sizeof(line)) > 0, "without a calibration");

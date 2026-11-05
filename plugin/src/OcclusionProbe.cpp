@@ -10,7 +10,7 @@
 // geometry: Do_RenderShape 0x007693E0 (slots 88/89), DrawShapeDirect
 // 0x007694F0 (slot 90) and DrawTriStripsDirect 0x00769700 (slot 91). One eye
 // pass in N is sampled: every draw inside its finish gets the three queries
-// of OcclusionProbeLogic.h, the results are read in the following frames,
+// (and the control) of OcclusionProbeLogic.h, the results are read in the following frames,
 // and no pass is sampled while they are outstanding.
 //
 // The rectangle draws change the device's state behind the engine's state
@@ -85,6 +85,7 @@ struct Entry {
 	IDirect3DQuery9* atDraw = nullptr;  // A
 	IDirect3DQuery9* draw = nullptr;    // B
 	IDirect3DQuery9* atEnd = nullptr;   // C
+	IDirect3DQuery9* control = nullptr; // D
 };
 
 Entry g_entries[oc::kMaxDraws];
@@ -156,7 +157,7 @@ bool BeginPass() {
 	}
 	if (device != g_device) {
 		for (Entry& e : g_entries) {
-			e.atDraw = e.draw = e.atEnd = nullptr;
+			e.atDraw = e.draw = e.atEnd = e.control = nullptr;
 		}
 		g_block = nullptr;
 		g_device = device;
@@ -173,10 +174,10 @@ bool BeginPass() {
 }
 
 bool EnsureQueries(Entry& e) {
-	if (e.atEnd != nullptr) {
+	if (e.control != nullptr) {
 		return true;
 	}
-	IDirect3DQuery9** const slots[] = {&e.atDraw, &e.draw, &e.atEnd};
+	IDirect3DQuery9** const slots[] = {&e.atDraw, &e.draw, &e.atEnd, &e.control};
 	for (IDirect3DQuery9** slot : slots) {
 		if (*slot != nullptr) {
 			continue;
@@ -315,6 +316,9 @@ void EndTests() {
 		const Entry& e = g_entries[i];
 		if (e.sample.endTested) {
 			DrawRect(e.atEnd, e.rect);
+			oc::ScreenRect nearest = e.rect;
+			nearest.depth = 0.0f;
+			DrawRect(e.control, nearest);
 		}
 	}
 	g_block->Apply();
@@ -343,6 +347,9 @@ void Collect() {
 		}
 		if (read == Read::Done && e.sample.endTested) {
 			read = ReadQuery(e.atEnd, &e.sample.boundAtEnd);
+		}
+		if (read == Read::Done && e.sample.endTested) {
+			read = ReadQuery(e.control, &e.sample.controlAtEnd);
 		}
 		if (read == Read::NotYet) {
 			return;

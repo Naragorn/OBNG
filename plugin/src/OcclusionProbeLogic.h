@@ -18,11 +18,14 @@
 //   A  the bound's rectangle, drawn right before the geometry
 //   B  the geometry's own draw
 //   C  the bound's rectangle again, after the pass's last draw
+//   D  the control: C's rectangle at depth 0, which nothing can hide
 // A == 0 with B > 0 is a contradiction - the bound encloses the geometry, so
 // a hidden bound cannot have a visible geometry - and counts how far the
 // rectangle (the origin, the matrices, the bound's field) can be trusted.
 // C == 0 is the probe's answer; B == 0 says how much of it the draw order
-// already shows.
+// already shows. D == 0 means the end rectangle was not rasterised at all
+// (a state the probe did not neutralise): such a draw's C is left out and
+// counted, so C == 0 can only come from the depth test.
 //
 // The matrices (read, re/functions/0x00762640.md): view at renderer+0x980 in
 // D3D row-vector form with the camera's axes as columns and the translation
@@ -237,6 +240,7 @@ struct Sample {
 	std::uint32_t drawPixels = 0;   // B
 	std::uint32_t boundAtDraw = 0;  // A, when the rectangle is testable
 	std::uint32_t boundAtEnd = 0;   // C, when endTested
+	std::uint32_t controlAtEnd = 0; // D, when endTested
 	std::uint64_t ticks = 0;        // the original draw's time
 };
 
@@ -253,6 +257,7 @@ struct KindStats {
 	std::uint64_t hiddenAtEnd = 0;             // C == 0: the answer
 	std::uint64_t hiddenAtEndDrewNothing = 0;  // of those, B == 0 too
 	std::uint64_t contradictions = 0;          // A == 0 and B > 0
+	std::uint64_t controlFailed = 0;           // D == 0: the end test not readable, left out of endTested
 	std::uint64_t ticks = 0;
 	std::uint64_t ticksDrewNothing = 0;
 	std::uint64_t ticksHiddenAtEnd = 0;
@@ -302,6 +307,10 @@ struct Stats {
 			}
 		}
 		if (!s.endTested) {
+			return;
+		}
+		if (s.controlAtEnd == 0) {
+			++k.controlFailed;
 			return;
 		}
 		++k.endTested;
@@ -362,13 +371,14 @@ inline int FormatKind(const Stats& stats, DrawKind kind, double ticksPerMillisec
 	int at = std::snprintf(out, capacity,
 	                       "Probe: occlusion %s - %llu draws: %llu testable (near plane %llu, outside the frustum %llu, no bound %llu, viewport "
 	                       "%llu); no pixel drawn %llu; bound hidden at the draw %llu, at the pass's end %llu of %llu tested (%llu of them drew "
-	                       "no pixel); contradictions %llu; ",
+	                       "no pixel); contradictions %llu, failed controls %llu; ",
 	                       KindName(kind), static_cast<unsigned long long>(k.draws), static_cast<unsigned long long>(k.testable),
 	                       static_cast<unsigned long long>(k.crossesNear), static_cast<unsigned long long>(k.outsideFrustum),
 	                       static_cast<unsigned long long>(k.noBound), static_cast<unsigned long long>(k.viewport),
 	                       static_cast<unsigned long long>(k.drewNothing), static_cast<unsigned long long>(k.hiddenAtDraw),
 	                       static_cast<unsigned long long>(k.hiddenAtEnd), static_cast<unsigned long long>(k.endTested),
-	                       static_cast<unsigned long long>(k.hiddenAtEndDrewNothing), static_cast<unsigned long long>(k.contradictions));
+	                       static_cast<unsigned long long>(k.hiddenAtEndDrewNothing), static_cast<unsigned long long>(k.contradictions),
+	                       static_cast<unsigned long long>(k.controlFailed));
 	if (at < 0 || static_cast<std::size_t>(at) >= capacity) {
 		return at;
 	}

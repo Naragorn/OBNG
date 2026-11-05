@@ -498,3 +498,69 @@ Walkers scene, nothing routed, per frame (medians of the steady windows):
   1.17 ms, the single call per palette needs a gather for 23 % of them, and
   a per-pass cache of the view and projection ids is not what repeats here
   (those repeat across partitions, which the register check already sees).
+
+## What the frustum cull lets through: the occlusion probe (measured 2026-11-05)
+
+The engine culls against the frustum only (0x0070DFB0 above). How much of
+what it then draws lies wholly behind other geometry was measured with
+`[Probe] Occlusion` (plugin/src/OcclusionProbe.cpp, the measure's reasoning
+in OcclusionProbeLogic.h): one eye pass in 31 is sampled (the finish
+0x007AE070 called from 0x007C78D0), and every geometry drawn in it through
+Do_RenderShape 0x007693E0, DrawShapeDirect 0x007694F0 or DrawTriStripsDirect
+0x00769700 gets four occlusion queries - the screen rectangle of its world
+bound (geometry+0x20) at the bound's nearest depth right before the draw
+(A), the draw itself (B), the rectangle again on the pass's finished depth
+buffer (C) and the same rectangle at depth 0 as a control (D).
+
+Run `artifacts/shadow/obng-occlusion/20261105-091608` (Linux, DXVK, OBVR's
+dual pass at 2568x2568 an eye, the save OBVRHarnessMOO with its mods, the
+head turned through eight directions for 20 s a place; the places confirmed
+by the cell ids and eye positions in OBVR.log). Per sampled eye pass:
+
+| place | draws | bound hidden at the pass's end (of the testable) | of the draw time | draw time | hidden | without a pixel |
+|---|---:|---:|---:|---:|---:|---:|
+| Market District (coc ICMarketDistrict01) | 589 | 50.4 % | 33.8 % | 1.67 ms | 0.57 ms | 1.09 ms |
+| Talos Plaza (coc ICTalosPlazaDistrict01) | 328 | 53.8 % | 33.3 % | 0.79 ms | 0.26 ms | 0.47 ms |
+| dungeon (coc ImperialDungeon01) | 510 | 59.5 % | 39.2 % | 1.72 ms | 0.67 ms | 1.33 ms |
+| house (coc WeynonPrioryHouse) | 540 | 54.3 % | 38.7 % | 1.52 ms | 0.59 ms | 1.24 ms |
+| Gold Road (cow Tamriel -27 -3) | 822 | 58.4 % | 39.4 % | 1.05 ms | 0.41 ms | 0.80 ms |
+
+- **The gates held (measured):** 0 contradictions (a bound hidden at the
+  draw whose geometry drew pixels) in 83 905 bounds hidden at the draw, and
+  0 failed controls. So the rectangle encloses the geometry as drawn: world
+  positions are relative to the origin global 0x00B3F92C, the view at
+  renderer+0x980 has a zero translation row in the dual pass (logged: "view
+  row 4 -0.000 -0.000 -0.000"), the projection at +0x9C0 is the one the
+  draws use. This settles re/functions/0x00762640.md C4 for the eye pass:
+  camera-relative rendering, measured.
+- **What the number is:** an upper bound for a culler that tests bounding
+  spheres - it uses the same frame's finished depth at full resolution. A
+  culler working from an earlier frame's coarse depth with margins reaches
+  less (how much less: unverified). 17 to 27 % of the draws have a bound
+  that reaches the near plane (large objects around the camera) and cannot
+  be tested by a bound at all.
+- **Between the two columns:** 50 to 73 % of the draws put no pixel down at
+  the draw (query B), more than the bounds show hidden. The difference is
+  draws whose sphere is visible or untestable while the geometry is not:
+  flat or long geometry in a large sphere, objects around the camera. What
+  share a tighter bound would recover is unverified.
+- **The time columns are from disturbed passes** (a state block applied
+  before every testable draw makes the device re-emit its state): the shares
+  are the finding, the milliseconds an indication. They cover the three draw
+  entries only, not the cull walk or the accumulator's lists for the same
+  geometries.
+- **Skinned draws** are 24 to 49 % of the draw time and mostly put no pixel
+  down (53 to 96 %): 0.21 to 0.71 ms a pass. About 10 to 32 of them a pass
+  have a bound around the camera or none (the player's own body, by their
+  count and place - unverified by name); on the Gold Road with the head
+  level those are nearly all of the 0.25 ms. **For OBVR:** the body's parts
+  are drawn while none of them is in view.
+- Repeat (run 20261105-085711, the same places without the control query):
+  dungeon 60.6 %, house 65.4 %, Gold Road 59.9 % of the testable; the save's
+  start cell 000231AD (an interior) 30.8 %. `coc ICMarketDistrict` (the
+  worldspace's id, not a cell's) leaves the player where he is.
+
+`tools/occlusion-summary.py <run>` sums the probe's lines per place. The
+probe shares entries with PassSteps, DrawEntries, ConstantUploads and the
+stereo route and is off beside them; its queries are never released, so it
+is a measurement and never on in play.
