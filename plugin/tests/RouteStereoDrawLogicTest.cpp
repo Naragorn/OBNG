@@ -50,8 +50,10 @@ int main() {
 	counters.applied = 2;
 	counters.noData = 1;
 	counters.restored = 2;
+	counters.viewportOnly = 1;
 	stats.AddSwitches(counters);
-	Check(stats.eyeSwitches == 3 && stats.eyeSwitchesApplied == 2, "three Switch(1) calls, two of them applied");
+	Check(stats.eyeSwitches == 3 && stats.eyeSwitchesApplied == 2 && stats.eyeSwitchesViewportOnly == 1,
+	      "three Switch(1) calls, two of them applied, one of those for a camera follower");
 	stats.eyeDataSets = 5;
 	stats.eyeDataRefused = 1;
 	stats.drawsOutsideEye = 4;
@@ -74,7 +76,7 @@ int main() {
 	route::FormatStats(stats, 0.0, line, sizeof(line));
 	Check(std::string(line) ==
 	          "Route: stereo draw (eyes 2) - 3 whole draws (drawn 2, refused 1, null record 0), 3 skinned draws (closed 1, no skin 1, "
-	          "refused 0, record missing 1), 30 direct shape draws, 500 direct strips draws, 3 eye switches (applied 2), 4 draws outside eye 0's viewport, eye data set 5, refused 1",
+	          "refused 0, record missing 1), 30 direct shape draws, 500 direct strips draws, 3 eye switches (applied 2, 1 of them without a view shift), 4 draws outside eye 0's viewport, eye data set 5, refused 1",
 	      "the line");
 	stats.outside.Add(obng::plugin::stereo_eye_switch::Viewport{0, 0, 1024, 1024, 0.0f, 1.0f});
 	stats.outside.Add(obng::plugin::stereo_eye_switch::Viewport{0, 0, 1024, 1024, 0.0f, 1.0f});

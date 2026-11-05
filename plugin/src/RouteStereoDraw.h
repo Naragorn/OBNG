@@ -28,4 +28,8 @@ UInt32 StereoPlan();
 UInt32 SetStereoEyes(const ObngStereoEyes* eyes);
 void ClearStereoEyes();
 
+// The viewport of eye 0 as the interface set it, for the unrouted-draw
+// probe; false when no eye data is set. Render thread.
+bool StereoEyeZeroViewport(ObngStereoViewport* out);
+
 }  // namespace obng::plugin

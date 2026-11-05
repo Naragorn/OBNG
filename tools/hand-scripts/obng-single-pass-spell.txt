@@ -1,0 +1,42 @@
+# Single-pass stereo: a target spell cast from the left hand (Flare 000A97DF, as
+# ../OBVR/tools/hand-scripts/spell-casting-hand.txt), with OBVR's eye pictures at
+# the marks - the hand's casting effect, the bolt and its impact in the left
+# and in the right eye (Nadi, Windows, 2026-11-05: "the spell effect only in
+# the left eye"). Run with the unrouted-draw probe to see who draws what the
+# second eye misses:
+#   tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-unrouted.ini tools/hand-scripts/obng-single-pass-spell.txt
+# With the game's blur shader on (the Windows install has it on, the Linux one off):
+#   tools/with-game-ini.sh BlurShader:bUseBlurShader=1 -- tools/shadow-run.sh --ini ... (the same)
+
+ini Render SinglePassStereo=1
+ini Debug EyeDump=1
+ini Hands Enabled=1
+console player.addspell 000A97DF
+console SetActiveSpell 000A97DF
+
+expect HandScript: finished
+reject HandScript: WARNING
+
+wait 12
+right pos 0.25 -0.60 -0.10
+left pos -0.15 -0.30 -0.45
+left rot 0 0 0
+wait 1.5
+mark raised
+left trigger 1
+wait 0.6
+mark casting
+left trigger 0
+wait 0.3
+mark cast
+wait 0.4
+mark bolt
+wait 2.5
+left trigger 1
+wait 0.6
+mark casting-2
+left trigger 0
+wait 0.3
+mark cast-2
+wait 3
+mark done

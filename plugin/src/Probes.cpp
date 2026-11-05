@@ -16,6 +16,7 @@
 #include "ProbeLogic.h"
 #include "RangeWalkGame.h"
 #include "ShadowRecorder.h"
+#include "UnroutedDrawProbe.h"
 
 namespace obng::plugin {
 namespace {
@@ -948,6 +949,9 @@ UInt32 InstallProbes(const ShadowSettings& settings, LogFn log) {
 	if (settings.occlusion) {
 		made += InstallOcclusionProbe(settings.occlusionEvery, log);
 	}
+	if (settings.unroutedDraws) {
+		InstallUnroutedDrawProbe(log);  // no entry detour: the device's vtable is hooked at the first routed draw
+	}
 	if (!settings.callCounters) {
 		return made;
 	}
@@ -1014,6 +1018,7 @@ void LogProbeSummary() {
 		LogDrawEntries();
 	}
 	LogOcclusionSummary();
+	LogUnroutedDrawSummary();
 	if (g_memory) {
 		probe::MemorySample sample;
 		if (SampleMemory(&sample)) {

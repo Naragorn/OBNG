@@ -103,6 +103,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	}
 	s.occlusion = GetPrivateProfileIntA("Probe", "Occlusion", 0, path) != 0;
 	s.occlusionEvery = GetPrivateProfileIntA("Probe", "OcclusionEvery", 31, path);
+	s.unroutedDraws = GetPrivateProfileIntA("Probe", "UnroutedDraws", 0, path) != 0;
 	s.memoryProbe = GetPrivateProfileIntA("Probe", "Memory", 1, path) != 0;
 	s.mismatchLines = GetPrivateProfileIntA("Log", "MismatchLines", 20, path);
 	s.summaryEverySeconds = GetPrivateProfileIntA("Log", "SummaryEverySeconds", 10, path);
@@ -130,12 +131,16 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 		Log("Settings: [Probe] Occlusion=1 cannot run beside %s (they share entries) - the occlusion probe is off", blocker);
 		s.occlusion = false;
 	}
+	if (s.unroutedDraws && !r.stereoDraw) {
+		Log("Settings: [Probe] UnroutedDraws=1 counts nothing without [Route] StereoDraw=1 (its hooks are put at the first routed draw)");
+	}
+	r.stereoFollowers = GetPrivateProfileIntA("Route", "StereoFollowers", 1, path) != 0;
 	Log("Settings from %s: TimeInfoUpdate=%d TimeInfoInit=%d TimeInfoFreeze=%d TimeInfoUnfreeze=%d LoadingMenuTick=%d "
-	    "LoadingMenuCtor=%d RangeWalk=%d RangeWalkOrder=%s FpuControlWord=%d HavokPlanner=%d CallCounters=%d PassSteps=%d PackCache=%d ConstantUploads=%d ViewConstants=%d DrawEntries=%d Occlusion=%d OcclusionEvery=%u Memory=%d MismatchLines=%u SummaryEverySeconds=%u "
-	    "SummaryTimer=%d Route RangeWalk=%d StereoDraw=%d StereoEyes=%u StereoTestEyeShift=%.3f StereoReapply=%s",
+	    "LoadingMenuCtor=%d RangeWalk=%d RangeWalkOrder=%s FpuControlWord=%d HavokPlanner=%d CallCounters=%d PassSteps=%d PackCache=%d ConstantUploads=%d ViewConstants=%d DrawEntries=%d Occlusion=%d OcclusionEvery=%u UnroutedDraws=%d Memory=%d MismatchLines=%u SummaryEverySeconds=%u "
+	    "SummaryTimer=%d Route RangeWalk=%d StereoDraw=%d StereoEyes=%u StereoTestEyeShift=%.3f StereoReapply=%s StereoFollowers=%d",
 	    path, s.update ? 1 : 0, s.init ? 1 : 0, s.freeze ? 1 : 0, s.unfreeze ? 1 : 0, s.loadingMenuTick ? 1 : 0,
 	    s.loadingMenuCtor ? 1 : 0, s.rangeWalk ? 1 : 0, obng::plugin::RangeWalkOrderName(s.rangeWalkOrder), s.fpuControlWord ? 1 : 0, s.havokPlanner ? 1 : 0, s.callCounters ? 1 : 0,
-	    s.passSteps ? 1 : 0, s.packCache ? 1 : 0, s.constantUploads ? 1 : 0, s.viewConstants ? 1 : 0, s.drawEntries ? 1 : 0, s.occlusion ? 1 : 0, s.occlusionEvery, s.memoryProbe ? 1 : 0, s.mismatchLines, s.summaryEverySeconds, s.summaryTimer ? 1 : 0, r.rangeWalk ? 1 : 0, r.stereoDraw ? 1 : 0, static_cast<unsigned>(r.stereoEyes), static_cast<double>(r.stereoTestEyeShift), obng::plugin::StereoReapplyName(r.stereoReapply));
+	    s.passSteps ? 1 : 0, s.packCache ? 1 : 0, s.constantUploads ? 1 : 0, s.viewConstants ? 1 : 0, s.drawEntries ? 1 : 0, s.occlusion ? 1 : 0, s.occlusionEvery, s.unroutedDraws ? 1 : 0, s.memoryProbe ? 1 : 0, s.mismatchLines, s.summaryEverySeconds, s.summaryTimer ? 1 : 0, r.rangeWalk ? 1 : 0, r.stereoDraw ? 1 : 0, static_cast<unsigned>(r.stereoEyes), static_cast<double>(r.stereoTestEyeShift), obng::plugin::StereoReapplyName(r.stereoReapply), r.stereoFollowers ? 1 : 0);
 	return true;
 }
 

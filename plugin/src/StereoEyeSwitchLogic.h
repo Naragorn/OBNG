@@ -313,11 +313,37 @@ constexpr ReapplyTargets ViewReapplyTargets(std::uint32_t mapA, std::uint32_t pr
 // the base rows back, SetTransform(VIEW), SetViewport(eye 0). The logic
 // below drives a port with those steps so that the order and the values are
 // tested once, here, and the engine port only forwards.
+//
+// A camera follower gets the viewports and nothing else. The scene render
+// 0x0040C830 puts two roots ([0x00B333D8], [0x00B333DC], the sky's among
+// them) at the camera's position at the start of every pass (read,
+// re/functions/0x0040C830.md step 6): in the dual pass each eye's pass
+// centres them on its own eye, so both eyes see them the same - at no
+// distance. The single pass centres them once, on eye 0; with the view
+// shift the second eye would see them from 6.4 cm beside their centre, as
+// near as their meshes are. Drawn without the shift, they are again what
+// the dual pass shows.
+
+// Whether `object` is one of the two roots or below one (NiAVObject's parent
+// at +0x1C, read through a port; objects are 32-bit handles). A null root
+// matches nothing; the walk ends after kMaxAncestors steps.
+constexpr std::uint32_t kMaxAncestors = 64;
+template <class ParentOf>
+bool HasAncestor(std::uint32_t object, std::uint32_t rootA, std::uint32_t rootB, ParentOf&& parentOf) {
+	for (std::uint32_t step = 0; step < kMaxAncestors && object != 0; ++step) {
+		if (object == rootA || object == rootB) {
+			return true;
+		}
+		object = parentOf(object);
+	}
+	return false;
+}
 
 struct SwitchCounters {
 	std::uint64_t applied = 0;   // Switch(1) with eye data: the second eye's state set
 	std::uint64_t restored = 0;  // Switch(0) after an applied switch
 	std::uint64_t noData = 0;    // Switch(1) without eye data: nothing done
+	std::uint64_t viewportOnly = 0;  // of the applied: a camera follower's, the viewport without the view shift
 };
 
 template <class Port>
@@ -326,6 +352,7 @@ struct EyeSwitch {
 	SwitchCounters* counters;
 	const EyeData* eyes;   // null: no data
 	float testEyeShift;    // 0: no test mode
+	bool viewportOnly = false;  // the geometry follows the camera (the sky): no view shift, no constants
 
 	TranslationRows saved{};
 	EyeData current{};
@@ -344,6 +371,20 @@ struct EyeSwitch {
 		if (eyes == nullptr && !testMode) {
 			++counters->noData;
 			applied = false;
+			return;
+		}
+		if (viewportOnly) {
+			if (eyes != nullptr) {
+				current = *eyes;
+			} else {
+				float view[16];
+				port->ReadView(view);
+				current = SplitHalves(port->CurrentViewport(), testEyeShift, AxesOf(view));
+			}
+			port->SetViewport(current.viewport[1]);
+			applied = true;
+			++counters->applied;
+			++counters->viewportOnly;
 			return;
 		}
 		float view[16];
@@ -365,8 +406,10 @@ struct EyeSwitch {
 		if (!applied) {
 			return;
 		}
-		port->WriteRows(saved);
-		port->SetViewTransform();
+		if (!viewportOnly) {
+			port->WriteRows(saved);
+			port->SetViewTransform();
+		}
 		port->SetViewport(current.viewport[0]);
 		applied = false;
 		++counters->restored;

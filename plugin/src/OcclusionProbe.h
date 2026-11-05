@@ -19,4 +19,8 @@ UInt32 InstallOcclusionProbe(UInt32 every, LogFn log);
 // when the probe is not on.
 void LogOcclusionSummary();
 
+// A scene-graph object's name (NiObjectNET +0x08) for a log line, cut to the
+// buffer and made printable; empty when the pointer cannot be read.
+void ReadObjectName(UInt32 object, char* out, UInt32 capacity);
+
 }  // namespace obng::plugin

@@ -295,5 +295,82 @@ int main() {
 		Check(!readViewport, "the current viewport is not read");
 	}
 
+	Section("EyeSwitch for a camera follower (the sky): the second eye gets its viewport and nothing else");
+	{
+		RecordingPort port;
+		IdentityView(port.view);
+		IdentityView(port.inverse);
+		port.view[12] = 0.25f;
+		sw::SwitchCounters counters;
+		const EyeData eyes = sw::FromApi(GoodEyes());
+		sw::EyeSwitch<RecordingPort> s{&port, &counters, &eyes, 0.0f};
+		s.viewportOnly = true;
+		s.Switch(1);
+		Check(StepsAre(port, {"set viewport"}), "Switch(1): eye 1's viewport only - no rows, no VIEW, no constants");
+		Check(port.viewportsSet.size() == 1 && port.viewportsSet[0] == eyes.viewport[1] && port.rowsWritten.empty(), "eye 1's viewport, the view untouched");
+		port.steps.clear();
+		s.Switch(0);
+		Check(StepsAre(port, {"set viewport"}), "Switch(0): eye 0's viewport only");
+		Check(port.viewportsSet.size() == 2 && port.viewportsSet[1] == eyes.viewport[0] && port.view[12] == 0.25f, "eye 0's viewport, the view as it was");
+		Check(counters.applied == 1 && counters.restored == 1 && counters.viewportOnly == 1 && counters.noData == 0,
+		      "applied and restored, counted as viewport-only");
+		port.steps.clear();
+		s.Switch(0);
+		Check(port.steps.empty() && counters.restored == 1, "a second Switch(0) does nothing");
+	}
+
+	Section("EyeSwitch for a camera follower in test mode: the halves of the current viewport, no shift");
+	{
+		RecordingPort port;
+		IdentityView(port.view);
+		IdentityView(port.inverse);
+		port.viewport = Viewport{0, 0, 1000, 500, 0.0f, 1.0f};
+		sw::SwitchCounters counters;
+		sw::EyeSwitch<RecordingPort> s{&port, &counters, nullptr, 4.5f};
+		s.viewportOnly = true;
+		s.Switch(1);
+		Check(StepsAre(port, {"read view", "get viewport", "set viewport"}), "the viewport is read and split; nothing is written");
+		Check(port.viewportsSet[0] == Viewport{500, 0, 500, 500, 0.0f, 1.0f} && port.rowsWritten.empty(), "eye 1: the right half");
+		s.Switch(0);
+		Check(port.viewportsSet.size() == 2 && port.viewportsSet[1] == Viewport{0, 0, 500, 500, 0.0f, 1.0f}, "eye 0: the left half");
+		Check(counters.viewportOnly == 1 && counters.applied == 1 && counters.restored == 1, "counted");
+	}
+
+	Section("EyeSwitch for a camera follower without data: nothing done");
+	{
+		RecordingPort port;
+		sw::SwitchCounters counters;
+		sw::EyeSwitch<RecordingPort> s{&port, &counters, nullptr, 0.0f};
+		s.viewportOnly = true;
+		s.Switch(1);
+		s.Switch(0);
+		Check(port.steps.empty() && counters.noData == 1 && counters.applied == 0 && counters.viewportOnly == 0, "counted as no data");
+	}
+
+	Section("HasAncestor: one of the two camera-following roots above the geometry, itself included");
+	{
+		// 10 -> 20 -> 30 -> 0;  40 -> 50 -> 0
+		const auto parentOf = [](std::uint32_t object) -> std::uint32_t {
+			switch (object) {
+				case 10: return 20;
+				case 20: return 30;
+				case 40: return 50;
+				default: return 0;
+			}
+		};
+		Check(sw::HasAncestor(10, 30, 99, parentOf), "the first root two levels up");
+		Check(sw::HasAncestor(10, 99, 30, parentOf), "the second root two levels up");
+		Check(sw::HasAncestor(30, 30, 99, parentOf), "the root itself");
+		Check(!sw::HasAncestor(40, 30, 20, parentOf), "another branch");
+		Check(!sw::HasAncestor(10, 0, 0, parentOf), "null roots match nothing");
+		Check(!sw::HasAncestor(0, 30, 20, parentOf), "no object");
+		std::uint32_t steps = 0;
+		const auto loop = [&steps](std::uint32_t) -> std::uint32_t {
+			++steps;
+			return 7;
+		};
+		Check(!sw::HasAncestor(7, 30, 20, loop) && steps == sw::kMaxAncestors, "a cycle ends after the depth limit");
+	}
+
 	return Failures();
 }

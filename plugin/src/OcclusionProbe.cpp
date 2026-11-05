@@ -481,6 +481,18 @@ UInt32 __fastcall ProbeStripsDirect(void* self, void* /*edx*/, UInt32 geometry) 
 
 }  // namespace
 
+void ReadObjectName(UInt32 object, char* out, UInt32 capacity) {
+	char name[oc::kNameWidth];
+	ReadName(object, name);
+	UInt32 i = 0;
+	for (; capacity != 0 && i + 1 < capacity && i < oc::kNameWidth && name[i] != '\0'; ++i) {
+		out[i] = name[i];
+	}
+	if (capacity != 0) {
+		out[i] = '\0';
+	}
+}
+
 UInt32 InstallOcclusionProbe(UInt32 every, LogFn log) {
 	g_log = log;
 	g_sampler.every = every;

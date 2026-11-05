@@ -1,0 +1,48 @@
+# Single-pass stereo: the sky. The scene render puts the sky's root at the
+# camera every pass (re/functions/0x0040C830.md step 6); the single pass does
+# that once, for eye 0, so the second eye saw the sky from beside its centre -
+# as near as its meshes are (Nadi, Windows, 2026-11-05: "sky and clouds seem
+# unconnected to the world"). [Route] StereoFollowers=1 draws such geometry
+# for the second eye without the view shift. At the Talos Bridge the head
+# looks up 25 degrees in three directions, in clear and in cloudy weather;
+# OBVR's eye pictures at the marks; OBNG.log names the camera followers it
+# saw ("Route: camera follower").
+#   tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-unrouted.ini tools/hand-scripts/obng-single-pass-sky.txt
+#   tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-unrouted-followers-off.ini tools/hand-scripts/obng-single-pass-sky.txt
+
+ini Render SinglePassStereo=1
+ini Debug EyeDump=1
+ini Hands Enabled=1
+console-at ready cow Tamriel 1 15
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at placed player.setpos y 66400
+console-at placed fw 38EEE
+console-at clear-done fw 38EF0
+
+expect HandScript: finished
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 20
+mark placed
+wait 6
+head pitch 25
+head yaw 0
+wait 3
+mark clear-1
+head yaw 90
+wait 3
+mark clear-2
+head yaw 180
+wait 3
+mark clear-3
+head yaw 0
+mark clear-done
+wait 8
+mark cloudy-1
+head yaw 90
+wait 3
+mark cloudy-2
+wait 2
+mark done

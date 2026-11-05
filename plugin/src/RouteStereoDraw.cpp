@@ -26,15 +26,18 @@
 
 #include <intrin.h>
 
+#include <cmath>
 #include <cstdio>
 
 #include "ProbeLogic.h"
 
 #include "Probes.h"
 #include "RouteStereoDrawLogic.h"
+#include "OcclusionProbe.h"
 #include "ShadowRecorder.h"
 #include "StereoEyeSwitchLogic.h"
 #include "StereoEyesApi.h"
+#include "UnroutedDrawProbe.h"
 #include "engine/render/ConstantReapply.h"
 #include "engine/render/NiD3DShaderConstantMap_ApplyConstants.h"
 #include "engine/render/NiDX9Renderer_DrawPrimitive.h"
@@ -150,6 +153,49 @@ struct SwitchTicks {
 template <class T>
 T ReadAt(std::uintptr_t address) {
 	return *reinterpret_cast<volatile const T*>(address);
+}
+
+// Whether the geometry hangs below one of the two roots the scene render
+// puts at the camera every pass ([0x00B333D8], [0x00B333DC]: re/functions/
+// 0x0040C830.md step 6; the sky's node is attached to the second,
+// re/functions/0x00406360.md) - NiAVObject's parent at +0x1C
+// (re/functions/0x0055D4C0.md, xOBSE). Such geometry gets the second eye's
+// viewport without the view shift (StereoEyeSwitchLogic.h).
+constexpr std::uint32_t kFollowerRootA = 0x00B333D8;
+constexpr std::uint32_t kFollowerRootB = 0x00B333DC;
+constexpr std::uint32_t kObjectParentOffset = 0x1C;
+bool FollowsCamera(std::uint32_t geometry) {
+	return eye::HasAncestor(geometry, ReadAt<std::uint32_t>(kFollowerRootA), ReadAt<std::uint32_t>(kFollowerRootB),
+	                        [](std::uint32_t object) { return ReadAt<std::uint32_t>(object + kObjectParentOffset); });
+}
+
+// The first camera followers seen, once each, with what the view shift
+// would have made of them: the bound's radius and how far its centre lies
+// from the pass camera (the origin global) - the distance the second eye
+// would have seen the geometry at.
+constexpr std::uint32_t kFollowersLogged = 16;
+constexpr std::uint32_t kGeometryBoundOffset = 0x20;
+constexpr std::uint32_t kOriginGlobal = 0x00B3F92C;
+std::uint32_t g_followersSeen[kFollowersLogged] = {};
+std::uint32_t g_followersSeenCount = 0;
+void NoteFollower(bool follows, std::uint32_t geometry) {
+	if (!follows || g_followersSeenCount == kFollowersLogged) {
+		return;
+	}
+	for (std::uint32_t i = 0; i < g_followersSeenCount; ++i) {
+		if (g_followersSeen[i] == geometry) {
+			return;
+		}
+	}
+	g_followersSeen[g_followersSeenCount++] = geometry;
+	char name[48];
+	ReadObjectName(geometry, name, sizeof(name));
+	const float cx = ReadAt<float>(geometry + kGeometryBoundOffset) - ReadAt<float>(kOriginGlobal);
+	const float cy = ReadAt<float>(geometry + kGeometryBoundOffset + 4) - ReadAt<float>(kOriginGlobal + 4);
+	const float cz = ReadAt<float>(geometry + kGeometryBoundOffset + 8) - ReadAt<float>(kOriginGlobal + 8);
+	g_log("Route: camera follower \"%s\" (%08X) - bound radius %.0f, its centre %.0f units from the pass camera; drawn without the view shift",
+	      name, geometry, static_cast<double>(ReadAt<float>(geometry + kGeometryBoundOffset + 12)),
+	      std::sqrt(static_cast<double>(cx) * cx + static_cast<double>(cy) * cy + static_cast<double>(cz) * cz));
 }
 
 UInt32 VtableSlot(std::uint32_t object, std::uint32_t slotOffset) {
@@ -453,6 +499,7 @@ struct RecordingShaderPort {
 
 UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry, UInt32 data, UInt32 skin, UInt32 world, UInt32 worldBound,
                                      UInt32 record) {
+	const RoutedDrawScope routed{self};
 	whole_engine::EnginePorts ports{static_cast<whole_engine::NiDX9RendererView*>(self),
 	                                reinterpret_cast<whole_engine::ShaderInterfaceCastFn>(whole_engine::kShaderInterfaceCastAddress)};
 	ReapplySeen seen_;
@@ -464,6 +511,8 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
 	eye::Viewport seen;
 	const eye::EyeData* eyes = EyesForDraw(eyePort, &outside, &seen);
 	EngineEyeSwitch eyeSwitch{&eyePort, &counters, eyes, eyes != nullptr ? 0.0f : g_settings.stereoTestEyeShift};
+	eyeSwitch.viewportOnly = g_settings.stereoFollowers && (eyes != nullptr || (!outside && TestMode())) && FollowsCamera(geometry);
+	NoteFollower(eyeSwitch.viewportOnly, geometry);
 	TimedEyeSwitch timed{&eyeSwitch, &ticks};
 	const whole::DrawInput in{geometry, data, skin, world, worldBound, record};
 	const whole::Outcome outcome =
@@ -484,6 +533,7 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
 }
 
 UInt32 __fastcall RouteDrawSkinned(void* self, void* /*edx*/, UInt32 geometry, UInt32 data, UInt32 skin, UInt32 world, UInt32 worldBound) {
+	const RoutedDrawScope routed{self};
 	eye::SwitchCounters counters;
 	ReapplySeen seen_;
 	SkinnedEnginePorts ports{static_cast<skinned_engine::NiDX9RendererView*>(self), nullptr, &seen_};
@@ -493,6 +543,8 @@ UInt32 __fastcall RouteDrawSkinned(void* self, void* /*edx*/, UInt32 geometry, U
 	eye::Viewport seen;
 	const eye::EyeData* eyes = EyesForDraw(eyePort, &outside, &seen);
 	EngineEyeSwitch eyeSwitch{&eyePort, &counters, eyes, eyes != nullptr ? 0.0f : g_settings.stereoTestEyeShift};
+	eyeSwitch.viewportOnly = g_settings.stereoFollowers && (eyes != nullptr || (!outside && TestMode())) && FollowsCamera(geometry);
+	NoteFollower(eyeSwitch.viewportOnly, geometry);
 	TimedEyeSwitch timed{&eyeSwitch, &ticks};
 	ports.eyes = &timed;
 	const skinned::DrawArguments args{static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(self)), geometry, data, skin, world, worldBound};
@@ -704,6 +756,7 @@ static_assert(strips_direct::DrawTriStripsDirectPorts<StripsDirectEnginePorts>, 
 // The two direct detours share everything but the rebuild they call.
 template <class Ports, class Run>
 UInt32 RouteDirect(void* self, UInt32 geometry, Run&& run, std::uint64_t route::Stats::*counter) {
+	const RoutedDrawScope routed{self};
 	eye::SwitchCounters counters;
 	SwitchTicks ticks;
 	DirectContext context;
@@ -714,6 +767,8 @@ UInt32 RouteDirect(void* self, UInt32 geometry, Run&& run, std::uint64_t route::
 	eye::Viewport seen;
 	const eye::EyeData* eyes = EyesForDraw(eyePort, &outside, &seen);
 	EngineEyeSwitch eyeSwitch{&eyePort, &counters, eyes, eyes != nullptr ? 0.0f : g_settings.stereoTestEyeShift};
+	eyeSwitch.viewportOnly = g_settings.stereoFollowers && (eyes != nullptr || (!outside && TestMode())) && FollowsCamera(geometry);
+	NoteFollower(eyeSwitch.viewportOnly, geometry);
 	TimedEyeSwitch timed{&eyeSwitch, &ticks};
 	Ports ports{{reinterpret_cast<std::uintptr_t>(self), &context, &timed}};
 	run(ports, route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode())));
@@ -774,10 +829,11 @@ UInt32 InstallRouteStereoDraw(const RouteSettings& settings, LogFn log) {
 	                           reinterpret_cast<void**>(&g_originalDrawTriStripsDirect), log, DetourRole::Route) ? 1 : 0;
 	g_on = made == kRouteStereoDrawDetours;
 	g_summaryClock = ReadClocks();
-	log("Route: stereo draw %s, eyes %u, test eye shift %.3f (%s), re-apply %s", g_on ? "on" : "off (not all four detours made)",
-	    static_cast<unsigned>(settings.stereoEyes), static_cast<double>(settings.stereoTestEyeShift),
+	log("Route: stereo draw %s, eyes %u, test eye shift %.3f (%s), re-apply %s, camera followers %s",
+	    g_on ? "on" : "off (not all four detours made)", static_cast<unsigned>(settings.stereoEyes),
+	    static_cast<double>(settings.stereoTestEyeShift),
 	    eye::TestModeOn(settings.stereoTestEyeShift) ? "the viewport split in halves" : "off: eye data from OBVR or none",
-	    StereoReapplyName(settings.stereoReapply));
+	    StereoReapplyName(settings.stereoReapply), settings.stereoFollowers ? "without the view shift" : "shifted like everything else");
 	return made;
 }
 
@@ -798,6 +854,15 @@ UInt32 SetStereoEyes(const ObngStereoEyes* eyes) {
 	g_eyes = eye::FromApi(*eyes);
 	g_eyesSet = true;
 	return kObngStereoOk;
+}
+
+bool StereoEyeZeroViewport(ObngStereoViewport* out) {
+	if (!g_eyesSet) {
+		return false;
+	}
+	const eye::Viewport& zero = g_eyes.viewport[0];
+	*out = ObngStereoViewport{zero.x, zero.y, zero.width, zero.height, zero.minZ, zero.maxZ};
+	return true;
 }
 
 void ClearStereoEyes() {
