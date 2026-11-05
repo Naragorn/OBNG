@@ -133,3 +133,14 @@ Read with `dumpbin /disasm` on the Steam EXE.
 - **Unverified:** which side the vanilla stagger animations lean to (a player's
   observation says left), and whether a loose extra `.kf` in `_male` (not SpecialAnims)
   joins the group without the base-form list.
+- **Measured (2026-11-05, the B-spline tracks evaluated on the vanilla skeleton):** the
+  one-handed, two-handed and staff staggers move the head 11-17 units to the actor's right
+  (+x of the skeleton root) while the body steps about 100 units back; the fists' stagger
+  leans about 10 units to its left.
+- **Measured (OBVR harness stagger-sides.txt, 2026-11-05 10:08):** with a mirrored
+  `OneHandStagger_OBVRMirror.kf` added to the NPC's special animations, the group's
+  AnimSequenceMultiple holds two entries, `[0] onehandstagger.kf, [1]
+  OneHandStagger_OBVRMirror.kf`; each sequence's +8 is its file path. Picking index 1 for a
+  blow to the left and 0 for one to the right through the patched call at `0x0047628A` played
+  without a fault. An unarmed, idle beggar never staggered: there is no stagger file for that
+  stance (NPCs lack a plain `stagger.kf`; https://www.nexusmods.com/oblivion/mods/44846).
