@@ -603,14 +603,24 @@ cull and the route's lock removal lie between - so the day's three rules
 have no measured price of their own yet; the scene has neither sky nor
 terrain, where they act.
 
-**The blur shader (open).** With bUseBlurShader=1 the left eye gets the
-bloom and the right eye none (run single-pass-torch-on/20261105-192827) -
-which is also "more ground texture in the right eye" where the ground is
-bright. The image-space draws run through the route, outside every eye
-viewport: three a frame at 256x256, one at 5136x2568. The image space
-manager 0x008037D0 (behind 0x007B48E0) draws one screen quad per active
-effect; why the last draw's result lies in the left half only is not read
-yet. The frame's targets are OBVR's: asked.
+**The blur shader (no fault; a correction).** An earlier state of this
+section, two commit messages (ba9f004, 0bda689) and the messages of the
+evening said the bloom reached the left eye only, as measured. It was not
+measured: it was read off two eye pictures by eye, and it is wrong. Measured
+since, the same scenario with the blur shader off (OBVR's run
+single-pass-torch-on/20261104-201829) and on (run 20261105-192827), the mean
+brightness of the ceiling band in each eye picture at the four marks: left
++10.5 / +9.5 / +9.8 / +10.4, right +11.3 / +10.2 / +10.5 / +11.2. The bloom
+is in both eyes, equally. What the trace of the image space step shows (run
+obng-single-pass-torch/20261105-203613): four draws a call through the
+route - the frame copy (5136x2568, both eyes) down to 256x256, two blur
+passes at 256x256, the composite back onto the 5136x2568 target with the
+viewport full and no blending. The step treats the double-wide frame as one
+picture; so does the dual pass, whose frame is as wide. Derived, not
+measured: each eye's bloom is twice as wide horizontally as vertically
+(half the horizontal resolution in the 256x256 picture) and bleeds a little
+across the seam between the eyes, in the single pass from the other eye, in
+the dual pass from the other half's stale content. Nothing to route.
 
 **The grass (not reproduced).** The grass builds are the same in both modes
 (49 patches at every mark of OBVR's grass-turn scenario, single and dual)
