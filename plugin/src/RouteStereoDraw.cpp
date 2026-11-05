@@ -769,6 +769,7 @@ UInt32 RouteDirect(void* self, UInt32 geometry, Run&& run, std::uint64_t route::
 	EngineEyeSwitch eyeSwitch{&eyePort, &counters, eyes, eyes != nullptr ? 0.0f : g_settings.stereoTestEyeShift};
 	eyeSwitch.viewportOnly = g_settings.stereoFollowers && (eyes != nullptr || (!outside && TestMode())) && FollowsCamera(geometry);
 	NoteFollower(eyeSwitch.viewportOnly, geometry);
+	eyeSwitch.reapplyOnRestore = g_settings.stereoRestoreDirect;
 	TimedEyeSwitch timed{&eyeSwitch, &ticks};
 	Ports ports{{reinterpret_cast<std::uintptr_t>(self), &context, &timed}};
 	run(ports, route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode())));

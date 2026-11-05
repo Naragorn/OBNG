@@ -353,6 +353,16 @@ struct EyeSwitch {
 	const EyeData* eyes;   // null: no data
 	float testEyeShift;    // 0: no test mode
 	bool viewportOnly = false;  // the geometry follows the camera (the sky): no view shift, no constants
+	// Re-apply the constants for the first eye after the switch back. The
+	// draw functions that run a shader's setup per partition (slots 12..14)
+	// upload everything again before their next draw and do not need it. The
+	// direct entries (slots 90/91) draw with what their caller set up once
+	// for a run of geometries: without the restore every later geometry of
+	// the run is drawn for the first eye with the second eye's view
+	// constants, and a pass that tests for equal depth then fails there
+	// (the ground's texture layers differing between the eyes, run
+	// obng-grass-turn-single/20261105-194324).
+	bool reapplyOnRestore = false;
 
 	TranslationRows saved{};
 	EyeData current{};
@@ -411,6 +421,9 @@ struct EyeSwitch {
 			port->SetViewTransform();
 		}
 		port->SetViewport(current.viewport[0]);
+		if (!viewportOnly && reapplyOnRestore) {
+			port->ReapplyConstants();
+		}
 		applied = false;
 		++counters->restored;
 	}

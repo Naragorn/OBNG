@@ -74,6 +74,7 @@ struct RouteSettings {
 	float stereoTestEyeShift = 0.0f;  // the plugin's own eye data: the viewport split in halves, eye 1 this many
 	                                  // game units along the camera's right axis (StereoEyeSwitchLogic.h); 0 = off
 	StereoReapply stereoReapply = StereoReapply::kView;  // the second eye's constants re-apply
+	bool stereoRestoreDirect = true;  // [Route] StereoRestoreDirect: the direct entries re-apply the first eye's view constants after the second eye's draw; 0 for the comparison
 	bool stereoFollowers = true;  // [Route] StereoFollowers: geometry below the camera-following roots (the sky) gets the second eye's viewport without the view shift; 0 for the comparison
 
 	UInt32 Asked() const { return (rangeWalk ? kRouteRangeWalkDetours : 0u) + (stereoDraw ? kRouteStereoDrawDetours : 0u); }

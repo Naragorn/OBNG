@@ -295,6 +295,30 @@ int main() {
 		Check(!readViewport, "the current viewport is not read");
 	}
 
+	Section("EyeSwitch with the constants restored: Switch(0) re-applies them for the first eye after the rows are back");
+	{
+		RecordingPort port;
+		IdentityView(port.view);
+		IdentityView(port.inverse);
+		sw::SwitchCounters counters;
+		const EyeData eyes = sw::FromApi(GoodEyes());
+		sw::EyeSwitch<RecordingPort> s{&port, &counters, &eyes, 0.0f};
+		s.reapplyOnRestore = true;
+		s.Switch(1);
+		port.steps.clear();
+		s.Switch(0);
+		Check(StepsAre(port, {"write rows", "set view transform", "set viewport", "reapply constants"}),
+		      "Switch(0): the base rows, VIEW, eye 0's viewport, then the constants again");
+		Check(counters.applied == 1 && counters.restored == 1, "counted as before");
+		sw::EyeSwitch<RecordingPort> follower{&port, &counters, &eyes, 0.0f};
+		follower.reapplyOnRestore = true;
+		follower.viewportOnly = true;
+		follower.Switch(1);
+		port.steps.clear();
+		follower.Switch(0);
+		Check(StepsAre(port, {"set viewport"}), "a camera follower's constants were never changed: nothing to restore");
+	}
+
 	Section("EyeSwitch for a camera follower (the sky): the second eye gets its viewport and nothing else");
 	{
 		RecordingPort port;
