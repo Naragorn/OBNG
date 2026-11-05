@@ -71,6 +71,7 @@ struct ShadowSettings {
 	bool drawEntries = false;      // count the renderer's four other draw entries (slots 85, 90, 91, 93; Probes.cpp); off in play
 	bool occlusion = false;        // sample one eye pass in occlusionEvery: which drawn geometries' bounds lie behind the finished depth buffer (OcclusionProbe.cpp); not beside PassSteps, DrawEntries, ConstantUploads or the stereo route (Plugin.cpp turns it off then); off in play
 	UInt32 occlusionEvery = 31;    // [Probe] OcclusionEvery
+	bool grass = false;            // per world pass the grass patches under the Grass node, hidden and drawn, by distance, with the camera's heading (GrassProbe.cpp; needs [Route] StereoDraw=1); cheap, may stay on in play
 	bool unroutedDraws = false;    // count every device draw by where it falls and keep the sites outside the stereo route (UnroutedDrawProbe.cpp; needs [Route] StereoDraw=1); off in play
 	bool memoryProbe = true;     // commit, working set and address space in the summary
 	UInt32 mismatchLines = 20;   // mismatches written in full per function

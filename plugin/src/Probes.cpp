@@ -13,6 +13,7 @@
 #include <cstdio>
 
 #include "OcclusionProbe.h"
+#include "GrassProbe.h"
 #include "ProbeLogic.h"
 #include "RangeWalkGame.h"
 #include "ShadowRecorder.h"
@@ -948,6 +949,9 @@ UInt32 InstallProbes(const ShadowSettings& settings, LogFn log) {
 	}
 	if (settings.occlusion) {
 		made += InstallOcclusionProbe(settings.occlusionEvery, log);
+	}
+	if (settings.grass) {
+		InstallGrassProbe(log);  // no detour of its own: it counts through the stereo route's
 	}
 	if (settings.unroutedDraws) {
 		made += InstallUnroutedDrawProbe(log);  // one entry detour; the device's vtable is hooked at the first routed draw

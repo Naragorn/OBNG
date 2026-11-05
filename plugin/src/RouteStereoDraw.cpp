@@ -34,6 +34,7 @@
 #include "Probes.h"
 #include "RouteStereoDrawLogic.h"
 #include "EntryDetour.h"
+#include "GrassProbe.h"
 #include "Memory.h"
 #include "OcclusionProbe.h"
 #include "ShadowRecorder.h"
@@ -502,6 +503,9 @@ struct RecordingShaderPort {
 UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry, UInt32 data, UInt32 skin, UInt32 world, UInt32 worldBound,
                                      UInt32 record) {
 	const RoutedDrawScope routed{self};
+	if (g_grassProbeOn) {
+		GrassProbeNoteDraw(geometry);
+	}
 	whole_engine::EnginePorts ports{static_cast<whole_engine::NiDX9RendererView*>(self),
 	                                reinterpret_cast<whole_engine::ShaderInterfaceCastFn>(whole_engine::kShaderInterfaceCastAddress)};
 	ReapplySeen seen_;
@@ -536,6 +540,9 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
 
 UInt32 __fastcall RouteDrawSkinned(void* self, void* /*edx*/, UInt32 geometry, UInt32 data, UInt32 skin, UInt32 world, UInt32 worldBound) {
 	const RoutedDrawScope routed{self};
+	if (g_grassProbeOn) {
+		GrassProbeNoteDraw(geometry);
+	}
 	eye::SwitchCounters counters;
 	ReapplySeen seen_;
 	SkinnedEnginePorts ports{static_cast<skinned_engine::NiDX9RendererView*>(self), nullptr, &seen_};
@@ -759,6 +766,9 @@ static_assert(strips_direct::DrawTriStripsDirectPorts<StripsDirectEnginePorts>, 
 template <class Ports, class Run>
 UInt32 RouteDirect(void* self, UInt32 geometry, Run&& run, std::uint64_t route::Stats::*counter) {
 	const RoutedDrawScope routed{self};
+	if (g_grassProbeOn) {
+		GrassProbeNoteDraw(geometry);
+	}
 	eye::SwitchCounters counters;
 	SwitchTicks ticks;
 	DirectContext context;
@@ -949,6 +959,9 @@ UInt32 SetStereoEyes(const ObngStereoEyes* eyes) {
 	}
 	g_eyes = eye::FromApi(*eyes);
 	g_eyesSet = true;
+	if (g_grassProbeOn) {
+		GrassProbePassBoundary();  // the draws counted so far are the pass before this frame's
+	}
 	return kObngStereoOk;
 }
 

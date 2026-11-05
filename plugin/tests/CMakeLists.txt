@@ -66,3 +66,8 @@ add_executable(UnroutedDrawLogicTest UnroutedDrawLogicTest.cpp)
 target_include_directories(UnroutedDrawLogicTest PRIVATE ../src ../../tests)
 target_compile_options(UnroutedDrawLogicTest PRIVATE -Wall -Wextra -Werror)
 add_test(NAME UnroutedDrawLogicTest COMMAND UnroutedDrawLogicTest)
+
+add_executable(GrassProbeLogicTest GrassProbeLogicTest.cpp)
+target_include_directories(GrassProbeLogicTest PRIVATE ../src ../../tests)
+target_compile_options(GrassProbeLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME GrassProbeLogicTest COMMAND GrassProbeLogicTest)
