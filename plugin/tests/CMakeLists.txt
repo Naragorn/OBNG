@@ -56,3 +56,8 @@ add_executable(StereoEyeSwitchLogicTest StereoEyeSwitchLogicTest.cpp)
 target_include_directories(StereoEyeSwitchLogicTest PRIVATE ../src ../../src ../../tests)
 target_compile_options(StereoEyeSwitchLogicTest PRIVATE -Wall -Wextra -Werror)
 add_test(NAME StereoEyeSwitchLogicTest COMMAND StereoEyeSwitchLogicTest)
+
+add_executable(OcclusionProbeLogicTest OcclusionProbeLogicTest.cpp)
+target_include_directories(OcclusionProbeLogicTest PRIVATE ../src ../../tests)
+target_compile_options(OcclusionProbeLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME OcclusionProbeLogicTest COMMAND OcclusionProbeLogicTest)

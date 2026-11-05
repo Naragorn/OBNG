@@ -285,6 +285,13 @@ void TestLoadConstantUploads() {
 	ResetForTest();
 	Check(Load(Game(), kHost), "loads");
 	Check(entries.probed.drawEntries && entries.Logged("Probes: 4 of 4 call counters made, memory on"), "the draw entries ask for four");
+	Fake occlusion;
+	occlusion.iniSettings.shadow.occlusion = true;
+	occlusion.probesMade = 4;
+	g_fake = &occlusion;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(occlusion.probed.occlusion && occlusion.Logged("Probes: 4 of 4 call counters made, memory on"), "the occlusion probe asks for four");
 }
 
 void TestLoadStereoDraw() {

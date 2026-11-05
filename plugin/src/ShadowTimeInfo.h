@@ -69,6 +69,8 @@ struct ShadowSettings {
 	bool constantUploads = false;  // hash every vertex constant upload and count the ones equal to the register's last (Probes.cpp); off in play
 	bool viewConstants = false;    // key the second eye's re-applied uploads by constant-map entry: which depend on the view (Probes.cpp; needs ConstantUploads, which Plugin.cpp turns on with it); off in play
 	bool drawEntries = false;      // count the renderer's four other draw entries (slots 85, 90, 91, 93; Probes.cpp); off in play
+	bool occlusion = false;        // sample one eye pass in occlusionEvery: which drawn geometries' bounds lie behind the finished depth buffer (OcclusionProbe.cpp); not beside PassSteps, DrawEntries, ConstantUploads or the stereo route (Plugin.cpp turns it off then); off in play
+	UInt32 occlusionEvery = 31;    // [Probe] OcclusionEvery
 	bool memoryProbe = true;     // commit, working set and address space in the summary
 	UInt32 mismatchLines = 20;   // mismatches written in full per function
 	UInt32 summaryEverySeconds = 10;
