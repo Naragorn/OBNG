@@ -85,7 +85,7 @@ struct Pass {
 	float yaw = 0.0f;
 	float pitch = 0.0f;
 	float camera[3] = {};
-	std::uint32_t groups = 0;  // the Grass node's children
+	std::uint32_t groups = 0;  // the Grass node's children (patches, or groups of patches)
 	Counts existing;           // the patches under the node
 	Counts hidden;             // of them with the hidden bit
 	Counts drawn;              // the grass geometries the pass drew
@@ -140,7 +140,7 @@ inline int Format(const Pass& pass, std::uint64_t qpc, const char* clock, char* 
 	FormatBands(pass.hidden, hidden, sizeof(hidden));
 	FormatBands(pass.drawn, drawn, sizeof(drawn));
 	return std::snprintf(out, capacity,
-	                     "Probe: grass - heading %.1f pitch %.1f, camera %.0f %.0f %.0f; under the Grass node %u groups, %u patches %s farthest "
+	                     "Probe: grass - heading %.1f pitch %.1f, camera %.0f %.0f %.0f; under the Grass node %u children, %u patches %s farthest "
 	                     "%.0f, with the hidden bit %u %s; drawn in %s %u %s farthest %.0f; qpc %llu, %s",
 	                     static_cast<double>(pass.yaw), static_cast<double>(pass.pitch), static_cast<double>(pass.camera[0]),
 	                     static_cast<double>(pass.camera[1]), static_cast<double>(pass.camera[2]), pass.groups, pass.existing.total, existing,

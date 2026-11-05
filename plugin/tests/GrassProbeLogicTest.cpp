@@ -120,7 +120,7 @@ void TestFormat() {
 	const int written = gr::Format(pass, 123456789ull, "21:15:30.123", line, sizeof(line));
 	Check(written > 0 && static_cast<std::size_t>(written) < sizeof(line), "fits");
 	Check(std::string(line) ==
-	          "Probe: grass - heading -33.2 pitch 4.5, camera 100 -200 300; under the Grass node 3 groups, 4 patches [1 0 2 0 0 0 1 0] farthest "
+	          "Probe: grass - heading -33.2 pitch 4.5, camera 100 -200 300; under the Grass node 3 children, 4 patches [1 0 2 0 0 0 1 0] farthest "
 	          "6500, with the hidden bit 1 [0 0 0 0 0 0 1 0]; drawn in the pass 2 [1 0 1 0 0 0 0 0] farthest 2500; qpc 123456789, 21:15:30.123",
 	      "the line of a single-pass frame");
 	pass.perEyeData = false;

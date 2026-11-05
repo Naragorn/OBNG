@@ -19,8 +19,10 @@ extern bool g_grassProbeOn;
 void InstallGrassProbe(LogFn log);
 
 // The route's detours call this for every geometry they draw while the
-// probe is on.
-void GrassProbeNoteDraw(UInt32 geometry);
+// probe is on; worldViewport says the device's viewport is eye 0's (a draw
+// of the world pass), or that no eye data is set and the draw cannot be
+// told apart.
+void GrassProbeNoteDraw(UInt32 geometry, bool worldViewport);
 
 // The route calls this when the eye data of a new single-pass frame is set:
 // the draws counted since the last call are the pass before it.

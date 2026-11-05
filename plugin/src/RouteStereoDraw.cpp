@@ -503,9 +503,6 @@ struct RecordingShaderPort {
 UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry, UInt32 data, UInt32 skin, UInt32 world, UInt32 worldBound,
                                      UInt32 record) {
 	const RoutedDrawScope routed{self};
-	if (g_grassProbeOn) {
-		GrassProbeNoteDraw(geometry);
-	}
 	whole_engine::EnginePorts ports{static_cast<whole_engine::NiDX9RendererView*>(self),
 	                                reinterpret_cast<whole_engine::ShaderInterfaceCastFn>(whole_engine::kShaderInterfaceCastAddress)};
 	ReapplySeen seen_;
@@ -516,6 +513,9 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
 	bool outside = false;
 	eye::Viewport seen;
 	const eye::EyeData* eyes = EyesForDraw(eyePort, &outside, &seen);
+	if (g_grassProbeOn) {
+		GrassProbeNoteDraw(geometry, eyes != nullptr || !g_eyesSet);
+	}
 	EngineEyeSwitch eyeSwitch{&eyePort, &counters, eyes, eyes != nullptr ? 0.0f : g_settings.stereoTestEyeShift};
 	eyeSwitch.viewportOnly = g_settings.stereoFollowers && (eyes != nullptr || (!outside && TestMode())) && FollowsCamera(geometry);
 	NoteFollower(eyeSwitch.viewportOnly, geometry);
@@ -540,9 +540,6 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
 
 UInt32 __fastcall RouteDrawSkinned(void* self, void* /*edx*/, UInt32 geometry, UInt32 data, UInt32 skin, UInt32 world, UInt32 worldBound) {
 	const RoutedDrawScope routed{self};
-	if (g_grassProbeOn) {
-		GrassProbeNoteDraw(geometry);
-	}
 	eye::SwitchCounters counters;
 	ReapplySeen seen_;
 	SkinnedEnginePorts ports{static_cast<skinned_engine::NiDX9RendererView*>(self), nullptr, &seen_};
@@ -551,6 +548,9 @@ UInt32 __fastcall RouteDrawSkinned(void* self, void* /*edx*/, UInt32 geometry, U
 	bool outside = false;
 	eye::Viewport seen;
 	const eye::EyeData* eyes = EyesForDraw(eyePort, &outside, &seen);
+	if (g_grassProbeOn) {
+		GrassProbeNoteDraw(geometry, eyes != nullptr || !g_eyesSet);
+	}
 	EngineEyeSwitch eyeSwitch{&eyePort, &counters, eyes, eyes != nullptr ? 0.0f : g_settings.stereoTestEyeShift};
 	eyeSwitch.viewportOnly = g_settings.stereoFollowers && (eyes != nullptr || (!outside && TestMode())) && FollowsCamera(geometry);
 	NoteFollower(eyeSwitch.viewportOnly, geometry);
@@ -766,9 +766,6 @@ static_assert(strips_direct::DrawTriStripsDirectPorts<StripsDirectEnginePorts>, 
 template <class Ports, class Run>
 UInt32 RouteDirect(void* self, UInt32 geometry, Run&& run, std::uint64_t route::Stats::*counter) {
 	const RoutedDrawScope routed{self};
-	if (g_grassProbeOn) {
-		GrassProbeNoteDraw(geometry);
-	}
 	eye::SwitchCounters counters;
 	SwitchTicks ticks;
 	DirectContext context;
@@ -778,6 +775,9 @@ UInt32 RouteDirect(void* self, UInt32 geometry, Run&& run, std::uint64_t route::
 	bool outside = false;
 	eye::Viewport seen;
 	const eye::EyeData* eyes = EyesForDraw(eyePort, &outside, &seen);
+	if (g_grassProbeOn) {
+		GrassProbeNoteDraw(geometry, eyes != nullptr || !g_eyesSet);
+	}
 	EngineEyeSwitch eyeSwitch{&eyePort, &counters, eyes, eyes != nullptr ? 0.0f : g_settings.stereoTestEyeShift};
 	eyeSwitch.viewportOnly = g_settings.stereoFollowers && (eyes != nullptr || (!outside && TestMode())) && FollowsCamera(geometry);
 	NoteFollower(eyeSwitch.viewportOnly, geometry);

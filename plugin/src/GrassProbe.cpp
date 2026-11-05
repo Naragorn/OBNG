@@ -45,6 +45,12 @@ constexpr std::uint64_t kWindowMs = 100;
 
 LogFn g_log = nullptr;
 gr::Pass g_pass;       // the draws since the last boundary
+// The world pass's camera, taken at a draw inside eye 0's viewport: at the
+// boundary itself the renderer holds whatever pass came last (the interface's
+// camera at the origin, run obng-grass-turn-single/20261105-205351).
+bool g_cameraKnown = false;
+float g_view[16] = {};
+float g_origin[3] = {};
 gr::Writer g_writer;
 std::uint64_t g_lastBoundaryMs = 0;
 std::uint64_t g_lastEyeBoundaryMs = 0;
@@ -59,12 +65,27 @@ std::uint64_t NowMs() {
 	return GetTickCount64();
 }
 
-// The distance of an object's world bound's centre from the pass camera.
-float DistanceOf(UInt32 object) {
-	const float x = ReadAt<float>(object + kObjectBoundOffset) - ReadAt<float>(kOriginGlobal);
-	const float y = ReadAt<float>(object + kObjectBoundOffset + 4) - ReadAt<float>(kOriginGlobal + 4);
-	const float z = ReadAt<float>(object + kObjectBoundOffset + 8) - ReadAt<float>(kOriginGlobal + 8);
+// The distance of an object's world bound's centre from a camera position.
+float DistanceOf(UInt32 object, const float camera[3]) {
+	const float x = ReadAt<float>(object + kObjectBoundOffset) - camera[0];
+	const float y = ReadAt<float>(object + kObjectBoundOffset + 4) - camera[1];
+	const float z = ReadAt<float>(object + kObjectBoundOffset + 8) - camera[2];
 	return std::sqrt(x * x + y * y + z * z);
+}
+
+// Keeps the camera of the pass that is being drawn (the renderer's view
+// matrix and the origin global), once per pass.
+void TakeCamera() {
+	if (g_cameraKnown) {
+		return;
+	}
+	const UInt32 renderer = ReadAt<UInt32>(kRendererGlobal);
+	if (renderer == 0) {
+		return;
+	}
+	std::memcpy(g_view, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(renderer + kRendererViewOffset)), sizeof(g_view));
+	std::memcpy(g_origin, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(kOriginGlobal)), sizeof(g_origin));
+	g_cameraKnown = true;
 }
 
 // Whether the object's class name (its vtable's RTTI) ends in "Node" - the
@@ -109,7 +130,7 @@ UInt32 ForChildren(UInt32 node, Visit&& visit) {
 }
 
 void CountPatch(UInt32 patch, bool groupHidden, gr::Pass& pass) {
-	const float distance = DistanceOf(patch);
+	const float distance = DistanceOf(patch, pass.camera);
 	pass.existing.Add(distance);
 	if (groupHidden || (ReadAt<UInt16>(patch + kObjectFlagsOffset) & 1u) != 0) {
 		pass.hidden.Add(distance);
@@ -122,23 +143,24 @@ void Boundary(bool perEyeData) {
 	const std::uint64_t now = NowMs();
 	g_lastBoundaryMs = now;
 	const UInt32 grassNode = ReadAt<UInt32>(kGrassNodeGlobal);
-	const UInt32 renderer = ReadAt<UInt32>(kRendererGlobal);
-	if (grassNode == 0 || renderer == 0) {
+	gr::Pass pass = g_pass;
+	const bool cameraKnown = g_cameraKnown;
+	g_pass = gr::Pass{};
+	g_cameraKnown = false;
+	if (grassNode == 0) {
 		if (!g_noGrassNodeLogged) {
 			g_noGrassNodeLogged = true;
-			g_log("Probe: grass - no Grass node or no renderer yet; lines follow when there are");
+			g_log("Probe: grass - no Grass node yet; lines follow when there is one");
 		}
-		g_pass = gr::Pass{};
 		return;
 	}
-	gr::Pass pass = g_pass;
-	g_pass = gr::Pass{};
+	if (!cameraKnown) {
+		return;  // no world draw since the last boundary: nothing to say about a pass
+	}
 	pass.perEyeData = perEyeData;
-	float view[16];
-	std::memcpy(view, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(renderer + kRendererViewOffset)), sizeof(view));
-	pass.yaw = gr::YawDegrees(view);
-	pass.pitch = gr::PitchDegrees(view);
-	std::memcpy(pass.camera, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(kOriginGlobal)), sizeof(pass.camera));
+	pass.yaw = gr::YawDegrees(g_view);
+	pass.pitch = gr::PitchDegrees(g_view);
+	std::memcpy(pass.camera, g_origin, sizeof(pass.camera));
 	pass.groups = ForChildren(grassNode, [&pass](UInt32 child) {
 		const bool hidden = (ReadAt<UInt16>(child + kObjectFlagsOffset) & 1u) != 0;
 		if (IsNode(child)) {
@@ -171,13 +193,16 @@ void InstallGrassProbe(LogFn log) {
 	    "seconds): the patches under the Grass node, those with the hidden bit and those drawn, in bands of 1000 units from the camera");
 }
 
-void GrassProbeNoteDraw(UInt32 geometry) {
+void GrassProbeNoteDraw(UInt32 geometry, bool worldViewport) {
+	if (worldViewport) {
+		TakeCamera();
+	}
 	const UInt32 grassNode = ReadAt<UInt32>(kGrassNodeGlobal);
-	if (grassNode != 0 && geometry != 0) {
+	if (worldViewport && grassNode != 0 && geometry != 0) {
 		UInt32 object = geometry;
 		for (UInt32 step = 0; step < kAncestorsWalked && object != 0; ++step) {
 			if (object == grassNode) {
-				g_pass.drawn.Add(DistanceOf(geometry));
+				g_pass.drawn.Add(DistanceOf(geometry, g_origin));
 				break;
 			}
 			object = ReadAt<UInt32>(object + kObjectParentOffset);
