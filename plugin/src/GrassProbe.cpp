@@ -179,7 +179,7 @@ void Boundary(bool perEyeData) {
 	std::snprintf(clock, sizeof(clock), "%02u:%02u:%02u.%03u", local.wHour, local.wMinute, local.wSecond, local.wMilliseconds);
 	LARGE_INTEGER qpc{};
 	QueryPerformanceCounter(&qpc);
-	char line[600];
+	char line[1100];
 	gr::Format(pass, static_cast<std::uint64_t>(qpc.QuadPart), clock, line, sizeof(line));
 	g_log("%s", line);
 }
@@ -212,6 +212,16 @@ void GrassProbeNoteDraw(UInt32 geometry, bool worldViewport) {
 	const std::uint64_t now = NowMs();
 	if (now - g_lastEyeBoundaryMs > 4 * kWindowMs && now - g_lastBoundaryMs >= kWindowMs) {
 		Boundary(false);
+	}
+}
+
+void GrassProbeNoteFade(const float alphaParam[4], const float clipRows[16], const float* instanceRegisters, int instances, float p11, float p22) {
+	for (int i = 0; i < instances; ++i) {
+		const float* p = instanceRegisters + i * 4;
+		if (p[0] == 0.0f && p[1] == 0.0f && p[2] == 0.0f) {
+			continue;
+		}
+		g_pass.fade.Add(gr::ShaderFade(alphaParam, clipRows, p, p11, p22));
 	}
 }
 

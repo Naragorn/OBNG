@@ -24,6 +24,16 @@ void InstallGrassProbe(LogFn log);
 // told apart.
 void GrassProbeNoteDraw(UInt32 geometry, bool worldViewport);
 
+// The route calls this for a grass draw of the world pass with the device's
+// constants at the draw: AlphaParam c5, the clip rows c9..c12, the instance
+// registers c20.. (`instances` of them, four floats each, xyz the blade's
+// position) and the projection's two scales. The pass's line then carries
+// the shader's fade by distance and part of the view (GrassProbeLogic.h
+// ShaderFade). A register of zeros is skipped (never written); one left
+// from an earlier draw is still a blade's position and a fair sample of
+// what the shader makes of it.
+void GrassProbeNoteFade(const float alphaParam[4], const float clipRows[16], const float* instanceRegisters, int instances, float p11, float p22);
+
 // The route calls this when the eye data of a new single-pass frame is set:
 // the draws counted since the last call are the pass before it.
 void GrassProbePassBoundary();

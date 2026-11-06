@@ -923,6 +923,33 @@ struct StripsDirectEnginePorts : DirectEngineBase {
 };
 static_assert(strips_direct::DrawTriStripsDirectPorts<StripsDirectEnginePorts>, "the engine ports meet the rebuild's concept");
 
+// The grass probe's fade sample ([Probe] Grass): for a draw of the world
+// pass whose shader is the grass's (TallGrassShader, vtable 0x00A9202C -
+// read: its Complete Object Locator names .?AVTallGrassShader@@), the
+// constants the device holds - AlphaParam c5, the clip rows c9..c12, the
+// instances' positions c20..c42 (read in GRASS20xx.vso) - and the
+// projection's _11 and _22 (renderer +0x9C0, 0x00762640.md).
+constexpr std::uint32_t kTallGrassShaderVtable = 0x00A9202C;
+constexpr std::uint32_t kRendererProjectionOffset = 0x9C0;
+constexpr int kGrassInstanceRegister = 20;   // InstanceData: the grass map's entry c20 x 23 (the eye constants trace, run 20261106-083722)
+constexpr int kGrassInstanceRegisters = 23;
+void NoteGrassFade(const EyeEnginePort& port, std::uint32_t geometry, bool worldViewport) {
+	if (!worldViewport || geometry == 0) {
+		return;
+	}
+	const std::uint32_t shader = ReadAt<std::uint32_t>(geometry + kGeometryShaderOffset);
+	if (shader == 0 || ReadAt<std::uint32_t>(shader) != kTallGrassShaderVtable) {
+		return;
+	}
+	float c[eye::kCarriedRegisters * 4];
+	if (!port.ReadRegisters(c)) {
+		return;
+	}
+	const float p11 = ReadAt<float>(port.renderer + kRendererProjectionOffset);
+	const float p22 = ReadAt<float>(port.renderer + kRendererProjectionOffset + 5 * sizeof(float));
+	GrassProbeNoteFade(c + 5 * 4, c + 9 * 4, c + kGrassInstanceRegister * 4, kGrassInstanceRegisters, p11, p22);
+}
+
 // The two direct detours share everything but the rebuild they call.
 template <class Ports, class Run>
 UInt32 RouteDirect(void* self, UInt32 geometry, Run&& run, std::uint64_t route::Stats::*counter) {
@@ -938,6 +965,7 @@ UInt32 RouteDirect(void* self, UInt32 geometry, Run&& run, std::uint64_t route::
 	const eye::EyeData* eyes = EyesForDraw(eyePort, &outside, &seen);
 	if (g_grassProbeOn) {
 		GrassProbeNoteDraw(geometry, eyes != nullptr || !g_eyesSet);
+		NoteGrassFade(eyePort, geometry, eyes != nullptr || !g_eyesSet);
 	}
 	EngineEyeSwitch eyeSwitch{&eyePort, &counters, eyes, eyes != nullptr ? 0.0f : g_settings.stereoTestEyeShift};
 	eyeSwitch.viewportOnly = g_settings.stereoFollowers && (eyes != nullptr || (!outside && TestMode())) && FollowsCamera(geometry);

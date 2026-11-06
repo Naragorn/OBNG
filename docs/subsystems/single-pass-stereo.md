@@ -733,25 +733,46 @@ the meadow at Weynon Priory (above). Whether Nadi's ground on Windows, with
 its mod list, is right now is not measured; the same two scenarios run on
 Windows would measure it.
 
-**The grass's reach (read, not a fault of the single pass).** All 24 grass
-vertex shaders (GRASS2020..2043.vso, shader package 019, disassembled with
-vkd3d-compiler) fade the blade by the length of its clip-space position:
-`dp4 r2.w, r0, r0` on r0 = ModelViewProj x position (c9..c12), then
-`(length - c5.x) / c5.y` and `(length - c5.z) / c5.w` against AlphaParam
-c5. That length is sqrt((x/tanW)^2 + (y/tanH)^2 + z^2 + w^2) of the
-view-space position: it depends on the projection and on where in the
-picture the blade stands. Derived, with c5 taken as distances (unverified:
-its values were not read): in the middle of the view the length is 1.41
-times the distance, at the picture's horizontal edge sqrt(3 / (1 + tanW^2))
-times - 1.22 for the game's 75-degree monitor frustum, 1.01 for the Windows
-headset's frustum (tangent 1.402, OBVR.log). So with fGrassEndDistance 8000
-grass ends about 5 660 units away straight ahead and about 7 950 at the
-edge of the view, and a clump in between comes and goes as the head turns.
-The same holds in the dual pass, which draws with the same frustum
-(derived; not measured in either mode). Fixing it means patching the grass
-vertex shaders to a distance that does not depend on the projection;
-FoliageAA already recognises and hooks them.
+**The grass's reach (read and measured; not a fault of the single pass).**
+All 24 grass vertex shaders (GRASS2020..2043.vso, shader package 019,
+disassembled with vkd3d-compiler) fade the blade by the length of its
+clip-space position: `dp4 r2.w, r0, r0` on r0 = ModelViewProj x position
+(c9..c12), then `(length - c5.x) / c5.y` and `(length - c5.z) / c5.w`
+against AlphaParam c5. That length is sqrt((x/tanW)^2 + (y/tanH)^2 + z^2 +
+w^2) of the view-space position: it depends on the projection and on where
+in the picture the blade stands - 1.41 times the distance in the middle of
+the view, sqrt(3 / (1 + tanW^2)) times at its horizontal edge (1.22 for the
+game's 75-degree monitor frustum, 1.14 for the Linux harness's tangent
+1.152, 1.01 for the Windows headset's 1.402; derived).
 
+Measured with the grass probe (`[Probe] Grass`, GrassProbeLogic.h
+ShaderFade: for every grass draw of the world pass the device's c5,
+c9..c12 and the blade positions c20..c42 read back, the shader's fade
+computed from them, sorted by the distance from the camera and the third
+of the picture's half-width the blade stands in), Nadi's save 15 at the
+shore of Vilverin, the head turned all around, fGrassEndDistance 8000 /
+start 7000, the mean fade (1 drawn, 0 gone) over the standing marks:
+
+| distance | single pass: middle / between / outer third | dual pass: middle / between / outer third |
+|---|---|---|
+| 2000-5000 | 1.00 / 1.00 / 1.00 | 1.00 / 1.00 / 1.00 |
+| 5000-6000 | **0.57** (20) / **1.00** (28) / - | **0.53** (1496) / **0.99** (836) / - |
+| 6000-7000 | 0.00 (6) / - / 0.00 (6) | 0.00 (176) / - / 0.00 (304) |
+| beyond | 0.00 | 0.00 |
+
+(samples in brackets; runs obng-sewer-exit-single/20261106-111726 and
+obng-sewer-exit-dual/20261106-111906). Between 5000 and 6000 units a blade
+in the middle of the view is half gone on average while one further out in
+the picture is fully drawn, in both modes alike: a clump there comes and
+goes as the head turns, and the dual pass has it as the single pass has.
+These are the shader's numbers computed from the device's constants, not
+pixels counted; an attempt to count the clumps in the eye pictures (one
+head direction's picture turned into another's view) was too coarse to
+tell (four of seven strips in the predicted direction). Derived for the
+Windows headset's wider frustum: grass ends about 5 660 units away straight
+ahead and about 7 950 at the edge of the view. Why Nadi saw it only in the
+single pass is not explained by this. Fixing it means the grass vertex
+shaders fading by a distance that does not depend on the projection.
 
 **The player's body as a wedge (open, whose is not known).** In the test
 hall the player's upper body stands in both eye pictures as a pale shape

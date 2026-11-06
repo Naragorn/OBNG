@@ -127,11 +127,82 @@ void TestFormat() {
 	gr::Format(pass, 1ull, "", line, sizeof(line));
 	Check(std::string(line).find("drawn in the last 100 ms (no eye data: not a single-pass frame) 2 [") != std::string::npos,
 	      "without eye data the draws are a time window's");
+	Check(std::string(line).find("the shader's fade") == std::string::npos, "no fade sample, no fade text");
+	gr::Fade sample;
+	sample.distance = 5200.0f;
+	sample.fade = 0.5f;
+	sample.ndcX = -0.9f;
+	sample.inView = true;
+	pass.fade.Add(sample);
+	char longLine[1100];
+	gr::Format(pass, 1ull, "", longLine, sizeof(longLine));
+	Check(std::string(longLine).find("farthest 2500; the shader's fade at the blade positions of the grass draws (samples:mean per band) middle [- - - - - - - -] "
+	                                 "between [- - - - - - - -] edge [- - - - - 1:0.50 - -]; qpc 1, ") != std::string::npos,
+	      "with samples the table stands before the clock");
+}
+
+void TestShaderFade() {
+	Section("ShaderFade: the grass vertex shaders' fade from the device's constants, as GRASS20xx.vso computes it");
+	// A projection with half-width tangent 1.4 and half-height 1.1, the
+	// view the identity: clip = (x / 1.4, y / 1.1, z, z) for a far plane far away.
+	const float rows[16] = {1.0f / 1.4f, 0, 0, 0, 0, 1.0f / 1.1f, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0};
+	const float alpha[4] = {0.0f, 1.0f, 7000.0f, 1000.0f};  // near fade 0..1, far fade 7000..8000
+	const float p11 = 1.0f / 1.4f;
+	const float p22 = 1.0f / 1.1f;
+	const float ahead[3] = {0.0f, 0.0f, 5000.0f};
+	gr::Fade f = gr::ShaderFade(alpha, rows, ahead, p11, p22);
+	Check(Near(f.distance, 5000.0f, 0.5f) && Near(f.length, 7071.07f, 0.5f), "straight ahead the length is 1.41 times the distance");
+	Check(Near(f.fade, 1.0f - 0.07107f, 0.001f) && Near(f.ndcX, 0.0f) && Near(f.ndcY, 0.0f), "5000 away ahead: fading already");
+	const float aheadFar[3] = {0.0f, 0.0f, 5700.0f};
+	Check(gr::ShaderFade(alpha, rows, aheadFar, p11, p22).fade == 0.0f, "5700 away ahead: gone");
+	// The same distance at the picture's horizontal edge: x = 1.4 z.
+	const float z = 5700.0f / std::sqrt(1.0f + 1.4f * 1.4f);
+	const float edge[3] = {1.4f * z, 0.0f, z};
+	f = gr::ShaderFade(alpha, rows, edge, p11, p22);
+	Check(Near(f.distance, 5700.0f, 0.5f) && Near(f.ndcX, 1.0f, 0.001f), "the edge of the view at the same distance");
+	Check(Near(f.length, z * std::sqrt(3.0f), 0.5f) && f.fade == 1.0f, "there the length is 1.007 times the distance: fully drawn");
+	const float near[3] = {0.0f, 0.0f, 0.25f};
+	f = gr::ShaderFade(alpha, rows, near, p11, p22);
+	Check(Near(f.fade, 0.3536f, 0.001f), "the near fade: length 0.354 of the 0..1 ramp");
+	const float behind[3] = {0.0f, 0.0f, -100.0f};
+	f = gr::ShaderFade(alpha, rows, behind, p11, p22);
+	Check(!f.inView, "behind the camera: not in the view");
+	const float outside[3] = {3.0f * 1000.0f, 0.0f, 1000.0f};
+	// Just inside the edge (on it the rounding decides): x = 1.35 z.
+	const float zInside = 5565.0f / std::sqrt(1.0f + 1.35f * 1.35f);
+	const float nearEdge[3] = {1.35f * zInside, 0.0f, zInside};
+	Check(!gr::ShaderFade(alpha, rows, outside, p11, p22).inView && gr::ShaderFade(alpha, rows, nearEdge, p11, p22).inView &&
+	          gr::ShaderFade(alpha, rows, ahead, p11, p22).inView,
+	      "beyond the picture's edge: not in the view; near the edge and in the middle it is");
+	const float zeroRange[4] = {0.0f, 0.0f, 7000.0f, 0.0f};
+	const float closer[3] = {0.0f, 0.0f, 4000.0f};  // length 5657, before the far start
+	f = gr::ShaderFade(zeroRange, rows, closer, p11, p22);
+	Check(f.fade == 1.0f, "a zero range does not divide: before the far start the blade is drawn");
+	f = gr::ShaderFade(zeroRange, rows, aheadFar, p11, p22);
+	Check(f.fade == 0.0f, "and beyond it not");
+
+	Section("FadeTable: the samples by distance band and part of the view");
+	gr::FadeTable table;
+	Check(table.total == 0, "empty");
+	table.Add(gr::ShaderFade(alpha, rows, ahead, p11, p22));    // band 5, the middle
+	table.Add(gr::ShaderFade(alpha, rows, aheadFar, p11, p22)); // band 5, the middle
+	table.Add(gr::ShaderFade(alpha, rows, nearEdge, p11, p22)); // band 5, the edge
+	table.Add(gr::ShaderFade(alpha, rows, behind, p11, p22));   // not counted
+	Check(table.total == 3 && table.cell[0][5].count == 2 && Near(table.cell[0][5].sum, 0.92893f, 0.001f) && table.cell[2][5].count == 1 &&
+	          table.cell[2][5].sum == 1.0f && table.cell[1][5].count == 0,
+	      "two in the middle, one at the edge, the one behind left out");
+	Check(gr::ViewPart(0.0f) == 0 && gr::ViewPart(-0.33f) == 0 && gr::ViewPart(0.34f) == 1 && gr::ViewPart(-0.66f) == 1 &&
+	          gr::ViewPart(0.67f) == 2 && gr::ViewPart(1.0f) == 2,
+	      "the view in thirds of its half-width");
+	char text[400];
+	gr::FormatFade(table, text, sizeof(text));
+	Check(std::string(text) == "middle [- - - - - 2:0.46 - -] between [- - - - - - - -] edge [- - - - - 1:1.00 - -]", "the table's text");
 }
 
 }  // namespace
 
 int main() {
+	TestShaderFade();
 	TestBands();
 	TestHeading();
 	TestWriter();

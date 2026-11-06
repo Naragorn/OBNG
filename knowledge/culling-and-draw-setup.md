@@ -679,8 +679,14 @@ times the distance, at the horizontal edge sqrt(3 / (1 + tanW^2)) times
 (1.22 at the game's 75 degrees, 1.01 at a headset frustum of tangent 1.4),
 so in a wide frustum grass reaches about 40 % further at the edge of the
 view than in its middle and clumps in between come and go as the view
-turns. **Unverified**: that c5 holds fGrassStartFadeDistance /
-fGrassEndDistance as distances (its values were not read), and the effect's
-size in the game (not measured). The tree leaves' vertex shaders
+turns. **Measured** (OBNG's grass probe: the device's c5, c9..c12 and the blade
+positions c20..c42 read back at every grass draw and the shader's fade
+computed from them; runs `obng-sewer-exit-single/20261106-111726` and
+`obng-sewer-exit-dual/20261106-111906`, frustum tangent 1.152,
+fGrassEndDistance 8000 / start 7000): between 5000 and 6000 units from the
+camera the mean fade is 0.53 to 0.57 in the middle third of the picture and
+0.99 to 1.00 in the third beside it; 1.00 everywhere nearer, 0.00
+everywhere beyond 6000 - the single pass and the dual pass alike.
+**Unverified**: c5's four values themselves were not printed. The tree leaves' vertex shaders
 (`STLEAF000..003.vso`) take the same four-component length of a vector;
 what it feeds there is unread.
