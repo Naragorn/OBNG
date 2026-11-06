@@ -712,6 +712,27 @@ not measured there. The cheaper form is known and not built: a shadow of
 the registers kept from the device's SetVertexShaderConstantF (no reads),
 checked against the device now and then.
 
+**Outdoors after the tutorial dungeon (Nadi's save 15, 2026-11-06).** The
+shore at Vilverin opposite the sewer exit, Unique Landscapes active, grass
+and layered ground at the feet; the save copied as OBNGSewerExit, the head
+turned all around in 45-degree steps, then ten seconds walked
+(tools/hand-scripts/obng-sewer-exit-single.txt / -dual.txt, the Windows
+grass distances). Three runs: the single pass with the carry
+(obng-sewer-exit-single/20261106-092234), without it (-092428) and the dual
+pass (obng-sewer-exit-dual/20261106-092609). Measured: at the eight
+standing marks each eye picture of the single pass with the carry differs
+from the dual pass's by under one grey level a pixel on the ground half
+(0.02 to 0.93), at most 0.05 % of the pixels by more than 40, and the shift
+between the eyes per band of rows (tools/eye-shift.py) is the dual pass's
+at every mark; no draw without a register of its own. **The place does not
+tell the fix from the fault, though:** the run without the carry is as
+equal to the dual pass, although its trace has the terrain draws without a
+register of their own ("Block (3, 0)", three in the sampled frames) - they
+do not land in these pictures. The place where the fault shows on Linux is
+the meadow at Weynon Priory (above). Whether Nadi's ground on Windows, with
+its mod list, is right now is not measured; the same two scenarios run on
+Windows would measure it.
+
 **The grass's reach (read, not a fault of the single pass).** All 24 grass
 vertex shaders (GRASS2020..2043.vso, shader package 019, disassembled with
 vkd3d-compiler) fade the blade by the length of its clip-space position:
