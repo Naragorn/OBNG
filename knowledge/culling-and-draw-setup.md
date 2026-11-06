@@ -690,3 +690,17 @@ everywhere beyond 6000 - the single pass and the dual pass alike.
 **Unverified**: c5's four values themselves were not printed. The tree leaves' vertex shaders
 (`STLEAF000..003.vso`) take the same four-component length of a vector;
 what it feeds there is unread.
+
+### The grass's instance data runs far beyond its constant-map entry (2026-11-06)
+
+**Measured** (run `obng-single-pass-meadow/20261106-120731`): a value
+written to vertex register c245 right after a grass vertex shader was bound
+was gone at the grass draw - the register held (56802.4, 88956.4, 627.97,
+1.42), an instance's position and packed fourth float. The grass shader's
+constant table gives InstanceData two registers from c20 and the shader's
+constant map lists `c20 x 23`; the engine's upload of the instances goes
+well past both (**unread**: where it is made and how many instances a draw
+carries). Twelve of the 24 grass vertex shaders name every float register
+below c20, table and literals together. A grass vertex shader has no
+register to spare; OBNG's grass fade fix takes what it needs from the rows
+of ModelViewProj instead (`docs/subsystems/grass-fade.md`).

@@ -3,6 +3,7 @@
 #include "Check.h"
 #include "PluginEntry.h"
 
+#include <cmath>
 #include <cstdarg>
 #include <cstdio>
 #include <string>
@@ -37,6 +38,9 @@ struct Fake {
 	uint32_t stereoMade = 4;
 	int timerStarts = 0;
 	bool timerStarted = true;
+	int fixInstalls = 0;
+	obng::plugin::FixSettings fixInstalled;
+	bool fixesSetUp = true;
 	std::vector<std::string> calls;  // the side effects in the order Load made them
 	std::vector<std::string> lines;
 
@@ -117,9 +121,15 @@ uint32_t FakeInstallProbes(const ShadowSettings& settings) {
 	return g_fake->probesMade;
 }
 
+bool FakeInstallFixes(const obng::plugin::FixSettings& settings) {
+	++g_fake->fixInstalls;
+	g_fake->fixInstalled = settings;
+	return g_fake->fixesSetUp;
+}
+
 const Host kHost{&FakeReset,          &FakeLog,          &FakeReadSettings, &FakeInitRecorder,
                  &FakeInstall,        &FakeInstallMenu,  &FakeInstallRangeWalk, &FakeInstallRoute,
-                 &FakeStartSummaryTimer, &FakeInstallProbes, &FakeInstallStereo};
+                 &FakeStartSummaryTimer, &FakeInstallProbes, &FakeInstallStereo, &FakeInstallFixes};
 
 // Every TimeInfo and LoadingMenu shadow off.
 ShadowSettings NoShadow() {
@@ -514,7 +524,64 @@ void TestLoadPartialFailure() {
 
 }  // namespace
 
+void TestLoadFixes() {
+	Section("Load: the grass fade fix is on by default, with the scale Load stands on");
+	{
+		Fake fake;
+		fake.iniExists = false;
+		g_fake = &fake;
+		ResetForTest();
+		Check(Load(Game(), kHost), "loads");
+		Check(fake.fixInstalls == 1 && fake.fixInstalled.grassFade && !fake.fixInstalled.grassFadeIniReach,
+		      "the installer is called once with the defaults");
+		Check(fake.Logged("Fix: the grass fades by its distance from the camera, reaching as far as the game has it straight ahead"),
+		      "said so, with the reach");
+	}
+	Section("Load: [Fix] GrassFade=0 leaves the game's shaders");
+	{
+		Fake fake;
+		fake.iniSettings.fix.grassFade = false;
+		g_fake = &fake;
+		ResetForTest();
+		Check(Load(Game(), kHost), "loads");
+		Check(fake.fixInstalls == 0 && fake.Logged("Fix: every switch is 0, nothing fixed"), "no installer call, said so");
+	}
+	Section("Load: the reach from the INI reaches the installer");
+	{
+		Fake fake;
+		fake.iniSettings.fix.grassFadeIniReach = true;
+		g_fake = &fake;
+		ResetForTest();
+		Check(Load(Game(), kHost), "loads");
+		Check(fake.fixInstalls == 1 && fake.fixInstalled.grassFadeIniReach && fake.Logged("reaching as far as the INI's distances say"),
+		      "the INI's reach");
+	}
+	Section("Load: fixes that could not be set up are said so");
+	{
+		Fake fake;
+		fake.fixesSetUp = false;
+		g_fake = &fake;
+		ResetForTest();
+		Check(Load(Game(), kHost), "loads anyway");
+		Check(fake.fixInstalls == 1 && fake.Logged("Fix: could not be set up - the game's grass shaders stay"), "the failure in the log");
+	}
+	Section("Load: the editor and another game version get no fix");
+	{
+		Fake fake;
+		g_fake = &fake;
+		ResetForTest();
+		ExtenderInterfaceHead editor = Game();
+		editor.isEditor = 1;
+		Load(editor, kHost);
+		ExtenderInterfaceHead other = Game();
+		other.oblivionVersion = 0x010101FF;
+		Load(other, kHost);
+		Check(fake.fixInstalls == 0, "no installer call");
+	}
+}
+
 int main() {
+	TestLoadFixes();
 	TestQuery();
 	TestLoadEditor();
 	TestLoadWrongVersion();

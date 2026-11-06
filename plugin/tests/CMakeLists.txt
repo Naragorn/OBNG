@@ -76,3 +76,15 @@ add_executable(EyeConstantsTraceLogicTest EyeConstantsTraceLogicTest.cpp)
 target_include_directories(EyeConstantsTraceLogicTest PRIVATE ../src ../../tests)
 target_compile_options(EyeConstantsTraceLogicTest PRIVATE -Wall -Wextra -Werror)
 add_test(NAME EyeConstantsTraceLogicTest COMMAND EyeConstantsTraceLogicTest)
+
+add_executable(GrassFadePatchLogicTest GrassFadePatchLogicTest.cpp)
+target_include_directories(GrassFadePatchLogicTest PRIVATE ../src ../../tests)
+target_compile_options(GrassFadePatchLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME GrassFadePatchLogicTest COMMAND GrassFadePatchLogicTest)
+
+# Against the installed game's shader package; skipped (77) where there is none.
+add_executable(GrassFadePatchPackageTest GrassFadePatchPackageTest.cpp)
+target_include_directories(GrassFadePatchPackageTest PRIVATE ../src ../../tests)
+target_compile_options(GrassFadePatchPackageTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME GrassFadePatchPackageTest COMMAND GrassFadePatchPackageTest)
+set_tests_properties(GrassFadePatchPackageTest PROPERTIES SKIP_RETURN_CODE 77)

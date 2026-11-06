@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "FixSettings.h"
 #include "RouteSettings.h"
 #include "ShadowTimeInfo.h"
 
@@ -38,6 +39,7 @@ constexpr uint32_t kOblivionVersion_1_2_416 = 0x010201A0;
 struct Settings {
 	ShadowSettings shadow;  // [Shadow], [Probe] and [Log]
 	RouteSettings route;    // [Route]
+	FixSettings fix;        // [Fix]
 };
 
 struct Host {
@@ -62,6 +64,8 @@ struct Host {
 	uint32_t (*installProbes)(const ShadowSettings& settings);
 	// The stereo draw's route (RouteStereoDraw.cpp); returns how many detours were made.
 	uint32_t (*installRouteStereoDraw)(const RouteSettings& settings);
+	// The fixes (GrassFadeFix.cpp); false if they could not be set up.
+	bool (*installFixes)(const FixSettings& settings);
 };
 
 // How many counting detours the settings ask for: five hot functions of the

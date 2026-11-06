@@ -59,6 +59,16 @@ bool Load(const ExtenderInterfaceHead& xse, const Host& host) {
 		}
 		host.log("Route: %u of %u detours made", made, r.Asked());
 	}
+	const FixSettings& f = g_settings.fix;
+	if (!f.Asked()) {
+		host.log("Fix: every switch is 0, nothing fixed");
+	} else if (host.installFixes(f)) {
+		host.log("Fix: the grass fades by its distance from the camera, reaching %s (GrassFadePatchLogic.h); the shaders are replaced as the "
+		         "game binds them",
+		         f.grassFadeIniReach ? "as far as the INI's distances say" : "as far as the game has it straight ahead");
+	} else {
+		host.log("Fix: could not be set up - the game's grass shaders stay");
+	}
 	const uint32_t probesAsked = ProbesAskedFor(s);
 	if (probesAsked == 0 && !s.memoryProbe) {
 		host.log("Probes: off");

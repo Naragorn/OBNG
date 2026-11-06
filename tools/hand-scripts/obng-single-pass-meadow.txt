@@ -5,6 +5,7 @@
 #   tools/with-game-ini.sh Grass:fGrassEndDistance=8000.0000 Grass:fGrassStartFadeDistance=7000.0000 \
 #     Display:bShadowsOnGrass=1 -- tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-grass.ini \
 #     tools/hand-scripts/obng-single-pass-meadow.txt
+# The weather forced to Clear (00038EEE) so two runs can be compared picture by picture.
 # God mode and the combat AI off: a creature at the place killed the player in the first run
 # (20261106-082804, the pictures from mark y45 on grey).
 
@@ -18,6 +19,7 @@ console-at placed player.setpos x 53244
 console-at placed player.setpos y 82704
 console-at placed player.setpos z 320
 console-at placed set gamehour to 12
+console-at placed fw 38EEE
 console-at ready tgm
 console-at ready tcai
 

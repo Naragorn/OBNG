@@ -215,13 +215,14 @@ void GrassProbeNoteDraw(UInt32 geometry, bool worldViewport) {
 	}
 }
 
-void GrassProbeNoteFade(const float alphaParam[4], const float clipRows[16], const float* instanceRegisters, int instances, float p11, float p22) {
+void GrassProbeNoteFade(const float alphaParam[4], const float clipRows[16], const float* instanceRegisters, int instances, float p11, float p22,
+                        int twin) {
 	for (int i = 0; i < instances; ++i) {
 		const float* p = instanceRegisters + i * 4;
 		if (p[0] == 0.0f && p[1] == 0.0f && p[2] == 0.0f) {
 			continue;
 		}
-		g_pass.fade.Add(gr::ShaderFade(alphaParam, clipRows, p, p11, p22));
+		g_pass.fade.Add(gr::ShaderFade(alphaParam, clipRows, p, p11, p22, twin));
 	}
 }
 

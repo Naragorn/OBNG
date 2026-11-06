@@ -35,6 +35,7 @@
 #include "RouteStereoDrawLogic.h"
 #include "EntryDetour.h"
 #include "EyeConstantsTraceLogic.h"
+#include "GrassFadeFix.h"
 #include "GrassProbe.h"
 #include "Memory.h"
 #include "OcclusionProbe.h"
@@ -931,7 +932,11 @@ static_assert(strips_direct::DrawTriStripsDirectPorts<StripsDirectEnginePorts>, 
 // projection's _11 and _22 (renderer +0x9C0, 0x00762640.md).
 constexpr std::uint32_t kTallGrassShaderVtable = 0x00A9202C;
 constexpr std::uint32_t kRendererProjectionOffset = 0x9C0;
-constexpr int kGrassInstanceRegister = 20;   // InstanceData: the grass map's entry c20 x 23 (the eye constants trace, run 20261106-083722)
+// InstanceData: the grass map's entry c20 x 23 (the eye constants trace, run
+// 20261106-083722). The engine uploads instances beyond those 23 - c245 held
+// one's position (run obng-single-pass-meadow/20261106-120731); the 23 are a
+// sample.
+constexpr int kGrassInstanceRegister = 20;
 constexpr int kGrassInstanceRegisters = 23;
 void NoteGrassFade(const EyeEnginePort& port, std::uint32_t geometry, bool worldViewport) {
 	if (!worldViewport || geometry == 0) {
@@ -947,7 +952,7 @@ void NoteGrassFade(const EyeEnginePort& port, std::uint32_t geometry, bool world
 	}
 	const float p11 = ReadAt<float>(port.renderer + kRendererProjectionOffset);
 	const float p22 = ReadAt<float>(port.renderer + kRendererProjectionOffset + 5 * sizeof(float));
-	GrassProbeNoteFade(c + 5 * 4, c + 9 * 4, c + kGrassInstanceRegister * 4, kGrassInstanceRegisters, p11, p22);
+	GrassProbeNoteFade(c + 5 * 4, c + 9 * 4, c + kGrassInstanceRegister * 4, kGrassInstanceRegisters, p11, p22, GrassFadeFixBoundTwin());
 }
 
 // The two direct detours share everything but the rebuild they call.

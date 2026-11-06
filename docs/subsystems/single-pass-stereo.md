@@ -771,8 +771,9 @@ head direction's picture turned into another's view) was too coarse to
 tell (four of seven strips in the predicted direction). Derived for the
 Windows headset's wider frustum: grass ends about 5 660 units away straight
 ahead and about 7 950 at the edge of the view. Why Nadi saw it only in the
-single pass is not explained by this. Fixing it means the grass vertex
-shaders fading by a distance that does not depend on the projection.
+single pass is not explained by this. The fix - the grass vertex shaders
+fading by the distance to the camera - is `[Fix] GrassFade`,
+docs/subsystems/grass-fade.md.
 
 **The player's body as a wedge (open, whose is not known).** In the test
 hall the player's upper body stands in both eye pictures as a pale shape

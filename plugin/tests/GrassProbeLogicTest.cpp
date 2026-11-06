@@ -139,6 +139,11 @@ void TestFormat() {
 	Check(std::string(longLine).find("farthest 2500; the shader's fade at the blade positions of the grass draws (samples:mean per band) middle [- - - - - - - -] "
 	                                 "between [- - - - - - - -] edge [- - - - - 1:0.50 - -]; qpc 1, ") != std::string::npos,
 	      "with samples the table stands before the clock");
+	sample.scaled = true;
+	pass.fade.Add(sample);
+	gr::Format(pass, 1ull, "", longLine, sizeof(longLine));
+	Check(std::string(longLine).find("of the grass draws, 1 of 2 through the fade fix's twin (samples:mean per band) middle [") != std::string::npos,
+	      "samples of the fix's twin are said");
 }
 
 void TestShaderFade() {
@@ -181,6 +186,21 @@ void TestShaderFade() {
 	f = gr::ShaderFade(zeroRange, rows, aheadFar, p11, p22);
 	Check(f.fade == 0.0f, "and beyond it not");
 
+	Section("ShaderFade as the fade fix's twin: the length is sqrt(2) times the distance, wherever in the picture");
+	gr::Fade middle = gr::ShaderFade(alpha, rows, ahead, p11, p22, 2);
+	gr::Fade side = gr::ShaderFade(alpha, rows, nearEdge, p11, p22, 2);
+	Check(Near(middle.length, 1.41421356f * 5000.0f, 0.5f) && Near(side.length, 1.41421356f * 5565.0f, 0.5f),
+	      "sqrt(2) times the distance in the middle and near the edge");
+	Check(Near(middle.fade, 1.0f - 0.07107f, 0.001f), "the middle of the view fades as without the fix");
+	const float aheadSame[3] = {0.0f, 0.0f, 5565.0f};
+	Check(Near(side.fade, gr::ShaderFade(alpha, rows, aheadSame, p11, p22).fade, 0.001f) && Near(side.fade, 0.1299f, 0.001f) &&
+	          gr::ShaderFade(alpha, rows, nearEdge, p11, p22).fade == 1.0f,
+	      "5565 away near the edge: with the fix as faded as the game has it in the middle at that distance (0.13), without it fully drawn");
+	Check(Near(middle.distance, 5000.0f, 0.5f) && middle.inView, "distance and view are the same with and without");
+	Check(middle.scaled && !gr::ShaderFade(alpha, rows, ahead, p11, p22).scaled, "the sample says which shader it is of");
+	const gr::Fade iniReach = gr::ShaderFade(alpha, rows, nearEdge, p11, p22, 1);
+	Check(Near(iniReach.length, 5565.0f, 0.5f) && iniReach.fade == 1.0f && iniReach.scaled, "the INI's reach: the length is the distance");
+
 	Section("FadeTable: the samples by distance band and part of the view");
 	gr::FadeTable table;
 	Check(table.total == 0, "empty");
@@ -197,6 +217,10 @@ void TestShaderFade() {
 	char text[400];
 	gr::FormatFade(table, text, sizeof(text));
 	Check(std::string(text) == "middle [- - - - - 2:0.46 - -] between [- - - - - - - -] edge [- - - - - 1:1.00 - -]", "the table's text");
+	Check(table.scaled == 0, "none of them of the fix's twin");
+	table.Add(side);
+	Check(table.total == 4 && table.scaled == 1 && table.cell[2][5].count == 2 && Near(table.cell[2][5].sum, 1.1299f, 0.001f),
+	      "a sample of the twin is counted as such");
 }
 
 }  // namespace

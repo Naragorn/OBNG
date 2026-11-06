@@ -1,6 +1,8 @@
 // The DLL's exports and real side effects; the decisions live in PluginEntry
 // and ShadowLogic.
 
+#include "GrassFadeFix.h"
+#include "GrassFadePatchLogic.h"
 #include "OcclusionProbeLogic.h"
 #include "PluginEntry.h"
 #include "Probes.h"
@@ -143,6 +145,16 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	r.stereoParticles = GetPrivateProfileIntA("Route", "StereoParticles", 1, path) != 0;
 	r.stereoCarryConstants = GetPrivateProfileIntA("Route", "StereoCarryConstants", 1, path) != 0;
 	r.stereoTraceConstants = GetPrivateProfileIntA("Route", "StereoTraceConstants", 0, path) != 0;
+	obng::plugin::FixSettings& f = settings->fix;
+	f.grassFade = GetPrivateProfileIntA("Fix", "GrassFade", 1, path) != 0;
+	char fadeReach[32] = {};
+	GetPrivateProfileStringA("Fix", "GrassFadeReach", "game", fadeReach, sizeof(fadeReach), path);
+	bool fadeReachKnown = false;
+	f.grassFadeIniReach = obng::plugin::grass_fade::ReachFromIni(fadeReach, &fadeReachKnown) == obng::plugin::grass_fade::Reach::kIni;
+	if (!fadeReachKnown) {
+		Log("Settings: [Fix] GrassFadeReach=%s is neither game nor ini - game used", fadeReach);
+	}
+	Log("Settings: [Fix] GrassFade=%d GrassFadeReach=%s", f.grassFade ? 1 : 0, f.grassFadeIniReach ? "ini" : "game");
 	Log("Settings from %s: TimeInfoUpdate=%d TimeInfoInit=%d TimeInfoFreeze=%d TimeInfoUnfreeze=%d LoadingMenuTick=%d "
 	    "LoadingMenuCtor=%d RangeWalk=%d RangeWalkOrder=%s FpuControlWord=%d HavokPlanner=%d CallCounters=%d PassSteps=%d PackCache=%d ConstantUploads=%d ViewConstants=%d DrawEntries=%d Occlusion=%d OcclusionEvery=%u UnroutedDraws=%d Grass=%d Memory=%d MismatchLines=%u SummaryEverySeconds=%u "
 	    "SummaryTimer=%d Route RangeWalk=%d StereoDraw=%d StereoEyes=%u StereoTestEyeShift=%.3f StereoReapply=%s StereoFollowers=%d StereoRestoreDirect=%d StereoParticles=%d StereoCarryConstants=%d StereoTraceConstants=%d",
@@ -184,6 +196,10 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 	return obng::plugin::InstallProbes(settings, &Log);
 }
 
+bool InstallFixesSideEffect(const obng::plugin::FixSettings& settings) {
+	return obng::plugin::InstallGrassFadeFix(settings, &Log);
+}
+
 const obng::plugin::Host kHost{&ResetLog,
                                &Log,
                                &ReadSettings,
@@ -194,7 +210,8 @@ const obng::plugin::Host kHost{&ResetLog,
                                &InstallRouteRangeWalkSideEffect,
                                &StartSummaryTimerSideEffect,
                                &InstallProbesSideEffect,
-                               &InstallRouteStereoDrawSideEffect};
+                               &InstallRouteStereoDrawSideEffect,
+                               &InstallFixesSideEffect};
 
 }  // namespace
 

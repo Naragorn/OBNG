@@ -32,7 +32,9 @@ void GrassProbeNoteDraw(UInt32 geometry, bool worldViewport);
 // ShaderFade). A register of zeros is skipped (never written); one left
 // from an earlier draw is still a blade's position and a fair sample of
 // what the shader makes of it.
-void GrassProbeNoteFade(const float alphaParam[4], const float clipRows[16], const float* instanceRegisters, int instances, float p11, float p22);
+// twin: GrassFadeFixBoundTwin() - 0 for the game's shader, else the fade fix's twin's factor.
+void GrassProbeNoteFade(const float alphaParam[4], const float clipRows[16], const float* instanceRegisters, int instances, float p11, float p22,
+                        int twin);
 
 // The route calls this when the eye data of a new single-pass frame is set:
 // the draws counted since the last call are the pass before it.

@@ -98,6 +98,7 @@ struct Fade {
 	float ndcX = 0.0f;      // -1 the picture's left edge .. 1 its right
 	float ndcY = 0.0f;
 	bool inView = false;    // in front of the camera and inside the picture
+	bool scaled = false;    // computed as the fade fix's twin does (GrassFadePatchLogic.h)
 };
 
 inline float Saturate(float v) {
@@ -112,13 +113,24 @@ inline float Ramp(float length, float start, float range) {
 	return Saturate((length - start) / range);
 }
 
-inline Fade ShaderFade(const float alphaParam[4], const float rows[16], const float position[3], float p11, float p22) {
+// twin: 0 for the game's shader; with the fade fix's twin bound the factor
+// it puts on the squared distance (2 or 1, GrassFadePatchLogic.h) - the
+// twin takes the length of (clip.x / |row 0|, clip.y / |row 1|, clip.w),
+// the rows' xyz, as the probe does here.
+inline Fade ShaderFade(const float alphaParam[4], const float rows[16], const float position[3], float p11, float p22, int twin = 0) {
 	float clip[4];
 	for (int i = 0; i < 4; ++i) {
 		clip[i] = rows[i * 4] * position[0] + rows[i * 4 + 1] * position[1] + rows[i * 4 + 2] * position[2] + rows[i * 4 + 3];
 	}
 	Fade out;
-	out.length = std::sqrt(clip[0] * clip[0] + clip[1] * clip[1] + clip[2] * clip[2] + clip[3] * clip[3]);
+	out.scaled = twin != 0;
+	if (twin != 0) {
+		const float x = clip[0] / std::sqrt(rows[0] * rows[0] + rows[1] * rows[1] + rows[2] * rows[2]);
+		const float y = clip[1] / std::sqrt(rows[4] * rows[4] + rows[5] * rows[5] + rows[6] * rows[6]);
+		out.length = std::sqrt(static_cast<float>(twin) * (x * x + y * y + clip[3] * clip[3]));
+	} else {
+		out.length = std::sqrt(clip[0] * clip[0] + clip[1] * clip[1] + clip[2] * clip[2] + clip[3] * clip[3]);
+	}
 	out.fade = Ramp(out.length, alphaParam[0], alphaParam[1]) * (1.0f - Ramp(out.length, alphaParam[2], alphaParam[3]));
 	const float x = p11 != 0.0f ? clip[0] / p11 : 0.0f;
 	const float y = p22 != 0.0f ? clip[1] / p22 : 0.0f;
@@ -145,6 +157,7 @@ struct FadeTable {
 	};
 	Cell cell[3][kBands] = {};
 	std::uint32_t total = 0;
+	std::uint32_t scaled = 0;  // of them computed as the fade fix's twin does
 
 	// A sample outside the view is left out.
 	void Add(const Fade& f) {
@@ -155,6 +168,7 @@ struct FadeTable {
 		++c.count;
 		c.sum += f.fade;
 		++total;
+		scaled += f.scaled ? 1u : 0u;
 	}
 };
 
@@ -248,9 +262,14 @@ inline int Format(const Pass& pass, std::uint64_t qpc, const char* clock, char* 
 	FormatBands(pass.existing, existing, sizeof(existing));
 	FormatBands(pass.hidden, hidden, sizeof(hidden));
 	FormatBands(pass.drawn, drawn, sizeof(drawn));
-	char fade[420] = "";
+	char fade[520] = "";
 	if (pass.fade.total != 0) {
-		const int lead = std::snprintf(fade, sizeof(fade), "; the shader's fade at the blade positions of the grass draws (samples:mean per band) ");
+		const int lead = pass.fade.scaled == 0
+		                     ? std::snprintf(fade, sizeof(fade), "; the shader's fade at the blade positions of the grass draws (samples:mean per band) ")
+		                     : std::snprintf(fade, sizeof(fade),
+		                                     "; the shader's fade at the blade positions of the grass draws, %u of %u through the fade fix's twin "
+		                                     "(samples:mean per band) ",
+		                                     pass.fade.scaled, pass.fade.total);
 		FormatFade(pass.fade, fade + lead, sizeof(fade) - static_cast<std::size_t>(lead));
 	}
 	return std::snprintf(out, capacity,
