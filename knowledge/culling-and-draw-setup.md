@@ -727,7 +727,10 @@ the instructions were not checked):
   every call takes the end and the start distance from the two settings and
   hands them on (`FUN_007c2960(0, 0, start, end)`), and makes the "Grass"
   node [0x00B36094] when there is none. **Derived**: a change of the two
-  values while the game runs holds from the next call on; not tried.
+  values while the game runs holds from the next call on. **Measured by
+  OBVR** (its `grass-settings` runs of 2026-11-06, reported to OBNG; the
+  run ids are in OBVR's repo): the distance set while the game runs holds
+  from the next grass build on, 39 patches at 2000 against 145 at 8000.
 - 0x004EA750, the grass's setting up: an end distance below 400.5 becomes
   0, and the distance used ([0x00B36090]) is the smaller of the setting and
   `[0x00B06A2C] << 12`, a count of 4096-unit cells.
@@ -743,7 +746,9 @@ the instructions were not checked):
   grass. **Derived**: a smaller iMinGrassSize set while the game runs would
   ask more of buffers sized for the old value - the density is not a
   setting to change in a running game without reading those two functions
-  first.
+  first. OBVR sets it in the main menu, before the first grass (its report
+  of the same day: the buffers are not allocated yet then); a density asked
+  for later waits for the next start.
 
 With OBNG's grass fade fix the end distance means 0.71 times its value in
 units everywhere in the picture (`[Fix] GrassFadeReach=game`), or its value
