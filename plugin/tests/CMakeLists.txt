@@ -71,3 +71,8 @@ add_executable(GrassProbeLogicTest GrassProbeLogicTest.cpp)
 target_include_directories(GrassProbeLogicTest PRIVATE ../src ../../tests)
 target_compile_options(GrassProbeLogicTest PRIVATE -Wall -Wextra -Werror)
 add_test(NAME GrassProbeLogicTest COMMAND GrassProbeLogicTest)
+
+add_executable(EyeConstantsTraceLogicTest EyeConstantsTraceLogicTest.cpp)
+target_include_directories(EyeConstantsTraceLogicTest PRIVATE ../src ../../tests)
+target_compile_options(EyeConstantsTraceLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME EyeConstantsTraceLogicTest COMMAND EyeConstantsTraceLogicTest)

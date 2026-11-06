@@ -22,9 +22,11 @@
 #include "StereoEyesApi.h"
 #include "engine/render/StereoDraw.h"
 
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 namespace obng::plugin::stereo_eye_switch {
 
@@ -344,11 +346,80 @@ struct SwitchCounters {
 	std::uint64_t restored = 0;  // Switch(0) after an applied switch
 	std::uint64_t noData = 0;    // Switch(1) without eye data: nothing done
 	std::uint64_t viewportOnly = 0;  // of the applied: a camera follower's, the viewport without the view shift
+	std::uint64_t carriedRegisters = 0;  // registers given the remembered second-eye value (RegisterPairs)
 };
+
+// The registers carried between draws ([Route] StereoCarryConstants).
+//
+// The engine does not upload every view-dependent constant for every draw:
+// a pass may draw with a matrix an earlier setup left on the device - the
+// terrain's later texture passes have no ModelViewProj entry in their
+// constant map and draw with the c0..c3 of the block's first pass
+// (measured with the eye constants trace, run
+// obng-grass-turn-single/20261106-084429: "Block (0, 0)", ShadowLightShader,
+// the vertex map c19 / c20 / c21 only, no register changed by the second
+// eye's re-apply). The re-apply walks the current map, so the second eye
+// drew such a pass with the first eye's matrix: no depth between the eyes
+// for that layer, and its equal-depth test against the layer below fails
+// wherever the two differ.
+//
+// So the switch remembers, per vertex register, the pair of values the last
+// re-apply produced: what the device held for the first eye and what the
+// re-apply made of it for the second. A later switch whose re-apply leaves
+// a register alone that still holds exactly the remembered first-eye value
+// gives the second eye the remembered second-eye value. And the switch back
+// puts every register it or the re-apply changed back to the value read
+// before the switch - the device's vertex registers after a draw are bit for
+// bit what they were before it, whichever route drew.
+//
+// The values are the engine's own (read back from the device), never
+// recomputed here: a layer drawn from the cache has the same bits as the
+// layer below it that the engine's re-apply drew, which an equal-depth test
+// needs. A pair is only as good as the eye offset it was made for; another
+// offset empties the cache.
+constexpr int kCarriedRegisters = 48;  // c0..c47
+
+struct RegisterPairs {
+	Vec3 offset{};
+	std::uint64_t valid = 0;  // bit r: first / second hold a pair for register r
+	float first[kCarriedRegisters * 4] = {};
+	float second[kCarriedRegisters * 4] = {};
+	// The device's registers before the switch in progress (one draw is
+	// switched at a time; kept here so a switch object stays small).
+	float before[kCarriedRegisters * 4] = {};
+};
+
+// Bit r set: the four floats of register r differ, compared as bits.
+inline bool SameRegister(const float* a, const float* b) {
+	std::uint64_t x[2];
+	std::uint64_t y[2];
+	std::memcpy(x, a, sizeof(x));
+	std::memcpy(y, b, sizeof(y));
+	return ((x[0] ^ y[0]) | (x[1] ^ y[1])) == 0;
+}
+
+inline std::uint64_t DifferingRegisters(const float* a, const float* b) {
+	std::uint64_t mask = 0;
+	for (int r = 0; r < kCarriedRegisters; ++r) {
+		mask |= static_cast<std::uint64_t>(!SameRegister(a + r * 4, b + r * 4)) << r;
+	}
+	return mask;
+}
+
+// Calls write(start, count) for every run of set bits, lowest first.
+template <class Write>
+void ForRegisterRuns(std::uint64_t mask, Write&& write) {
+	while (mask != 0) {
+		const int start = std::countr_zero(mask);
+		const int count = std::countr_one(mask >> start);
+		write(static_cast<std::uint32_t>(start), static_cast<std::uint32_t>(count));
+		mask = count >= 64 - start ? 0 : mask & ~(((std::uint64_t{1} << count) - 1) << start);
+	}
+}
 
 template <class Port>
 struct EyeSwitch {
-	Port* port;  // ReadView(float out[16]) / ReadInverseRow(float out[3]) / WriteRows(rows) / SetViewTransform() / SetViewport(vp) / ReapplyConstants() / CurrentViewport() -> Viewport
+	Port* port;  // ReadView(float out[16]) / ReadInverseRow(float out[3]) / WriteRows(rows) / SetViewTransform() / SetViewport(vp) / ReapplyConstants() / CurrentViewport() -> Viewport; with pairs: ReadRegisters(float out[kCarriedRegisters * 4]) -> bool / WriteRegisters(start, data, count)
 	SwitchCounters* counters;
 	const EyeData* eyes;   // null: no data
 	float testEyeShift;    // 0: no test mode
@@ -363,10 +434,16 @@ struct EyeSwitch {
 	// (the ground's texture layers differing between the eyes, run
 	// obng-grass-turn-single/20261105-194324).
 	bool reapplyOnRestore = false;
+	// The carried registers (above); null leaves the switch as it was. With
+	// pairs the switch back restores by value and reapplyOnRestore is not
+	// used - unless the device would not give its registers for this switch.
+	RegisterPairs* pairs = nullptr;
 
 	TranslationRows saved{};
 	EyeData current{};
 	bool applied = false;
+	bool carried = false;            // this switch read the registers: the switch back restores by value
+	std::uint64_t touched = 0;       // the registers the re-apply or the carry changed for the second eye
 
 	void Switch(std::uint8_t eye) {
 		if (eye == 1) {
@@ -404,12 +481,50 @@ struct EyeSwitch {
 		const ViewAxes axes = AxesOf(view);
 		saved = TranslationRows{{view[12], view[13], view[14]}, {inverseRow[0], inverseRow[1], inverseRow[2]}};
 		current = eyes != nullptr ? *eyes : SplitHalves(port->CurrentViewport(), testEyeShift, axes);
+		carried = pairs != nullptr && port->ReadRegisters(pairs->before);
 		port->WriteRows(ShiftedRows(saved, axes, current.secondEyeOffset));
 		port->SetViewTransform();
 		port->SetViewport(current.viewport[1]);
 		port->ReapplyConstants();
+		if (carried) {
+			Carry();
+		}
 		applied = true;
 		++counters->applied;
+	}
+
+	// After the re-apply: learn the pairs it made, and give the second eye
+	// the remembered value of every register it left alone that still holds
+	// the remembered first-eye value.
+	void Carry() {
+		float after[kCarriedRegisters * 4];
+		if (!port->ReadRegisters(after)) {
+			carried = false;
+			return;
+		}
+		if (!(pairs->offset == current.secondEyeOffset)) {
+			pairs->valid = 0;
+			pairs->offset = current.secondEyeOffset;
+		}
+		const float* before = pairs->before;
+		const std::uint64_t changed = DifferingRegisters(before, after);
+		for (std::uint64_t rest = changed; rest != 0; rest &= rest - 1) {
+			const int r = std::countr_zero(rest);
+			std::memcpy(pairs->first + r * 4, before + r * 4, 4 * sizeof(float));
+			std::memcpy(pairs->second + r * 4, after + r * 4, 4 * sizeof(float));
+		}
+		std::uint64_t sticky = 0;
+		for (std::uint64_t rest = pairs->valid & ~changed; rest != 0; rest &= rest - 1) {
+			const int r = std::countr_zero(rest);
+			if (SameRegister(pairs->first + r * 4, before + r * 4)) {
+				sticky |= std::uint64_t{1} << r;
+			}
+		}
+		// A remembered register that holds something else now is forgotten.
+		pairs->valid = changed | sticky;
+		ForRegisterRuns(sticky, [this](std::uint32_t start, std::uint32_t count) { port->WriteRegisters(start, pairs->second + start * 4, count); });
+		touched = changed | sticky;
+		counters->carriedRegisters += static_cast<std::uint64_t>(std::popcount(sticky));
 	}
 
 	void SwitchBack() {
@@ -421,10 +536,14 @@ struct EyeSwitch {
 			port->SetViewTransform();
 		}
 		port->SetViewport(current.viewport[0]);
-		if (!viewportOnly && reapplyOnRestore) {
+		if (!viewportOnly && carried) {
+			ForRegisterRuns(touched, [this](std::uint32_t start, std::uint32_t count) { port->WriteRegisters(start, pairs->before + start * 4, count); });
+		} else if (!viewportOnly && reapplyOnRestore) {
 			port->ReapplyConstants();
 		}
 		applied = false;
+		carried = false;
+		touched = 0;
 		++counters->restored;
 	}
 };

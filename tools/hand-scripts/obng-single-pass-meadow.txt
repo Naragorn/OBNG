@@ -1,0 +1,58 @@
+# Nadi's place of the Windows headset look of 2026-11-05 21:29 (camera 53244 82704 290 in OBNG.log,
+# Tamriel cell 13 20) in the single pass, the head turned in 45-degree steps all around, the eye
+# pictures at every mark: whether distant grass and ground layers differ between the eyes and with
+# the head's turn. Run with the Windows grass distances:
+#   tools/with-game-ini.sh Grass:fGrassEndDistance=8000.0000 Grass:fGrassStartFadeDistance=7000.0000 \
+#     Display:bShadowsOnGrass=1 -- tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-grass.ini \
+#     tools/hand-scripts/obng-single-pass-meadow.txt
+# God mode and the combat AI off: a creature at the place killed the player in the first run
+# (20261106-082804, the pictures from mark y45 on grey).
+
+ini Hands Enabled=1
+ini Render SinglePassStereo=1
+ini Hands ReachOpens=0
+ini Debug EyeDump=1
+console-at ready cow Tamriel 13 20
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at placed player.setpos x 53244
+console-at placed player.setpos y 82704
+console-at placed player.setpos z 320
+console-at placed set gamehour to 12
+console-at ready tgm
+console-at ready tcai
+
+expect HandScript: finished
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 25
+mark placed
+wait 12
+head yaw 0
+wait 2
+mark y0
+head yaw -45
+wait 2
+mark y-45
+head yaw -90
+wait 2
+mark y-90
+head yaw -135
+wait 2
+mark y-135
+head yaw 180
+wait 2
+mark y180
+head yaw 135
+wait 2
+mark y135
+head yaw 90
+wait 2
+mark y90
+head yaw 45
+wait 2
+mark y45
+head yaw 0
+wait 2
+mark y0_again

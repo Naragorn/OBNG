@@ -627,10 +627,110 @@ the dual pass from the other half's stale content. Nothing to route.
 and the eye pictures equal within the grass's sway. The direct entries'
 restore above touches exactly the grass's draw path; whether it was the
 cause on Windows is unverified.
+(Settled on 2026-11-06, the section "The second headset look and the
+carried registers" below: the ground was not fixed by the restore, and the
+grass's reach is the shader's.)
 
 Also seen: FoliageAA.dll hooks the device's DrawPrimitive and
 DrawIndexedPrimitive after OBNG's probe; the probe puts its hooks back on
 top so the game's call sites stay visible.
+
+## The second headset look and the carried registers (2026-11-06)
+
+Nadi, Windows, headset, single pass, the build of 2026-11-05 20:59: sky,
+torches and spells right. Left: "the distance at which grass is still drawn
+shrinks and grows as I look left or right, the same for some ground textures
+in the distance; the left eye often has the textures, the right one not;
+near, such textures look as if at the wrong distance"; and the body shaking
+a few times when the weapon is drawn (OBVR's, passed on). The Windows logs
+of that session are kept in artifacts/windows/20261105-2130/.
+
+**The ground: the route's fault, found and fixed ([Route]
+StereoCarryConstants).** Measured in the eye pictures first: the horizontal
+shift between the two eye pictures (OBVR's EyeDump, 642 px, the best
+correlation per band of rows) is 102 px for the far background in both
+modes; for the ground at the player's feet it is 116 px in the dual pass
+(runs obng-grass-turn-dual/20261105-194508 and -194847, correlation 0.75 at
+116) and 102 px in the single pass since StereoRestoreDirect (runs
+obng-grass-turn-single/20261105-195203, -205351, -205633 and
+20261106-082525, correlation 0.71 to 0.82 at 102): that ground layer had no
+depth between the eyes. The grass's own matrix was not it: the grass rows
+c9..c12 read back from the device differ between the eyes by the view shift
+(run 20261106-083722; the grass map's entry is `c9x4`, defined id 23).
+
+The eye constants trace ([Route] StereoTraceConstants: in every sixteenth
+single-pass frame the device's vertex registers c0..c47 read back before
+the second eye's switch, after it and after the switch back, a line per
+shader class and pass) named it, run obng-grass-turn-single/20261106-084429:
+`direct draw, shader class 00A90634 (ShadowLightShader), "Block (0, 0)"` -
+a terrain block - drawn again and again with **no register changed for the
+second eye**, its vertex map holding the live entries c19, c20, c21 only,
+where the block's first draw has `c0x4`, defined id 23 (ModelViewProj). The
+engine does not upload every view-dependent constant for every draw: the
+terrain's later texture passes draw with the c0..c3 the block's first pass
+left on the device (measured: the map tables of the two draws; why the
+entry is not live there is unread). The second eye's re-apply walks the
+current map, so it changed nothing, and the pass was drawn in the second
+eye with the first eye's matrix - a texture layer at the first eye's place
+in the second eye's picture, and gone wherever its equal-depth test against
+the layer below fails, which changes with the terrain's slope against the
+view: with the head's turn. Before StereoRestoreDirect the same cause
+showed the other way round (the first eye's later passes drawn with the
+second eye's c0, which nothing had put back): "the right eye sometimes with
+more ground texture than the left" on 2026-11-05. The section above called
+the ground fixed on the evidence of which layers each eye showed; the depth
+between the eyes was not measured then. It was not fixed.
+
+The fix (StereoEyeSwitchLogic.h, RegisterPairs): the switch reads the
+device's vertex registers before it moves the view and again after the
+re-apply, and remembers per register the pair - the first eye's value and
+what the re-apply made of it. A later switch whose re-apply leaves a
+register alone that still holds exactly the remembered first-eye value
+gives the second eye the remembered second-eye value; the switch back
+writes every register that the re-apply or the carry changed back to the
+value read before the switch, on every route (the direct entries' re-apply
+on restore is not used then). The values are the engine's own, read back,
+never recomputed: a carried layer has the bits of the layer below it. A
+pair is dropped when the register holds something else or the eye offset
+changes; a device that does not answer GetVertexShaderConstantF (the engine
+creates a pure device; DXVK answers) leaves the switch as it was.
+
+Measured after it: run obng-grass-turn-single/20261106-085141 - no draw
+without a register of its own, every route's registers after the switch
+back equal to before, 72 750 registers carried in 5 s, and the ground at
+the feet at 116 px (correlation 0.80), the dual pass's value. Run
+obng-single-pass-meadow/20261106-090501 (Nadi's place of 21:29, Tamriel 13
+20, the Windows grass distances): no such draw either, 69 047 carried.
+
+The price, fixed scene (single-pass-measure-on, settled to watched, the
+route's own clock): 0.50 us per applied switch with the carry (run
+20261106-090107) against 0.29 without ([Route] StereoCarryConstants=0, run
+20261106-085634) - 0.21 us more, two register reads and one write. Derived
+for the Windows outdoor session of 2026-11-05 (1.06 million applied
+switches in 10 s): 0.2 to 0.5 ms a frame between 90 and 45 frames a second;
+not measured there. The cheaper form is known and not built: a shadow of
+the registers kept from the device's SetVertexShaderConstantF (no reads),
+checked against the device now and then.
+
+**The grass's reach (read, not a fault of the single pass).** All 24 grass
+vertex shaders (GRASS2020..2043.vso, shader package 019, disassembled with
+vkd3d-compiler) fade the blade by the length of its clip-space position:
+`dp4 r2.w, r0, r0` on r0 = ModelViewProj x position (c9..c12), then
+`(length - c5.x) / c5.y` and `(length - c5.z) / c5.w` against AlphaParam
+c5. That length is sqrt((x/tanW)^2 + (y/tanH)^2 + z^2 + w^2) of the
+view-space position: it depends on the projection and on where in the
+picture the blade stands. Derived, with c5 taken as distances (unverified:
+its values were not read): in the middle of the view the length is 1.41
+times the distance, at the picture's horizontal edge sqrt(3 / (1 + tanW^2))
+times - 1.22 for the game's 75-degree monitor frustum, 1.01 for the Windows
+headset's frustum (tangent 1.402, OBVR.log). So with fGrassEndDistance 8000
+grass ends about 5 660 units away straight ahead and about 7 950 at the
+edge of the view, and a clump in between comes and goes as the head turns.
+The same holds in the dual pass, which draws with the same frustum
+(derived; not measured in either mode). Fixing it means patching the grass
+vertex shaders to a distance that does not depend on the projection;
+FoliageAA already recognises and hooks them.
+
 
 **The player's body as a wedge (open, whose is not known).** In the test
 hall the player's upper body stands in both eye pictures as a pale shape

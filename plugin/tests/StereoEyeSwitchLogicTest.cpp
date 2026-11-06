@@ -61,7 +61,32 @@ struct RecordingPort {
 		steps.push_back("set viewport");
 		viewportsSet.push_back(vp);
 	}
-	void ReapplyConstants() { steps.push_back("reapply constants"); }
+	// The device's vertex registers, and what a re-apply does to them: the
+	// registers in reapplyWrites get the view's translation row cell 12 in
+	// their fourth float, as a matrix the engine uploads again would.
+	float registers[sw::kCarriedRegisters * 4] = {};
+	std::vector<int> reapplyWrites;
+	bool registersReadable = true;
+	std::vector<std::string> registerWrites;
+	void ReapplyConstants() {
+		steps.push_back("reapply constants");
+		for (const int r : reapplyWrites) {
+			registers[r * 4 + 3] = 1000.0f + view[12] + static_cast<float>(r);
+		}
+	}
+	bool ReadRegisters(float* out) {
+		steps.push_back("read registers");
+		if (!registersReadable) {
+			return false;
+		}
+		std::memcpy(out, registers, sizeof(registers));
+		return true;
+	}
+	void WriteRegisters(std::uint32_t start, const float* data, std::uint32_t count) {
+		steps.push_back("write registers");
+		registerWrites.push_back("c" + std::to_string(start) + "x" + std::to_string(count));
+		std::memcpy(registers + start * 4, data, count * 4 * sizeof(float));
+	}
 	Viewport CurrentViewport() {
 		steps.push_back("get viewport");
 		return viewport;
@@ -369,6 +394,211 @@ int main() {
 		s.Switch(1);
 		s.Switch(0);
 		Check(port.steps.empty() && counters.noData == 1 && counters.applied == 0 && counters.viewportOnly == 0, "counted as no data");
+	}
+
+	Section("Carried registers: the re-apply's pair is learnt, and the switch back restores the registers by value");
+	{
+		RecordingPort port;
+		IdentityView(port.view);
+		IdentityView(port.inverse);
+		port.reapplyWrites = {0};
+		for (int i = 0; i < sw::kCarriedRegisters * 4; ++i) {
+			port.registers[i] = static_cast<float>(i);
+		}
+		float original[sw::kCarriedRegisters * 4];
+		std::memcpy(original, port.registers, sizeof(original));
+		const EyeData eyes = sw::FromApi(GoodEyes());
+		sw::SwitchCounters counters;
+		sw::RegisterPairs pairs;
+		sw::EyeSwitch<RecordingPort> s{&port, &counters, &eyes, 0.0f};
+		s.pairs = &pairs;
+		s.reapplyOnRestore = true;  // superseded: the restore is by value
+		s.Switch(1);
+		Check(StepsAre(port, {"read view", "read inverse row", "read registers", "write rows", "set view transform", "set viewport",
+		                      "reapply constants", "read registers"}),
+		      "the registers are read before the rows move and after the re-apply");
+		Check(port.registers[3] == 1000.0f - 1.0f, "the second eye draws with the re-apply's c0 (the view row moved by -1)");
+		Check(pairs.valid == 1u && pairs.first[3] == 3.0f && pairs.second[3] == 999.0f && pairs.offset == eyes.secondEyeOffset,
+		      "the pair of c0 is remembered with the offset it was made for");
+		Check(port.registerWrites.empty() && counters.carriedRegisters == 0, "nothing carried: the re-apply did it");
+		port.steps.clear();
+		s.Switch(0);
+		Check(StepsAre(port, {"write rows", "set view transform", "set viewport", "write registers"}),
+		      "the switch back writes the registers and does not call the re-apply");
+		Check(port.registerWrites == std::vector<std::string>{"c0x1"}, "only the changed register is written");
+		Check(std::memcmp(port.registers, original, sizeof(original)) == 0, "the device's registers are what they were before the switch");
+		Check(!s.carried && s.touched == 0, "the switch's state is cleared");
+
+		Section("Carried registers: a later draw whose re-apply leaves c0 alone gets the remembered second-eye value");
+		port.reapplyWrites.clear();  // this pass's map has no entry for c0
+		port.steps.clear();
+		port.registerWrites.clear();
+		sw::EyeSwitch<RecordingPort> later{&port, &counters, &eyes, 0.0f};
+		later.pairs = &pairs;
+		later.Switch(1);
+		Check(port.registers[3] == 999.0f && port.registers[0] == 0.0f, "c0 holds the second eye's remembered value, whole register");
+		Check(port.registerWrites == std::vector<std::string>{"c0x1"} && counters.carriedRegisters == 1, "one register carried, counted");
+		later.Switch(0);
+		Check(std::memcmp(port.registers, original, sizeof(original)) == 0, "and the first eye's value is back after the draw");
+		Check(port.registerWrites == std::vector<std::string>{"c0x1", "c0x1"}, "one write each way");
+
+		Section("Carried registers: a register that holds something else is left alone and forgotten");
+		port.registers[3] = 77.0f;  // someone uploaded another c0
+		port.registerWrites.clear();
+		sw::EyeSwitch<RecordingPort> other{&port, &counters, &eyes, 0.0f};
+		other.pairs = &pairs;
+		other.Switch(1);
+		Check(port.registers[3] == 77.0f && port.registerWrites.empty() && pairs.valid == 0, "no write, the pair dropped");
+		other.Switch(0);
+		Check(port.registerWrites.empty(), "nothing to restore");
+		port.registers[3] = 3.0f;  // the old first-eye value again, by chance
+		sw::EyeSwitch<RecordingPort> again{&port, &counters, &eyes, 0.0f};
+		again.pairs = &pairs;
+		again.Switch(1);
+		Check(port.registers[3] == 3.0f && port.registerWrites.empty(), "a dropped pair does not come back");
+		again.Switch(0);
+	}
+
+	Section("Carried registers: runs are written whole, a learnt and a carried register in one switch");
+	{
+		RecordingPort port;
+		IdentityView(port.view);
+		IdentityView(port.inverse);
+		const EyeData eyes = sw::FromApi(GoodEyes());
+		sw::SwitchCounters counters;
+		sw::RegisterPairs pairs;
+		port.reapplyWrites = {0, 1, 2, 3, 9};
+		sw::EyeSwitch<RecordingPort> first{&port, &counters, &eyes, 0.0f};
+		first.pairs = &pairs;
+		first.Switch(1);
+		first.Switch(0);
+		Check(port.registerWrites == std::vector<std::string>{"c0x4", "c9x1"}, "the restore writes c0..c3 as one run and c9 alone");
+		Check(pairs.valid == 0x20Fu, "five pairs");
+		port.reapplyWrites = {9};  // the next pass uploads c9 itself and relies on c0..c3
+		port.registerWrites.clear();
+		sw::EyeSwitch<RecordingPort> second{&port, &counters, &eyes, 0.0f};
+		second.pairs = &pairs;
+		second.Switch(1);
+		Check(port.registerWrites == std::vector<std::string>{"c0x4"} && counters.carriedRegisters == 4, "c0..c3 carried as one run");
+		Check(port.registers[3] == 999.0f && port.registers[9 * 4 + 3] == 1008.0f, "both the carried and the re-applied register are the second eye's");
+		second.Switch(0);
+		Check(port.registerWrites == std::vector<std::string>{"c0x4", "c0x4", "c9x1"}, "the restore covers the carried and the re-applied");
+		Check(port.registers[3] == 0.0f && port.registers[9 * 4 + 3] == 0.0f, "all back");
+	}
+
+	Section("Carried registers: another eye offset empties the cache");
+	{
+		RecordingPort port;
+		IdentityView(port.view);
+		IdentityView(port.inverse);
+		EyeData eyes = sw::FromApi(GoodEyes());
+		sw::SwitchCounters counters;
+		sw::RegisterPairs pairs;
+		port.reapplyWrites = {0};
+		sw::EyeSwitch<RecordingPort> first{&port, &counters, &eyes, 0.0f};
+		first.pairs = &pairs;
+		first.Switch(1);
+		first.Switch(0);
+		eyes.secondEyeOffset.x = 5.0f;
+		port.reapplyWrites.clear();
+		port.registerWrites.clear();
+		sw::EyeSwitch<RecordingPort> second{&port, &counters, &eyes, 0.0f};
+		second.pairs = &pairs;
+		second.Switch(1);
+		Check(port.registerWrites.empty() && pairs.valid == 0 && pairs.offset.x == 5.0f, "the pair made for the old offset is not used");
+		second.Switch(0);
+	}
+
+	Section("Carried registers: a device that does not give its registers leaves the switch as it was");
+	{
+		RecordingPort port;
+		IdentityView(port.view);
+		IdentityView(port.inverse);
+		port.registersReadable = false;
+		port.reapplyWrites = {0};
+		const EyeData eyes = sw::FromApi(GoodEyes());
+		sw::SwitchCounters counters;
+		sw::RegisterPairs pairs;
+		sw::EyeSwitch<RecordingPort> s{&port, &counters, &eyes, 0.0f};
+		s.pairs = &pairs;
+		s.reapplyOnRestore = true;
+		s.Switch(1);
+		Check(StepsAre(port, {"read view", "read inverse row", "read registers", "write rows", "set view transform", "set viewport",
+		                      "reapply constants"}),
+		      "one read tried, no second");
+		port.steps.clear();
+		s.Switch(0);
+		Check(StepsAre(port, {"write rows", "set view transform", "set viewport", "reapply constants"}) && port.registerWrites.empty() &&
+		          pairs.valid == 0,
+		      "the switch back re-applies as without pairs");
+	}
+
+	Section("Carried registers: the read after the re-apply failing drops the carry for this switch");
+	{
+		struct FailingSecondRead : RecordingPort {
+			int reads = 0;
+			bool ReadRegisters(float* out) {
+				++reads;
+				registersReadable = reads == 1;
+				return RecordingPort::ReadRegisters(out);
+			}
+		};
+		FailingSecondRead port;
+		IdentityView(port.view);
+		IdentityView(port.inverse);
+		port.reapplyWrites = {0};
+		const EyeData eyes = sw::FromApi(GoodEyes());
+		sw::SwitchCounters counters;
+		sw::RegisterPairs pairs;
+		sw::EyeSwitch<FailingSecondRead> s{&port, &counters, &eyes, 0.0f};
+		s.pairs = &pairs;
+		s.reapplyOnRestore = true;
+		s.Switch(1);
+		port.steps.clear();
+		s.Switch(0);
+		Check(pairs.valid == 0 && port.registerWrites.empty() && port.steps.back() == "reapply constants", "restored by the re-apply");
+	}
+
+	Section("Carried registers: a camera follower and a switch without data read no register");
+	{
+		RecordingPort port;
+		IdentityView(port.view);
+		IdentityView(port.inverse);
+		const EyeData eyes = sw::FromApi(GoodEyes());
+		sw::SwitchCounters counters;
+		sw::RegisterPairs pairs;
+		sw::EyeSwitch<RecordingPort> sky{&port, &counters, &eyes, 0.0f};
+		sky.pairs = &pairs;
+		sky.viewportOnly = true;
+		sky.Switch(1);
+		sky.Switch(0);
+		sw::EyeSwitch<RecordingPort> none{&port, &counters, nullptr, 0.0f};
+		none.pairs = &pairs;
+		none.Switch(1);
+		none.Switch(0);
+		bool read = false;
+		for (const std::string& step : port.steps) {
+			read = read || step == "read registers" || step == "write registers";
+		}
+		Check(!read, "no register read or written");
+	}
+
+	Section("DifferingRegisters and ForRegisterRuns");
+	{
+		float a[sw::kCarriedRegisters * 4] = {};
+		float b[sw::kCarriedRegisters * 4] = {};
+		Check(sw::DifferingRegisters(a, b) == 0, "equal");
+		b[47 * 4 + 2] = 1.0f;
+		b[0] = -0.0f;
+		Check(sw::DifferingRegisters(a, b) == ((std::uint64_t{1} << 47) | 1u), "the last register and a sign of zero (bits)");
+		std::vector<std::string> runs;
+		sw::ForRegisterRuns((std::uint64_t{3} << 46) | 0x16u, [&runs](std::uint32_t start, std::uint32_t count) {
+			runs.push_back(std::to_string(start) + "+" + std::to_string(count));
+		});
+		Check(runs == std::vector<std::string>{"1+2", "4+1", "46+2"}, "runs in order, the top run ends at the last register");
+		runs.clear();
+		sw::ForRegisterRuns(0, [&runs](std::uint32_t, std::uint32_t) { runs.push_back("x"); });
+		Check(runs.empty(), "no bit, no call");
 	}
 
 	Section("HasAncestor: one of the two camera-following roots above the geometry, itself included");

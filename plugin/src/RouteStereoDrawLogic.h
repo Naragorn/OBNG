@@ -71,6 +71,7 @@ struct Stats {
 	std::uint64_t eyeSwitches = 0;        // Switch(1) calls: the second eye's draws framed
 	std::uint64_t eyeSwitchesApplied = 0; // of them with eye data: the second eye's state set
 	std::uint64_t eyeSwitchesViewportOnly = 0;  // of the applied: camera followers (the sky), no view shift
+	std::uint64_t carriedRegisters = 0;   // registers given the remembered second-eye value (StereoEyeSwitchLogic.h RegisterPairs)
 	std::uint64_t drawsOutsideEye = 0;    // draws with eye data whose viewport was not eye 0's: drawn once
 	OutsideViewports outside;             // their viewports
 	stereo_eye_switch::ShaderClasses shaderClasses;  // the shader vtables the re-apply saw (applied switches)
@@ -93,6 +94,7 @@ struct Stats {
 		eyeSwitches += c.applied + c.noData;
 		eyeSwitchesApplied += c.applied;
 		eyeSwitchesViewportOnly += c.viewportOnly;
+		carriedRegisters += c.carriedRegisters;
 	}
 	void AddTicks(std::uint64_t switchT, std::uint64_t reapplyT) {
 		switchTicks += switchT;
@@ -133,7 +135,7 @@ inline int FormatStats(const Stats& s, double ticksPerMillisecond, char* out, st
 	int at = std::snprintf(out, capacity,
 		"Route: stereo draw (eyes %u) - %llu whole draws (drawn %llu, refused %llu, null record %llu), %llu skinned draws "
 		"(closed %llu, no skin %llu, refused %llu, record missing %llu), %llu direct shape draws, %llu direct strips draws, %llu particle draws, "
-		"%llu eye switches (applied %llu, %llu of them without a view shift), %llu draws outside eye 0's viewport, "
+		"%llu eye switches (applied %llu, %llu of them without a view shift, %llu registers carried), %llu draws outside eye 0's viewport, "
 		"eye data set %llu, refused %llu",
 		static_cast<unsigned>(s.eyes), static_cast<unsigned long long>(s.wholeDraws),
 		static_cast<unsigned long long>(s.wholeOutcome[static_cast<unsigned>(WO::Drawn)]),
@@ -147,7 +149,7 @@ inline int FormatStats(const Stats& s, double ticksPerMillisecond, char* out, st
 		static_cast<unsigned long long>(s.directShapeDraws), static_cast<unsigned long long>(s.directStripsDraws),
 		static_cast<unsigned long long>(s.particleDraws),
 		static_cast<unsigned long long>(s.eyeSwitches), static_cast<unsigned long long>(s.eyeSwitchesApplied),
-		static_cast<unsigned long long>(s.eyeSwitchesViewportOnly),
+		static_cast<unsigned long long>(s.eyeSwitchesViewportOnly), static_cast<unsigned long long>(s.carriedRegisters),
 		static_cast<unsigned long long>(s.drawsOutsideEye), static_cast<unsigned long long>(s.eyeDataSets),
 		static_cast<unsigned long long>(s.eyeDataRefused));
 	if (at >= 0 && static_cast<std::size_t>(at) < capacity && ticksPerMillisecond > 0.0 && s.eyeSwitchesApplied != 0) {

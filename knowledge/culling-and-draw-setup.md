@@ -639,3 +639,48 @@ both runs. Not equal between the two runs: the off run had the NPCs' AI off
 (`tai`, added after a passer-by's greeting opened the Dialog menu and ended
 run 20261105-103908 in the Market District); the player's own draws do not
 depend on it (derived). The times are from probe passes, an indication.
+
+### View-dependent constants are not uploaded for every draw (2026-11-06)
+
+A pass may draw with a matrix an earlier setup left on the device.
+**Measured** (OBNG's eye constants trace, run
+`obng-grass-turn-single/20261106-084429`, single pass, Linux): a terrain
+block ("Block (0, 0)", ShadowLightShader, through the renderer's direct
+entry) is drawn several times in a frame; at its first draw the shader's
+vertex constant map (`shader+0x30`, NiD3DSCM_Vertex) holds the live entries
+`c19 c20 c21 c0x4 (defined id 23, ModelViewProj) c13 c28x4 c33 c32`, at the
+later draws `c19 c20 c21` only - the later texture passes draw with the
+c0..c3 of the first. **Unread**: where the map's entries are switched per
+pass. Whoever draws a geometry a second time with another view (a second
+eye inside one pass) cannot rely on the current map alone; OBNG's eye
+switch remembers the pair of values per register
+(`plugin/src/StereoEyeSwitchLogic.h`, RegisterPairs).
+
+The shader classes by vtable, **read** from each vtable's Complete Object
+Locator in the EXE: 0x00A896EC NiD3DDefaultShader, 0x00A90634
+ShadowLightShader, 0x00A9170C WaterShader, 0x00A91E4C ParticleShader,
+0x00A9202C TallGrassShader (slot 13 0x007E6710, not a function in the
+Ghidra export), 0x00A92844 SpeedTreeLeafShader, 0x00A930C4
+Lighting30Shader, 0x00A93F2C GeometryDecalShader, 0x00A9405C
+ParallaxShader, 0x00A941AC SkinShader, 0x00A9459C SpeedTreeBranchShader,
+0x00A946B4 DistantLODShader.
+
+### The grass fades by the length of the clip-space position (2026-11-06)
+
+**Read** (shader package 019, all 24 `GRASS20xx.vso`, disassembled with
+`vkd3d-compiler -x d3dbc -b d3d-asm`): the blade's alpha fade is
+`dp4 r2.w, r0, r0` on r0 = ModelViewProj (c9..c12) x position, the square
+root of it against AlphaParam c5 (`(len - c5.x) / c5.y`, `(len - c5.z) /
+c5.w`, the product of the first and one minus the second to oT5.w). The fog
+of the same shaders is the three-component length of the same vector
+against FogParam c15. **Derived**: the fade depends on the projection and
+on the blade's place in the picture - straight ahead the length is 1.41
+times the distance, at the horizontal edge sqrt(3 / (1 + tanW^2)) times
+(1.22 at the game's 75 degrees, 1.01 at a headset frustum of tangent 1.4),
+so in a wide frustum grass reaches about 40 % further at the edge of the
+view than in its middle and clumps in between come and go as the view
+turns. **Unverified**: that c5 holds fGrassStartFadeDistance /
+fGrassEndDistance as distances (its values were not read), and the effect's
+size in the game (not measured). The tree leaves' vertex shaders
+(`STLEAF000..003.vso`) take the same four-component length of a vector;
+what it feeds there is unread.

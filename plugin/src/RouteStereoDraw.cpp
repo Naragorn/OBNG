@@ -34,6 +34,7 @@
 #include "Probes.h"
 #include "RouteStereoDrawLogic.h"
 #include "EntryDetour.h"
+#include "EyeConstantsTraceLogic.h"
 #include "GrassProbe.h"
 #include "Memory.h"
 #include "OcclusionProbe.h"
@@ -93,6 +94,15 @@ constexpr std::uint32_t kRendererInverseViewOffset = 0xA00;
 constexpr std::uint32_t kDeviceSetTransformOffset = 0xB0;
 constexpr std::uint32_t kDeviceSetViewportOffset = 0xBC;
 constexpr std::uint32_t kDeviceGetViewportOffset = 0xC0;
+// SetVertexShaderConstantF 94 = +0x178 and GetVertexShaderConstantF 95 =
+// +0x17C (d3d9.h's method order), for the carried registers
+// (StereoEyeSwitchLogic.h RegisterPairs). The engine creates a pure device
+// (behavior flags 0x54), on which Direct3D does not promise the Get; DXVK
+// answers it, and a refusal leaves the switch without the carry.
+constexpr std::uint32_t kDeviceSetVertexShaderConstantFOffset = 0x178;
+constexpr std::uint32_t kDeviceGetVertexShaderConstantFOffset = 0x17C;
+using SetVertexShaderConstantFFn = std::int32_t(__stdcall*)(void* device, std::uint32_t start, const float* data, std::uint32_t count);
+using GetVertexShaderConstantFFn = std::int32_t(__stdcall*)(void* device, std::uint32_t start, float* data, std::uint32_t count);
 constexpr std::uint32_t kD3DTransformView = 2;
 using SetTransformFn = std::int32_t(__stdcall*)(void* device, std::uint32_t state, const float* matrix);
 using SetViewportFn = std::int32_t(__stdcall*)(void* device, const eye::Viewport* viewport);
@@ -108,6 +118,9 @@ RouteSettings g_settings;
 // none; the test mode is a setting.
 eye::EyeData g_eyes;
 bool g_eyesSet = false;
+// The carried registers' pairs ([Route] StereoCarryConstants), the render
+// thread's like the eye data.
+eye::RegisterPairs g_registerPairs;
 
 // The stats are the render thread's alone (every draw and the interface's
 // calls run there, by the engine's design and StereoEyesApi.h's contract);
@@ -334,6 +347,16 @@ struct EyeEnginePort {
 		reinterpret_cast<GetViewportFn>(VtableSlot(device, kDeviceGetViewportOffset))(reinterpret_cast<void*>(device), &viewport);
 		return viewport;
 	}
+	bool ReadRegisters(float* out) const {
+		const std::uint32_t device = Device();
+		return reinterpret_cast<GetVertexShaderConstantFFn>(VtableSlot(device, kDeviceGetVertexShaderConstantFOffset))(
+		           reinterpret_cast<void*>(device), 0, out, eye::kCarriedRegisters) >= 0;
+	}
+	void WriteRegisters(std::uint32_t start, const float* data, std::uint32_t count) const {
+		const std::uint32_t device = Device();
+		reinterpret_cast<SetVertexShaderConstantFFn>(VtableSlot(device, kDeviceSetVertexShaderConstantFOffset))(
+		    reinterpret_cast<void*>(device), start, data, count);
+	}
 	void ReapplyConstants() const {
 		const std::uint64_t t0 = __rdtsc();
 		SetProbeEyePhase(1);  // the view-dependence probe keys the uploads inside
@@ -345,14 +368,142 @@ struct EyeEnginePort {
 
 using EngineEyeSwitch = eye::EyeSwitch<EyeEnginePort>;
 
+// The eye constants trace ([Route] StereoTraceConstants, off in play): in
+// every kTraceFrameEvery-th single-pass frame, for every routed draw with a
+// view shift, the device's vertex registers c0..c47 read back before the
+// second eye's switch, after it and after the switch back
+// (GetVertexShaderConstantF, device vtable +0x17C - slot 95 of
+// IDirect3DDevice9 in d3d9.h; the device answers it under DXVK), and a line
+// per shader class and pass index saying which registers the second eye's
+// draw has of its own (EyeConstantsTraceLogic.h). A class and pass with none
+// is drawn in the second eye with the first eye's view.
+constexpr std::uint32_t kTraceFrameEvery = 16;
+constexpr std::uint32_t kTraceShaderCandidateOffset = 0xBC;  // NiGeometry's shader (the draw functions' candidate)
+std::uint32_t g_traceFrames = 0;
+bool g_traceFrame = false;
+eye_trace::ClassBook g_traceBook;
+
+struct EyeConstantsTrace {
+	std::uintptr_t renderer = 0;
+	bool on = false;
+	bool taken[3] = {false, false, false};
+	float c[3][eye_trace::kRegisters * 4];  // before the second eye's switch, after it, after the switch back
+
+	void Take(int slot) {
+		if (!on || taken[slot]) {
+			return;
+		}
+		const std::uint32_t device = ReadAt<std::uint32_t>(renderer + kRendererDeviceOffset);
+		reinterpret_cast<GetVertexShaderConstantFFn>(VtableSlot(device, kDeviceGetVertexShaderConstantFOffset))(
+		    reinterpret_cast<void*>(static_cast<std::uintptr_t>(device)), 0, c[slot], eye_trace::kRegisters);
+		taken[slot] = true;
+	}
+};
+
+// One line per constant map of a shader: every live entry as
+// register x count : type nibble / predefined id.
+void LogShaderMaps(std::uint32_t shader) {
+	for (const std::uint32_t mapOffset : {kShaderMapAOffset, kShaderMapBOffset}) {
+		const std::uint32_t map = shader != 0 ? ReadAt<std::uint32_t>(shader + mapOffset) : 0u;
+		if (map == 0) {
+			continue;
+		}
+		char line[1200];
+		int used = std::snprintf(line, sizeof(line), "Route: eye constants -   map +%02X (vtable %08X) entries register x count : type/id -", mapOffset,
+		                         ReadAt<std::uint32_t>(map));
+		const std::uint32_t entries = ReadAt<std::uint32_t>(map + 0x10);
+		const std::uint32_t count = ReadAt<std::uint16_t>(map + 0x16);
+		for (std::uint32_t i = 0; entries != 0 && i < count && used > 0 && used < static_cast<int>(sizeof(line)) - 40; ++i) {
+			const std::uint32_t entry = ReadAt<std::uint32_t>(entries + 4 * i);
+			if (entry == 0) {
+				continue;
+			}
+			if (ReadAt<std::uint8_t>(entry + 0x08) == 0) {
+				break;
+			}
+			used += std::snprintf(line + used, sizeof(line) - static_cast<std::size_t>(used), " c%dx%u:%X/%u",
+			                      static_cast<int>(ReadAt<std::uint32_t>(entry + 0x1C)), ReadAt<std::uint32_t>(entry + 0x20),
+			                      ReadAt<std::uint32_t>(entry + 0x14) >> 28, ReadAt<std::uint32_t>(entry + 0x10) & 0xFFFFu);
+		}
+		g_log("%s", line);
+	}
+}
+
+// Whether this draw is traced: the setting, a trace frame, eye data, a view
+// shift (a camera follower has none by design).
+bool TraceThisDraw(bool eyesKnown, bool viewportOnly) {
+	return g_settings.stereoTraceConstants && g_traceFrame && eyesKnown && !viewportOnly;
+}
+
+// The line for one traced draw, when the book wants it. restoreExpected:
+// the route re-applies the first eye's constants after the switch back (the
+// direct entries); the other routes upload everything again before their
+// next draw and are not judged on it.
+void FinishTrace(const EyeConstantsTrace& trace, const char* route, std::uint32_t geometry, std::uint32_t shader, bool restoreExpected) {
+	if (!trace.on || !trace.taken[0] || !trace.taken[1] || !trace.taken[2]) {
+		return;
+	}
+	const std::uint32_t vtable = shader != 0 ? ReadAt<std::uint32_t>(shader) : 0u;
+	const std::uint32_t passIndex = shader != 0 ? ReadAt<std::uint32_t>(shader + kShaderPassIndexOffset) : 0u;
+	const std::uint64_t changed = eye_trace::ChangedRegisters(trace.c[0], trace.c[1]);
+	const std::uint64_t left = eye_trace::ChangedRegisters(trace.c[0], trace.c[2]);
+	const std::uint32_t key = ((vtable - 0x00A80000u) & 0x1FFFFu) | (passIndex << 17);
+	const bool firstOfClass = g_traceBook.Find(key) == nullptr;
+	if (!g_traceBook.Note(key, changed != 0, !restoreExpected || left == 0)) {
+		return;
+	}
+	char name[48];
+	ReadObjectName(geometry, name, sizeof(name));
+	char changedText[200];
+	char leftText[200];
+	eye_trace::FormatRegisters(changed, changedText, sizeof(changedText));
+	eye_trace::FormatRegisters(left, leftText, sizeof(leftText));
+	g_log("Route: eye constants - %s, shader class %08X pass %u, \"%s\" (%08X): the second eye's draw has its own %s; after the switch back "
+	      "differing from before: %s%s",
+	      route, vtable, passIndex, name, geometry, changedText, leftText, changed == 0 ? " - NO REGISTER OF ITS OWN" : "");
+	if (firstOfClass || changed == 0) {
+		LogShaderMaps(shader);
+	}
+	if (changed == 0 && shader != 0) {
+		// What the view re-apply had to work with: the pass object and its
+		// two programs, each map's last program, and whether the device has
+		// a vertex shader bound at all (GetVertexShader, device vtable
+		// +0x174 - slot 93; null is the fixed-function pipeline, which takes
+		// the view from SetTransform).
+		const std::uint32_t pass = ReadAt<std::uint32_t>(shader + kShaderPassObjectOffset);
+		const std::uint32_t mapA = ReadAt<std::uint32_t>(shader + kShaderMapAOffset);
+		const std::uint32_t mapB = ReadAt<std::uint32_t>(shader + kShaderMapBOffset);
+		const std::uint32_t device = ReadAt<std::uint32_t>(trace.renderer + kRendererDeviceOffset);
+		void* bound = nullptr;
+		using GetVertexShaderFn = std::int32_t(__stdcall*)(void* device, void** shader);
+		reinterpret_cast<GetVertexShaderFn>(VtableSlot(device, 0x174))(reinterpret_cast<void*>(static_cast<std::uintptr_t>(device)), &bound);
+		if (bound != nullptr) {
+			using ReleaseFn = std::uint32_t(__stdcall*)(void* self);
+			reinterpret_cast<ReleaseFn>(VtableSlot(static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(bound)), 0x08))(bound);
+		}
+		g_log("Route: eye constants -   shader %08X, pass object %08X with programs %08X / %08X, map +2C's last program %08X, map +30's %08X; "
+		      "the device's vertex shader %08X",
+		      shader, pass, pass != 0 ? ReadAt<std::uint32_t>(pass + kPassProgramAOffset) : 0u,
+		      pass != 0 ? ReadAt<std::uint32_t>(pass + kPassProgramBOffset) : 0u, mapA != 0 ? ReadAt<std::uint32_t>(mapA + 0x20) : 0u,
+		      mapB != 0 ? ReadAt<std::uint32_t>(mapB + 0x20) : 0u, static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(bound)));
+	}
+}
+
 // The switch timed as a whole (both Switch calls), for the route's line.
 struct TimedEyeSwitch {
 	EngineEyeSwitch* inner;
 	SwitchTicks* ticks;
+	EyeConstantsTrace* trace = nullptr;
 	void Switch(std::uint8_t e) {
+		if (trace != nullptr && e == 1) {
+			trace->Take(0);
+		}
 		const std::uint64_t t0 = __rdtsc();
 		inner->Switch(e);
 		ticks->all += __rdtsc() - t0;
+		if (trace != nullptr) {
+			trace->Take(e == 1 ? 1 : 2);
+		}
 	}
 };
 
@@ -519,11 +670,16 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
 	EngineEyeSwitch eyeSwitch{&eyePort, &counters, eyes, eyes != nullptr ? 0.0f : g_settings.stereoTestEyeShift};
 	eyeSwitch.viewportOnly = g_settings.stereoFollowers && (eyes != nullptr || (!outside && TestMode())) && FollowsCamera(geometry);
 	NoteFollower(eyeSwitch.viewportOnly, geometry);
-	TimedEyeSwitch timed{&eyeSwitch, &ticks};
+	eyeSwitch.pairs = g_settings.stereoCarryConstants ? &g_registerPairs : nullptr;
+	EyeConstantsTrace trace;
+	trace.renderer = reinterpret_cast<std::uintptr_t>(self);
+	trace.on = TraceThisDraw(eyes != nullptr, eyeSwitch.viewportOnly);
+	TimedEyeSwitch timed{&eyeSwitch, &ticks, &trace};
 	const whole::DrawInput in{geometry, data, skin, world, worldBound, record};
 	const whole::Outcome outcome =
 	    whole::Draw(in, route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode())), ports, shader, ports, ports, timed);
 	g_stats.AddWhole(outcome);
+	FinishTrace(trace, "whole draw", geometry, geometry != 0 ? ReadAt<std::uint32_t>(geometry + kTraceShaderCandidateOffset) : 0u, false);
 	g_stats.AddSwitches(counters);
 	g_stats.AddTicks(ticks.all, ticks.reapply);
 	g_stats.drawsOutsideEye += outside ? 1u : 0u;
@@ -554,12 +710,17 @@ UInt32 __fastcall RouteDrawSkinned(void* self, void* /*edx*/, UInt32 geometry, U
 	EngineEyeSwitch eyeSwitch{&eyePort, &counters, eyes, eyes != nullptr ? 0.0f : g_settings.stereoTestEyeShift};
 	eyeSwitch.viewportOnly = g_settings.stereoFollowers && (eyes != nullptr || (!outside && TestMode())) && FollowsCamera(geometry);
 	NoteFollower(eyeSwitch.viewportOnly, geometry);
-	TimedEyeSwitch timed{&eyeSwitch, &ticks};
+	eyeSwitch.pairs = g_settings.stereoCarryConstants ? &g_registerPairs : nullptr;
+	EyeConstantsTrace trace;
+	trace.renderer = reinterpret_cast<std::uintptr_t>(self);
+	trace.on = TraceThisDraw(eyes != nullptr, eyeSwitch.viewportOnly);
+	TimedEyeSwitch timed{&eyeSwitch, &ticks, &trace};
 	ports.eyes = &timed;
 	const skinned::DrawArguments args{static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(self)), geometry, data, skin, world, worldBound};
 	const skinned::Outcome outcome =
 	    skinned::DrawSkinnedPrimitive(ports, args, route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode())));
 	g_stats.AddSkinned(outcome);
+	FinishTrace(trace, "skinned draw", geometry, geometry != 0 ? ReadAt<std::uint32_t>(geometry + kTraceShaderCandidateOffset) : 0u, false);
 	g_stats.AddSwitches(counters);
 	g_stats.AddTicks(ticks.all, ticks.reapply);
 	g_stats.drawsOutsideEye += outside ? 1u : 0u;
@@ -781,10 +942,15 @@ UInt32 RouteDirect(void* self, UInt32 geometry, Run&& run, std::uint64_t route::
 	EngineEyeSwitch eyeSwitch{&eyePort, &counters, eyes, eyes != nullptr ? 0.0f : g_settings.stereoTestEyeShift};
 	eyeSwitch.viewportOnly = g_settings.stereoFollowers && (eyes != nullptr || (!outside && TestMode())) && FollowsCamera(geometry);
 	NoteFollower(eyeSwitch.viewportOnly, geometry);
+	eyeSwitch.pairs = g_settings.stereoCarryConstants ? &g_registerPairs : nullptr;
 	eyeSwitch.reapplyOnRestore = g_settings.stereoRestoreDirect;
-	TimedEyeSwitch timed{&eyeSwitch, &ticks};
+	EyeConstantsTrace trace;
+	trace.renderer = reinterpret_cast<std::uintptr_t>(self);
+	trace.on = TraceThisDraw(eyes != nullptr, eyeSwitch.viewportOnly);
+	TimedEyeSwitch timed{&eyeSwitch, &ticks, &trace};
 	Ports ports{{reinterpret_cast<std::uintptr_t>(self), &context, &timed}};
 	run(ports, route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode())));
+	FinishTrace(trace, "direct draw", geometry, context.shader, g_settings.stereoRestoreDirect);
 	++(g_stats.*counter);
 	g_stats.AddSwitches(counters);
 	g_stats.AddTicks(ticks.all, ticks.reapply);
@@ -959,6 +1125,7 @@ UInt32 SetStereoEyes(const ObngStereoEyes* eyes) {
 	}
 	g_eyes = eye::FromApi(*eyes);
 	g_eyesSet = true;
+	g_traceFrame = g_settings.stereoTraceConstants && g_traceFrames++ % kTraceFrameEvery == 0;
 	if (g_grassProbeOn) {
 		GrassProbePassBoundary();  // the draws counted so far are the pass before this frame's
 	}
