@@ -704,3 +704,47 @@ carries). Twelve of the 24 grass vertex shaders name every float register
 below c20, table and literals together. A grass vertex shader has no
 register to spare; OBNG's grass fade fix takes what it needs from the rows
 of ModelViewProj instead (`docs/subsystems/grass-fade.md`).
+
+### The grass's settings: where they live and when they are read (2026-11-06)
+
+The `[Grass]` settings of Oblivion.ini are static setting objects of eight
+bytes, the value first and the name's pointer after it. **Read** (the name
+strings and the one reference to each in the EXE's data; the defaults from
+the data section):
+
+| setting | value at | default | read by |
+|---|---|---|---|
+| bDrawShaderGrass | 0x00B09B00 | 1 | 0x004EBDA0 |
+| fGrassStartFadeDistance | 0x00B09B10 | 2000.0 | 0x004EBDA0, 0x005DF160 |
+| fGrassEndDistance | 0x00B09B18 | 3000.0 | 0x004EA750, 0x004EBDA0, 0x005DE2E0, 0x005DF160 |
+| iMinGrassSize | 0x00B09B20 | 80 | 0x004EA450, 0x004EA8A0 |
+| iGrassDensityEvalSize | 0x00B08B64 | 2 | 0x004C0640 |
+
+What the readers do, **read in the Ghidra pseudocode only** (a reading aid;
+the instructions were not checked):
+
+- 0x004EBDA0, the grass's update (the function OBVR's GrassCone watches):
+  every call takes the end and the start distance from the two settings and
+  hands them on (`FUN_007c2960(0, 0, start, end)`), and makes the "Grass"
+  node [0x00B36094] when there is none. **Derived**: a change of the two
+  values while the game runs holds from the next call on; not tried.
+- 0x004EA750, the grass's setting up: an end distance below 400.5 becomes
+  0, and the distance used ([0x00B36090]) is the smaller of the setting and
+  `[0x00B06A2C] << 12`, a count of 4096-unit cells.
+- 0x005DF160 and 0x005DE2E0, the game's own video options: the grass
+  slider's 0..100 maps to an end distance of 400..8000
+  (`slider / 100 * 7600 + 400`), the start distance is the end minus 1000
+  and not below 0, and a slider at 0 sets both to 0 and removes the grass
+  (`FUN_007c4ce0`). The reset value is 3000. So 8000 is the most the
+  game's own menu sets.
+- 0x004EA450: `0x800 / iMinGrassSize` squared sizes two buffers
+  ([0x00B36098], [0x00B3609C]) that are allocated once, when a use count
+  ([0x00B360A0]) is 0; 0x004EA8A0 divides by iMinGrassSize when it places
+  grass. **Derived**: a smaller iMinGrassSize set while the game runs would
+  ask more of buffers sized for the old value - the density is not a
+  setting to change in a running game without reading those two functions
+  first.
+
+With OBNG's grass fade fix the end distance means 0.71 times its value in
+units everywhere in the picture (`[Fix] GrassFadeReach=game`), or its value
+(`ini`); `docs/subsystems/grass-fade.md`.
