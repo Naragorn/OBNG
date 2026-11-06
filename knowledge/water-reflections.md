@@ -171,13 +171,30 @@ not). Runs 20261106-093958, -094257, -094548.
   OBVR's capture, and the same with the head still. The second difference
   is larger than the first there (3.5 against 2.6), so the far pixels jump
   back and forth rather than drift.
-- **Derived:** with the head still only the waves move, so the waves'
-  per-pixel offset of the reflection lookup makes it: far off one pixel
-  covers many wave texels, and the offset it takes is a different one each
-  frame, so it reads a different spot of the reflected shore each frame.
-  The waves' own shading is calm far off (the mode-1 run).
-- **Unverified:** whether the wave textures have mip levels (the surface
-  pass renders them; a render target has none unless made with them), and
-  where in the water pixel shader the offset is applied. The fix this points
-  at is that offset faded with distance (or with the wave texture's screen
-  footprint), not more samples.
+- **Measured since (the same day, runs 20261106-103505 to -111004, the game's
+  clock at 0.0837 so a written frame is 13.9 ms of game time - the numbers
+  came out the same as at the full clock, so the waves step once a rendered
+  frame):**
+  - The water's normal map flat (a copy filled with 0x8080FF bound in its
+    place): the second difference 0.07 in every band. All of the flicker is
+    the normal's shift of the reflection lookup.
+  - The normal map is a render target of 128 x 128 with one level (sampler
+    s1 of WATER000/001/006/007; format 21, min/mag linear, mip none). A copy
+    with a full chain of levels, read trilinear, anisotropic 8 and 16, and
+    with point minification and a level bias of 2: 3.5 became 3.1 to 3.4.
+    Levels do not help.
+  - Why (read in WATER000.pso, the same in 001, 007, 015): the lookup's
+    world position is shifted by `nrm(normal.xy * fade^2, normal.z).xy *
+    (4 + 2496 * saturate(distance * 0.0002))`, `fade = saturate(1 -
+    distance / 8192)`. The shift is half the distance out to 5000 units, so
+    its size on the screen does not fall with the distance (some hundred
+    pixels per unit of normal), while a wave shrinks to under a pixel row
+    from a few hundred units on. Even a normal averaged over many texels
+    still moves the reflection by several pixels, row by row.
+  - The two numbers rewritten to `4 + 0.4992 * min(distance, D)` (the
+    WaterAA plugin, github.com/Naragorn/WaterAA): far water 3.5 -> 2.6 (D
+    600), 1.4 (D 200), 1.1 (D 100); the engine's own reflection the same
+    (3.6 -> 1.4 at D 200). Of the 10978 shaders in the packages only
+    WATER000, 001, 007 and 015.pso define the pair 0.0002 and 2496.0.
+- **Withdrawn:** the guess above this section's first version made - that
+  missing mip levels of the wave texture are the cause - is measured false.
