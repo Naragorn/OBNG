@@ -720,35 +720,43 @@ the data section):
 | iMinGrassSize | 0x00B09B20 | 80 | 0x004EA450, 0x004EA8A0 |
 | iGrassDensityEvalSize | 0x00B08B64 | 2 | 0x004C0640 |
 
-What the readers do, **read in the Ghidra pseudocode only** (a reading aid;
-the instructions were not checked):
+What the readers do. **Read at the instructions** by OBVR (objdump, OBVR
+fd5a3d8, reported to OBNG 2026-11-06) after OBNG's first reading in the
+Ghidra pseudocode; OBNG checked five of the places against the EXE itself
+(0x004EBE12, 0x004EBECC, 0x004EA4D0..D6, 0x005DF3E6..F2, 0x004EA7D8) and
+they agree:
 
 - 0x004EBDA0, the grass's update (the function OBVR's GrassCone watches):
-  every call takes the end and the start distance from the two settings and
-  hands them on (`FUN_007c2960(0, 0, start, end)`), and makes the "Grass"
-  node [0x00B36094] when there is none. **Derived**: a change of the two
-  values while the game runs holds from the next call on. **Measured by
-  OBVR** (its `grass-settings` runs of 2026-11-06, reported to OBNG; the
-  run ids are in OBVR's repo): the distance set while the game runs holds
-  from the next grass build on, 39 patches at 2000 against 145 at 8000.
-- 0x004EA750, the grass's setting up: an end distance below 400.5 becomes
-  0, and the distance used ([0x00B36090]) is the smaller of the setting and
-  `[0x00B06A2C] << 12`, a count of 4096-unit cells.
-- 0x005DF160 and 0x005DE2E0, the game's own video options: the grass
-  slider's 0..100 maps to an end distance of 400..8000
-  (`slider / 100 * 7600 + 400`), the start distance is the end minus 1000
-  and not below 0, and a slider at 0 sets both to 0 and removes the grass
-  (`FUN_007c4ce0`). The reset value is 3000. So 8000 is the most the
+  every build loads the end distance (`fld [0x00B09B18]` at 0x004EBDFC) and
+  the start distance (`fld [0x00B09B10]` at 0x004EBE12) and hands them on,
+  `call 0x007C2960(0, 0, start, end)` at 0x004EBECC; it makes the "Grass"
+  node [0x00B36094] when there is none. 0x004EA750, the setting up, runs
+  only while [0x00B3608D] is 0.
+- 0x004EA750: an end distance below 400.5 becomes 0, and the smaller of
+  the setting and `[0x00B06A2C] << 12` (a count of 4096-unit cells) is
+  stored to [0x00B36090] at 0x004EA7D8. No direct reader of [0x00B36090]
+  was found in .text (OBVR).
+- 0x005DF160 (0x005DF3E1..0x005DF458), the game's own video options: end =
+  slider / 100 x 7600 + 400 (the doubles at 0x00A6DD08 and 0x00A6BEA0),
+  start = end - 1000 (0x00A2FC70) and not below 0; an end of 400.5
+  (0x00A47A30) or less sets both to 0 and calls 0x007C4CE0, which removes
+  the grass. Nothing else is called to refresh. 0x005DE2E0 shows the slider
+  from the end distance, kept within 400..8000. So 8000 is the most the
   game's own menu sets.
-- 0x004EA450: `0x800 / iMinGrassSize` squared sizes two buffers
-  ([0x00B36098], [0x00B3609C]) that are allocated once, when a use count
-  ([0x00B360A0]) is 0; 0x004EA8A0 divides by iMinGrassSize when it places
-  grass. **Derived**: a smaller iMinGrassSize set while the game runs would
-  ask more of buffers sized for the old value - the density is not a
-  setting to change in a running game without reading those two functions
-  first. OBVR sets it in the main menu, before the first grass (its report
-  of the same day: the buffers are not allocated yet then); a density asked
-  for later waits for the next start.
+- 0x004EA450, a constructor (this in ecx): only when the use count
+  [0x00B360A0] is 0, n = 0x800 / iMinGrassSize (`idiv [0x00B09B20]` at
+  0x004EA4D6), [0x00B36098] = alloc(n x n x 12) when null, [0x00B3609C] =
+  alloc(n x n x 4) when null; then the count goes up by one. The second
+  division by iMinGrassSize is at 0x004EA9B8, in 0x004EA8A0.
+
+**Measured by OBVR** (its `grass-settings` runs of 2026-11-06; the run ids
+are in OBVR's repo): the distance set while the game runs holds from the
+next grass build on - 39 patches under the Grass node at 2000, 49 at 3000,
+146 at 8000, after a turn of the head. In the main menu the two buffers
+are not allocated yet (count 0, both null): iMinGrassSize set there holds
+for the save's grass. **Derived**: a smaller iMinGrassSize set after the
+buffers exist would ask more of them than they hold; OBVR lets a density
+asked for later wait for the next start.
 
 With OBNG's grass fade fix the end distance means 0.71 times its value in
 units everywhere in the picture (`[Fix] GrassFadeReach=game`), or its value
