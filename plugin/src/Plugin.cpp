@@ -3,6 +3,8 @@
 
 #include "GrassFadeFix.h"
 #include "GrassFadePatchLogic.h"
+#include "OcclusionCull.h"
+#include "OcclusionCullLogic.h"
 #include "OcclusionProbeLogic.h"
 #include "PluginEntry.h"
 #include "Probes.h"
@@ -145,6 +147,25 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	r.stereoParticles = GetPrivateProfileIntA("Route", "StereoParticles", 1, path) != 0;
 	r.stereoCarryConstants = GetPrivateProfileIntA("Route", "StereoCarryConstants", 1, path) != 0;
 	r.stereoTraceConstants = GetPrivateProfileIntA("Route", "StereoTraceConstants", 0, path) != 0;
+	r.occlusionCull = GetPrivateProfileIntA("Route", "OcclusionCull", 0, path) != 0;
+	r.occlusionCullMaxAge = obng::plugin::occlusion_cull::MaxAgeFromIni(GetPrivateProfileIntA("Route", "OcclusionCullMaxAge", 2, path));
+	r.occlusionCullMargin = obng::plugin::occlusion_cull::MarginFromIni(GetPrivateProfileIntA("Route", "OcclusionCullMargin", 2, path));
+	char cullMove[32] = {};
+	GetPrivateProfileStringA("Route", "OcclusionCullMaxMove", "100", cullMove, sizeof(cullMove), path);
+	r.occlusionCullMaxMove = static_cast<float>(std::strtod(cullMove, nullptr));
+	char cullTurn[32] = {};
+	GetPrivateProfileStringA("Route", "OcclusionCullMaxTurn", "10", cullTurn, sizeof(cullTurn), path);
+	r.occlusionCullMaxTurn = static_cast<float>(std::strtod(cullTurn, nullptr));
+	r.occlusionCullCheck = GetPrivateProfileIntA("Route", "OcclusionCullCheck", 0, path) != 0;
+	if (const char* blocker = obng::plugin::occlusion_cull::BlockedBy(r.stereoDraw, s.passSteps, s.constantUploads, s.occlusion);
+	    r.occlusionCull && blocker != nullptr) {
+		Log("Settings: [Route] OcclusionCull=1 cannot run beside %s - the culler is off", blocker);
+		r.occlusionCull = false;
+	}
+	Log("Settings: [Route] OcclusionCull=%d OcclusionCullMaxAge=%u OcclusionCullMargin=%u OcclusionCullMaxMove=%.0f OcclusionCullMaxTurn=%.0f "
+	    "OcclusionCullCheck=%d",
+	    r.occlusionCull ? 1 : 0, r.occlusionCullMaxAge, r.occlusionCullMargin, static_cast<double>(r.occlusionCullMaxMove),
+	    static_cast<double>(r.occlusionCullMaxTurn), r.occlusionCullCheck ? 1 : 0);
 	obng::plugin::FixSettings& f = settings->fix;
 	f.grassFade = GetPrivateProfileIntA("Fix", "GrassFade", 1, path) != 0;
 	char fadeReach[32] = {};
@@ -185,7 +206,9 @@ uint32_t InstallRouteRangeWalkSideEffect(const obng::plugin::RouteSettings& sett
 }
 
 uint32_t InstallRouteStereoDrawSideEffect(const obng::plugin::RouteSettings& settings) {
-	return obng::plugin::InstallRouteStereoDraw(settings, &Log);
+	// The culler sits above the route (Do_RenderShape, the finish) and asks it
+	// for the eye data; Load calls this only with the route on.
+	return obng::plugin::InstallRouteStereoDraw(settings, &Log) + obng::plugin::InstallOcclusionCull(settings, &Log);
 }
 
 bool StartSummaryTimerSideEffect(const obng::plugin::ShadowSettings&) {

@@ -32,4 +32,8 @@ void ClearStereoEyes();
 // probe; false when no eye data is set. Render thread.
 bool StereoEyeZeroViewport(ObngStereoViewport* out);
 
+// The whole eye data as the interface set it, for the occlusion culler;
+// false when none is set. Render thread.
+bool StereoEyeData(ObngStereoEyes* out);
+
 }  // namespace obng::plugin

@@ -34,6 +34,7 @@
 #include <cstring>
 
 #include "OcclusionProbeLogic.h"
+#include "OcclusionRectDevice.h"
 #include "ProbeLogic.h"
 
 namespace obng::plugin {
@@ -273,30 +274,11 @@ oc::Target CurrentTarget() {
 	return target;
 }
 
-// The state of a rectangle draw: fixed function, pre-transformed vertices,
-// depth test without a depth write, nothing written to any colour target.
-// The caller captured the device's state before and applies it after.
+// The state of a rectangle draw (OcclusionRectDevice.h, shared with the
+// culler). The caller captured the device's state before and applies it
+// after.
 void SetTestState() {
-	g_device->SetVertexShader(nullptr);
-	g_device->SetPixelShader(nullptr);
-	g_device->SetFVF(D3DFVF_XYZRHW);
-	g_device->SetTexture(0, nullptr);
-	g_device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_DISABLE);
-	g_device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
-	const struct {
-		D3DRENDERSTATETYPE state;
-		DWORD value;
-	} states[] = {
-	    {D3DRS_ZENABLE, D3DZB_TRUE},        {D3DRS_ZWRITEENABLE, FALSE},      {D3DRS_ZFUNC, D3DCMP_LESSEQUAL},
-	    {D3DRS_COLORWRITEENABLE, 0},        {D3DRS_COLORWRITEENABLE1, 0},     {D3DRS_COLORWRITEENABLE2, 0},
-	    {D3DRS_COLORWRITEENABLE3, 0},       {D3DRS_ALPHATESTENABLE, FALSE},   {D3DRS_ALPHABLENDENABLE, FALSE},
-	    {D3DRS_CULLMODE, D3DCULL_NONE},     {D3DRS_STENCILENABLE, FALSE},     {D3DRS_FOGENABLE, FALSE},
-	    {D3DRS_SCISSORTESTENABLE, FALSE},   {D3DRS_CLIPPLANEENABLE, 0},       {D3DRS_FILLMODE, D3DFILL_SOLID},
-	    {D3DRS_DEPTHBIAS, 0},               {D3DRS_SLOPESCALEDEPTHBIAS, 0},   {D3DRS_LIGHTING, FALSE},
-	};
-	for (const auto& s : states) {
-		g_device->SetRenderState(s.state, s.value);
-	}
+	occlusion_device::SetTestState(g_device);
 }
 
 void DrawRect(IDirect3DQuery9* query, const oc::ScreenRect& rect) {

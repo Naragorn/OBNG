@@ -22,6 +22,8 @@
 
 #include "RouteStereoDraw.h"
 
+#include "OcclusionCull.h"
+
 #include <windows.h>
 
 #include <intrin.h>
@@ -957,7 +959,11 @@ void NoteGrassFade(const EyeEnginePort& port, std::uint32_t geometry, bool world
 
 // The two direct detours share everything but the rebuild they call.
 template <class Ports, class Run>
-UInt32 RouteDirect(void* self, UInt32 geometry, Run&& run, std::uint64_t route::Stats::*counter) {
+UInt32 RouteDirect(void* self, UInt32 geometry, bool strips, Run&& run, std::uint64_t route::Stats::*counter) {
+	UInt32 cullToken = 0;
+	if (!OcclusionCullBegin(geometry, strips, &cullToken)) {
+		return 0;  // the culler leaves this geometry out of the eye pass
+	}
 	const RoutedDrawScope routed{self};
 	eye::SwitchCounters counters;
 	SwitchTicks ticks;
@@ -995,13 +1001,14 @@ UInt32 RouteDirect(void* self, UInt32 geometry, Run&& run, std::uint64_t route::
 		g_stats.shaderClasses.Add(context.seen.shaderVtable);
 		g_stats.reappliesType1 += context.seen.type1;
 	}
+	OcclusionCullEnd(cullToken);
 	FlushSummaryIfRequested();
 	return 0;
 }
 
 UInt32 __fastcall RouteDrawShapeDirect(void* self, void* /*edx*/, UInt32 geometry) {
 	return RouteDirect<ShapeDirectEnginePorts>(
-	    self, geometry, [geometry](ShapeDirectEnginePorts& ports, engine::render::stereo_draw::EyePlan plan) {
+	    self, geometry, false, [geometry](ShapeDirectEnginePorts& ports, engine::render::stereo_draw::EyePlan plan) {
 		    shape_direct::DrawShapeDirect(ports, geometry, plan);
 	    },
 	    &route::Stats::directShapeDraws);
@@ -1009,7 +1016,7 @@ UInt32 __fastcall RouteDrawShapeDirect(void* self, void* /*edx*/, UInt32 geometr
 
 UInt32 __fastcall RouteDrawTriStripsDirect(void* self, void* /*edx*/, UInt32 geometry) {
 	return RouteDirect<StripsDirectEnginePorts>(
-	    self, geometry, [self, geometry](StripsDirectEnginePorts& ports, engine::render::stereo_draw::EyePlan plan) {
+	    self, geometry, true, [self, geometry](StripsDirectEnginePorts& ports, engine::render::stereo_draw::EyePlan plan) {
 		    strips_direct::DrawTriStripsDirect(ports, strips_direct::DrawArguments{static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(self)), geometry}, plan);
 	    },
 	    &route::Stats::directStripsDraws);
@@ -1171,6 +1178,22 @@ bool StereoEyeZeroViewport(ObngStereoViewport* out) {
 	}
 	const eye::Viewport& zero = g_eyes.viewport[0];
 	*out = ObngStereoViewport{zero.x, zero.y, zero.width, zero.height, zero.minZ, zero.maxZ};
+	return true;
+}
+
+bool StereoEyeData(ObngStereoEyes* out) {
+	if (!g_eyesSet) {
+		return false;
+	}
+	out->size = sizeof(ObngStereoEyes);
+	out->version = kObngStereoEyesVersion;
+	out->secondEyeOffset[0] = g_eyes.secondEyeOffset.x;
+	out->secondEyeOffset[1] = g_eyes.secondEyeOffset.y;
+	out->secondEyeOffset[2] = g_eyes.secondEyeOffset.z;
+	for (int eye = 0; eye < 2; ++eye) {
+		const eye::Viewport& v = g_eyes.viewport[eye];
+		out->viewport[eye] = ObngStereoViewport{v.x, v.y, v.width, v.height, v.minZ, v.maxZ};
+	}
 	return true;
 }
 

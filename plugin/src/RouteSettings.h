@@ -19,6 +19,10 @@ constexpr UInt32 kRouteRangeWalkDetours = 1;
 // DrawShapeDirect 0x007694F0 and DrawTriStripsDirect 0x00769700
 // (RouteStereoDraw.cpp).
 constexpr UInt32 kRouteStereoDrawDetours = 4;
+// The occlusion culler's are two: the accumulator's finish 0x007AE070 and
+// Do_RenderShape 0x007693E0 (OcclusionCull.cpp); the direct entries are the
+// stereo route's, which asks the culler. It needs the route (its eye data).
+constexpr UInt32 kRouteOcclusionCullDetours = 2;
 
 // [Route] StereoEyes: 1 is the 1:1 gate (the rebuild's port calls are the
 // original's), 2 the double draw (StereoDraw.h). Anything else is unknown
@@ -79,8 +83,17 @@ struct RouteSettings {
 	bool stereoCarryConstants = true;  // [Route] StereoCarryConstants: the second eye also gets the view-dependent registers an earlier setup left on the device (the terrain's later texture passes draw with the first pass's ModelViewProj), and the switch back restores every changed register by value (StereoEyeSwitchLogic.h RegisterPairs); 0 for the comparison
 	bool stereoTraceConstants = false;  // [Route] StereoTraceConstants: in every sixteenth single-pass frame the device's vertex registers are read back around each routed draw's eye switch, and a line per shader class and pass says which registers the second eye's draw has of its own (EyeConstantsTraceLogic.h); off in play
 	bool stereoFollowers = true;  // [Route] StereoFollowers: geometry below the camera-following roots (the sky) gets the second eye's viewport without the view shift; 0 for the comparison
+	bool occlusionCull = false;   // [Route] OcclusionCull: geometries hidden in both eyes by a query of the last frames are not drawn (OcclusionCull.cpp, OcclusionCullLogic.h); needs stereoDraw; off in play until measured
+	UInt32 occlusionCullMaxAge = 2;     // [Route] OcclusionCullMaxAge: frames a hidden verdict is acted on (1..8)
+	UInt32 occlusionCullMargin = 2;     // [Route] OcclusionCullMargin: pixels the test rectangles grow on every side (0..64)
+	float occlusionCullMaxMove = 100.0f;  // [Route] OcclusionCullMaxMove: the camera moved further since the verdict: drawn
+	float occlusionCullMaxTurn = 10.0f;   // [Route] OcclusionCullMaxTurn: the camera turned further (degrees): drawn
+	bool occlusionCullCheck = false;    // [Route] OcclusionCullCheck: skipped geometries drawn anyway inside a query, the pixels they put down counted; a measurement
 
-	UInt32 Asked() const { return (rangeWalk ? kRouteRangeWalkDetours : 0u) + (stereoDraw ? kRouteStereoDrawDetours : 0u); }
+	UInt32 Asked() const {
+		return (rangeWalk ? kRouteRangeWalkDetours : 0u) + (stereoDraw ? kRouteStereoDrawDetours : 0u) +
+		       (stereoDraw && occlusionCull ? kRouteOcclusionCullDetours : 0u);
+	}
 };
 
 // Who takes the entry 0x007D59E0. The shadow and the route patch the same

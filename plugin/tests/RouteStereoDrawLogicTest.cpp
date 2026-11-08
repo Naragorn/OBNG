@@ -43,6 +43,11 @@ int main() {
 	Check(route::PlanFor(s, false).eyes == 1, "on with two eyes but no eye data: one eye");
 	s.rangeWalk = true;
 	Check(s.Asked() == 5, "with the range walk: five");
+	s.occlusionCull = true;
+	Check(s.Asked() == 7, "with the occlusion culler: its two detours as well");
+	s.stereoDraw = false;
+	Check(s.Asked() == 1, "the culler without the route asks for nothing (it needs the route's eye data)");
+	s.stereoDraw = true;
 
 	Section("The particle draw's device call: once for one eye; for two the draw, the switch, the draw again, the switch back");
 	{

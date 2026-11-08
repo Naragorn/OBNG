@@ -1,0 +1,161 @@
+# The OCCLUSION CULLER over the occlusion probe's five places, in the single pass
+# ([Route] StereoDraw=1, OBVR's SinglePassStereo=1): the same head sweeps as
+# tools/hand-scripts/obng-occlusion.txt (eight directions, 2.5 s apiece) at
+#   market   coc ICMarketDistrict01      the Imperial City's Market District
+#   plaza    coc ICTalosPlazaDistrict01  Talos Plaza
+#   dungeon  coc ImperialDungeon01       the Imperial Prison's first level
+#   house    coc WeynonPrioryHouse       Weynon Priory's house
+#   road     cow Tamriel -27 -3          the Gold Road midway between Kvatch and Skingrad
+# so that the culler's skips compare with the probe's upper bound per place
+# (knowledge/culling-and-draw-setup.md). Three sides, one run each
+# (tools/hand-scripts/obng-measure-cull-off.ini / -on.ini / -check.ini):
+# off (the route alone), on, and on in check mode (the skipped geometries drawn
+# anyway inside a query, the pixels they put down counted: the popping).
+# OBNG.dll's summary every 5 s carries the culler's totals with the performance
+# counter; the marks carry the same clock, so tools/cull-summary.py sums the
+# windows between a place's mark and its "-done" mark.
+#
+# Run, from OBNG's folder (OBNG.dll deployed):
+#   tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-cull-off.ini tools/hand-scripts/obng-cull.txt --save OBVRHarnessMOO --run-timeout 480
+#   (then -on.ini, -check.ini)
+# then: python3 tools/cull-summary.py artifacts/shadow/obng-cull/<run>
+
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Render SinglePassStereo=1
+expect Single-pass stereo: OBNG took the eyes ok (0)
+# OBVR's capture for the frame and GPU times over the places (about 25 events a
+# frame: 262144 events hold about 140 s at 75 Hz, so the last place's tail is cut).
+ini Performance Enabled=1
+ini Performance GpuTiming=1
+ini Performance StartAfterSeconds=20
+ini Performance CaptureSeconds=150
+ini Performance MaxRecords=262144
+ini Performance Sampler=0
+expect Performance: capture 1 started
+expect Performance: export
+reject Performance: export partial
+console-at ready tgm
+# AI off: a passer-by who greets the player opens the Dialog menu, the console lines
+# stop and the run stays in the Market District (run obng-occlusion-headcull-off/20261105-103908).
+console-at ready tai
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at ready coc ICMarketDistrict01
+console-at market-done coc ICTalosPlazaDistrict01
+console-at plaza-done coc ImperialDungeon01
+console-at dungeon-done coc WeynonPrioryHouse
+console-at house-done cow Tamriel -27 -3
+
+expect HandScript: finished
+reject menu Container
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 16
+head yaw 0
+wait 0.5
+mark market
+wait 2.5
+head yaw -45
+wait 2.5
+head yaw -90
+wait 2.5
+head yaw -135
+wait 2.5
+head yaw 180
+wait 2.5
+head yaw 135
+wait 2.5
+head yaw 90
+wait 2.5
+head yaw 45
+wait 2.5
+head yaw 0
+mark market-done
+wait 16
+head yaw 0
+wait 0.5
+mark plaza
+wait 2.5
+head yaw -45
+wait 2.5
+head yaw -90
+wait 2.5
+head yaw -135
+wait 2.5
+head yaw 180
+wait 2.5
+head yaw 135
+wait 2.5
+head yaw 90
+wait 2.5
+head yaw 45
+wait 2.5
+head yaw 0
+mark plaza-done
+wait 16
+head yaw 0
+wait 0.5
+mark dungeon
+wait 2.5
+head yaw -45
+wait 2.5
+head yaw -90
+wait 2.5
+head yaw -135
+wait 2.5
+head yaw 180
+wait 2.5
+head yaw 135
+wait 2.5
+head yaw 90
+wait 2.5
+head yaw 45
+wait 2.5
+head yaw 0
+mark dungeon-done
+wait 16
+head yaw 0
+wait 0.5
+mark house
+wait 2.5
+head yaw -45
+wait 2.5
+head yaw -90
+wait 2.5
+head yaw -135
+wait 2.5
+head yaw 180
+wait 2.5
+head yaw 135
+wait 2.5
+head yaw 90
+wait 2.5
+head yaw 45
+wait 2.5
+head yaw 0
+mark house-done
+wait 16
+head yaw 0
+wait 0.5
+mark road
+wait 2.5
+head yaw -45
+wait 2.5
+head yaw -90
+wait 2.5
+head yaw -135
+wait 2.5
+head yaw 180
+wait 2.5
+head yaw 135
+wait 2.5
+head yaw 90
+wait 2.5
+head yaw 45
+wait 2.5
+head yaw 0
+mark road-done
+wait 8
+mark done

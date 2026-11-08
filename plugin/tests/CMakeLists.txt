@@ -62,6 +62,11 @@ target_include_directories(OcclusionProbeLogicTest PRIVATE ../src ../../tests)
 target_compile_options(OcclusionProbeLogicTest PRIVATE -Wall -Wextra -Werror)
 add_test(NAME OcclusionProbeLogicTest COMMAND OcclusionProbeLogicTest)
 
+add_executable(OcclusionCullLogicTest OcclusionCullLogicTest.cpp)
+target_include_directories(OcclusionCullLogicTest PRIVATE ../src ../../tests)
+target_compile_options(OcclusionCullLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME OcclusionCullLogicTest COMMAND OcclusionCullLogicTest)
+
 add_executable(UnroutedDrawLogicTest UnroutedDrawLogicTest.cpp)
 target_include_directories(UnroutedDrawLogicTest PRIVATE ../src ../../tests)
 target_compile_options(UnroutedDrawLogicTest PRIVATE -Wall -Wextra -Werror)
