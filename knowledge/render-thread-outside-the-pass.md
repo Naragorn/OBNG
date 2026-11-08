@@ -553,3 +553,48 @@ artifacts/shadow/obng-profile-gold-road-eyedump/20261108-193145, -193550,
   single pass on the texture path (one world render into the double-wide
   texture, one copy) is OBVR's question; the gate is deliberate and the
   texture path with a side-by-side frame is unverified.
+
+## The update tree counted (2026-11-08 20:10, [Probe] SceneUpdate, run obng-profile-gold-road-single/20261108-200948)
+
+OBNG.dll 454727e6 with the scene update probe (plugin/src/Probes.cpp: eight
+entry detours, the two drivers timed by RDTSC, the tree's functions counted),
+the Gold Road single-pass profile scenario, the route on, OBVR.dll 31ef3ad7,
+OblivionWalkers on. Per grid update (one a frame), medians of the 10 s
+windows at each spot (measured):
+
+| spot | cells | NiNode::UpdateDownwardPass | selected | leaves | UpdateWorldData | controller walks | of them idle | NiAVObject::Update calls | GridCellArray::Update ms | NiAVObject::Update ms |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 (-33 -4) | 17 | 6 150 - 7 450 | 400 - 1 800 | 930 - 1 270 | 9 100 - 12 300 | 6 100 - 9 500 | 39 - 47 % | 93 | 1.08 | 1.23 |
+| 2 (-27 -3) | 17 | 8 000 - 9 200 | 770 - 1 400 | 1 370 - 1 490 | 11 100 - 13 600 | 8 400 - 10 600 | 47 - 49 % | 125 | 0.96 | 1.77 |
+| 3 (-21 -1) | 17 | 4 500 - 5 200 | 600 - 1 200 | 440 - 490 | 6 200 - 8 100 | 3 600 - 5 100 | 32 - 38 % | 69 | 1.10 | 0.73 |
+
+- **Idle controller walks** (no property list to walk, no controller): a
+  third to a half of the 4 000 to 10 000 walks a frame find nothing. At
+  tens of nanoseconds a walk that is 0.1 ms a frame at most (derived): not
+  a lever on its own.
+- **The grid update's cost is the count, not the node**: about 1.0 ms a
+  frame over roughly 20 000 node visits and world-transform recomputes
+  (derived: 50 ns a visit). Seventeen cells a frame (the interior and the
+  checkerboard half of the borders). The lever that counts here is fewer
+  visits - the neighbour cells' static subtrees every second or fourth
+  frame, or dirty tracking Gamebryo does not have - medium to large, with
+  animated objects in neighbour cells at half rate as the risk.
+- **The actors' explicit updates are the larger half**: 70 to 125
+  NiAVObject::Update calls a frame (0x00707370, the actor update's
+  0x00471F20 among the callers) take 0.7 to 1.8 ms, 10 to 14 us each - a
+  skeleton's downward pass with a transform compose per bone (derived from
+  the per-call time; the callers are not split by this probe). An actor
+  update LOD (distant actors every second frame with the summed time) is
+  the lever: medium to large; OBVR's body IK and hit tests read bones every
+  frame and would need to follow.
+- **Caveat on the times**: the counted detours sit inside the timed
+  drivers; some 30 000 counted calls a frame at 10 to 20 ns each inflate
+  the two times by about 0.3 to 0.6 ms together (derived). The sampler's
+  1.6 ms for the whole update area (above) is the lower reading; the split
+  grid against actors is the probe's finding.
+- The pair with OblivionWalkers' Rise and Replace off (run -201343) was
+  interrupted after 48 s (KeyboardInterrupt in the runner, SteamVR was
+  shut down around then); no result. Walkers places no Havok bodies of its
+  own (Walkers 2026-11-08), so the Havok question is the engine's own
+  creatures and the player; open.
+
