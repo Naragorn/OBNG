@@ -149,8 +149,9 @@ their OBVR-test.ini), so the deployed OBVR.ini's values held - 1, 1 and 0 in
 OBVR's repository copy (read), unverified for the deployed file. The
 comparison is prepared: `tools/hand-scripts/obng-profile-gold-road-nobodies.txt`
 is the single-pass profile scenario with `ini Hands BodyCollision=0`, the
-original now states `BodyCollision=1` and `PhysicsRate=0` explicitly. Not
-run yet (needs the Linux game and a go).
+original now states `BodyCollision=1` and `PhysicsRate=0` explicitly.
+**Run 2026-11-08 17:56: the hand bodies are acquitted** - see "Runs of
+2026-11-08" at the end of this file.
 
 ### Per-reference animation gate: 2.7 %, 0.26 ms a frame, mostly cache misses
 
@@ -327,3 +328,72 @@ learned building it, all read or measured on 2026-11-08:
   and the Gold Road measurement ([Route] Sqrt=1,
   tools/hand-scripts/obng-measure-profile-sqrt.ini against
   obng-measure-profile.ini) wait for the Linux game.
+
+## Runs of 2026-11-08 17:48-18:04: the square root verified and routed, the hand bodies acquitted
+
+Four Gold Road single-pass runs in a row on the Linux game (OBNG.dll 4a2f6474
+from master 006748a, OBVR.dll as deployed, save OBVRHarnessMOO; artifacts
+under artifacts/shadow/obng-profile-gold-road-single/20261108-174827 (shadow),
+-175231 (baseline), -180031 (routed) and obng-profile-gold-road-nobodies/
+20261108-175632). All four harness verdicts PASS. Samples below are the render
+sampler's out-of-pass samples in the window s2-y0..s2-y45 (about 9.6 s, one
+sample a millisecond) unless said otherwise.
+
+### The square root's dispatch: verified in the game, the slow path gone
+
+- Shadow gate ([Shadow] Sqrt=1, tools/hand-scripts/obng-sqrt-shadow.ini):
+  **65 443 293 calls compared, 0 mismatches** in result, control word and
+  exception flags over the whole scenario (measured, OBNG.log of run
+  -174827). About 330 000 _CIsqrt calls a second, 4 400 a frame at 75 Hz
+  (derived from the 10 s summaries). The ledger's state is **verified**.
+- Routed ([Route] Sqrt=1, obng-measure-profile-sqrt.ini) against the
+  baseline of four minutes earlier (measured):
+
+| | baseline -175231 | routed -180031 |
+|---|---:|---:|
+| samples in the window | 9 616 | 9 781 |
+| samples in the CRT error path (0x00991BAB, 0x00991AB7, __87except, __ctrlfp, __handle_exc, 0x00991B15) | 181 | **0** |
+| CRT samples out of the pass | 395 | 218 |
+| of them __ctrlfp / 0x00991B15 / 0x00991BAB / __87except | 72 / 57 / 23 / 17 | none in the top eight |
+| CRT samples in the pass | 255 | 204 |
+| of them 0x00991B15 / __ctrlfp / 0x00991BAB | 25 / 23 / 6 | none |
+| the dispatch's own code (module "?") | - | 2 |
+
+  Derived: the chain took about 230 of 9 600 samples a window in the
+  baseline, 2.4 % of the thread, about 0.3 ms a 13.3 ms frame; the routed run
+  has none of it, and the dispatch itself is below the sampler's resolution.
+  The frame time cannot show the gain here: the Linux harness runs at 75 Hz
+  with vsync, every phase's mean frame is 13.3-13.5 ms in both runs and the
+  pose wait absorbs the difference (and the scene load differs between runs
+  by 15-20 %: game code 2 234 against 2 519 samples, NiMain 1 358 against
+  1 626). The 90 Hz question is the Windows run's.
+- What remains of the CRT out of the pass (218 samples): 0x00990BA7 (36),
+  0x009828C0 (32, the random generator of ProcessManager::Update),
+  0x00984012 (23), 0x009812C0 (17), 0x0099358E (14), 0x0099098A (14),
+  0x00982525 (13), 0x0098DF50 (12). 0x0099098A and 0x00990BA7 test the same
+  0x00BA9DDC flag and the same PE bit as the square root's exit (read in
+  their decompilates): another x87 math helper's INEXACT path (which
+  function it belongs to: unread). A smaller lever of the same kind, about
+  0.05 ms (derived); worth a look only after the Windows run.
+
+### Havok: OBVR's hand bodies are not the cause
+
+Baseline against the same scenario with `[Hands] BodyCollision=0`
+(obng-profile-gold-road-nobodies.txt; PhysicsRate=0 in both; measured):
+
+| run | Havok samples (0x889000-0x92FFFF) | share of the window | GSK 0x0093C690 | supporting vertex 0x00916C00 |
+|---|---:|---:|---:|---:|
+| baseline -175231, bodies on | 771 | 8.0 % | 157 | 139 |
+| nobodies -175632, bodies off | 1 074 | 11.1 % | 257 | 188 |
+| reference -133844, bodies on (earlier build) | 1 028 | 9.9 % | | |
+| reference -140426, bodies on (earlier build) | 337 | 3.2 % | | |
+
+Without the hand and weapon bodies the Havok work did not fall; it rose, and
+the spread between runs with identical settings (337 to 1 028) is wider than
+any effect the bodies could have. The nobodies run carried 20-40 % more of
+everything (game code, NiMain, CRT), i.e. more scene load, not more physics
+for its own sake. **Derived: the hand bodies are acquitted** (one run per
+side, inside the spread). What drives the GSK narrowphase stays open between
+the engine's own bodies and OblivionWalkers' colliders (OblivionWalkers.dll
+was loaded in all four runs); the next cheap decider is the same pair with
+Walkers' colliders off, if Walkers has that switch.

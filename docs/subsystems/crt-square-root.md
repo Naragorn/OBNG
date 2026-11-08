@@ -65,5 +65,12 @@ Road (knowledge/render-thread-outside-the-pass.md), about 0.2 ms a frame
 
 ## State
 
-Reconstructed 2026-11-08 (gates 1 and 2 green); gates 3 and 4 wait for the
-Linux game. The ledger (`re/ledger.md`) has the row.
+Verified 2026-11-08: gates 1 and 2 green; gate 3 ran at 17:48 (run
+artifacts/shadow/obng-profile-gold-road-single/20261108-174827): 65 443 293
+calls compared, 0 mismatches; gate 4 ran at 18:00 (run -180031 against the
+baseline -175231): the CRT error path's samples went from 181 to 0 a window
+out of the pass and its functions vanished from the in-pass CRT too, about
+0.3 ms a frame (derived); the Linux harness's frame time is vsync-bound at
+75 Hz and cannot show the gain. Details in
+knowledge/render-thread-outside-the-pass.md, "Runs of 2026-11-08". The
+shipped OBNG.ini keeps [Route] Sqrt=0 until the default is decided.
