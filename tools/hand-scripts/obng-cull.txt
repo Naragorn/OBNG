@@ -7,17 +7,17 @@
 #   house    coc WeynonPrioryHouse       Weynon Priory's house
 #   road     cow Tamriel -27 -3          the Gold Road midway between Kvatch and Skingrad
 # so that the culler's skips compare with the probe's upper bound per place
-# (knowledge/culling-and-draw-setup.md). Three sides, one run each
-# (tools/hand-scripts/obng-measure-cull-off.ini / -on.ini / -check.ini):
-# off (the route alone), on, and on in check mode (the skipped geometries drawn
-# anyway inside a query, the pixels they put down counted: the popping).
+# (knowledge/culling-and-draw-setup.md). Two sides, one run each
+# (tools/hand-scripts/obng-measure-cull-off.ini / -on.ini): off (the route
+# alone) and on. The on side's summary also says how many skips the same
+# pass's test confirmed hidden - the rest is the popping's upper bound.
 # OBNG.dll's summary every 5 s carries the culler's totals with the performance
 # counter; the marks carry the same clock, so tools/cull-summary.py sums the
 # windows between a place's mark and its "-done" mark.
 #
 # Run, from OBNG's folder (OBNG.dll deployed):
 #   tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-cull-off.ini tools/hand-scripts/obng-cull.txt --save OBVRHarnessMOO --run-timeout 480
-#   (then -on.ini, -check.ini)
+#   (then -on.ini)
 # then: python3 tools/cull-summary.py artifacts/shadow/obng-cull/<run>
 
 ini Hands Enabled=1

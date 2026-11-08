@@ -88,7 +88,6 @@ struct RouteSettings {
 	UInt32 occlusionCullMargin = 2;     // [Route] OcclusionCullMargin: pixels the test rectangles grow on every side (0..64)
 	float occlusionCullMaxMove = 100.0f;  // [Route] OcclusionCullMaxMove: the camera moved further since the verdict: drawn
 	float occlusionCullMaxTurn = 10.0f;   // [Route] OcclusionCullMaxTurn: the camera turned further (degrees): drawn
-	bool occlusionCullCheck = false;    // [Route] OcclusionCullCheck: skipped geometries drawn anyway inside a query, the pixels they put down counted; a measurement
 
 	UInt32 Asked() const {
 		return (rangeWalk ? kRouteRangeWalkDetours : 0u) + (stereoDraw ? kRouteStereoDrawDetours : 0u) +

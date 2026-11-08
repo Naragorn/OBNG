@@ -82,7 +82,6 @@ cull::Ring g_ring;
 cull::Cameras g_cameras;
 cull::Stats g_stats;
 IDirect3DQuery9* g_queries[cull::kBatches][cull::kMaxTests] = {};
-IDirect3DQuery9* g_checks[cull::kBatches][cull::kMaxTests] = {};
 UInt32 g_frame = 0;         // eye passes with eye data, from 1
 bool g_active = false;      // inside the eye pass's finish
 UInt32 g_inner = 0;         // finishes running inside it
@@ -146,7 +145,6 @@ bool BeginPass() {
 	}
 	if (device != g_device) {
 		std::memset(g_queries, 0, sizeof(g_queries));
-		std::memset(g_checks, 0, sizeof(g_checks));
 		g_block = nullptr;
 		g_device = device;
 	}
@@ -187,9 +185,8 @@ void NoteCamera() {
 	g_cameras.Set(g_frame, cull::CameraOf(view, inverseRow));
 }
 
-// The decision for one draw inside the eye pass. In check mode a skip
-// becomes a draw: a skipped shape's test is marked for the second draw at
-// the pass's end, a skipped direct draw is counted.
+// The decision for one draw inside the eye pass; a skipped geometry's test
+// of this pass is marked, so the result says whether the skip was confirmed.
 cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind) {
 	const unsigned __int64 t0 = __rdtsc();
 	D3DVIEWPORT9 port{};
@@ -216,62 +213,20 @@ cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind) {
 	    cull::RectsFor(bound, origin, view0, view1, proj, g_ports, static_cast<float>(g_settings.margin), &rects, kinds);
 	const cull::Decided decided = cull::Decide(g_table, geometry, g_frame, testKind, g_settings, g_cameras, &g_stats);
 	cull::Count(&g_stats, kind, decided.decision, testKind, decided.newThisFrame, kinds);
-	const bool shape = kind == cull::DrawKind::kShape || kind == cull::DrawKind::kSkinned;
 	if (decided.newThisFrame && testKind == cull::TestKind::kTest) {
 		if (g_batch->count < cull::kMaxTests) {
 			cull::Test& test = g_batch->tests[g_batch->count];
 			test.geometry = geometry;
 			test.rects = rects;
-			test.check = g_settings.check && shape && decided.decision == cull::Decision::kSkip;
+			test.skipped = decided.decision == cull::Decision::kSkip;
 			++g_batch->count;
 			++g_stats.testsIssued;
 		} else {
 			++g_stats.testsBeyondCapacity;
 		}
 	}
-	cull::Decision decision = decided.decision;
-	if (g_settings.check && decision != cull::Decision::kDraw) {
-		if (!shape) {
-			++g_stats.checkDirectDrawn;
-		}
-		decision = cull::Decision::kDraw;
-	}
 	g_stats.decideTicks += __rdtsc() - t0;
-	return decision;
-}
-
-// Check mode, after the pass's last draw: every skipped shape drawn once
-// more inside its check query - the pass's own Do_RenderShape, nothing
-// changed around it, so the device's state stays what the engine's cache
-// believes; its pixels that pass the finished depth are the pixels the frame
-// would have shown. ZFUNC is logged once: with LESSEQUAL a shape's own
-// depth passes, with LESS it would not and the count would be low.
-void CheckRedraws() {
-	static bool s_zfuncLogged = false;
-	if (!g_settings.check) {
-		return;
-	}
-	for (UInt32 i = 0; i < g_batch->count; ++i) {
-		const cull::Test& test = g_batch->tests[i];
-		if (!test.check) {
-			continue;
-		}
-		IDirect3DQuery9* query = EnsureQuery(&g_checks[g_batchIndex][i]);
-		if (query == nullptr) {
-			g_batch->tests[i].check = false;
-			continue;
-		}
-		if (!s_zfuncLogged) {
-			s_zfuncLogged = true;
-			DWORD zfunc = 0;
-			g_device->GetRenderState(D3DRS_ZFUNC, &zfunc);
-			g_log("Route: occlusion cull - check mode's first second draw: the device's ZFUNC is %lu (4 = LESSEQUAL, 2 = LESS)",
-			      static_cast<unsigned long>(zfunc));
-		}
-		query->Issue(D3DISSUE_BEGIN);
-		g_renderShape(reinterpret_cast<void*>(static_cast<std::uintptr_t>(g_renderer)), nullptr, test.geometry);
-		query->Issue(D3DISSUE_END);
-	}
+	return decided.decision;
 }
 
 // After the eye pass's last draw: every queued rectangle pair into its
@@ -315,13 +270,9 @@ cull::Read ReadQuery(IDirect3DQuery9* query, std::uint32_t* pixels) {
 
 void Collect() {
 	const unsigned __int64 t0 = __rdtsc();
-	cull::Collect(&g_ring, &g_table, &g_stats, [](const cull::Batch& batch, UInt32 test, std::uint32_t* pixels, std::uint32_t* checkPixels) {
+	cull::Collect(&g_ring, &g_table, &g_stats, [](const cull::Batch& batch, UInt32 test, std::uint32_t* pixels) {
 		const UInt32 index = static_cast<UInt32>(&batch - g_ring.batches);
-		cull::Read read = ReadQuery(g_queries[index][test], pixels);
-		if (read == cull::Read::kDone && batch.tests[test].check) {
-			read = ReadQuery(g_checks[index][test], checkPixels);
-		}
-		return read;
+		return ReadQuery(g_queries[index][test], pixels);
 	});
 	g_stats.collectTicks += __rdtsc() - t0;
 }
@@ -369,7 +320,6 @@ UInt32 __fastcall CullFinish(void* self, void* /*edx*/) {
 	if (!g_cameraSet) {
 		NoteCamera();  // no draw asked: the ring still gets this frame's camera
 	}
-	CheckRedraws();
 	EndTests();
 	g_stats.passTicks += __rdtsc() - t0;
 	return eax;
@@ -406,7 +356,6 @@ UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {
 	g_settings.margin = settings.occlusionCullMargin;
 	g_settings.maxMoveUnits = settings.occlusionCullMaxMove;
 	g_settings.maxTurnDegrees = settings.occlusionCullMaxTurn;
-	g_settings.check = settings.occlusionCullCheck;
 	UInt32 made = 0;
 	made += InstallEntryDetour("FinishAccumulating 0x007AE070 (occlusion cull: the eye pass)", kFinish, kFinishBytes, sizeof(kFinishBytes),
 	                           reinterpret_cast<const void*>(&CullFinish), reinterpret_cast<void**>(&g_finish), log, DetourRole::Route) ? 1 : 0;
@@ -418,9 +367,9 @@ UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {
 	}
 	g_on = made == kRouteOcclusionCullDetours;
 	g_summaryClock = ReadClocks();
-	log("Route: occlusion cull %s - a hidden verdict holds %u frame%s, rectangles grown %u px, camera gate %.0f units / %.0f degrees, check mode %s",
+	log("Route: occlusion cull %s - a hidden verdict holds %u frame%s, rectangles grown %u px, camera gate %.0f units / %.0f degrees",
 	    g_on ? "on" : "off (not both detours made)", g_settings.maxAge, g_settings.maxAge == 1 ? "" : "s", g_settings.margin,
-	    static_cast<double>(g_settings.maxMoveUnits), static_cast<double>(g_settings.maxTurnDegrees), g_settings.check ? "on" : "off");
+	    static_cast<double>(g_settings.maxMoveUnits), static_cast<double>(g_settings.maxTurnDegrees));
 	return made;
 }
 

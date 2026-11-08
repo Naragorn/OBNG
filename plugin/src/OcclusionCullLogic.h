@@ -22,14 +22,16 @@
 // holds a depth nearer than X's nearest point, written by geometry other
 // than X. Whatever X hid lies behind those same pixels, so leaving X out
 // uncovers nothing that was hidden only by X. A moving camera breaks the
-// argument by the motion of one frame; the gate and the margin bound it, the
-// check mode measures what is left: a skipped shape is drawn anyway, and
-// after the pass's last draw it is drawn once more inside a query of its
-// own, against the finished depth buffer: the pixels that pass are the
-// pixels of it the frame would have shown. (At its own draw it may put
-// pixels down that a later draw covers; those are not popping.) A skipped
-// direct draw cannot be drawn again on its own - its caller sets its
-// constants up for a run of geometries - so it is drawn and counted only.
+// argument by the motion of one frame; the gate and the margin bound it, and
+// the pass's own test measures what is left: a skipped geometry is tested
+// like every other, against the frame it was skipped from. A test that
+// finds its bound hidden confirms the skip (the geometry could not have
+// shown); one that finds the bound seen leaves it unconfirmed - an upper
+// bound of the popping, as loose as the bound is wider than the geometry.
+// (Drawing a skipped shape again after the pass, to count its visible
+// pixels, is not possible: Do_RenderShape needs the pass's record state,
+// which is gone by then - run obng-cull/20261108-152718 crashed at
+// 0x007FB4F2 reading a null record.)
 
 #include "OcclusionProbeLogic.h"
 
@@ -63,7 +65,6 @@ struct Settings {
 	std::uint32_t margin = 2;       // pixels
 	float maxMoveUnits = 100.0f;    // the camera moved further since the verdict: no skip
 	float maxTurnDegrees = 10.0f;   // the camera turned further since the verdict: no skip
-	bool check = false;             // skipped shapes drawn anyway and once more at the pass's end inside a query: the popping measured
 };
 
 // What the culler cannot run beside, by the entry they share (the finish
@@ -287,7 +288,7 @@ constexpr std::uint32_t kMaxTests = 4096;  // tests one pass may hold; the rest 
 struct Test {
 	std::uint32_t geometry = 0;
 	EyeRects rects;
-	bool check = false;  // check mode: a skipped shape, drawn anyway and to be drawn once more at the pass's end inside its check query
+	bool skipped = false;  // the geometry was left out of the pass this test belongs to
 };
 
 struct Batch {
@@ -366,10 +367,8 @@ struct Stats {
 	std::uint64_t resultsVisible = 0;
 	std::uint64_t batchesLost = 0;
 	std::uint64_t motionBlocked = 0;  // a hidden verdict the camera gate refused
-	std::uint64_t checkDrawn = 0;     // check mode: skipped shapes drawn anyway and once more at the pass's end (results read)
-	std::uint64_t checkWithPixels = 0;  // of them with a pixel passing the finished depth: the frame would have shown them
-	std::uint64_t checkPixels = 0;
-	std::uint64_t checkDirectDrawn = 0;  // check mode: skipped direct draws drawn anyway, without a measure
+	std::uint64_t skipsConfirmed = 0;   // a skipped geometry whose test of the same pass found its bound hidden: it could not have shown
+	std::uint64_t skipsUnconfirmed = 0; // ... found its bound seen: the upper bound of the popping
 	std::uint64_t decideTicks = 0;
 	std::uint64_t endTestsTicks = 0;
 	std::uint64_t collectTicks = 0;
@@ -467,8 +466,8 @@ inline void Count(Stats* stats, DrawKind kind, Decision decision, TestKind testK
 enum class Read : std::uint8_t { kDone, kNotYet, kFailed };
 
 // Reads what is there, oldest batch first; stops at the first result that is
-// not ready (the device finishes in order). `read(batch, test, &pixels,
-// &checkPixels)` gives one test's results. A failed read drops the batch.
+// not ready (the device finishes in order). `read(batch, test, &pixels)`
+// gives one test's result. A failed read drops the batch.
 template <class ReadFn>
 void Collect(Ring* ring, Table* table, Stats* stats, ReadFn&& read) {
 	for (;;) {
@@ -479,8 +478,7 @@ void Collect(Ring* ring, Table* table, Stats* stats, ReadFn&& read) {
 		while (b->cursor < b->count) {
 			Test& t = b->tests[b->cursor];
 			std::uint32_t pixels = 0;
-			std::uint32_t checkPixels = 0;
-			const Read r = read(*b, b->cursor, &pixels, &checkPixels);
+			const Read r = read(*b, b->cursor, &pixels);
 			if (r == Read::kNotYet) {
 				return;
 			}
@@ -496,11 +494,11 @@ void Collect(Ring* ring, Table* table, Stats* stats, ReadFn&& read) {
 			} else {
 				++stats->resultsVisible;
 			}
-			if (t.check) {
-				++stats->checkDrawn;
-				if (checkPixels != 0) {
-					++stats->checkWithPixels;
-					stats->checkPixels += checkPixels;
+			if (t.skipped) {
+				if (hidden) {
+					++stats->skipsConfirmed;
+				} else {
+					++stats->skipsUnconfirmed;
 				}
 			}
 			++b->cursor;
@@ -542,9 +540,10 @@ inline int FormatSummary(const Stats& s, const Settings& settings, double ticksP
 	const double passes = s.eyePasses == 0 ? 1.0 : static_cast<double>(s.eyePasses);
 	auto perPass = [&](std::uint64_t n) { return static_cast<double>(n) / passes; };
 	auto ms = [&](std::uint64_t ticks) { return ticksPerMillisecond > 0.0 ? static_cast<double>(ticks) / ticksPerMillisecond / passes : 0.0; };
-	line.Text("Route: occlusion cull%s - %llu eye passes (%llu without eye data); per pass %.0f draws, %.0f skipped (%u %%), %.0f outside both "
+	(void)settings;
+	line.Text("Route: occlusion cull - %llu eye passes (%llu without eye data); per pass %.0f draws, %.0f skipped (%u %%), %.0f outside both "
 	          "frustums, %.0f untestable (near %.0f, no bound %.0f, viewport %.0f), %.0f repeats, %.0f outside eye 0's viewport",
-	          settings.check ? " (check mode: skipped draws drawn and counted)" : "", static_cast<unsigned long long>(s.eyePasses),
+	          static_cast<unsigned long long>(s.eyePasses),
 	          static_cast<unsigned long long>(s.passesWithoutEyes), perPass(s.Draws()), perPass(s.Skipped()), Percent(s.Skipped(), s.Draws()),
 	          perPass([&] {
 		          std::uint64_t n = 0;
@@ -582,13 +581,9 @@ inline int FormatSummary(const Stats& s, const Settings& settings, double ticksP
 	          perPass(s.testsIssued), static_cast<unsigned long long>(s.testsBeyondCapacity), static_cast<unsigned long long>(s.tableFull),
 	          static_cast<unsigned long long>(s.resultsHidden), static_cast<unsigned long long>(s.resultsVisible),
 	          static_cast<unsigned long long>(s.batchesLost), static_cast<unsigned long long>(s.motionBlocked));
-	if (settings.check) {
-		line.Text("; check: %llu skipped shapes drawn again at the pass's end, %llu of them visible (%u %%), %llu pixels; %llu skipped direct draws "
-		          "drawn unmeasured",
-		          static_cast<unsigned long long>(s.checkDrawn), static_cast<unsigned long long>(s.checkWithPixels),
-		          Percent(s.checkWithPixels, s.checkDrawn), static_cast<unsigned long long>(s.checkPixels),
-		          static_cast<unsigned long long>(s.checkDirectDrawn));
-	}
+	line.Text("; skips tested in their own pass: %llu confirmed hidden, %llu unconfirmed (%u %%, the popping's upper bound)",
+	          static_cast<unsigned long long>(s.skipsConfirmed), static_cast<unsigned long long>(s.skipsUnconfirmed),
+	          Percent(s.skipsUnconfirmed, s.skipsConfirmed + s.skipsUnconfirmed));
 	auto totalMs = [&](std::uint64_t ticks) { return ticksPerMillisecond > 0.0 ? static_cast<double>(ticks) / ticksPerMillisecond : 0.0; };
 	if (ticksPerMillisecond > 0.0) {
 		line.Text("; per pass: decide %.3f ms, end tests %.3f ms, collect %.3f ms, eye pass %.3f ms", ms(s.decideTicks), ms(s.endTestsTicks),
@@ -598,12 +593,12 @@ inline int FormatSummary(const Stats& s, const Settings& settings, double ticksP
 		          static_cast<unsigned long long>(s.endTestsTicks), static_cast<unsigned long long>(s.collectTicks),
 		          static_cast<unsigned long long>(s.passTicks));
 	}
-	line.Text("; totals qpc %llu passes %llu draws %llu skipped %llu tests %llu hidden %llu visible %llu checkDrawn %llu checkVisible %llu "
+	line.Text("; totals qpc %llu passes %llu draws %llu skipped %llu tests %llu hidden %llu visible %llu skipsConfirmed %llu skipsUnconfirmed %llu "
 	          "passMs %.3f cullMs %.3f",
 	          static_cast<unsigned long long>(qpc), static_cast<unsigned long long>(s.eyePasses), static_cast<unsigned long long>(s.Draws()),
 	          static_cast<unsigned long long>(s.Skipped()), static_cast<unsigned long long>(s.testsIssued),
 	          static_cast<unsigned long long>(s.resultsHidden), static_cast<unsigned long long>(s.resultsVisible),
-	          static_cast<unsigned long long>(s.checkDrawn), static_cast<unsigned long long>(s.checkWithPixels), totalMs(s.passTicks),
+	          static_cast<unsigned long long>(s.skipsConfirmed), static_cast<unsigned long long>(s.skipsUnconfirmed), totalMs(s.passTicks),
 	          totalMs(s.decideTicks + s.endTestsTicks + s.collectTicks));
 	return line.at;
 }

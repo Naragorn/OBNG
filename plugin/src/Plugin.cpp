@@ -156,16 +156,14 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	char cullTurn[32] = {};
 	GetPrivateProfileStringA("Route", "OcclusionCullMaxTurn", "10", cullTurn, sizeof(cullTurn), path);
 	r.occlusionCullMaxTurn = static_cast<float>(std::strtod(cullTurn, nullptr));
-	r.occlusionCullCheck = GetPrivateProfileIntA("Route", "OcclusionCullCheck", 0, path) != 0;
 	if (const char* blocker = obng::plugin::occlusion_cull::BlockedBy(r.stereoDraw, s.passSteps, s.constantUploads, s.occlusion);
 	    r.occlusionCull && blocker != nullptr) {
 		Log("Settings: [Route] OcclusionCull=1 cannot run beside %s - the culler is off", blocker);
 		r.occlusionCull = false;
 	}
-	Log("Settings: [Route] OcclusionCull=%d OcclusionCullMaxAge=%u OcclusionCullMargin=%u OcclusionCullMaxMove=%.0f OcclusionCullMaxTurn=%.0f "
-	    "OcclusionCullCheck=%d",
+	Log("Settings: [Route] OcclusionCull=%d OcclusionCullMaxAge=%u OcclusionCullMargin=%u OcclusionCullMaxMove=%.0f OcclusionCullMaxTurn=%.0f",
 	    r.occlusionCull ? 1 : 0, r.occlusionCullMaxAge, r.occlusionCullMargin, static_cast<double>(r.occlusionCullMaxMove),
-	    static_cast<double>(r.occlusionCullMaxTurn), r.occlusionCullCheck ? 1 : 0);
+	    static_cast<double>(r.occlusionCullMaxTurn));
 	obng::plugin::FixSettings& f = settings->fix;
 	f.grassFade = GetPrivateProfileIntA("Fix", "GrassFade", 1, path) != 0;
 	char fadeReach[32] = {};

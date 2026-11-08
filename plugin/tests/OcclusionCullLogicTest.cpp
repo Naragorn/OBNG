@@ -347,7 +347,8 @@ void TestRingAndCollect() {
 	Batch& a = r.Begin(1, &lost);
 	a.tests[0].geometry = 0x1000;
 	a.tests[1].geometry = 0x2000;
-	a.tests[1].check = true;
+	a.tests[1].skipped = true;
+	a.tests[0].skipped = true;
 	a.count = 2;
 	a.pending = true;
 	Batch& b = r.Begin(2, &lost);
@@ -358,7 +359,7 @@ void TestRingAndCollect() {
 	table.Claim(0x2000, 1);
 	table.Claim(0x3000, 2);
 	int reads = 0;
-	cull::Collect(&r, &table, &stats, [&](const Batch& batch, std::uint32_t test, std::uint32_t* pixels, std::uint32_t* checkPixels) {
+	cull::Collect(&r, &table, &stats, [&](const Batch& batch, std::uint32_t test, std::uint32_t* pixels) {
 		++reads;
 		if (batch.frame == 1 && test == 0) {
 			*pixels = 0;
@@ -366,18 +367,17 @@ void TestRingAndCollect() {
 		}
 		if (batch.frame == 1 && test == 1) {
 			*pixels = 40;
-			*checkPixels = 7;
 			return Read::kDone;
 		}
 		return Read::kNotYet;
 	});
 	Check(reads == 3 && a.cursor == 2 && !a.pending && b.pending && b.cursor == 0, "batch 1 read whole, batch 2 not ready yet");
 	Check(table.Find(0x1000)->hiddenFrame == 1 && table.Find(0x2000)->hiddenFrame == 0, "the results went to the table");
-	Check(stats.resultsHidden == 1 && stats.resultsVisible == 1 && stats.checkDrawn == 1 && stats.checkWithPixels == 1 && stats.checkPixels == 7,
-	      "the counts, the check's pixels included");
-	cull::Collect(&r, &table, &stats, [&](const Batch&, std::uint32_t, std::uint32_t*, std::uint32_t*) { return Read::kFailed; });
+	Check(stats.resultsHidden == 1 && stats.resultsVisible == 1 && stats.skipsConfirmed == 1 && stats.skipsUnconfirmed == 1,
+	      "the counts: one skip confirmed hidden, one unconfirmed");
+	cull::Collect(&r, &table, &stats, [&](const Batch&, std::uint32_t, std::uint32_t*) { return Read::kFailed; });
 	Check(!b.pending && stats.batchesLost == 1 && table.Find(0x3000)->hiddenFrame == 0, "a failed read drops the batch");
-	cull::Collect(&r, &table, &stats, [&](const Batch&, std::uint32_t, std::uint32_t*, std::uint32_t*) { return Read::kDone; });
+	cull::Collect(&r, &table, &stats, [&](const Batch&, std::uint32_t, std::uint32_t*) { return Read::kDone; });
 	Check(stats.resultsHidden == 1 && stats.resultsVisible == 1, "nothing pending: nothing read");
 }
 
@@ -398,6 +398,8 @@ void TestSummary() {
 	s.resultsVisible = 150;
 	s.batchesLost = 2;
 	s.motionBlocked = 5;
+	s.skipsConfirmed = 380;
+	s.skipsUnconfirmed = 20;
 	s.decideTicks = 20000;
 	s.endTestsTicks = 30000;
 	s.collectTicks = 10000;
@@ -414,24 +416,16 @@ void TestSummary() {
 	Check(text.find("tests 60 a pass (0 beyond capacity, 0 table full), results 400 hidden / 150 visible, 2 batches lost, 5 verdicts refused by the camera gate") !=
 	          std::string::npos,
 	      "the tests");
-	Check(text.find("check:") == std::string::npos, "no check line without the check mode");
+	Check(text.find("; skips tested in their own pass: 380 confirmed hidden, 20 unconfirmed (5 %, the popping's upper bound)") != std::string::npos,
+	      "the skips confirmed by their own pass's test");
 	Check(text.find("per pass: decide 2.000 ms, end tests 3.000 ms, collect 1.000 ms, eye pass 40.000 ms") != std::string::npos, "the cost per pass");
-	Check(text.find("; totals qpc 777 passes 10 draws 1200 skipped 400 tests 600 hidden 400 visible 150 checkDrawn 0 checkVisible 0 passMs 400.000 cullMs 60.000") !=
+	Check(text.find("; totals qpc 777 passes 10 draws 1200 skipped 400 tests 600 hidden 400 visible 150 skipsConfirmed 380 skipsUnconfirmed 20 passMs 400.000 cullMs 60.000") !=
 	          std::string::npos,
 	      "the totals for the summary tool");
-	settings.check = true;
-	s.checkDrawn = 400;
-	s.checkWithPixels = 8;
-	s.checkPixels = 1234;
-	s.checkDirectDrawn = 30;
 	cull::FormatSummary(s, settings, 0.0, 778, line, sizeof(line));
 	text = line;
-	Check(text.find("(check mode: skipped draws drawn and counted)") != std::string::npos, "the check mode is named");
-	Check(text.find("check: 400 skipped shapes drawn again at the pass's end, 8 of them visible (2 %), 1234 pixels; 30 skipped direct draws drawn unmeasured") !=
-	          std::string::npos,
-	      "the check's figures");
 	Check(text.find("ticks: decide 20000, end tests 30000, collect 10000, eye pass 400000") != std::string::npos, "ticks without a calibration");
-	Check(text.find("checkDrawn 400 checkVisible 8 passMs 0.000 cullMs 0.000") != std::string::npos, "the totals without a calibration: no milliseconds");
+	Check(text.find("skipsConfirmed 380 skipsUnconfirmed 20 passMs 0.000 cullMs 0.000") != std::string::npos, "the totals without a calibration: no milliseconds");
 	Stats empty;
 	cull::FormatSummary(empty, Settings{}, 1000.0, 0, line, sizeof(line));
 	Check(std::string(line).find("0 eye passes") != std::string::npos && std::string(line).find("(0 %)") != std::string::npos, "nothing divides by zero");
