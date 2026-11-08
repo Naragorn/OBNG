@@ -44,7 +44,7 @@ int main() {
 	s.rangeWalk = true;
 	Check(s.Asked() == 5, "with the range walk: five");
 	s.occlusionCull = true;
-	Check(s.Asked() == 7, "with the occlusion culler: its two detours as well");
+	Check(s.Asked() == 8, "with the occlusion culler: its three detours as well");
 	s.stereoDraw = false;
 	Check(s.Asked() == 1, "the culler without the route asks for nothing (it needs the route's eye data)");
 	s.stereoDraw = true;

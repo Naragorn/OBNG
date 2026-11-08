@@ -19,10 +19,12 @@ constexpr UInt32 kRouteRangeWalkDetours = 1;
 // DrawShapeDirect 0x007694F0 and DrawTriStripsDirect 0x00769700
 // (RouteStereoDraw.cpp).
 constexpr UInt32 kRouteStereoDrawDetours = 4;
-// The occlusion culler's are two: the accumulator's finish 0x007AE070 and
-// Do_RenderShape 0x007693E0 (OcclusionCull.cpp); the direct entries are the
-// stereo route's, which asks the culler. It needs the route (its eye data).
-constexpr UInt32 kRouteOcclusionCullDetours = 2;
+// The occlusion culler's are three: the accumulator's finish 0x007AE070,
+// DrawRenderPass 0x007A9820 (the pass record, before its light constants)
+// and Do_RenderShape 0x007693E0 (OcclusionCull.cpp); the direct entries are
+// the stereo route's, which asks the culler. It needs the route (its eye
+// data).
+constexpr UInt32 kRouteOcclusionCullDetours = 3;
 // The CRT square root's dispatch is one: _CIsqrt's entry 0x00982C30
 // (FastSqrt.cpp, FastSqrtLogic.h).
 constexpr UInt32 kRouteSqrtDetours = 1;

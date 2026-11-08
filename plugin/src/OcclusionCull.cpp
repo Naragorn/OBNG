@@ -4,14 +4,18 @@
 // reasoning are OcclusionCullLogic.h's; this file is the part that touches
 // the game and Direct3D.
 //
-// Two detours: the accumulator's finish 0x007AE070 (the eye pass is its call
-// from ShadowSceneNode::Render 0x007C78D0, return site 0x007C7D56 - read in
-// re/functions/0x007C78D0.md, measured in run 20261030-194432) and
-// Do_RenderShape 0x007693E0, the renderer's shape draw entry (slots 88/89).
-// The two direct draw entries (slots 90/91) belong to the stereo route; it
-// asks OcclusionCullDraws before each of its direct draws. The eye pass needs
-// the route's eye data (StereoEyeData): without it - the dual pass, a menu -
-// the pass runs untouched.
+// Three detours: the accumulator's finish 0x007AE070 (the eye pass is its
+// call from ShadowSceneNode::Render 0x007C78D0, return site 0x007C7D56 - read
+// in re/functions/0x007C78D0.md, measured in run 20261030-194432);
+// DrawRenderPass 0x007A9820, the accumulator's per-record draw step, where a
+// skip also saves the record's light constants (re/functions/0x007A9820.md
+// steps 3 and 4; the two globals it publishes first are still written); and
+// Do_RenderShape 0x007693E0, the renderer's shape draw entry (slots 88/89),
+// for shapes that reach it another way. The two direct draw entries (slots
+// 90/91) belong to the stereo route; it asks OcclusionCullDraws before each
+// of its direct draws. The eye pass needs the route's eye data
+// (StereoEyeData): without it - the dual pass, a menu - the pass runs
+// untouched.
 //
 // Per eye pass: the results of the earlier passes' queries are read (no
 // wait: what is not ready stays for the next pass), then the finish runs
@@ -22,9 +26,10 @@
 // rectangles are the occlusion probe's (OcclusionProbeLogic.h BoundRect,
 // zero contradictions measured), grown by the margin.
 //
-// A prototype for the measurement: the queries and the state block are kept
-// for the process's life and never released (a device reset with the culler
-// on fails, as with the probe).
+// The device's Reset (IDirect3DDevice9 vtable slot 16, d3d9.h) is hooked at
+// the first eye pass: the queries and the state block are released before
+// the engine's Reset runs and made anew, lazily, afterwards; the batches in
+// flight are dropped.
 
 #include "OcclusionCull.h"
 
@@ -35,6 +40,7 @@
 
 #include <cstring>
 
+#include "Memory.h"
 #include "OcclusionCullLogic.h"
 #include "OcclusionRectDevice.h"
 #include "ProbeLogic.h"
@@ -53,6 +59,14 @@ constexpr UInt8 kFinishBytes[] = {0x6A, 0xFF, 0x68, 0xD3, 0xD4, 0x9C, 0x00};  //
 constexpr UInt32 kEyePassSite = 0x007C7D56;
 constexpr UInt32 kRenderShape = 0x007693E0;
 constexpr UInt8 kRenderShapeBytes[] = {0x83, 0xEC, 0x4C, 0x53, 0x8B, 0xD9};  // sub esp,4Ch; push ebx; mov ebx,ecx
+constexpr UInt32 kDrawRenderPass = 0x007A9820;
+constexpr UInt8 kDrawRenderPassBytes[] = {0x53, 0x66, 0x8B, 0x5C, 0x24, 0x0C};  // push ebx; mov bx,[esp+0Ch] (re/export/pass-drivers/0x007A9820/asm.s)
+// What DrawRenderPass publishes before it draws (re/functions/0x007A9820.md
+// steps 2): the pass id and the record, read by the code below the draw.
+constexpr UInt32 kPassIdGlobal = 0x00B42E90;
+constexpr UInt32 kPassRecordGlobal = 0x00B42EB8;
+constexpr UInt32 kRecordGeometryOffset = 0x00;
+constexpr UInt32 kDeviceResetSlot = 16;  // IDirect3DDevice9::Reset, d3d9.h
 
 // The renderer (re/functions/0x007C78D0.md), its device and matrices
 // (re/functions/0x00762640.md: view +0x980, projection +0x9C0, inverse view
@@ -71,9 +85,14 @@ static_assert(sizeof(D3DVIEWPORT9) == sizeof(oc::Viewport), "the logic's viewpor
 
 using FinishFn = UInt32(__fastcall*)(void* self, void* edx);
 using DrawFn = UInt32(__fastcall*)(void* self, void* edx, UInt32 geometry);
+using DrawRenderPassFn = UInt32(__fastcall*)(void* self, void* edx, UInt32 record, UInt32 pass);  // __thiscall, this unused, ret 8
+using ResetFn = HRESULT(__stdcall*)(IDirect3DDevice9* self, D3DPRESENT_PARAMETERS* parameters);
 
 FinishFn g_finish = nullptr;
 DrawFn g_renderShape = nullptr;
+DrawRenderPassFn g_drawRenderPass = nullptr;
+ResetFn g_originalReset = nullptr;
+bool g_resetHookFailed = false;
 LogFn g_log = nullptr;
 bool g_on = false;
 cull::Settings g_settings;
@@ -131,6 +150,56 @@ void RefuseOnce(const char* what, HRESULT result) {
 	}
 }
 
+// Before the engine's Reset: the queries and the state block released (D3D9
+// wants every default-pool object gone), the batches in flight dropped; the
+// next eye pass makes them anew.
+void ReleaseDeviceObjects() {
+	for (auto& batch : g_queries) {
+		for (IDirect3DQuery9*& query : batch) {
+			if (query != nullptr) {
+				query->Release();
+				query = nullptr;
+			}
+		}
+	}
+	if (g_block != nullptr) {
+		g_block->Release();
+		g_block = nullptr;
+	}
+	g_stats.batchesLost += g_ring.DropAll();
+}
+
+HRESULT __stdcall HookedReset(IDirect3DDevice9* self, D3DPRESENT_PARAMETERS* parameters) {
+	if (self == g_device) {
+		ReleaseDeviceObjects();
+		++g_stats.deviceResets;
+	}
+	return g_originalReset(self, parameters);
+}
+
+// The hook on the device's Reset, once per vtable (the vtable is the device
+// class's). A slot already holding the hook is left; a write that fails is
+// logged once and the culler runs on without the hook.
+void EnsureResetHook(IDirect3DDevice9* device) {
+	if (g_resetHookFailed) {
+		return;
+	}
+	void** vtable = *reinterpret_cast<void***>(device);
+	void* hook = reinterpret_cast<void*>(&HookedReset);
+	if (vtable[kDeviceResetSlot] == hook) {
+		return;
+	}
+	g_originalReset = reinterpret_cast<ResetFn>(vtable[kDeviceResetSlot]);
+	if (!SafeWrite(static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(&vtable[kDeviceResetSlot])), &hook, sizeof(hook))) {
+		g_resetHookFailed = true;
+		g_log("Route: occlusion cull - the device's vtable at %p could not be written; a device reset with the culler on will fail",
+		      static_cast<void*>(vtable));
+		return;
+	}
+	g_log("Route: occlusion cull - Reset hooked on the device's vtable at %p (slot %u held %p)", static_cast<void*>(vtable), kDeviceResetSlot,
+	      reinterpret_cast<void*>(g_originalReset));
+}
+
 // The device of the pass's renderer with its state block; false when there
 // is none. A device other than the last one's starts over without touching
 // the old one's objects.
@@ -148,6 +217,7 @@ bool BeginPass() {
 		g_block = nullptr;
 		g_device = device;
 	}
+	EnsureResetHook(device);
 	if (g_block == nullptr) {
 		const HRESULT made = device->CreateStateBlock(D3DSBT_ALL, &g_block);
 		if (FAILED(made) || g_block == nullptr) {
@@ -187,8 +257,17 @@ void NoteCamera() {
 
 // The decision for one draw inside the eye pass; a skipped geometry's test
 // of this pass is marked, so the result says whether the skip was confirmed.
+// A geometry asked about before in this frame (a later pass of it, or
+// Do_RenderShape under a DrawRenderPass that decided already) gets the
+// frame's decision at once.
 cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind) {
 	const unsigned __int64 t0 = __rdtsc();
+	if (cull::Verdict* seen = g_table.Find(geometry); seen != nullptr && seen->seenFrame == g_frame) {
+		const oc::RectKind none[2] = {oc::RectKind::kTestable, oc::RectKind::kTestable};
+		cull::Count(&g_stats, kind, seen->decision, cull::TestKind::kTest, false, none);
+		g_stats.decideTicks += __rdtsc() - t0;
+		return seen->decision;
+	}
 	D3DVIEWPORT9 port{};
 	if (FAILED(g_device->GetViewport(&port)) || port.X != g_ports[0].x || port.Y != g_ports[0].y || port.Width != g_ports[0].width ||
 	    port.Height != g_ports[0].height) {
@@ -325,6 +404,26 @@ UInt32 __fastcall CullFinish(void* self, void* /*edx*/) {
 	return eax;
 }
 
+// The accumulator's per-record draw: a skipped record still publishes the
+// pass id and itself, as the original does first, and nothing else runs.
+UInt32 __fastcall CullDrawRenderPass(void* self, void* /*edx*/, UInt32 record, UInt32 pass) {
+	if (!g_active || g_inner != 0 || record == 0) {
+		return g_drawRenderPass(self, nullptr, record, pass);
+	}
+	const UInt32 geometry = ReadAt<UInt32>(record + kRecordGeometryOffset);
+	if (geometry == 0) {
+		return g_drawRenderPass(self, nullptr, record, pass);
+	}
+	const cull::DrawKind kind = ReadAt<UInt32>(geometry + kGeometrySkinOffset) != 0 ? cull::DrawKind::kSkinned : cull::DrawKind::kShape;
+	if (DecideDraw(geometry, kind) == cull::Decision::kDraw) {
+		return g_drawRenderPass(self, nullptr, record, pass);
+	}
+	*reinterpret_cast<volatile UInt32*>(static_cast<std::uintptr_t>(kPassIdGlobal)) = pass & 0xFFFFu;
+	*reinterpret_cast<volatile UInt32*>(static_cast<std::uintptr_t>(kPassRecordGlobal)) = record;
+	++g_stats.skippedAtRecord;
+	return 0;  // the original writes no EAX its callers read (re/functions/0x007A9820.md)
+}
+
 UInt32 __fastcall CullRenderShape(void* self, void* /*edx*/, UInt32 geometry) {
 	if (!g_active || g_inner != 0 || geometry == 0 || static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(self)) != g_renderer) {
 		return g_renderShape(self, nullptr, geometry);
@@ -362,6 +461,11 @@ UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {
 	if (made != 0) {
 		made += InstallEntryDetour("Do_RenderShape 0x007693E0 (occlusion cull)", kRenderShape, kRenderShapeBytes, sizeof(kRenderShapeBytes),
 		                           reinterpret_cast<const void*>(&CullRenderShape), reinterpret_cast<void**>(&g_renderShape), log, DetourRole::Route)
+		            ? 1
+		            : 0;
+		made += InstallEntryDetour("DrawRenderPass 0x007A9820 (occlusion cull)", kDrawRenderPass, kDrawRenderPassBytes, sizeof(kDrawRenderPassBytes),
+		                           reinterpret_cast<const void*>(&CullDrawRenderPass), reinterpret_cast<void**>(&g_drawRenderPass), log,
+		                           DetourRole::Route)
 		            ? 1
 		            : 0;
 	}

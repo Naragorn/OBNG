@@ -339,6 +339,8 @@ void TestRingAndCollect() {
 	Check(ring.OldestPending() == &b1, "the oldest pending batch first");
 	Batch& wrapped = ring.Begin(1 + cull::kBatches, &lost);
 	Check(lost && &wrapped == &b1 && wrapped.count == 0 && !wrapped.pending, "a ring later the same slot: the pending batch is lost");
+	Check(ring.DropAll() == 1 && !b2.pending && ring.OldestPending() == nullptr, "a device reset drops every pending batch and says how many");
+	Check(ring.DropAll() == 0, "nothing pending: nothing dropped");
 
 	Section("Reading the results, oldest first, stopping at the first not ready");
 	Ring r;
@@ -400,6 +402,8 @@ void TestSummary() {
 	s.motionBlocked = 5;
 	s.skipsConfirmed = 380;
 	s.skipsUnconfirmed = 20;
+	s.skippedAtRecord = 300;
+	s.deviceResets = 1;
 	s.decideTicks = 20000;
 	s.endTestsTicks = 30000;
 	s.collectTicks = 10000;
@@ -413,9 +417,9 @@ void TestSummary() {
 	          std::string::npos,
 	      "per pass, the shares");
 	Check(text.find("shapes 100 drawn 40 skipped skinned 20 drawn 0 skipped;") != std::string::npos, "by kind, kinds without draws left out");
-	Check(text.find("tests 60 a pass (0 beyond capacity, 0 table full), results 400 hidden / 150 visible, 2 batches lost, 5 verdicts refused by the camera gate") !=
-	          std::string::npos,
-	      "the tests");
+	Check(text.find("; 30 skips a pass decided at the pass record; tests 60 a pass (0 beyond capacity, 0 table full), results 400 hidden / 150 visible, "
+	                "2 batches lost, 5 verdicts refused by the camera gate, 1 device resets") != std::string::npos,
+	      "the tests, the record skips and the resets");
 	Check(text.find("; skips tested in their own pass: 380 confirmed hidden, 20 unconfirmed (5 %, the popping's upper bound)") != std::string::npos,
 	      "the skips confirmed by their own pass's test");
 	Check(text.find("per pass: decide 2.000 ms, end tests 3.000 ms, collect 1.000 ms, eye pass 40.000 ms") != std::string::npos, "the cost per pass");

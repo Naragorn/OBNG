@@ -313,6 +313,19 @@ struct Ring {
 		return b;
 	}
 
+	// Every pending batch dropped (its queries are gone: a device reset);
+	// returns how many were.
+	std::uint32_t DropAll() {
+		std::uint32_t dropped = 0;
+		for (Batch& b : batches) {
+			if (b.pending) {
+				b.pending = false;
+				++dropped;
+			}
+		}
+		return dropped;
+	}
+
 	// The oldest pending batch, or null.
 	Batch* OldestPending() {
 		Batch* oldest = nullptr;
@@ -367,6 +380,8 @@ struct Stats {
 	std::uint64_t resultsVisible = 0;
 	std::uint64_t batchesLost = 0;
 	std::uint64_t motionBlocked = 0;  // a hidden verdict the camera gate refused
+	std::uint64_t skippedAtRecord = 0;  // skips decided at the pass record (DrawRenderPass 0x007A9820), before the light constants
+	std::uint64_t deviceResets = 0;     // the device's Reset seen: the queries and the state block given up and made anew
 	std::uint64_t skipsConfirmed = 0;   // a skipped geometry whose test of the same pass found its bound hidden: it could not have shown
 	std::uint64_t skipsUnconfirmed = 0; // ... found its bound seen: the upper bound of the popping
 	std::uint64_t decideTicks = 0;
@@ -576,11 +591,12 @@ inline int FormatSummary(const Stats& s, const Settings& settings, double ticksP
 		}
 		line.Text(" %s %.0f drawn %.0f skipped", KindName(static_cast<DrawKind>(i)), perPass(k.draws), perPass(k.skipped + k.skippedFrustum));
 	}
-	line.Text("; tests %.0f a pass (%llu beyond capacity, %llu table full), results %llu hidden / %llu visible, %llu batches lost, %llu "
-	          "verdicts refused by the camera gate",
-	          perPass(s.testsIssued), static_cast<unsigned long long>(s.testsBeyondCapacity), static_cast<unsigned long long>(s.tableFull),
-	          static_cast<unsigned long long>(s.resultsHidden), static_cast<unsigned long long>(s.resultsVisible),
-	          static_cast<unsigned long long>(s.batchesLost), static_cast<unsigned long long>(s.motionBlocked));
+	line.Text("; %.0f skips a pass decided at the pass record; tests %.0f a pass (%llu beyond capacity, %llu table full), results %llu hidden / "
+	          "%llu visible, %llu batches lost, %llu verdicts refused by the camera gate, %llu device resets",
+	          perPass(s.skippedAtRecord), perPass(s.testsIssued), static_cast<unsigned long long>(s.testsBeyondCapacity),
+	          static_cast<unsigned long long>(s.tableFull), static_cast<unsigned long long>(s.resultsHidden),
+	          static_cast<unsigned long long>(s.resultsVisible), static_cast<unsigned long long>(s.batchesLost),
+	          static_cast<unsigned long long>(s.motionBlocked), static_cast<unsigned long long>(s.deviceResets));
 	line.Text("; skips tested in their own pass: %llu confirmed hidden, %llu unconfirmed (%u %%, the popping's upper bound)",
 	          static_cast<unsigned long long>(s.skipsConfirmed), static_cast<unsigned long long>(s.skipsUnconfirmed),
 	          Percent(s.skipsUnconfirmed, s.skipsConfirmed + s.skipsUnconfirmed));
