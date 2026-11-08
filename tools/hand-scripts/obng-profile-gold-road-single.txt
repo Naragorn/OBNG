@@ -26,6 +26,8 @@ expect Single-pass stereo: OBNG took the eyes ok (0)
 
 ini Hands Enabled=1
 ini Hands ReachOpens=0
+ini Hands BodyCollision=1
+ini Hands PhysicsRate=0
 ini Performance Enabled=1
 ini Performance GpuTiming=1
 ini Performance StartAfterSeconds=40

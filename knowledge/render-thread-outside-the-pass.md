@@ -139,7 +139,18 @@ character proxy against the terrain's MOPP, the loaded cells' bodies) or
 collision work that a plugin's bodies cause each step - OBVR's hand bodies
 (`../OBVR/src/game/HandBodies.cpp`) and OblivionWalkers' colliders are in the
 world in this run. **Unresolved.** The cheapest decider is a run of the same
-scenario with OBVR's hand bodies off, if OBVR has that switch (not checked).
+scenario with OBVR's hand bodies off, if OBVR has that switch: it does - OBVR 2026-11-08: `[Hands] BodyCollision=0` takes the
+keyframed hand and weapon bodies out of the Havok world (WorldPush.cpp,
+`bodies.enabled = inPlace && config.hands.bodyCollision`), `PushWorld=0`
+also stops the ray pushes, and `[Hands] PhysicsRate` (0 = the engine's own
+step rate; above 0 or -1 raises the step count for **all** physics) must be
+the same in both runs. The profile runs set none of these keys (read in
+their OBVR-test.ini), so the deployed OBVR.ini's values held - 1, 1 and 0 in
+OBVR's repository copy (read), unverified for the deployed file. The
+comparison is prepared: `tools/hand-scripts/obng-profile-gold-road-nobodies.txt`
+is the single-pass profile scenario with `ini Hands BodyCollision=0`, the
+original now states `BodyCollision=1` and `PhysicsRate=0` explicitly. Not
+run yet (needs the Linux game and a go).
 
 ### Per-reference animation gate: 2.7 %, 0.26 ms a frame, mostly cache misses
 
