@@ -454,3 +454,53 @@ Levers that keep the outputs bit for bit (derived):
   rebuild would gain a fraction of it at large cost. Not recommended.
 Neither is worth starting before the Windows run says whether the CPU bounds
 the frame at 90 Hz.
+
+## The Windows capture of 2026-11-07 23:45: at 90 Hz the GPU bounds the frame, not the CPU (read 2026-11-08)
+
+The capture Nadi's live play left on the Windows disk
+(C:\Steam\steamapps\common\Oblivion\OBVR-performance-1-31, mounted under
+/run/media/nadi/Programs; its logs in artifacts/windows/20261107-2345):
+Dream Air at 90 Hz (11.11 ms a period), single pass through OBNG's route,
+4036x3376 a pixel per eye (the double-wide target 8072x3376, 4x MSAA by the
+scene target probe), 10 363 frames over about 160 s, no hand-script marks,
+GpuTiming off - but SteamVR's compositor timing (compositor.csv:
+pre_submit_gpu_ms, total_render_gpu_ms) is the GPU's own clock. All measured:
+
+| | whole capture | the light stretch (0-50 s) | the heavy stretch (70-110 s) |
+|---|---:|---:|---:|
+| frame interval mean / median / p95 | 15.4 / 11.4 / 30.7 ms | 11.5-12.1 / - / 12.3-22.8 ms | 21.3-28.4 / - / 33-34 ms |
+| frames over 11.6 ms (a missed vsync) | 43.5 % | | |
+| frames over 22 ms (half rate) | 21.0 % | | |
+| poses_wait mean (the CPU idle before the poses) | 3.6 ms | 2.3-3.9 ms | 3.5-5.6 ms |
+| GPU before submit, compositor's clock, mean / p95 | 7.0 / 13.6 ms | 5.2-6.9 / 5.7-11.1 ms | 12.5-15.2 / 17.7-22.4 ms |
+| GPU total render (app + compositor) mean / p95 | 8.9 / 18.8 ms | | |
+| compositor: mis-presented | 5 185 of 10 351 | | |
+
+SteamVR fell into interleaved reprojection (every frame shown twice) again
+and again (OBVR.log "Compositor: SteamVR shows every frame twice"). In the
+heavy stretch the GPU alone needs 12-15 ms a frame, more than the period;
+the CPU meanwhile waits 3.5-5.6 ms for the poses. In the light stretch both
+fit (CPU work about 8-9.5 ms, GPU 5-7 ms) and the frame holds 11.1 ms.
+**Derived: on the Dream Air at this resolution the GPU bounds the frame
+wherever it drops; the CPU has 2-5 ms of headroom there.** The CPU levers
+of this file (the square root's 0.3 ms, the scene graph's 1.5 ms) do not
+buy 90 Hz on Windows; they matter for the Linux Beyond at 75 Hz, where the
+CPU side sits at 11 ms, and as headroom.
+
+The render thread's samples on Windows (the sampler ran): out of the pass
+58 % ntdll (the waits), game code 12.8 %, NiMain 7.3 %, OBVR.dll 4.7 %,
+Havok 4.7 %, CRT 3.5 % (the square root's error path 0.7 %); in the pass
+renderer/BS 26.6 %, D3D9.DLL 18.7 % (the native driver), OBNG.dll 9.1 %,
+OBVR.dll 8.7 %, OblivionFrameFixes.dll 7.5 %, CRT 6.9 % (the square root's
+path 1.0 %), FoliageAA.dll 3.1 %. OBNG's own in-pass share (the eye switch
+per draw) is about 0.6 ms of a 6.8 ms pass (derived) - a CPU cost to trim
+when the CPU is the limit, not now.
+
+What moves the GPU (candidates, not measured): the render scale (4036x3376
+is well above the Dream Air's 2560x2560 panel - SteamVR's supersampling;
+100 % would be about a third fewer pixels), the 4x MSAA on a 13.6-million
+pixel eye, OBVR's dynamic resolution (DynamicResolution=0 in the shipped
+INI; Oblivion Performance 2026 is measuring it on the Gold Road today), and
+the shaders' fill cost (the grass fix's shaders, FoliageAA's supersampling).
+The Linux harness cannot stand in for this: its Beyond target is 2568x2568
+(SteamVR supersampleScale 0.52), half the pixels, at 75 Hz.
