@@ -104,6 +104,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	s.constantUploads = GetPrivateProfileIntA("Probe", "ConstantUploads", 0, path) != 0;
 	s.viewConstants = GetPrivateProfileIntA("Probe", "ViewConstants", 0, path) != 0;
 	s.drawEntries = GetPrivateProfileIntA("Probe", "DrawEntries", 0, path) != 0;
+	s.sceneUpdate = GetPrivateProfileIntA("Probe", "SceneUpdate", 0, path) != 0;
 	if (s.viewConstants && !s.constantUploads) {
 		s.constantUploads = true;  // the view probe keys the uploads probe's verdicts
 	}
@@ -178,11 +179,11 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	}
 	Log("Settings: [Fix] GrassFade=%d GrassFadeReach=%s", f.grassFade ? 1 : 0, f.grassFadeIniReach ? "ini" : "game");
 	Log("Settings from %s: TimeInfoUpdate=%d TimeInfoInit=%d TimeInfoFreeze=%d TimeInfoUnfreeze=%d LoadingMenuTick=%d "
-	    "LoadingMenuCtor=%d RangeWalk=%d RangeWalkOrder=%s Sqrt=%d FpuControlWord=%d HavokPlanner=%d CallCounters=%d PassSteps=%d PackCache=%d ConstantUploads=%d ViewConstants=%d DrawEntries=%d Occlusion=%d OcclusionEvery=%u UnroutedDraws=%d Grass=%d Memory=%d MismatchLines=%u SummaryEverySeconds=%u "
+	    "LoadingMenuCtor=%d RangeWalk=%d RangeWalkOrder=%s Sqrt=%d FpuControlWord=%d HavokPlanner=%d CallCounters=%d PassSteps=%d PackCache=%d ConstantUploads=%d ViewConstants=%d DrawEntries=%d SceneUpdate=%d Occlusion=%d OcclusionEvery=%u UnroutedDraws=%d Grass=%d Memory=%d MismatchLines=%u SummaryEverySeconds=%u "
 	    "SummaryTimer=%d Route RangeWalk=%d Sqrt=%d StereoDraw=%d StereoEyes=%u StereoTestEyeShift=%.3f StereoReapply=%s StereoFollowers=%d StereoRestoreDirect=%d StereoParticles=%d StereoCarryConstants=%d StereoTraceConstants=%d",
 	    path, s.update ? 1 : 0, s.init ? 1 : 0, s.freeze ? 1 : 0, s.unfreeze ? 1 : 0, s.loadingMenuTick ? 1 : 0,
 	    s.loadingMenuCtor ? 1 : 0, s.rangeWalk ? 1 : 0, obng::plugin::RangeWalkOrderName(s.rangeWalkOrder), s.sqrt ? 1 : 0, s.fpuControlWord ? 1 : 0, s.havokPlanner ? 1 : 0, s.callCounters ? 1 : 0,
-	    s.passSteps ? 1 : 0, s.packCache ? 1 : 0, s.constantUploads ? 1 : 0, s.viewConstants ? 1 : 0, s.drawEntries ? 1 : 0, s.occlusion ? 1 : 0, s.occlusionEvery, s.unroutedDraws ? 1 : 0, s.grass ? 1 : 0, s.memoryProbe ? 1 : 0, s.mismatchLines, s.summaryEverySeconds, s.summaryTimer ? 1 : 0, r.rangeWalk ? 1 : 0, r.sqrt ? 1 : 0, r.stereoDraw ? 1 : 0, static_cast<unsigned>(r.stereoEyes), static_cast<double>(r.stereoTestEyeShift), obng::plugin::StereoReapplyName(r.stereoReapply), r.stereoFollowers ? 1 : 0, r.stereoRestoreDirect ? 1 : 0, r.stereoParticles ? 1 : 0, r.stereoCarryConstants ? 1 : 0, r.stereoTraceConstants ? 1 : 0);
+	    s.passSteps ? 1 : 0, s.packCache ? 1 : 0, s.constantUploads ? 1 : 0, s.viewConstants ? 1 : 0, s.drawEntries ? 1 : 0, s.sceneUpdate ? 1 : 0, s.occlusion ? 1 : 0, s.occlusionEvery, s.unroutedDraws ? 1 : 0, s.grass ? 1 : 0, s.memoryProbe ? 1 : 0, s.mismatchLines, s.summaryEverySeconds, s.summaryTimer ? 1 : 0, r.rangeWalk ? 1 : 0, r.sqrt ? 1 : 0, r.stereoDraw ? 1 : 0, static_cast<unsigned>(r.stereoEyes), static_cast<double>(r.stereoTestEyeShift), obng::plugin::StereoReapplyName(r.stereoReapply), r.stereoFollowers ? 1 : 0, r.stereoRestoreDirect ? 1 : 0, r.stereoParticles ? 1 : 0, r.stereoCarryConstants ? 1 : 0, r.stereoTraceConstants ? 1 : 0);
 	return true;
 }
 

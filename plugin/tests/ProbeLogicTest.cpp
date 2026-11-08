@@ -349,7 +349,35 @@ void TestViewConstants() {
 	      "the empty line");
 }
 
+void TestSceneUpdate() {
+	Section("The scene update probe's line: per grid update, the idle controller walks as a share");
+	obng::plugin::probe::SceneUpdateStats s;
+	s.gridUpdates = 100;
+	s.gridTicks = 300000;  // at 3000 ticks per ms: 100 ms over 100 updates = 1.0 ms each
+	s.cells = 2500;
+	s.nodeDownward = 400000;
+	s.nodeSelected = 50000;
+	s.leafDownward = 900000;
+	s.controllerWalks = 1300000;
+	s.controllerWalksIdle = 1170000;
+	s.worldData = 1200000;
+	s.objectUpdates = 1500;
+	s.objectUpdateTicks = 60000;  // 0.2 ms each grid update
+	char line[600];
+	obng::plugin::probe::FormatSceneUpdate(s, 3000.0, line, sizeof(line));
+	Check(std::string(line) == "Probe: scene update - 100 grid updates; per grid update: cells 25.0, nodes 4000 (selected 500), leaves 9000, world data 12000, "
+	                           "controller walks 13000 (11700 with nothing to do, 90 %), NiAVObject::Update 15.0 calls; grid update 1.000 ms, "
+	                           "NiAVObject::Update 0.200 ms per grid update",
+	      "calibrated: counts per grid update, the idle share, the two times");
+	obng::plugin::probe::FormatSceneUpdate(s, 0.0, line, sizeof(line));
+	Check(std::strstr(line, "; grid update 300000 ticks, NiAVObject::Update 60000 ticks") != nullptr, "uncalibrated: the raw ticks");
+	obng::plugin::probe::FormatSceneUpdate(obng::plugin::probe::SceneUpdateStats{}, 3000.0, line, sizeof(line));
+	Check(std::strstr(line, "0 grid updates; per grid update: cells 0.0, nodes 0") != nullptr && std::strstr(line, "0 %") != nullptr,
+	      "nothing counted: no division by zero");
+}
+
 int main() {
+	TestSceneUpdate();
 	TestUploads();
 	TestPackCache();
 	TestStepTiming();

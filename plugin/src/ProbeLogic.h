@@ -491,6 +491,53 @@ inline int FormatVolatilePackTime(const PackStats& s, double ticksPerMillisecond
 	return at;
 }
 
+// ---- The scene graph update probe ------------------------------------------------
+//
+// What Gamebryo's update tree does per frame outside the scene pass
+// (knowledge/render-thread-outside-the-pass.md: 1.6 ms a frame on the Gold
+// Road, the largest block): how many nodes NiNode::UpdateDownwardPass visits,
+// how many leaves, how many controller walks find nothing to walk, and the
+// time of the cell grid's update and of the actors' NiAVObject::Update.
+struct SceneUpdateStats {
+	std::uint64_t gridUpdates = 0;        // GridCellArray::Update 0x004823D0 calls (one a frame: the denominator)
+	std::uint64_t gridTicks = 0;          // its inclusive time
+	std::uint64_t cells = 0;              // TESObjectCELL::UpdateSelectedNodes 0x004D4970 calls
+	std::uint64_t nodeDownward = 0;       // NiNode::UpdateDownwardPass 0x0070A0D0 calls (recursive: one per node visited)
+	std::uint64_t nodeSelected = 0;       // NiNode::UpdateSelectedDownwardPass 0x0070A190 calls
+	std::uint64_t leafDownward = 0;       // NiAVObject::UpdateDownwardPass 0x00707580 calls
+	std::uint64_t controllerWalks = 0;    // NiAVObject::UpdateObjectControllers 0x0047C930 calls
+	std::uint64_t controllerWalksIdle = 0;  // of them with no property list to walk and no controller: nothing to do
+	std::uint64_t worldData = 0;          // NiAVObject::UpdateWorldData 0x0070C120 calls
+	std::uint64_t objectUpdates = 0;      // NiAVObject::Update 0x00707370 calls (the actors' and others' explicit updates)
+	std::uint64_t objectUpdateTicks = 0;  // their inclusive time
+};
+
+// "Probe: scene update - N grid updates, X ms each; per grid update: cells C,
+// nodes N (selected S), leaves L, world data W, controller walks K (I with
+// nothing to do, P %); NiAVObject::Update U calls a grid update, Y ms".
+inline int FormatSceneUpdate(const SceneUpdateStats& s, double ticksPerMillisecond, char* out, std::size_t capacity) {
+	const double frames = s.gridUpdates == 0 ? 1.0 : static_cast<double>(s.gridUpdates);
+	auto per = [&](std::uint64_t n) { return static_cast<double>(n) / frames; };
+	auto ms = [&](std::uint64_t ticks) { return ticksPerMillisecond > 0.0 ? static_cast<double>(ticks) / ticksPerMillisecond / frames : 0.0; };
+	int at = std::snprintf(out, capacity,
+	                       "Probe: scene update - %llu grid updates; per grid update: cells %.1f, nodes %.0f (selected %.0f), leaves %.0f, world data %.0f, "
+	                       "controller walks %.0f (%.0f with nothing to do, %u %%), NiAVObject::Update %.1f calls",
+	                       static_cast<unsigned long long>(s.gridUpdates), per(s.cells), per(s.nodeDownward), per(s.nodeSelected), per(s.leafDownward),
+	                       per(s.worldData), per(s.controllerWalks), per(s.controllerWalksIdle), PercentOf(s.controllerWalksIdle, s.controllerWalks),
+	                       per(s.objectUpdates));
+	if (at < 0 || static_cast<std::size_t>(at) >= capacity) {
+		return at;
+	}
+	if (ticksPerMillisecond > 0.0) {
+		at += std::snprintf(out + at, capacity - static_cast<std::size_t>(at), "; grid update %.3f ms, NiAVObject::Update %.3f ms per grid update",
+		                    ms(s.gridTicks), ms(s.objectUpdateTicks));
+	} else {
+		at += std::snprintf(out + at, capacity - static_cast<std::size_t>(at), "; grid update %llu ticks, NiAVObject::Update %llu ticks",
+		                    static_cast<unsigned long long>(s.gridTicks), static_cast<unsigned long long>(s.objectUpdateTicks));
+	}
+	return at;
+}
+
 // ---- The constant uploads' redundancy probe -----------------------------------------
 //
 // Does a vertex constant upload write what its register range already holds?

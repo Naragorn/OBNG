@@ -84,12 +84,13 @@ constexpr uint32_t kViewConstantDetours = 1;    // ApplyConstants 0x009A8E30; no
 constexpr uint32_t kDrawEntryDetours = 4;       // the renderer's other draw entries
 constexpr uint32_t kUnroutedDrawDetours = 1;    // the image space step, for the unrouted-draw probe's trace
 constexpr uint32_t kOcclusionDetours = 4;       // the finish and the three draw entries that take a geometry
+constexpr uint32_t kSceneUpdateDetours = 8;     // the cell grid's update, the cell's, the five update-tree functions and the controller walk
 inline uint32_t ProbesAskedFor(const ShadowSettings& s) {
 	return (s.callCounters ? kProbeDetours : 0u) + (s.passSteps ? (s.callCounters ? kPassStepDetours - 1 : kPassStepDetours) : 0u) +
 	       (s.packCache ? kPackCacheDetours : 0u) +
 	       (s.constantUploads ? (s.passSteps ? kConstantUploadDetours - 1 : kConstantUploadDetours) : 0u) +
 	       (s.viewConstants && !s.passSteps ? kViewConstantDetours : 0u) + (s.drawEntries ? kDrawEntryDetours : 0u) +
-	       (s.occlusion ? kOcclusionDetours : 0u) + (s.unroutedDraws ? kUnroutedDrawDetours : 0u);
+	       (s.occlusion ? kOcclusionDetours : 0u) + (s.unroutedDraws ? kUnroutedDrawDetours : 0u) + (s.sceneUpdate ? kSceneUpdateDetours : 0u);
 }
 
 bool Query(const ExtenderInterfaceHead& xse, PluginInfo* info, const Host& host);

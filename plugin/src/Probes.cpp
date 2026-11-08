@@ -773,6 +773,153 @@ std::uint64_t ClockFrequency() {
 	return static_cast<std::uint64_t>(f.QuadPart);
 }
 
+// ---- The scene graph update probe (knowledge/render-thread-outside-the-pass.md) ----
+//
+// Eight entry detours on Gamebryo's update tree and its drivers; the two
+// drivers are timed (one RDTSC pair a call: one and a few hundred calls a
+// frame), the tree's functions only counted (tens of thousands a frame). The
+// entries' bytes are the first whole instructions of each function
+// (re/export/frame-update/<address>/asm.s); where a CMP precedes a JZ the
+// displaced bytes are the CMP and pushes only, and the trampoline's jump
+// back lands on the JZ with the flags untouched (PUSH and MOV set none).
+constexpr UInt32 kGridUpdate = 0x004823D0;
+constexpr UInt8 kGridUpdateBytes[] = {0xD9, 0x44, 0x24, 0x04, 0x53, 0x55, 0x57, 0x51};  // fld [esp+4]; push ebx; push ebp; push edi; push ecx
+constexpr UInt32 kCellUpdate = 0x004D4970;
+constexpr UInt8 kCellUpdateBytes[] = {0x55, 0x8B, 0xE9, 0x56, 0xC7, 0x05, 0x04, 0x5C, 0xB3, 0x00, 0x00, 0x00, 0x00, 0x00};  // push ebp; mov ebp,ecx; push esi; mov [0xB35C04],0
+constexpr UInt32 kNodeDownward = 0x0070A0D0;
+constexpr UInt8 kNodeDownwardBytes[] = {0x53, 0x8B, 0x5C, 0x24, 0x0C, 0x84, 0xDB};  // push ebx; mov ebx,[esp+0Ch]; test bl,bl
+constexpr UInt32 kNodeSelected = 0x0070A190;
+constexpr UInt8 kNodeSelectedBytes[] = {0xD9, 0x44, 0x24, 0x04, 0x53, 0x57, 0x8B, 0xF9};  // fld [esp+4]; push ebx; push edi; mov edi,ecx
+constexpr UInt32 kLeafDownward = 0x00707580;
+constexpr UInt8 kLeafDownwardBytes[] = {0x80, 0x7C, 0x24, 0x08, 0x00, 0x56, 0x8B, 0xF1};  // cmp byte [esp+8],0; push esi; mov esi,ecx (then jz)
+constexpr UInt32 kControllerWalk = 0x0047C930;
+constexpr UInt8 kControllerWalkBytes[] = {0x80, 0x7C, 0x24, 0x08, 0x00, 0x56, 0x57, 0x8B, 0xF9};  // cmp byte [esp+8],0; push esi; push edi; mov edi,ecx (then jz)
+constexpr UInt32 kWorldData = 0x0070C120;
+constexpr UInt8 kWorldDataBytes[] = {0x83, 0xEC, 0x34, 0x53, 0x8B, 0xD9};  // sub esp,34h; push ebx; mov ebx,ecx
+constexpr UInt32 kObjectUpdate = 0x00707370;
+constexpr UInt8 kObjectUpdateBytes[] = {0xD9, 0x44, 0x24, 0x04, 0x56, 0x8B, 0xF1};  // fld [esp+4]; push esi; mov esi,ecx
+// NiObjectNET's controllers (+0x0C) and NiAVObject's property list (+0x9C,
+// an NiTListBase whose first dword is the head), as 0x0047C930 reads them.
+constexpr UInt32 kObjectControllersOffset = 0x0C;
+constexpr UInt32 kObjectPropertyListOffset = 0x9C;
+
+// __fastcall with a dummy edx mirrors __thiscall; the floats stay stack
+// arguments and are passed through as bits.
+using TimeOnlyFn = UInt32(__fastcall*)(void* self, void* edx, UInt32 timeBits);               // RET 4
+using TimeFlagFn = UInt32(__fastcall*)(void* self, void* edx, UInt32 timeBits, UInt32 flag);  // RET 8
+using NoArgFn = UInt32(__fastcall*)(void* self, void* edx);
+
+TimeOnlyFn g_gridUpdate = nullptr;
+TimeOnlyFn g_cellUpdate = nullptr;
+TimeFlagFn g_nodeDownward = nullptr;
+TimeOnlyFn g_nodeSelected = nullptr;
+TimeFlagFn g_leafDownward = nullptr;
+TimeFlagFn g_controllerWalk = nullptr;
+NoArgFn g_worldData = nullptr;
+TimeFlagFn g_objectUpdate = nullptr;
+bool g_sceneUpdateOn = false;
+probe::ClockPair g_sceneUpdateClock;
+AtomicTiming g_gridTiming;
+AtomicTiming g_objectUpdateTiming;
+volatile LONG64 g_sceneCells = 0;
+volatile LONG64 g_sceneNodes = 0;
+volatile LONG64 g_sceneSelected = 0;
+volatile LONG64 g_sceneLeaves = 0;
+volatile LONG64 g_sceneWalks = 0;
+volatile LONG64 g_sceneWalksIdle = 0;
+volatile LONG64 g_sceneWorldData = 0;
+
+UInt32 __fastcall CountGridUpdate(void* self, void* /*edx*/, UInt32 timeBits) {
+	const unsigned __int64 start = __rdtsc();
+	const UInt32 eax = g_gridUpdate(self, nullptr, timeBits);
+	g_gridTiming.Add(__rdtsc() - start);
+	return eax;
+}
+UInt32 __fastcall CountCellUpdate(void* self, void* /*edx*/, UInt32 timeBits) {
+	InterlockedIncrement64(&g_sceneCells);
+	return g_cellUpdate(self, nullptr, timeBits);
+}
+UInt32 __fastcall CountNodeDownward(void* self, void* /*edx*/, UInt32 timeBits, UInt32 flag) {
+	InterlockedIncrement64(&g_sceneNodes);
+	return g_nodeDownward(self, nullptr, timeBits, flag);
+}
+UInt32 __fastcall CountNodeSelected(void* self, void* /*edx*/, UInt32 timeBits) {
+	InterlockedIncrement64(&g_sceneSelected);
+	return g_nodeSelected(self, nullptr, timeBits);
+}
+UInt32 __fastcall CountLeafDownward(void* self, void* /*edx*/, UInt32 timeBits, UInt32 flag) {
+	InterlockedIncrement64(&g_sceneLeaves);
+	return g_leafDownward(self, nullptr, timeBits, flag);
+}
+UInt32 __fastcall CountControllerWalk(void* self, void* /*edx*/, UInt32 timeBits, UInt32 flag) {
+	InterlockedIncrement64(&g_sceneWalks);
+	const std::uintptr_t object = reinterpret_cast<std::uintptr_t>(self);
+	const bool properties = (flag & 0xFF) != 0 && *reinterpret_cast<volatile const UInt32*>(object + kObjectPropertyListOffset) != 0;
+	const bool controllers = *reinterpret_cast<volatile const UInt32*>(object + kObjectControllersOffset) != 0;
+	if (!properties && !controllers) {
+		InterlockedIncrement64(&g_sceneWalksIdle);
+	}
+	return g_controllerWalk(self, nullptr, timeBits, flag);
+}
+UInt32 __fastcall CountWorldData(void* self, void* /*edx*/) {
+	InterlockedIncrement64(&g_sceneWorldData);
+	return g_worldData(self, nullptr);
+}
+UInt32 __fastcall CountObjectUpdate(void* self, void* /*edx*/, UInt32 timeBits, UInt32 flag) {
+	const unsigned __int64 start = __rdtsc();
+	const UInt32 eax = g_objectUpdate(self, nullptr, timeBits, flag);
+	g_objectUpdateTiming.Add(__rdtsc() - start);
+	return eax;
+}
+
+UInt32 InstallSceneUpdateProbe(LogFn log) {
+	UInt32 made = 0;
+	made += InstallEntryDetour("GridCellArray::Update 0x004823D0 (scene update)", kGridUpdate, kGridUpdateBytes, sizeof(kGridUpdateBytes),
+	                           reinterpret_cast<const void*>(&CountGridUpdate), reinterpret_cast<void**>(&g_gridUpdate), log) ? 1 : 0;
+	made += InstallEntryDetour("TESObjectCELL::UpdateSelectedNodes 0x004D4970 (scene update)", kCellUpdate, kCellUpdateBytes, sizeof(kCellUpdateBytes),
+	                           reinterpret_cast<const void*>(&CountCellUpdate), reinterpret_cast<void**>(&g_cellUpdate), log) ? 1 : 0;
+	made += InstallEntryDetour("NiNode::UpdateDownwardPass 0x0070A0D0 (scene update)", kNodeDownward, kNodeDownwardBytes, sizeof(kNodeDownwardBytes),
+	                           reinterpret_cast<const void*>(&CountNodeDownward), reinterpret_cast<void**>(&g_nodeDownward), log) ? 1 : 0;
+	made += InstallEntryDetour("NiNode::UpdateSelectedDownwardPass 0x0070A190 (scene update)", kNodeSelected, kNodeSelectedBytes,
+	                           sizeof(kNodeSelectedBytes), reinterpret_cast<const void*>(&CountNodeSelected), reinterpret_cast<void**>(&g_nodeSelected),
+	                           log) ? 1 : 0;
+	made += InstallEntryDetour("NiAVObject::UpdateDownwardPass 0x00707580 (scene update)", kLeafDownward, kLeafDownwardBytes, sizeof(kLeafDownwardBytes),
+	                           reinterpret_cast<const void*>(&CountLeafDownward), reinterpret_cast<void**>(&g_leafDownward), log) ? 1 : 0;
+	made += InstallEntryDetour("NiAVObject::UpdateObjectControllers 0x0047C930 (scene update)", kControllerWalk, kControllerWalkBytes,
+	                           sizeof(kControllerWalkBytes), reinterpret_cast<const void*>(&CountControllerWalk),
+	                           reinterpret_cast<void**>(&g_controllerWalk), log) ? 1 : 0;
+	made += InstallEntryDetour("NiAVObject::UpdateWorldData 0x0070C120 (scene update)", kWorldData, kWorldDataBytes, sizeof(kWorldDataBytes),
+	                           reinterpret_cast<const void*>(&CountWorldData), reinterpret_cast<void**>(&g_worldData), log) ? 1 : 0;
+	made += InstallEntryDetour("NiAVObject::Update 0x00707370 (scene update)", kObjectUpdate, kObjectUpdateBytes, sizeof(kObjectUpdateBytes),
+	                           reinterpret_cast<const void*>(&CountObjectUpdate), reinterpret_cast<void**>(&g_objectUpdate), log) ? 1 : 0;
+	g_sceneUpdateOn = made != 0;
+	g_sceneUpdateClock = ReadClocks();
+	return made;
+}
+
+void LogSceneUpdate() {
+	const probe::ClockPair now = ReadClocks();
+	const double ticksPerMs = probe::TicksPerMillisecond(g_sceneUpdateClock, now, ClockFrequency());
+	g_sceneUpdateClock = now;
+	probe::SceneUpdateStats s;
+	const probe::StepTiming grid = g_gridTiming.TakeSnapshot();
+	const probe::StepTiming object = g_objectUpdateTiming.TakeSnapshot();
+	s.gridUpdates = grid.calls;
+	s.gridTicks = grid.ticks;
+	s.objectUpdates = object.calls;
+	s.objectUpdateTicks = object.ticks;
+	s.cells = static_cast<std::uint64_t>(InterlockedExchange64(&g_sceneCells, 0));
+	s.nodeDownward = static_cast<std::uint64_t>(InterlockedExchange64(&g_sceneNodes, 0));
+	s.nodeSelected = static_cast<std::uint64_t>(InterlockedExchange64(&g_sceneSelected, 0));
+	s.leafDownward = static_cast<std::uint64_t>(InterlockedExchange64(&g_sceneLeaves, 0));
+	s.controllerWalks = static_cast<std::uint64_t>(InterlockedExchange64(&g_sceneWalks, 0));
+	s.controllerWalksIdle = static_cast<std::uint64_t>(InterlockedExchange64(&g_sceneWalksIdle, 0));
+	s.worldData = static_cast<std::uint64_t>(InterlockedExchange64(&g_sceneWorldData, 0));
+	char line[700];
+	probe::FormatSceneUpdate(s, ticksPerMs, line, sizeof(line));
+	g_log("%s", line);
+}
+
 // withSetup: false when the call counters hold 0x007C9230's entry already.
 UInt32 InstallPassSteps(bool withSetup, LogFn log) {
 	struct Entry {
@@ -944,6 +1091,9 @@ UInt32 InstallProbes(const ShadowSettings& settings, LogFn log) {
 	if (settings.viewConstants) {
 		made += InstallViewConstants(settings.passSteps, log);
 	}
+	if (settings.sceneUpdate) {
+		made += InstallSceneUpdateProbe(log);
+	}
 	if (settings.drawEntries) {
 		made += InstallDrawEntries(log);
 	}
@@ -1008,6 +1158,9 @@ void LogProbeSummary() {
 	}
 	if (g_stepsOn) {
 		LogPassSteps();
+	}
+	if (g_sceneUpdateOn) {
+		LogSceneUpdate();
 	}
 	if (g_packCacheOn) {
 		LogPackCache();

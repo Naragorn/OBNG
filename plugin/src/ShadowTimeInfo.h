@@ -70,6 +70,7 @@ struct ShadowSettings {
 	bool constantUploads = false;  // hash every vertex constant upload and count the ones equal to the register's last (Probes.cpp); off in play
 	bool viewConstants = false;    // key the second eye's re-applied uploads by constant-map entry: which depend on the view (Probes.cpp; needs ConstantUploads, which Plugin.cpp turns on with it); off in play
 	bool drawEntries = false;      // count the renderer's four other draw entries (slots 85, 90, 91, 93; Probes.cpp); off in play
+	bool sceneUpdate = false;      // count and time Gamebryo's scene graph update outside the pass (eight detours, Probes.cpp); off in play
 	bool occlusion = false;        // sample one eye pass in occlusionEvery: which drawn geometries' bounds lie behind the finished depth buffer (OcclusionProbe.cpp); not beside PassSteps, DrawEntries, ConstantUploads or the stereo route (Plugin.cpp turns it off then); off in play
 	UInt32 occlusionEvery = 31;    // [Probe] OcclusionEvery
 	bool grass = false;            // per world pass the grass patches under the Grass node, hidden and drawn, by distance, with the camera's heading (GrassProbe.cpp; needs [Route] StereoDraw=1); cheap, may stay on in play
