@@ -510,3 +510,46 @@ and 2 is untested), and the shaders' fill cost (the grass fix's shaders,
 FoliageAA's own grass multisampling, separate from the back buffer).
 The Linux harness cannot stand in for this: its Beyond target is 2568x2568
 (SteamVR supersampleScale 0.52), half the pixels, at 75 Hz.
+
+## iMultiSample 4 / 0 / 2 on the Gold Road (2026-11-08 19:31-19:44, Linux, Beyond 2568x2568)
+
+Three runs of tools/hand-scripts/obng-profile-gold-road-eyedump.txt (the
+profile scenario plus OBVR's eye dump at every mark) with the Linux
+Oblivion.ini's iMultiSample at 4, 0 and 2 (backed up and put back;
+artifacts/shadow/obng-profile-gold-road-eyedump/20261108-193145, -193550,
+-193956; OBNG.dll 454727e6, OBVR.dll 31ef3ad7). Measured:
+
+| iMultiSample | stereo path | eye pictures (tools/eye-shift.py, five marks, six bands) | frame mean at spot 2 | frames over 20 ms at spot 2 |
+|---|---|---|---:|---:|
+| 4 | single pass through OBNG ("OBNG took the eyes ok") | far bands 101-104 px, near 110-118 px | 13.7-14.0 ms | 1.0-1.3 % |
+| 0 | **dual pass** - OBVR never hands the eyes over (no "Single-pass stereo" line; 0 eye switches) | the same shifts as with 4 (102 / 117 / 110 / 112 ...) - correct stereo | 18.6-21.1 ms | 31-53 % |
+| 2 | single pass through OBNG | the same shifts as with 4 - correct stereo | 16.1-25.1 ms | 16-47 % |
+
+- **Why 0 is the dual pass** (read in OBVR's src/render/ObngStereoLogic.h):
+  `WorldDrawnIntoBackBuffer = !imageSpaceEffects || effectiveSamples >= 2`
+  is one of WorthSettingEyes' conditions; with image-space effects on and no
+  multisampling the engine draws the world into a frame-sized texture and
+  copies it (SceneFrame.h), and OBVR keeps the single pass to the back-buffer
+  path. VR works with 0, with the correct picture, at the dual pass's CPU
+  cost (two world renders a frame). A player who sets iMultiSample=0 for
+  the GPU's sake gets the CPU-heavier path without being told.
+- **The GPU cost of the sample count could not be read from these runs.**
+  Both the 0 and the 2 run stutter heavily wherever the scenario first
+  reaches a place (31-53 % of the frames over 20 ms at spot 2, maxima of
+  0.4-1.2 s), while the 4 run of the same minute does not (1 %), and the
+  GPU sample means of the stuttering phases are garbage (negative numbers
+  from broken timestamp pairs). Derived, unverified: DXVK compiles every
+  pipeline anew for a sample count it has not seen (its state cache holds
+  the 4x pipelines of all earlier runs), and the first run under a new
+  count pays for it. The decider is a repeat run of 2 (and 0) with the
+  cache warm; not run (the game was queued). On the Dream Air the question
+  is better asked on Windows anyway (the native driver, no pipeline cache
+  of this kind): iMultiSample=2 there, the same place, the compositor's
+  pre_submit_gpu_ms against the 4x capture of 2026-11-07.
+- What this settles: **iMultiSample=2 is a correct single-pass
+  configuration** (the eye pictures equal the 4x run's shift for shift), so
+  it can be tried on Windows for the GPU without a stereo risk; 0 is
+  correct too but costs the single pass. Whether OBVR could allow the
+  single pass on the texture path (one world render into the double-wide
+  texture, one copy) is OBVR's question; the gate is deliberate and the
+  texture path with a side-by-side frame is unverified.
