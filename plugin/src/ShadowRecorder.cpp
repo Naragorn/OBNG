@@ -15,7 +15,7 @@ namespace {
 
 const char* const kNames[] = {"TimeInfo::Update", "TimeInfo::Init", "TimeInfo::Freeze", "TimeInfo::Unfreeze",
                               "LoadingMenu::Tick", "LoadingMenu::LoadingMenu",
-                              "ShadowSceneLight::CollectGeometryInRange"};
+                              "ShadowSceneLight::CollectGeometryInRange", "_CIsqrt"};
 static_assert(sizeof(kNames) / sizeof(kNames[0]) == static_cast<int>(Shadowed::Count), "one name per shadowed function");
 
 SRWLOCK g_lock = SRWLOCK_INIT;

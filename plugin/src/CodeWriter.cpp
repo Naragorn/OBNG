@@ -172,6 +172,110 @@ void CodeWriter::StoreStackPointer(UInt32 address) {
 	DWord(address);
 }
 
+void CodeWriter::StoreDoubleToStack(UInt8 offset) {
+	// dd /2 with [esp + disp8]: fst qword ptr [esp + offset]
+	Byte(0xDD);
+	Byte(0x54);
+	Byte(0x24);
+	Byte(offset);
+}
+
+void CodeWriter::StoreControlWordToStack(UInt8 offset) {
+	// d9 /7 with [esp + disp8]: fnstcw word ptr [esp + offset] (the no-wait
+	// form; the 9b prefix would make it fstcw)
+	Byte(0xD9);
+	Byte(0x7C);
+	Byte(0x24);
+	Byte(offset);
+}
+
+void CodeWriter::LoadControlWordFromStack(UInt8 offset) {
+	// d9 /5 with [esp + disp8]: fldcw word ptr [esp + offset]
+	Byte(0xD9);
+	Byte(0x6C);
+	Byte(0x24);
+	Byte(offset);
+}
+
+void CodeWriter::SquareRoot() {
+	// d9 fa
+	Byte(0xD9);
+	Byte(0xFA);
+}
+
+void CodeWriter::MoveEaxFromStack(UInt8 offset) {
+	// 8b 44 24 <offset>
+	Byte(0x8B);
+	Byte(0x44);
+	Byte(0x24);
+	Byte(offset);
+}
+
+void CodeWriter::MoveZeroExtendEaxFromStackWord(UInt8 offset) {
+	// 0f b7 44 24 <offset>
+	Byte(0x0F);
+	Byte(0xB7);
+	Byte(0x44);
+	Byte(0x24);
+	Byte(offset);
+}
+
+void CodeWriter::MoveStackWordFromAx(UInt8 offset) {
+	// 66 89 44 24 <offset>: the operand-size prefix makes it a word move
+	Byte(0x66);
+	Byte(0x89);
+	Byte(0x44);
+	Byte(0x24);
+	Byte(offset);
+}
+
+void CodeWriter::AndEax(UInt32 mask) {
+	// 25 imm32
+	Byte(0x25);
+	DWord(mask);
+}
+
+void CodeWriter::OrEax(UInt32 bits) {
+	// 0d imm32
+	Byte(0x0D);
+	DWord(bits);
+}
+
+void CodeWriter::CompareEax(UInt32 value) {
+	// 3d imm32
+	Byte(0x3D);
+	DWord(value);
+}
+
+void CodeWriter::TestEax(UInt32 mask) {
+	// a9 imm32
+	Byte(0xA9);
+	DWord(mask);
+}
+
+void CodeWriter::JumpIfEqualRelative(UInt32 target) {
+	// 0f 84 <rel32>
+	Byte(0x0F);
+	Byte(0x84);
+	const UInt32 next = AddressAt(m_size + 4);
+	DWord(target - next);
+}
+
+void CodeWriter::JumpIfNotEqualRelative(UInt32 target) {
+	// 0f 85 <rel32>
+	Byte(0x0F);
+	Byte(0x85);
+	const UInt32 next = AddressAt(m_size + 4);
+	DWord(target - next);
+}
+
+void CodeWriter::JumpIndirect(UInt32 cellAddress) {
+	// ff /4 with a disp32 operand: jmp dword ptr [cellAddress]
+	Byte(0xFF);
+	Byte(0x25);
+	DWord(cellAddress);
+}
+
 void CodeWriter::Return() { Byte(0xC3); }
 
 void CodeWriter::ReturnAndPop(UInt16 bytes) {

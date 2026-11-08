@@ -180,7 +180,15 @@ layers exist (both since 2026-10-27):
    double rounding of subnormal products at PC 24 matches the hardware),
    but its FLD does not quiet a signalling NaN where the hardware's does;
    a case that feeds an SNaN through FLD/FSTP is decided by the hardware,
-   not by the emulator. For a leaf function without callees the original's
+   not by the emulator. Its FSQRT ignores precision control altogether
+   (measured 2026-11-08 with Unicorn 2.1.4: sqrt(2) under FPCW 0x007F
+   leaves the 64-bit significand 0xB504F333F9DE6484 where the hardware
+   leaves 0xB504F30000000000), so a result that depends on PC through
+   FSQRT is decided on the host too: plugin/tests/FastSqrtOracleTest.cpp
+   maps the original's bytes from the reference Oblivion.exe at their
+   image addresses in the 32-bit test process and runs them on the real
+   x87 beside the rebuild (1.8 million calls over six control words for
+   _CIsqrt 0x00982C30). For a leaf function without callees the original's
    bytes can also run directly on the host x87 (mmap, fldcw) against the
    rebuild over millions of random inputs - done for 0x0047DA70 by a
    reviewer at nearest and again on 2026-10-30 under all four rounding

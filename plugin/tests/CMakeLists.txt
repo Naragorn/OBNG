@@ -93,3 +93,18 @@ target_include_directories(GrassFadePatchPackageTest PRIVATE ../src ../../tests)
 target_compile_options(GrassFadePatchPackageTest PRIVATE -Wall -Wextra -Werror)
 add_test(NAME GrassFadePatchPackageTest COMMAND GrassFadePatchPackageTest)
 set_tests_properties(GrassFadePatchPackageTest PROPERTIES SKIP_RETURN_CODE 77)
+
+# The CRT square root's dispatch (FastSqrtLogic.h): the decisions, the bytes,
+# and the generated code run on the host's x87.
+add_executable(FastSqrtLogicTest FastSqrtLogicTest.cpp ../src/CodeWriter.cpp)
+target_include_directories(FastSqrtLogicTest PRIVATE ../src ../../tests)
+target_compile_options(FastSqrtLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME FastSqrtLogicTest COMMAND FastSqrtLogicTest)
+
+# Against the original's own bytes, mapped from the reference Oblivion.exe
+# ($OBNG_ORACLE_EXE or Steam's default); skipped (77) where there is none.
+add_executable(FastSqrtOracleTest FastSqrtOracleTest.cpp ../src/CodeWriter.cpp)
+target_include_directories(FastSqrtOracleTest PRIVATE ../src ../../tests)
+target_compile_options(FastSqrtOracleTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME FastSqrtOracleTest COMMAND FastSqrtOracleTest)
+set_tests_properties(FastSqrtOracleTest PROPERTIES SKIP_RETURN_CODE 77)

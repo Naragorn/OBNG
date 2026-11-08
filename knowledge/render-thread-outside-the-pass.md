@@ -291,3 +291,39 @@ walk, Havok and the long tail.
   +0x160 Unk_58, +0x170 GetBaseForm, +0x190 IsActor, +0x1C0 Unk_70,
   +0x1F0 Unk_7C).
 - OBVR's seeds: `../OBVR/src/game/GameAddresses.h` lines 364, 1259, 1731.
+
+## Lever 1 built: the square root's dispatch (2026-11-08)
+
+The replacement for 0x00982C30 exists (plugin/src/FastSqrtLogic.h,
+FastSqrt.cpp; re/functions/0x00982C30.md; docs/subsystems/crt-square-root.md):
+133 bytes of generated code that make the original's decisions - the stored
+high dword's sign and exponent, the control word's masks and precision
+control - and run FSQRT under the original's word for the common case,
+jumping to the original through the trampoline for every other. What was
+learned building it, all read or measured on 2026-11-08:
+
+- The original's INEXACT path writes nothing a caller can see: __handle_exc
+  re-raises the PE flag that FSQRT already set (through a deliberately
+  inexact FLDPI/FSTP), __ctrlfp puts the caller's word back,
+  __set_errno_from_matherr(8) returns without touching errno (only DOMAIN
+  and the range types write it). The errno risk named under lever 1 is
+  closed for the fast path; the DOMAIN cases (negative, NaN) stay with the
+  original and keep writing EDOM.
+- The original clobbers EDX (the FSTCW over the pushed EDX slot) as well as
+  EAX and ECX; the dispatch keeps ECX and EDX.
+- Precision control reaches FSQRT on the hardware: every root the game's
+  callers get has 24 significant bits (sqrt(2) = 0xB504F3 << 40 at 0x007F
+  and 0x0C7F alike, since the original rounds to nearest whatever the
+  caller's mode). Unicorn's FSQRT ignores PC, so the emulator cannot gate
+  this function; the original's bytes run on the host instead
+  (FastSqrtOracleTest: 1.8 million calls, six words, 0 differences in
+  result, control word, exception flags, stack top, errno writes).
+- The condition codes C0..C3 after the call differ from the original's on
+  about 29 % of PC-24 calls (the original's FLDPI/FSTP changes C1 after the
+  root). No caller reads them: a square root's caller continues with FSTP,
+  FMUL or FCOM, and FCOM/FUCOM set them afresh. Reported in the test, not
+  asserted.
+- The in-game gate ([Shadow] Sqrt=1, tools/hand-scripts/obng-sqrt-shadow.ini)
+  and the Gold Road measurement ([Route] Sqrt=1,
+  tools/hand-scripts/obng-measure-profile-sqrt.ini against
+  obng-measure-profile.ini) wait for the Linux game.

@@ -81,3 +81,19 @@ rounding control nearest; the routed run (truncate at every entry) kept
 held 1.8 % of the in-pass samples where the engine's own walk held 2.3 % -
 scene_pass 2.83 against 2.78 ms, inside the spread of two original runs
 (2.82 / 2.91 ms). The native-with-fallback shape runs at the engine's cost.
+
+## When the rebuilt function is the hardware's own instruction (2026-11-08)
+
+The CRT square root _CIsqrt 0x00982C30 (re/functions/0x00982C30.md) is one
+FSQRT with a dispatch around it, and the dispatch is what costs: the game's
+control words (0x007F, 0x0C7F; PM set, not 0x027F) send every inexact root
+through __87except. Its rebuild (plugin/src/FastSqrtLogic.h) therefore takes
+none of the shape above: no SSE arithmetic, no MXCSR scope, no software
+fallback, because there is no arithmetic to reproduce - the replacement runs
+the same FSQRT under the same control word ((word & 0x0300) | 0x007F: PC
+kept, nearest, all masked) and inherits the 24-bit rounding at PC 24 from the
+hardware, exactly as the original does. What is rebuilt are the decisions
+around the instruction, written as generated machine code so the tests run
+the same bytes the game runs. The oracle is the original's own bytes on the
+host's x87 (plugin/tests/FastSqrtOracleTest.cpp), not the emulator: Unicorn's
+FSQRT ignores precision control (measured; docs/re-workflow.md).

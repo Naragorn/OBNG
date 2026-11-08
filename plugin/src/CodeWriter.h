@@ -79,6 +79,25 @@ public:
 	// mov dword ptr [address], esp - records where the stack stands.
 	void StoreStackPointer(UInt32 address);
 
+	// The square root dispatch's instructions (FastSqrtLogic.h): the x87
+	// store, control-word and square-root instructions with an ESP-relative
+	// operand, the EAX masks and compares, the conditional jumps and the
+	// indirect jump through a memory cell.
+	void StoreDoubleToStack(UInt8 offset);             // fst qword ptr [esp + offset]
+	void StoreControlWordToStack(UInt8 offset);        // fnstcw word ptr [esp + offset]
+	void LoadControlWordFromStack(UInt8 offset);       // fldcw word ptr [esp + offset]
+	void SquareRoot();                                 // fsqrt
+	void MoveEaxFromStack(UInt8 offset);               // mov eax, dword ptr [esp + offset]
+	void MoveZeroExtendEaxFromStackWord(UInt8 offset); // movzx eax, word ptr [esp + offset]
+	void MoveStackWordFromAx(UInt8 offset);            // mov word ptr [esp + offset], ax
+	void AndEax(UInt32 mask);                          // and eax, imm32
+	void OrEax(UInt32 bits);                           // or eax, imm32
+	void CompareEax(UInt32 value);                     // cmp eax, imm32
+	void TestEax(UInt32 mask);                         // test eax, imm32
+	void JumpIfEqualRelative(UInt32 target);           // je rel32
+	void JumpIfNotEqualRelative(UInt32 target);        // jne rel32 (also jnz)
+	void JumpIndirect(UInt32 cellAddress);             // jmp dword ptr [cellAddress]
+
 	// ret, with nothing popped beyond the return address.
 	void Return();
 	void ReturnAndPop(UInt16 bytes);

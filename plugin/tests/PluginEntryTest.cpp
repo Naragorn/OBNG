@@ -41,6 +41,10 @@ struct Fake {
 	int fixInstalls = 0;
 	obng::plugin::FixSettings fixInstalled;
 	bool fixesSetUp = true;
+	int sqrtShadowInstalls = 0;
+	uint32_t sqrtShadowMade = 1;  // made when asked; the real installer makes none when the switch is off
+	int sqrtRouteInstalls = 0;
+	uint32_t sqrtRouteMade = 1;
 	std::vector<std::string> calls;  // the side effects in the order Load made them
 	std::vector<std::string> lines;
 
@@ -127,9 +131,20 @@ bool FakeInstallFixes(const obng::plugin::FixSettings& settings) {
 	return g_fake->fixesSetUp;
 }
 
+uint32_t FakeInstallShadowSqrt(const ShadowSettings& settings) {
+	++g_fake->sqrtShadowInstalls;
+	return settings.sqrt ? g_fake->sqrtShadowMade : 0u;
+}
+
+uint32_t FakeInstallRouteSqrt(const RouteSettings& settings) {
+	++g_fake->sqrtRouteInstalls;
+	return settings.sqrt ? g_fake->sqrtRouteMade : 0u;
+}
+
 const Host kHost{&FakeReset,          &FakeLog,          &FakeReadSettings, &FakeInitRecorder,
                  &FakeInstall,        &FakeInstallMenu,  &FakeInstallRangeWalk, &FakeInstallRoute,
-                 &FakeStartSummaryTimer, &FakeInstallProbes, &FakeInstallStereo, &FakeInstallFixes};
+                 &FakeStartSummaryTimer, &FakeInstallProbes, &FakeInstallStereo, &FakeInstallFixes,
+                 &FakeInstallShadowSqrt, &FakeInstallRouteSqrt};
 
 // Every TimeInfo and LoadingMenu shadow off.
 ShadowSettings NoShadow() {
@@ -580,7 +595,70 @@ void TestLoadFixes() {
 	}
 }
 
+void TestLoadSqrt() {
+	Section("Load with the square root shadowed: one detour");
+	Fake fake;
+	fake.iniSettings.shadow.sqrt = true;
+	g_fake = &fake;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(fake.sqrtShadowInstalls == 1 && fake.sqrtRouteInstalls == 0 && fake.Logged("Shadow: 7 of 7 detours made"),
+	      "the shadow installer is called, the route's is not: six TimeInfo and LoadingMenu detours plus the square root's");
+	Fake alone;
+	alone.iniSettings.shadow = NoShadow();
+	alone.iniSettings.shadow.sqrt = true;
+	alone.made = 0;
+	alone.menuMade = 0;
+	g_fake = &alone;
+	ResetForTest();
+	Check(Load(Game(), kHost) && alone.Logged("Shadow: 1 of 1 detours made"), "alone: one of one");
+	Check(fake.Logged("Route: every switch is 0, nothing routed"), "nothing routed");
+
+	Section("Load with the square root routed: one detour, the shadow untouched");
+	Fake routed;
+	routed.iniSettings.shadow = NoShadow();
+	routed.iniSettings.route.sqrt = true;
+	g_fake = &routed;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(routed.sqrtRouteInstalls == 1 && routed.Logged("Route: 1 of 1 detours made"), "the route installer is called, one of one");
+	Check(routed.Logged("Shadow: every switch is 0, nothing shadowed"), "nothing shadowed");
+	Fake failing;
+	failing.iniSettings.shadow = NoShadow();
+	failing.iniSettings.route.sqrt = true;
+	failing.sqrtRouteMade = 0;
+	g_fake = &failing;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(failing.Logged("Route: 0 of 1 detours made"), "the shortfall is in the log");
+
+	Section("Load with the square root both shadowed and routed: the shadow wins");
+	Fake both;
+	both.iniSettings.shadow = NoShadow();
+	both.iniSettings.shadow.sqrt = true;
+	both.iniSettings.route.sqrt = true;
+	both.made = 0;
+	both.menuMade = 0;
+	g_fake = &both;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(both.sqrtShadowInstalls == 1 && both.sqrtRouteInstalls == 0, "the shadow is installed, the route is not");
+	Check(both.Logged("Route: _CIsqrt skipped - the Sqrt shadow takes the same entry") && both.Logged("Route: 0 of 1 detours made"),
+	      "said and counted: one asked, none made");
+
+	Section("Load with the square root route beside the stereo draw: five detours");
+	Fake beside;
+	beside.iniSettings.shadow = NoShadow();
+	beside.iniSettings.route.sqrt = true;
+	beside.iniSettings.route.stereoDraw = true;
+	g_fake = &beside;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(beside.sqrtRouteInstalls == 1 && beside.stereoInstalls == 1 && beside.Logged("Route: 5 of 5 detours made"), "both routes counted");
+}
+
 int main() {
+	TestLoadSqrt();
 	TestLoadFixes();
 	TestQuery();
 	TestLoadEditor();

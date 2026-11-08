@@ -18,6 +18,7 @@ enum class Shadowed : int {
 	LoadingMenuTick,
 	LoadingMenuCtor,
 	RangeWalk,
+	FastSqrt,
 	Count,
 };
 

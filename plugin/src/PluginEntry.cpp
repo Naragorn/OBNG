@@ -42,6 +42,7 @@ bool Load(const ExtenderInterfaceHead& xse, const Host& host) {
 		uint32_t made = host.installShadowTimeInfo(s);
 		made += host.installShadowLoadingMenu(s);
 		made += host.installShadowRangeWalk(s);
+		made += host.installShadowSqrt(s);
 		host.log("Shadow: %u of %u detours made", made, s.Asked());
 	}
 	if (r.Asked() == 0) {
@@ -56,6 +57,12 @@ bool Load(const ExtenderInterfaceHead& xse, const Host& host) {
 		}
 		if (r.stereoDraw) {
 			made += host.installRouteStereoDraw(r);
+		}
+		if (r.sqrt && RouteSkippedForShadow(s.sqrt, r.sqrt)) {
+			host.log("Route: _CIsqrt skipped - the Sqrt shadow takes the same entry and wins (a route without a prior clean "
+			         "shadow run makes nothing safer)");
+		} else if (r.sqrt) {
+			made += host.installRouteSqrt(r);
 		}
 		host.log("Route: %u of %u detours made", made, r.Asked());
 	}

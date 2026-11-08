@@ -23,6 +23,9 @@ constexpr UInt32 kRouteStereoDrawDetours = 4;
 // Do_RenderShape 0x007693E0 (OcclusionCull.cpp); the direct entries are the
 // stereo route's, which asks the culler. It needs the route (its eye data).
 constexpr UInt32 kRouteOcclusionCullDetours = 2;
+// The CRT square root's dispatch is one: _CIsqrt's entry 0x00982C30
+// (FastSqrt.cpp, FastSqrtLogic.h).
+constexpr UInt32 kRouteSqrtDetours = 1;
 
 // [Route] StereoEyes: 1 is the 1:1 gate (the rebuild's port calls are the
 // original's), 2 the double draw (StereoDraw.h). Anything else is unknown
@@ -88,10 +91,11 @@ struct RouteSettings {
 	UInt32 occlusionCullMargin = 2;     // [Route] OcclusionCullMargin: pixels the test rectangles grow on every side (0..64)
 	float occlusionCullMaxMove = 100.0f;  // [Route] OcclusionCullMaxMove: the camera moved further since the verdict: drawn
 	float occlusionCullMaxTurn = 10.0f;   // [Route] OcclusionCullMaxTurn: the camera turned further (degrees): drawn
+	bool sqrt = false;  // [Route] Sqrt: _CIsqrt 0x00982C30 runs the generated dispatch - FSQRT without the CRT's exception path for the common case (FastSqrt.cpp); off until measured
 
 	UInt32 Asked() const {
 		return (rangeWalk ? kRouteRangeWalkDetours : 0u) + (stereoDraw ? kRouteStereoDrawDetours : 0u) +
-		       (stereoDraw && occlusionCull ? kRouteOcclusionCullDetours : 0u);
+		       (stereoDraw && occlusionCull ? kRouteOcclusionCullDetours : 0u) + (sqrt ? kRouteSqrtDetours : 0u);
 	}
 };
 

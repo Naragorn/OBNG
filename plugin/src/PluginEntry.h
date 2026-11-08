@@ -66,6 +66,10 @@ struct Host {
 	uint32_t (*installRouteStereoDraw)(const RouteSettings& settings);
 	// The fixes (GrassFadeFix.cpp); false if they could not be set up.
 	bool (*installFixes)(const FixSettings& settings);
+	// The CRT square root's shadow and route (FastSqrt.cpp); each returns how
+	// many detours were made (one, or none when its switch is off).
+	uint32_t (*installShadowSqrt)(const ShadowSettings& settings);
+	uint32_t (*installRouteSqrt)(const RouteSettings& settings);
 };
 
 // How many counting detours the settings ask for: five hot functions of the
