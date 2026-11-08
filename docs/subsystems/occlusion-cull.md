@@ -168,3 +168,23 @@ market); fixed afterwards, the behaviour unchanged.
 - The 37 untestable draws a pass (near-plane bounds) cannot be culled by a
   bound; the player's body is OBVR's CullHiddenHead, the rest is the sky.
 
+- **Open bug (Nadi, 2026-11-08 ~21:15, Windows headset, OBNG.dll 006748a,
+  OBVR single pass with iMultiSample=0): things pop, and "alles blau
+  manchmal" - the whole picture blue at times. Turned off again
+  (OcclusionCull=0 in the Windows OBNG.ini).**
+  - *Measured (OBNG.log, 15 ten-second summaries):* 10-14 % of a pass's
+    draws skipped; skipsUnconfirmed 0.3 to 3.6 % of the skips (525 of
+    192566 up to 1046 of 29426), against 0.0 to 0.1 % in the Linux runs;
+    the culler's own time 11-14 % of the pass's (cullMs / passMs). No
+    Reset line beyond the hook: the device was not reset.
+  - *Not known:* what the blue is. Guesses, none checked: the fog or sky
+    colour where the skipped geometry should be (a near-plane or
+    large-bound shape skipped while it covers the view), or the
+    image-space texture route of iMultiSample=0, which the Linux culler
+    runs never used (they ran MSAA 4). The popping fits the higher
+    unconfirmed share: the headset turns faster than the gate's 10
+    degrees per verdict age.
+  - *First step:* the Linux culler run with iMultiSample=0 (the texture
+    route) and an eye dump at a fast turn; if blue shows there, the route
+    is the cause, else the Windows headset with a smaller turn gate.
+  - *Logs:* artifacts/windows-headset-occlusion-20261108 (not in Git).
