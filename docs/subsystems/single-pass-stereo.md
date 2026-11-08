@@ -788,3 +788,37 @@ relied on the originals' bodies running - a patch inside them, a check of a
 return address in them - no longer holds. Not seen in the meadow runs of
 the same evening. The run that decides it: the scenario with the route off
 (tools/hand-scripts/obng-measure-original.ini).
+
+## The third headset look on Windows (2026-11-07, logs in artifacts/windows/20261107-2345)
+
+Nadi's verdict (headset, not a measurement): the single pass is right, grass
+and all. Read from the run's `OBNG.log` (OBNG.dll ace16791383b, the build of
+6ec278f, `[Fix] GrassFade=1 GrassFadeReach=game`, `[Route]
+StereoCarryConstants=1` by default):
+
+- The grass fade fix bound two twins in the whole session (vertex shaders
+  4E8F03B0 and 4E8F14E0, clip position r0 and r1, rows from c9, temps r6 and
+  r7) - two grass shaders were all the game asked for at Nadi's settings.
+- The carry ran on every exterior summary (300 000 to 820 000 registers
+  carried per 10 s), 0 refused draws, 0 re-applies refused.
+- The eye switch costs 0.57-0.60 us plus 0.11-0.12 us re-apply per applied
+  switch, against 0.43-0.45 + 0.12 us in the look of 2026-11-05 without the
+  carry: the carry costs 0.14 us per switch on Windows (measured, the same
+  machine, the same DXVK). At 1 400-2 400 switches per frame that is
+  0.2-0.35 ms per frame; the whole switch takes 0.7-1.5 ms per frame in the
+  late exterior summaries.
+- Frames per 10 s summary (`eye data set`): 900 in the interiors at the
+  start, 329-676 in the exterior summaries of the second half, against 900
+  in every exterior summary of 2026-11-05. Derived: the second half ran at
+  33-68 frames per second, the earlier look at the headset's 90. The draws
+  per frame were higher (2 200-2 400 against 1 100-1 600), the draws per
+  second lower (46 000 against 100 000) - so the frame did not get slower
+  by the draw count alone. Between the two looks changed: the carry (+0.2-
+  0.35 ms derived above, not enough), the grass twins, OBVR.dll
+  (2026-11-07 23:02), OblivionWalkers.dll (2026-11-06), WaterAA.dll
+  (2026-11-06) and the place. Which of these holds the rest is not
+  measured; the Gold Road on/off harness runs on Windows (OBVR's
+  `tools/hand-scripts/single-pass-gold-road-on.txt` / `-off.txt`, save
+  OBVRHarnessMOO) with OBVR's phase samples are the measurement that would.
+- `Shadow:` lines with nothing after them are the shadow recorder's summary
+  when every switch is 0 - noise, harmless.
