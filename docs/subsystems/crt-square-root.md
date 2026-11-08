@@ -72,5 +72,5 @@ baseline -175231): the CRT error path's samples went from 181 to 0 a window
 out of the pass and its functions vanished from the in-pass CRT too, about
 0.3 ms a frame (derived); the Linux harness's frame time is vsync-bound at
 75 Hz and cannot show the gain. Details in
-knowledge/render-thread-outside-the-pass.md, "Runs of 2026-11-08". The
-shipped OBNG.ini keeps [Route] Sqrt=0 until the default is decided.
+knowledge/render-thread-outside-the-pass.md, "Runs of 2026-11-08". On by
+default in the shipped OBNG.ini since 2026-11-08 (Nadi's go).
