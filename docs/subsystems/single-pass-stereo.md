@@ -822,3 +822,82 @@ StereoCarryConstants=1` by default):
   OBVRHarnessMOO) with OBVR's phase samples are the measurement that would.
 - `Shadow:` lines with nothing after them are the shadow recorder's summary
   when every switch is 0 - noise, harmless.
+
+## The Gold Road frame profiled on Linux (2026-11-08 13:35-13:46, runs obng-profile-gold-road-single/20261108-133456 (carry on), /20261108-133844 (carry off), obng-profile-gold-road-dual/20261108-134233)
+
+Three runs of OBVR's Gold Road scenario (MOO save, three road spots, head
+sweep and a walk at each) with OBVR's render sampler on (a sample of the
+render thread about every millisecond, `OBVR-performance-1-2/samples.csv`,
+read with OBVR's `tools/perf-functions.py`) and GPU timing on. The OBNG
+side as Nadi's Windows `OBNG.ini` has it (`tools/hand-scripts/
+obng-measure-profile.ini`, the carry off in `-nocarry.ini`); OBNG.dll
+ace16791383b; OBVR.dll the build OBVR deployed the same morning (its
+worktree, with RealHeight), not the one of Nadi's Windows look. Linux
+headless harness at 75 Hz, 2568 px per eye, MSAA 4. A first attempt at
+10:02 ran beside Detroit: Become Human and a second at 13:33 beside an
+OBVR harness game; both thrown away, the figures below are from the
+machine alone. All measured unless marked.
+
+**The frame is at vsync in all three runs**: 13.3-13.4 ms mean at every
+spot, p95 14.0-14.6 ms, with 1.8-2.6 ms of the render thread waiting for
+poses. The GPU before submit at spot 2: 7.05 ms (single, carry), 6.93
+(single, no carry), 7.43 (dual). The scene pass per frame (dual: two
+passes, both counted):
+
+| Spot | Single, carry | Single, no carry | Dual (2 passes) |
+|---|---|---|---|
+| 1 (-33 -4) | 2.88 ms | 2.71 | 3.56 |
+| 2 (-27 -3) | 3.90 | 3.73 | 4.92 |
+| 3 (-21 -1) | 4.25 | (unusable, see below) | 5.20 |
+
+The single pass saves 0.7-1.0 ms of render-thread time per frame against
+the dual pass (19-21 %). The carried registers cost 0.17 ms per frame by
+the phases (0.05 ms by the switch's own timer: 0.39+0.09 against
+0.29+0.15 us per switch, 1 050-1 180 switches per frame).
+
+**Where the render thread's time goes at spot 2** (single, carry; 21 047
+samples over the phase, 6 306 of them inside the scene pass):
+
+- Inside the scene pass (30 % of the samples): engine 39.9 %, D3D9 (DXVK)
+  29.3 %, OBNG.dll 9.5 %, OBVR.dll 6.5 %, kernel32 4.5 %, FoliageAA 4.4 %,
+  d3dx9 1.6 %, memcpy 1.2 %. On the stack most often: 0x0070AB40 (NiNode's
+  walk, 29 %), 0x0070DFD3 (24 %), BSShaderAccumulator finish 0x007AE070
+  (21 %), ShadowSceneNode render 0x007C78D0 (20 %), 0x007F6BF0 (18 %),
+  the constant-map apply loop 0x009A8E30 (18 %), 0x007AC9A0 (16 %). OBNG's
+  9.5 % is the route (0.37 ms per frame, derived), mostly under
+  0x009A8E30. In the dual run OBNG holds 5.2 % and the engine 50.6 %.
+- Outside the scene pass (70 % of the samples): engine 55.3 %, vrclient
+  30.4 % (the poses wait, idle), ntdll 7.5 %, OBVR 3.9 %, Walkers 0.7 %,
+  D3D9 0.4 %. On the stack: 0x008E4590 (18.8 %), 0x008DE950 (18.1 %),
+  0x00893B90 (16.5 %), 0x0070A0D0 (13.3 %), 0x008CED20 (13.2 %),
+  OSGlobals::RenderFrame 0x0040D4D0 (12.7 %), 0x008ABF70 (11.5 %),
+  0x00891850, 0x008AC640 (10.2 % each), 0x004823D0 (10.0 %) - unnamed in
+  the knowledge base so far.
+- Derived from the shares and the 13.4 ms frame: about 2.8 ms idle, 3.9 ms
+  scene pass (of which 1.6 engine, 1.1 DXVK, 0.4 OBNG, 0.25 OBVR), 5.2 ms
+  engine code outside the scene pass (the game's own frame: update, AI,
+  animation, culling before the pass), 1 ms ntdll and the rest. At 90 Hz
+  this thread would have about 0.4 ms to spare on this machine - a hair
+  from CPU-bound - with the GPU at 7 ms of 11.1.
+
+**What this says about Nadi's Windows frame (derived, not measured
+there):** the Windows headset draws 4036x3376 per eye, 2.07 times the
+pixels of the Linux harness; if the GPU time scaled with the pixels and
+the card were the same, the GPU alone would take about 14 ms, over the
+90 Hz budget - the slow exterior (33-68 frames per second on 2026-11-07)
+may well be the GPU, not the CPU. The Windows GPU and CPU are not known
+here. The run that decides it: the same three scenarios on Windows
+(`hand-script-run.ps1` with `..\OBNG\tools\hand-scripts\
+obng-profile-gold-road-single.txt`, save OBVRHarnessMOO), read with
+`perf-phases.py`: the column "app gpu before submit" against the frame
+time.
+
+**Open from these runs:** in the carry-off run the draws collapsed after
+the teleport to spot 3 (70 whole draws and 4 eye switches per frame
+instead of 300 and 1 100, scene pass 0.45 ms, 1 038 frames dropped by the
+compositor over the run); no menu and no refusal in the logs, the monitor
+mirror is black in the headless harness either way (both runs show the
+game's "Your Health is low" box at spot 3, the save's player is hurt by
+the teleport). Whether the route without the carry (the restore through
+the re-apply) or the scenario is at fault is not known; the carry-on and
+dual runs drew spot 3 normally.
