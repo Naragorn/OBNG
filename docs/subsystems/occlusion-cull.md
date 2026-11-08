@@ -73,4 +73,70 @@ single pass, OBVR's capture with GPU timing. Three sides:
 obng-measure-cull-off.ini (the route alone), -on.ini, -check.ini. Summed per
 place with tools/cull-summary.py.
 
-(results follow)
+Linux harness (gamescope headless, 75 Hz vsync, 2568 px an eye, MSAA 4,
+save OBVRHarnessMOO, DXVK), OBNG.dll 1a0a8185 (off / on), 92513e63 (on,
+second run, with the skip confirmation), OBVR.dll of the morning's deploy.
+Runs: obng-cull/20261108-150835 (off), 151254 (on), 153720 (on, second),
+obng-cull-late/20261108-152816 (off), 153234 (on). All measured.
+
+| place | draws a pass | skipped | scene_pass off -> on, mean / p95 | GPU before submit off -> on, mean / p95 | culler's own cost a pass | skips unconfirmed |
+|---|---:|---:|---|---|---:|---:|
+| Market District | 332 | 27 % | 4.43 / 6.91 -> 3.71 / 5.77 ms (second on run 3.71 / 6.57) | 6.50 / 8.97 -> 5.96 / 8.08 ms (5.90 / 8.82) | 0.13 ms | 0.1 % |
+| Talos Plaza | 240 | 44 % | 2.04 / 3.88 -> 1.56 / 2.56 (1.60 / 2.53) | 4.27 / 5.84 -> 4.02 / 5.00 (4.10 / 5.09) | 0.10 ms | 0.0 % |
+| Imperial Dungeon | 438 | 41 % | 2.16 / 3.88 -> 1.60 / 2.26 (1.58 / 2.23) | 4.30 / 5.53 -> 4.11 / 4.71 (4.06 / 4.66) | 0.15 ms | 0.0 % |
+| Weynon Priory house | 504 | 45 % | 2.61 / 6.85 -> 1.64 / 3.01 | 4.96 / 8.52 -> 4.23 / 5.31 | 0.13 ms | 0.0 % |
+| Gold Road -27 -3 | 574 | 51 % | 3.93 / 4.73 -> 3.44 / 4.45 | 7.74 / 9.44 -> 6.55 / 7.29 | 0.28 ms | 0.1 % |
+
+- **The scene pass falls by 12 to 37 % of its mean, the GPU's work by 4 to
+  15 %** (measured, single runs per side; the two on runs agree within
+  0.05 ms at the three places both cover, so the spread is below the
+  effect).
+- **The Gold Road held vsync only with the culler**: the off run drew 1 340
+  frames in the place's 20 s at 14.92 ms mean with 12.9 % of the run's
+  frames reprojected; the on run 1 496 frames at 13.37 ms (measured; one
+  run each).
+- **The skips were right**: of 174 443 to 581 947 skips per place, 0.0 to
+  0.1 % were left unconfirmed by the same pass's test, the rest found their
+  bound hidden in the frame they were skipped from (measured, second on
+  run; an upper bound of the popping, with 45-degree head jumps every
+  2.5 s in the scenario). The camera gate refused about 230 verdicts per
+  10 s window, no batch was lost, every result came in time.
+- **What was skipped**: on the Gold Road 574 draws a pass, 294 skipped -
+  shapes and direct strips (terrain, trees) alike; 37 draws a pass were
+  untestable (bounds reaching the near plane: the sky's followers, the
+  player's body, the ground block under the camera).
+- **Where the time goes**: the culler's own work is 0.10 to 0.28 ms a pass
+  (decide 0.05 to 0.07, the end tests 0.06 to 0.12, collect 0.04 to 0.08),
+  a tenth to a fifth of what it saves.
+
+Derived for Nadi's heavy Windows place (13.3 ms scene pass, 15 to 19 ms
+GPU, 2026-11-07, Better Cities and Unique Landscapes): at the Linux shares
+the culler would take 2 to 4 ms off the scene pass and 1 to 2.5 ms off the
+GPU. Not measured there; the Windows run with [Route] OcclusionCull=1 in
+Nadi's OBNG.ini decides it.
+
+## What failed on the way
+
+- A check mode that drew every skipped shape once more after the pass's
+  last draw, inside a query, to count its visible pixels, crashed the game
+  at 0x007FB4F2 reading a null record (run obng-cull/20261108-152718):
+  Do_RenderShape needs the pass's record state, which the retired lists no
+  longer hold. The first check mode (a query around the skipped draw at its
+  own place in the pass) counted 8 to 52 % "with pixels", which are the
+  pixels later draws cover (the probe's hidden-at-the-end bounds that still
+  drew) - not popping. Both are gone; the same pass's test confirms a skip
+  without any extra draw.
+
+## Open
+
+- A device reset with the culler on fails (queries and state block never
+  released): release them on the reset path before the culler is on in
+  play (small; OBVR's reset handling to be read first).
+- The dual pass gets nothing (no eye data): a per-target verdict table would
+  serve it (medium; off Nadi's path, the single pass is live).
+- The margin and the camera gate were not varied: 2 px and 100 units / 10
+  degrees held with 0.0 to 0.1 % unconfirmed; smaller values may skip
+  more, a headset look decides what is visible.
+- The 37 untestable draws a pass (near-plane bounds) cannot be culled by a
+  bound; the player's body is OBVR's CullHiddenHead, the rest is the sky.
+

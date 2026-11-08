@@ -761,3 +761,22 @@ asked for later wait for the next start.
 With OBNG's grass fade fix the end distance means 0.71 times its value in
 units everywhere in the picture (`[Fix] GrassFadeReach=game`), or its value
 (`ini`); `docs/subsystems/grass-fade.md`.
+
+### The occlusion culler, measured (2026-11-08)
+
+OBNG's culler ([Route] OcclusionCull, plugin/src/OcclusionCull.cpp, the
+reasoning and the runs in docs/subsystems/occlusion-cull.md) skips, in the
+single-pass eye pass, every geometry whose bound rectangle an occlusion
+query of the last two frames found behind the drawn depth in both eyes, and
+tests every geometry again each frame. Over the probe's five places (Linux
+harness, 75 Hz, 2568 px an eye) it skipped 27 to 51 % of the draws a pass,
+the scene pass fell by 12 to 37 % of its mean and the GPU's work before
+submit by 4 to 15 %, at 0.10 to 0.28 ms of its own work a pass (measured,
+runs artifacts/shadow/obng-cull/20261108-15*, obng-cull-late/20261108-15*).
+Of the skips 0.0 to 0.1 % were left unconfirmed by the same pass's test,
+the popping's upper bound (measured). The Gold Road held vsync only with
+the culler (1 340 against 1 496 frames in 20 s). A skipped shape cannot be
+drawn again after the pass: Do_RenderShape 0x007693E0 reads the pass's
+record state, gone by then (crash at 0x007FB4F2 reading a null record, run
+obng-cull/20261108-152718; read from the crash line, the field unverified).
+
