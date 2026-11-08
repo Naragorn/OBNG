@@ -901,3 +901,12 @@ game's "Your Health is low" box at spot 3, the save's player is hurt by
 the teleport). Whether the route without the carry (the restore through
 the re-apply) or the scenario is at fault is not known; the carry-on and
 dual runs drew spot 3 normally.
+
+The repeat of the carry-off run (14:04, obng-profile-gold-road-single/
+20261108-140426, the machine alone) drew spot 3 normally: 1 225 switches
+per frame, scene pass 3.84 ms mean, 81 frames dropped over the run. The
+collapse of 13:38 did not come back in one repeat; its cause stays
+unknown, it is not reproduced by the route without the carry alone.
+Scene pass without the carry over the three spots: 2.79 / 3.74 / 3.84 ms,
+so the carry costs 0.1-0.4 ms per frame by the phases (the two carry-off
+runs agree within 0.03 ms at spots 1 and 2).
