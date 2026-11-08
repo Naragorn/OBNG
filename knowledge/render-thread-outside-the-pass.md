@@ -497,10 +497,16 @@ per draw) is about 0.6 ms of a 6.8 ms pass (derived) - a CPU cost to trim
 when the CPU is the limit, not now.
 
 What moves the GPU (candidates, not measured): the render scale (4036x3376
-is well above the Dream Air's 2560x2560 panel - SteamVR's supersampling;
-100 % would be about a third fewer pixels), the 4x MSAA on a 13.6-million
-pixel eye, OBVR's dynamic resolution (DynamicResolution=0 in the shipped
-INI; Oblivion Performance 2026 is measuring it on the Gold Road today), and
-the shaders' fill cost (the grass fix's shaders, FoliageAA's supersampling).
+is SteamVR's 100 % for the Dream Air - Nadi 2026-11-08; the lens distortion
+makes the recommended target larger than the 2560x2560 panel - so the lever
+is a scale below 100 % where the GPU needs it, which is what OBVR's dynamic
+resolution does: DynamicResolution=0 in the shipped INI, Min 0.5, Target
+0.85; Oblivion Performance 2026 is measuring it on the Gold Road today), the
+game's own 4x MSAA on a 13.6-million pixel eye (Oblivion.ini iMultiSample=4
+on both machines, read; OBVR's SceneFrame.h records that with iMultiSample=0
+the game does not draw the world into the multisampled back buffer and
+OBVR's stereo then showed one picture for both eyes, so 0 is not an option
+and 2 is untested), and the shaders' fill cost (the grass fix's shaders,
+FoliageAA's own grass multisampling, separate from the back buffer).
 The Linux harness cannot stand in for this: its Beyond target is 2568x2568
 (SteamVR supersampleScale 0.52), half the pixels, at 75 Hz.
