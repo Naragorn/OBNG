@@ -397,3 +397,60 @@ side, inside the spread). What drives the GSK narrowphase stays open between
 the engine's own bodies and OblivionWalkers' colliders (OblivionWalkers.dll
 was loaded in all four runs); the next cheap decider is the same pair with
 Walkers' colliders off, if Walkers has that switch.
+
+### Havok, closed as far as plugins go (2026-11-08 18:30)
+
+OblivionWalkers (its session, read in its source: grep havok/bhk/collid)
+creates no Havok bodies of its own: the walkers are ordinary engine
+creatures with the engine's character controller and ragdoll; the mod
+touches Havok only to change corpses' collision filter word ([Rise]
+KeepCorpseApart) and to push ragdoll bodies during the seconds a walker
+rises. With OBVR's hand bodies acquitted above, **the Havok work on the Gold
+Road is the engine's own physics**: the creatures' and the player's
+controllers against the terrain's MOPP and the statics (derived from the two
+findings; the per-body split is unmeasured). The share the extra creatures
+cost could be measured with OblivionWalkers.ini `[Replace] Enabled=0` (the
+live INI under Data/OBSE/Plugins, not a hand-script `ini` line, which
+reaches OBVR's test INI only) on a cell with many walkers - a scene change,
+so a cost of the creatures, not a bug to fix. Not run.
+
+### The scene graph update, read closer (2026-11-08 18:30; baseline run -175231, window s2-y0..s2-y45)
+
+1 537 of the window's 9 616 out-of-pass samples (16 %, about 1.5 ms a frame)
+sit in the update walk. By instruction (measured eips, read in the asm):
+
+| Where | Samples | What the hot instructions are |
+|---|---:|---|
+| 0x0047C930 UpdateObjectControllers | 354 | the loads of the property list head (+0x9C), each list node's property and the property's controller (+0x0C): pointer chasing through cold memory. Callers: 0x007075B0 (selected pass, leaf) 142, 0x00707580 (full pass, leaf) 105, 0x0070A0D0 (full pass, node) 63, 0x0070A190 (selected pass, node) 40. |
+| 0x0070A0D0 NiNode::UpdateDownwardPass | 162 | the child pointer and the child's vtable (0x0070A119 / 0x0070A11F): the first touch of each child. |
+| 0x0070A190 NiNode::UpdateSelectedDownwardPass | 144 | the child's flags word (0x0070A1F1): the first touch of each child. |
+| 0x0070C120 UpdateWorldData | 118 | the 13-dword copy of the composed transform and the collision object's load. |
+| 0x0053D7A0, 0x007100A0, 0x007101F0 (transform compose, matrix multiply, point transform) | 386 | the arithmetic itself. |
+| 0x0072A6B0, 0x0072A820, 0x0072BB30, 0x0070A360 (bounds: merge, transform, skin, node) | 309 | the arithmetic and the merges' square roots (the roots' CRT path counted under the CRT above). |
+| 0x00607840 (bhkRigidBody in a world) from 0x0088EDC0 | 54 | two dependent loads into the Havok body. |
+
+So about half of the walk is memory latency on first touches (lists,
+children, flags, bodies), a quarter transform arithmetic, a fifth bounds.
+How the engine already limits the walk (read): the flags byte +0x18 carries
+Gamebryo's selective-update bits - bit 1 "visit this child", bit 2 "update
+transforms", bit 3 "update controllers", bit 4 "rigid" (0x0070A190 reads
+them; 0x0070A190 and 0x007075B0 pass bit 3 to UpdateObjectControllers,
+which returns at once when it is clear). The full pass (0x0070A0D0,
+0x00707580, reached through NiAVObject::Update 0x00707370 from the actor
+update 0x00471F20) passes 1 and walks every object's lists regardless.
+
+Levers that keep the outputs bit for bit (derived):
+- **Skip the controller walk in the full pass for objects without
+  controllers** - 168 of the 354 samples come from the full-pass callers,
+  about 0.17 ms. Needs a reliable "has controllers" bit: Gamebryo's bit 3 is
+  set by SetSelectiveUpdateFlags from the actual controllers, but whether
+  Oblivion keeps it current for every object the full pass visits is
+  **unread**; with a stale bit the skip would drop a controller update.
+  Medium (0.5-0.8 M tokens: read the maintainers of bit 3, a shadow that
+  compares world transforms after the walk, the route).
+- **Fewer first touches** (the other 0.6 ms): a layout or prefetch change,
+  not a code change - out of reach of a detour.
+- **The arithmetic** (0.7 ms): Gamebryo-inherent per visited object; a SIMD
+  rebuild would gain a fraction of it at large cost. Not recommended.
+Neither is worth starting before the Windows run says whether the CPU bounds
+the frame at 90 Hz.
