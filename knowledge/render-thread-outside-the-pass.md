@@ -1,0 +1,282 @@
+# The render thread outside the scene pass: where the frame's other 70 % go
+
+Status: knowledge, written 2026-11-08 by the architect from OBVR's render
+sampler (run `artifacts/shadow/obng-profile-gold-road-single/20261108-133456`,
+the single pass with the carry, road spot 2 of the Gold Road scenario, the
+machine otherwise idle) and from Ghidra's decompilation of the hot functions
+(export `re/export/frame-update/`, slice `re/slices/frame-update/`). The
+names below are the architect's reading of the decompilates, **not refuted
+by the slice workflow**; each is marked. Nothing of this is built.
+
+Marks: **read** = read in the binary (address given), **measured** = from
+the sampler, **derived** = follows from the two, **unverified** = not
+checked.
+
+## How to read the sampler here
+
+OBVR's render sampler (`../OBVR/src/render/RenderSampler.h`) suspends the
+render thread about every millisecond and records the eip plus up to eight
+code addresses found by **scanning the stack upward** (StackScan.h, "the
+hang watchdog's way"), not by walking frame pointers. The eip is exact.
+The first stack word (w0) is the return address of the running function in
+most cases. Deeper words are often **stale**: a function with a large frame
+leaves old return addresses in it, and a scan cannot tell them from live
+ones. Measured consequence in this run: 9.8 % of all out-of-pass samples
+are vrclient.dll (the pose wait, idle) with the Havok functions 0x008ABF70,
+0x008AC640, 0x00891850 and 0x00893B90 "on the stack" - the previous step's
+frames under OBVR's wait, not callers. `perf-functions.py`'s inclusive
+column therefore overstates big-frame functions; everything below rests on
+exclusive samples and, where a caller is named, on w0 right after a CALL.
+
+Samples at road spot 2 (marks s2-y0 to s2-y45): 14 479 in all, 10 227
+outside the scene pass (70.6 %), 4 252 inside. The frame is 13.4 ms at the
+75 Hz vsync in every run (measured). "ms a frame" below is the sample share
+times 0.706 times 13.4 ms (derived).
+
+## The out-of-pass samples by area (measured)
+
+| Area | Share | ms a frame (derived) |
+|---|---|---|
+| vrclient.dll (WaitGetPoses, idle) | 31.6 % | 3.0 |
+| game code 0x0040xxxx-0x0068xxxx (TES, cells, actors, menus, scripts) | 23.7 % | 2.2 |
+| NiMain 0x0069xxxx-0x0074xxxx (the scene graph update) | 14.6 % | 1.4 |
+| Havok 0x0089xxxx-0x0092xxxx plus its GSK code at 0x0093xxxx (below) | 10.7 % | 1.0 |
+| CRT 0x0098xxxx-0x00A2xxxx (mostly the square root's slow path) | about 3 % | 0.3 |
+| ntdll.dll | 6.9 % | 0.65 |
+| OBVR.dll | 3.9 % | 0.4 |
+| OblivionWalkers.dll | 0.7 % | 0.07 |
+| renderer 0x0075xxxx-0x0088xxxx | 1.0 % | 0.1 |
+
+Of the ntdll share, 4.4 % of all out-of-pass samples sit directly under
+0x007AC9A0 (the shader accumulator's per-pass list draw,
+re/functions/0x007AC9A0.md) called from the NiNode walk 0x0070AB40: render
+passes that run **outside OBVR's scene-pass bracket** (which ones is
+unverified; the water's reflection or the actor shadow maps are the
+candidates) wait in a lock inside D3D9/DXVK for about 0.4 ms a frame
+(derived).
+
+## The hot functions, named by reading (exclusive share of the out-of-pass samples)
+
+### The scene graph update: Gamebryo's NiAVObject::Update tree, about 17 %, 1.6 ms a frame
+
+All read in `re/export/frame-update/<address>/pseudo.c` and `asm.s` on
+2026-11-08; the Gamebryo method names are proposals that match the code's
+shape and OBVR's two seeds for 0x00707370 (`kUpdateSelectedDownwardPass`,
+`kUpdateNodeTransforms`, GameAddresses.h:364/1259).
+
+| Address | Proposed name | Share | What the code does (read) |
+|---|---|---|---|
+| 0x0047C930 | NiAVObject::UpdateObjectControllers(float time, bool properties) | 4.3 % | When the bool is set, walks the property list at this+0x9C (NiTListBase nodes: next +0, item +8) and calls vfunc +0x50(time) on every property whose +0x0C (its controller) is non-null; then walks this+0x0C (NiObjectNET controllers, next at +0x34) calling vfunc +0x54(time). Hot at 0x0047C941/0x0047C948/0x0047C955: the list walk itself, for every object in the loaded scene every frame, most lists empty. Callers: 0x0070A0D0 (34 %), 0x00707580 (32 %), 0x007075B0 (27 %) (measured, w0). |
+| 0x0070A0D0 | NiNode::UpdateDownwardPass(float time, bool controllers) | 2.8 % (recursive) | UpdateObjectControllers(time, 1) when the bool is set; vfunc +0x74 (UpdateWorldData); world bound radius this+0x2C := 0; for each child in the NiTArray at +0xAC (data +0xB0, count ushort +0xB6) vfunc +0x60(time, bool) and then the child's bound merged into this+0x20..+0x2C (copy when own radius is 0, else NiBound::Merge 0x0072A6B0). Entered from 0x00707370; 92 % of its callers are itself (measured). |
+| 0x0070A190 | NiNode::UpdateSelectedDownwardPass(float time) | 1.1 % | UpdateObjectControllers(time, flags bit 3); UpdateWorldData when flags bit 2; per child with flags bit 1: vfunc +0x68 when bit 4 (the rigid variant) else +0x64; the same bound merge. Flags = the ushort at this+0x18. |
+| 0x00707370 | NiAVObject::Update(float time, bool controllers) | - | vfunc +0x60(time, bool), then parent (+0x1C) vfunc +0x94 (UpdateUpwardPass). thiscall, RET 8 (knowledge/skinned-part-attach.md agrees). 146 callers. |
+| 0x007073A0 | NiAVObject::UpdateSelected(float time) | - | vfunc +0x64(time), then the parent's +0x94. |
+| 0x00707580 | NiAVObject::UpdateDownwardPass (the leaf object's) | - | UpdateObjectControllers(time, 1) when the bool is set; vfunc +0x74 (UpdateWorldData); vfunc +0x78 (UpdateWorldBound). |
+| 0x007075B0 | NiAVObject::UpdateSelectedDownwardPass | - | the same with the flag bits 3 and 2 as gates. |
+| 0x0070C120 | NiAVObject::UpdateWorldData | 1.3 % | world (+0x64, 13 dwords) := parent ? parent.world * local (+0x30) through 0x0053D7A0 : local; then the collision object at +0xA8, vfunc +0x50. |
+| 0x0053D7A0 | NiTransform::operator*(const NiTransform&) | 2.3 % | rotation through 0x007100A0, translation through 0x007101F0 plus the scaled add, scale product (asm 0x0053D7C0-0x0053D800). knowledge/bone-palettes.md knows it as the bone compose: the same function. |
+| 0x007100A0 | NiMatrix3::operator*(const NiMatrix3&) | 1.0 % | nine dot products. |
+| 0x007101F0 | NiMatrix3::operator*(const NiPoint3&) | 1.1 % | three dot products. |
+| 0x0072A6B0 | NiBound::Merge(const NiBound*) | 1.7 % | sphere merge: distance of the centres through the CRT square root 0x00982C30 (calls at 0x0072A74F and 0x0072A7F7), the containment cases, the new centre and radius. |
+| 0x0072A820 | NiBound::Update(NiBound& out, const NiTransform&) | 0.5 % | centre := translate + scale * (rotate * centre), radius *= scale. |
+| 0x00722AA0 | NiGeometry::UpdateWorldBound | - | model bound from the data (+0xB4)+0x0C, or the skin bound through 0x0072BB30 when a skin instance (+0xB8) exists; NiBound::Update with the world transform; the flag bit 7 at +0x18 kept by 0x0072A0A0's answer. |
+| 0x0072BB30 | NiSkinInstance world bound (proposal) | 0.6 % | per bone NiBound::Update with the bone's world transform and NiBound::Merge; 0x00718A80 and one NiTransform compose at the end. |
+| 0x0070A360 | NiNode::UpdateWorldBound | 0.3 % | the children's bounds merged. |
+| 0x00709EA0 | NiNode deleting destructor (scalar) | - | 0x00731AE0 then FormHeap_Free when bit 0. Stale-frame noise in the chains, not update work. |
+| 0x0088EDC0 | bhkNiCollisionObject::UpdateWorldData (proposal) | 0.8 % with its leaf | the collision object's vfunc +0x50 that 0x0070C120 calls: gated on the global byte 0x00BA7A8C (3 = none of it; 2 = no re-sync) and the flags at +0x0C (bit 6: 0x0089EAE0 once, bit 0: when 0x00607840 on +0x10 says the body is in a world, or +0x14 < 1.0, or +0x1C == 1, vfunc +0x64). |
+| 0x00607840 | bhkRigidBody in a world (predicate; proposal) | 0.8 % | returns p && [p+8] && [[p+8]+8] != 0. Called only from 0x0088EDC0 (measured, w0 100 %). |
+
+Who drives the tree each frame (read in the callers' decompilates):
+
+- 0x004823D0 **GridCellArray::Update(float time)** (xOBSE: +0x0C size,
+  +0x10 grid of 8-byte entries; deepwiki llde/xOBSE 2026-11-08): calls
+  0x004CCCE0 (the Havok world's vfunc +0x80 on g_bhkWorldM, read), then for
+  every grid cell: the four border rows on alternating frames (the byte
+  0x00B3440C toggles each call and selects the checkerboard half), the
+  interior every frame, 0x004D4970 on the cell. 9.9 % inclusive (measured,
+  stale-prone).
+- 0x004D4970 **TESObjectCELL::UpdateSelectedNodes(float time)** (proposal):
+  with cellProcessLevel (+0x26) == 6 and flags0 (+0x24) bit 0, the object
+  from 0x00424180's vfunc +0x80; then children 2..5 of the cell's NiNode
+  (+0x54), each one's child 3, when its flags bit 0 (APP_CULLED) is clear:
+  NiAVObject::UpdateSelected(time). The cell's node has at least four fixed
+  sub-nodes (derived).
+- 0x00603CA0 (the actor update, knowledge/actor-head-tracking.md) through
+  0x00471F20 (`kApplyAnimData`, OBVR) calls NiAVObject::Update
+  0x00707370 on the actor's node (measured chain 0x0047C930 <- 0x00707580
+  <- 0x0070A0D0 <- 0x0070A0D0 <- 0x00707370 <- 0x00471F20 <- 0x00603CA0,
+  1.1 % of the samples under it).
+
+### Havok's step: about 10.7 %, 1.0 ms a frame, its cause unresolved
+
+Function identities from Havok's own monitor-stream tags written next to
+`rdtsc` (read in the decompilates; "Tt"/"Lt"/"St" prefixes are Havok's
+timer begin/list/split markers) and from the code's shape; the class names
+are Havok 4.x knowledge, **unverified** against a Havok SDK:
+
+| Address | Tag / shape | Proposed identity |
+|---|---|---|
+| 0x008E4590 | per entry: scaled, clamped integer AABB per axis, 0x008E3C30/0x008E3E90/0x008E4210 per axis | hk3AxisSweep::updateAabbs (the broadphase); the same address knowledge/cell-change-hitches.md saw waiting on a lock at cell borders |
+| 0x008DE950 | checks the world's lock counters (+0x88/+0x8C, error 0x11), allocates two stack arrays from the thread's hkMemory stack (TLS +0x19C) sized by [world+8]+0x2A8 | hkWorld's broadphase/entity update step (proposal) |
+| 0x00893B90 | 3437 bytes, frame of 0x1C4+, recursive-looking, calls 0x00891850, 0x00891CC0, 0x008A7930 | the simulation's collide step (proposal); its big frame is the source of the stale Havok words under the pose wait |
+| 0x00908DE0 | "LtBvTree", "QueryTree", "StNarrowPhase" | hkBvTreeAgent::processCollision (the tree query, then the narrowphase per child) |
+| 0x00906090 | "TtMopp" | hkMoppBvTreeShape query (the terrain and statics) |
+| 0x00902590 | "LtCvsListAgent", "checkHull", "Stchild" | hkConvexListAgent::processCollision |
+| 0x0093F250 | "TtGsk", "StGsk" | hkGskConvexConvexAgent / GSK closest-points agent; calls 0x0093C690 |
+| 0x0093C690 | 795 lines, feature case tables at 0x00A99F04/0x0C/0x0E, calls 0x0093B000, 0x0093B220, 0x0093C0C0, 0x0093C350, 0x008D1A30 | hkGsk::getClosestFeature (the GJK-style convex feature walk), 2.0 % exclusive |
+| 0x00916C00 | 4-wide SIMD max-dot over vertex blocks (+0x30 data, +0x34 blocks), returns the vertex and its id | hkConvexVerticesShape::getSupportingVertex, 1.2 % |
+| 0x008D1A30 | closest points of two segments with clamping flags | hkLineSegmentUtil closest points, 1.0 % |
+| 0x008A78E0 | for each listener in +0x08..+0x0C: vfunc +0x1C; LeaveCriticalSection(+0x14) | collision callback dispatch under Bethesda's critical section |
+
+Note: the 0x0093xxxx functions are Havok, not CRT; perf-functions.py's area
+split by address is wrong for them. The CRT begins at about 0x00980000
+(the square root 0x00982C30, __87except 0x0099E2B9, setSBUpLow 0x0098F69B).
+
+Attribution: 65 % of the Havok samples have **no engine frame** among the
+eight scanned words and only 23 % show one of the step functions (measured),
+so the scan cannot say whether this is the engine's own step (the player's
+character proxy against the terrain's MOPP, the loaded cells' bodies) or
+collision work that a plugin's bodies cause each step - OBVR's hand bodies
+(`../OBVR/src/game/HandBodies.cpp`) and OblivionWalkers' colliders are in the
+world in this run. **Unresolved.** The cheapest decider is a run of the same
+scenario with OBVR's hand bodies off, if OBVR has that switch (not checked).
+
+### Per-reference animation gate: 2.7 %, 0.26 ms a frame, mostly cache misses
+
+- 0x004E3F30 **TESObjectREFR::UpdateAnimation (vtable +0x160, xOBSE Unk_58;
+  proposal)**: a function Ghidra had left undefined behind 0x004E3490
+  (created 2026-11-08 with CreateFunctionContaining; body
+  0x004E3F30-0x004E407F). Gates (read): flags bits 5 and 11 off; for base
+  form types 0x1A, 0x23, 0x24 (light, NPC, creature by xOBSE's FormType
+  table, unverified here) vfunc +0xFC first; then the node from vfunc
+  +0x154, its first child, that child's controller (+0x0C), 0x00560920 (a
+  NiRTTI cast, see below) to NiControllerManager; with its flag bit 3 set the
+  sequences at +0x40 (count ushort +0x46) are checked with 0x0049F950 and
+  stopped (0x004E0D90, 0x006C9CB0, 0x004D90D0); then vfunc +0x164 and, when
+  the reference's +0x3C object has a +0x1C, 0x00476D10(ref, frameSeconds,
+  [0x00A30634]) advances its animation.
+- The hot instructions are the gate's loads (0x004E3F8E, 0x004E3F9C,
+  0x004E3FA7: node, its children array, the first child, its controller -
+  measured 96 % of the function's samples): four dependent pointer loads
+  into cold memory per reference per frame, for every reference of every
+  loaded cell. The animation advance itself is not what costs.
+- Caller 0x004CCC50 **TESObjectCELL::UpdateReferenceAnimations (proposal)**:
+  under the cell's lock (0x00496EA0/0x00496F50), when cellProcessLevel == 6,
+  for each entry of the objectList (+0x48): when !IsActor() (vfunc +0x190)
+  or [ref+0x78] != 0 or 0x0045A500(), vfunc +0x160 (read). Reached from
+  GridCellArray::Update's 0x004CCCE0? No: w1 of every sample is 0x004823D0
+  and 0x004CCCE0 is a plain tail into the Havok world (read), so the call
+  into 0x004CCC50 per cell comes from GridCellArray::Update through a path
+  the scan does not show (unverified; 0x004D4970 is the visible one).
+- 0x00560920 **NiRTTI cast (`NiDynamicCast(rtti, object)`; proposal)**: the
+  object's vfunc +0x04 gives its NiRTTI, the chain is walked through +0x04
+  (base) until the wanted one or null (read); 111 callers; 0.5 %.
+
+### The CRT square root's slow path: 1.7 % outside, 1.2 % inside the pass, about 0.2 ms a frame
+
+Read in `re/export/frame-update/0x00982C30`, `0x00982C4D`, `0x00991B88`,
+`0x00991BAB`, `0x00991AB7`, `0x0099E2B9` (asm):
+
+- 0x00982C30 `_CIsqrt` (145 call sites in the exe): stores the double,
+  0x00991B88 tests the exponent for inf/NaN, 0x00982C4D does the work:
+  FSTCW; when the control word is not 0x027F, 0x00991B15 loads
+  (CW & 0x0300) | 0x007F - the precision control kept, round to nearest,
+  all exceptions masked (as knowledge/frame-clock.md recorded); FSQRT for a
+  non-negative argument; then, with the dword 0x00BA9DDC zero (the default
+  in this build, read as the image's value), `MOV EDX,5; LEA ECX,[0x00B30B40]
+  ("sqrt", the matherr name); JMP 0x00991BAB`.
+- 0x00991BAB: control word 0x027F -> return at once. Otherwise, when the
+  caller's PM bit (0x20, the inexact-result mask) is set: FSTSW, and when the
+  status word's PE flag (0x20, inexact) is set, `MOV EAX,8; CALL 0x00991AB7`
+  -> __87except(5, record, &cw) 0x0099E2B9: __handle_exc(0x10, ...),
+  __ctrlfp(cw, 0xFFFF), __set_errno_from_matherr(8). The result ST0 is
+  saved and reloaded around it (0x00991AC0 / 0x00991AE3).
+- The game's control word is 0x007F or 0x0C7F (measured,
+  knowledge/frame-clock.md), never 0x027F, and its PM bit is set. So **every
+  CRT square root whose result is inexact - nearly all of them - runs the
+  exception-reporting path**: exception record, control word restore, errno.
+  Measured share: 1.7 % of the out-of-pass samples (callers by w0 right
+  after a CALL 0x00982C30: NiBound::Merge 0x0072A7FC and 0x0072A754,
+  0x004D7E7B; other named words are stale) and 1.2 % of the in-pass samples
+  (BSFadeNode::OnVisible 0x004A0A5A / 0x004A0CF2, 0x007F0C17, 0x007016B1).
+  The same share in the dual-pass run (1.7 %) and 1.0 % in the carry-off run.
+  Derived: about 0.2 ms a frame, on top of the 0.08 ms the square roots
+  themselves take (0.6 % / 0.5 % in 0x00982C30 and 0x00991B15).
+
+### Actors, the HUD, sound, scripts (the long tail named)
+
+| Address | Proposed name | Share | Read |
+|---|---|---|---|
+| 0x00678510 | ProcessManager::Update (0x0040D800's "actor process manager 0x00B3BD00") | - | debug line numbers 0x6E..0xBE into 0x00B3BCF4; 0x00673B10(frameSeconds); a random draw 0x009828C0 against 50 and 10 and the accumulator at +0x24 decide whether the low/middle updates run this frame; 0x00673C10 / 0x00673E90 / 0x00674200 / 0x00677EC0 gated on the bytes +0xA0..+0xA3 and 0x00B333B8. |
+| 0x00673C10 | ProcessManager::UpdateHighProcesses (proposal) | 0.5 % | walks the list from 0x007616D0, per actor: flags bits 21/11/5, process level 3 through 0x00659A00, IsActor vfunc +0x190, the dead/disabled tests (+0x1F0, +0x334), the actor update vfunc +0x1C0(time), the respawn/remove branch with 0x0067B320/0x0067B260; a FormHeap list of deferred removals freed at the end. |
+| 0x00659A00 | Actor::GetProcessLevel (proposal) | 0.8 % | [this+0x58] (the process) -> vfunc +0x08, else -1 (eight instructions, 38 callers); hot through the call count. |
+| 0x005E1DB0 | actor base-flag test (unnamed) | 0.7 % | base form from vfunc +0x170 when IsActor; returns !((base+0x28 >> 9) & 1). Which flag bit 9 of TESActorBaseData is: unverified. |
+| 0x005E6110 | actor state test (unnamed) | 0.2 % | vfunc +0x380 == 0 and the process's +0x36C, or the process's +0x08 object's byte +0x20 in {12, 13}. |
+| 0x005A6DE0 | HUDMainMenu compass update (proposal) | 0.6 % | strings "hudmain_compass_icon", "Bquest_%i", "player_target_%i"; the hot loop 0x005A6F97-0x005A6FC4 walks a list of references each frame, tests flag bit 11 of each, asks vfunc +0x174 (the position) and subtracts the player's: the compass markers' distances, every frame. |
+| 0x006AABD0 | WAV file reader (proposal) | 0.6 % | mmio with a custom IO procedure 0x006AAAA0 ("data\\sound\\", "Attempting to play %i channel sound ... (must be mono)"); the hot loop 0x006AAFC0-0x006AB001 copies the file **byte by byte** into the destination (MOV AL,[EDX]; MOV [EDI+EBX],AL) with a refill call per exhausted buffer. Sound files are read on the render thread, one byte at a time; a hitch source rather than a steady cost. Caller 0x006AC610 (the sound file open: ".\\data", "voice"). |
+| 0x00516830, 0x004FA110, 0x004FBE00 | the script runner ("Unknown reference object for function '%s'", "Variable ID %08X not found", "fQuestDelayTime") | 0.5 % | quest and object scripts ticking. |
+| 0x0041E210 | BaseExtraList::GetByType(UInt8 type) | 0.4 % | the type bit in the presence mask at +0x08 first; a TLS cache ([tls+0x08] == this -> [tls+0x10+type*4]); else the list at +0x04 under the named lock 0x00401020("BaseExtraList::GetExtraData") / 0x00401040 with a move-to-front 0x0041DF90. 215 callers. |
+| 0x0055E000 | NiTPointerMap::Lookup (xOBSE seed) | 0.2 % | hash through vfunc +0x04, bucket walk, compare through +0x08. |
+| 0x00402480 | MemoryHeap allocation slow path ("MemoryHeap::MemoryProblem") | 0.3 % | called from kMemoryHeap_Allocate 0x00401AA0. |
+| 0x0073A5E0 | NiTArray::AddUnique (proposal) | 0.3 % (0.7 % in pass) | linear search, grow by doubling through 0x006E8CA0, append. |
+| 0x00707530 | NiAVObject::GetProperty(int type) | 0.3 % (1.1 % in pass) | the property list at +0x9C, each property's vfunc +0x4C compared with the type (<= 9). |
+| 0x0070AB40 / 0x007073D0 | NiNode::OnVisible(culler) / NiAVObject::Cull | - / 2.4 % in pass | every child with a non-null pointer through 0x007073D0(culler), skipped when the node's radius is 0. The in-pass NiNode walk of docs/subsystems/single-pass-stereo.md. |
+| 0x004A0920 | BSFadeNode::OnVisible (proposal) | 0.1 % (0.8 % in pass) | distance to the camera (sqrt), the fade distances per node type at +0xEC (settings 0x00B07624 x 0x00B075EC etc., gated on the byte 0x00B0727C), the fade value +0xE8, the alpha property through NiObjectNET::GetExtraData 0x006FF9C0 (0.5 % with its name getter 0x00452A60), then NiNode::OnVisible. |
+| 0x006CA950 / 0x006C6DC0 | NiControllerSequence::Update / its per-interpolator writer (proposals) | 0.4 % | ease-in/out state machine on +0x44..+0x50; the writer sets three values per interpolator slot (+0x14 array, 0x18 stride) and marks them (-FLT_MAX sentinels from 0x00A7DEB4). |
+
+## What this says about the 90 Hz question (derived)
+
+At 13.4 ms a frame and 2.6 ms of pose wait (perf-phases, same run), the
+render thread works about 10.8 ms; at 90 Hz the budget is 11.1 ms. The
+out-of-pass work splits into: scene graph update 1.6 ms, Havok 1.0 ms,
+out-of-bracket render passes with their lock waits 0.4 ms plus their
+culling, the square root's slow path 0.2 ms, the reference animation gate
+0.26 ms, actors 0.2 ms, the rest a long tail of game code (about 2 ms).
+None of it is one function; the three largest blocks are Gamebryo's update
+walk, Havok and the long tail.
+
+## Levers, with their costs (usage share, not dollars)
+
+1. **The square root's slow path** (0.2 ms a frame, 1.5 %): a replacement
+   for 0x00982C30 that reproduces its result bit for bit (FSQRT under round
+   to nearest with the caller's precision control, the NaN / negative /
+   infinite cases as the original handles them) without the exception
+   record. Small (about 0.3-0.5 M tokens): a detour at one entry, emulator
+   cases under the four control words (tools/difftest), a shadow run
+   comparing results. Risk: whether any code reads errno after sqrt
+   (unread; the slow path sets it) and the 0x00BA9DDC flag's other path.
+   The cheapest lever here and the only one that is verifiable without the
+   headset.
+2. **The reference animation gate** (0.26 ms): a per-reference "has a
+   controller manager" bit kept with the 3D (set on load, cleared on 3D
+   release) so 0x004E3F30's four cold loads run only for animated
+   references. Medium (0.6-1 M tokens): the writers of the reference's 3D
+   must be mapped (0x004E3490 and its siblings), the bit's invalidation
+   proven, then a shadow comparing the original's decision with the bit's.
+3. **Havok's 1.0 ms**: first the attribution run (cheap, one harness run,
+   about 50 k tokens) with OBVR's hand bodies off, if OBVR offers the
+   switch; a rebuild of anything in Havok is huge and off the table.
+4. **The scene graph update** (1.6 ms): the largest block and Gamebryo's
+   core. Before any design, a count probe (cheap, about 0.1 M tokens): how
+   many nodes UpdateDownwardPass visits per frame and how many of
+   UpdateObjectControllers' calls find an empty list. The lever that counts
+   is skipping unchanged subtrees, which is a design for a later slice.
+5. **The out-of-bracket passes' lock wait** (0.4 ms): OBVR's profiler can
+   bracket the passes it does not bracket yet; which pass waits is their
+   measurement.
+6. The sound reader's byte copy and the compass scan are hitch and tail
+   items, not frame-rate levers.
+
+## Sources
+
+- Sampler and runs: `../OBVR/src/render/RenderSampler.h`,
+  `artifacts/shadow/obng-profile-gold-road-single/20261108-133456/OBVR-performance-1-2/samples.csv`,
+  the dual run `…-dual/20261108-134233`, the carry-off repeat `…-single/20261108-140426`.
+- Decompilates: `re/export/frame-update/` (Ghidra 12.1.4, the project
+  `~/tools/ghidra-projects/OBNG`), 95 functions exported 2026-11-08.
+- xOBSE layouts: deepwiki llde/xOBSE, 2026-11-08 (TESObjectCELL +0x24
+  flags0, +0x26 cellProcessLevel, +0x48 objectList, +0x54 NiNode;
+  GridCellArray +0x0C size, +0x10 grid; TESObjectREFR vtable +0x154 Unk_55,
+  +0x160 Unk_58, +0x170 GetBaseForm, +0x190 IsActor, +0x1C0 Unk_70,
+  +0x1F0 Unk_7C).
+- OBVR's seeds: `../OBVR/src/game/GameAddresses.h` lines 364, 1259, 1731.

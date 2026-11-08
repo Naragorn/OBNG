@@ -910,3 +910,17 @@ unknown, it is not reproduced by the route without the carry alone.
 Scene pass without the carry over the three spots: 2.79 / 3.74 / 3.84 ms,
 so the carry costs 0.1-0.4 ms per frame by the phases (the two carry-off
 runs agree within 0.03 ms at spots 1 and 2).
+
+### The other 70 % of the frame, named (2026-11-08)
+
+The out-of-pass samples of the Gold Road profile are read function by function
+in `knowledge/render-thread-outside-the-pass.md` (slice `frame-update`, the
+architect's reading, unrefuted): the scene graph update (Gamebryo's
+NiAVObject::Update tree, about 1.6 ms a frame), Havok's step (1.0 ms, its
+cause unresolved), render passes outside OBVR's bracket waiting in a D3D9 lock
+(0.4 ms), the CRT square root's inexact-result slow path that the game's x87
+control word triggers on every call (0.2 ms, in and out of the pass), the
+per-reference animation gate's cold loads (0.26 ms), the actors (0.2 ms) and a
+long tail. The sampler's stack scan makes the inclusive column unreliable for
+big-frame functions (the Havok words under the pose wait are stale); the
+knowledge file explains the reading method.

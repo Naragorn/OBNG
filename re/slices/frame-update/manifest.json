@@ -1,0 +1,153 @@
+{
+  "slice": "frame-update",
+  "subsystem": "update",
+  "sharedHeaders": [],
+  "purpose": "Name the render thread's hot functions outside OBVR's scene-pass bracket from the Gold Road profile of 2026-11-08 (knowledge/render-thread-outside-the-pass.md). Done as the architect's reading of the export, not as a workflow run: the names are proposals until a function is chosen for a rebuild and goes through the refutation. This manifest is the starting point for that run; functions.txt lists the exported addresses with their measured shares.",
+  "status": "architect's reading 2026-11-08, no workflow run; names unrefuted",
+  "functions": [
+    {
+      "address": "0x0047C930",
+      "name": "NiAVObject::UpdateObjectControllers (architect's reading, unrefuted)",
+      "mapOnly": true,
+      "known": "4.3 % of the out-of-pass samples at road spot 2; the property list +0x9C and the controller chain +0x0C walked with the time; callers 0x0070A0D0 / 0x00707580 / 0x007075B0 (measured, w0).",
+      "questions": [
+        "Which flag bit of NiAVObject +0x18 the bool corresponds to (bit 3 in 0x0070A190's call)",
+        "How many of the per-frame calls find both lists empty (a count probe)"
+      ]
+    },
+    {
+      "address": "0x0070A0D0",
+      "name": "NiNode::UpdateDownwardPass",
+      "mapOnly": true,
+      "known": "2.8 % exclusive, recursive through vfunc +0x60; the bound merge through 0x0072A6B0.",
+      "questions": [
+        "The count of nodes visited per frame and the share of unchanged subtrees"
+      ]
+    },
+    {
+      "address": "0x0070A190",
+      "name": "NiNode::UpdateSelectedDownwardPass",
+      "mapOnly": true,
+      "known": "1.1 %; flag bits 1/2/3/4; the rigid variant through vfunc +0x68."
+    },
+    {
+      "address": "0x0070C120",
+      "name": "NiAVObject::UpdateWorldData",
+      "mapOnly": true,
+      "known": "1.3 %; world := parent.world * local through 0x0053D7A0; collision object +0xA8 vfunc +0x50 (0x0088EDC0)."
+    },
+    {
+      "address": "0x0053D7A0",
+      "name": "NiTransform::operator* (the bone compose of knowledge/bone-palettes.md)",
+      "mapOnly": true,
+      "known": "2.3 %; 0x007100A0 and 0x007101F0 inside; the x87 order decides bit-exactness."
+    },
+    {
+      "address": "0x0072A6B0",
+      "name": "NiBound::Merge",
+      "mapOnly": true,
+      "known": "1.7 %; two CRT square root calls (0x0072A74F, 0x0072A7F7) that take the slow path."
+    },
+    {
+      "address": "0x004823D0",
+      "name": "GridCellArray::Update(float time)",
+      "mapOnly": true,
+      "known": "Border cells on alternating frames (byte 0x00B3440C), 0x004D4970 per cell, 0x004CCCE0 first; xOBSE layout +0x0C size, +0x10 grid.",
+      "questions": [
+        "Where the per-cell call into 0x004CCC50 (vfunc +0x160 per reference) is issued"
+      ]
+    },
+    {
+      "address": "0x004D4970",
+      "name": "TESObjectCELL::UpdateSelectedNodes(float time)",
+      "mapOnly": true,
+      "known": "children 2..5 of the cell node, each one's child 3, NiAVObject::UpdateSelected when not APP_CULLED."
+    },
+    {
+      "address": "0x004CCC50",
+      "name": "TESObjectCELL::UpdateReferenceAnimations",
+      "mapOnly": true,
+      "known": "per reference of the objectList +0x48: vfunc +0x160 when !IsActor() or [ref+0x78] or 0x0045A500(); under the cell lock 0x00496EA0."
+    },
+    {
+      "address": "0x004E3F30",
+      "name": "TESObjectREFR::UpdateAnimation (vtable +0x160, xOBSE Unk_58)",
+      "mapOnly": true,
+      "known": "2.7 % exclusive, 96 % of it on the gate's four cold loads (0x004E3F8E..0x004E3FA7); function created 2026-11-08 behind 0x004E3490 (Ghidra had it undefined).",
+      "questions": [
+        "Which classes' vtables point here (TESObjectREFR, MobileObject, Actor?)",
+        "When the reference's 3D changes so that a cached 'has a controller manager' bit would have to be invalidated"
+      ]
+    },
+    {
+      "address": "0x00982C30",
+      "name": "_CIsqrt (CRT)",
+      "mapOnly": true,
+      "known": "145 call sites; with the game's control word 0x007F / 0x0C7F every inexact result runs __87except through 0x00991BAB / 0x00991AB7: 1.7 % of the out-of-pass and 1.2 % of the in-pass samples.",
+      "questions": [
+        "Does any caller read errno after sqrt",
+        "The 0x00BA9DDC flag's other path (0x00991B9E)"
+      ]
+    },
+    {
+      "address": "0x00982C4D",
+      "name": "the square root's body",
+      "mapOnly": true,
+      "known": "FSTCW, 0x00991B15 ((CW & 0x300) | 0x7F), FSQRT, the matherr dispatch."
+    },
+    {
+      "address": "0x00991BAB",
+      "name": "the inexact-result check",
+      "mapOnly": true,
+      "known": "PM bit of the saved control word and the PE status flag decide the __87except call with code 8."
+    },
+    {
+      "address": "0x00678510",
+      "name": "ProcessManager::Update",
+      "mapOnly": true,
+      "known": "0x0040D800's actor process manager; random draw against 50 / 10 and an accumulator decide the low and middle updates."
+    },
+    {
+      "address": "0x00673C10",
+      "name": "ProcessManager::UpdateHighProcesses",
+      "mapOnly": true,
+      "known": "0.5 %; per high-process actor the update vfunc +0x1C0(time) and the removal branch."
+    },
+    {
+      "address": "0x00659A00",
+      "name": "Actor::GetProcessLevel",
+      "mapOnly": true,
+      "known": "0.8 % through call count; [this+0x58]->vfunc +0x08 else -1."
+    },
+    {
+      "address": "0x005A6DE0",
+      "name": "HUDMainMenu compass update",
+      "mapOnly": true,
+      "known": "0.6 %; the marker list walked with distances every frame (loop 0x005A6F97)."
+    },
+    {
+      "address": "0x006AABD0",
+      "name": "WAV file reader",
+      "mapOnly": true,
+      "known": "0.6 % at a road spot; byte-by-byte copy loop 0x006AAFC0 on the render thread; a hitch source."
+    },
+    {
+      "address": "0x008E4590",
+      "name": "hk3AxisSweep::updateAabbs (Havok; unverified class)",
+      "mapOnly": true,
+      "known": "Havok's broadphase; the lock-wait address of knowledge/cell-change-hitches.md."
+    },
+    {
+      "address": "0x0093C690",
+      "name": "hkGsk::getClosestFeature (Havok; unverified class)",
+      "mapOnly": true,
+      "known": "2.0 %; GSK feature walk under the agent 0x0093F250 (tags TtGsk / StGsk)."
+    },
+    {
+      "address": "0x00916C00",
+      "name": "hkConvexVerticesShape::getSupportingVertex (Havok; unverified class)",
+      "mapOnly": true,
+      "known": "1.2 %; 4-wide SIMD max dot over vertex blocks."
+    }
+  ]
+}
