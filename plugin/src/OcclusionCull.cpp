@@ -9,7 +9,7 @@
 // re/functions/0x007C78D0.md, measured in run 20261030-194432) and
 // Do_RenderShape 0x007693E0, the renderer's shape draw entry (slots 88/89).
 // The two direct draw entries (slots 90/91) belong to the stereo route; it
-// asks OcclusionCullBegin before each of its direct draws. The eye pass needs
+// asks OcclusionCullDraws before each of its direct draws. The eye pass needs
 // the route's eye data (StereoEyeData): without it - the dual pass, a menu -
 // the pass runs untouched.
 //
@@ -187,11 +187,10 @@ void NoteCamera() {
 	g_cameras.Set(g_frame, cull::CameraOf(view, inverseRow));
 }
 
-// The decision for one draw inside the eye pass. *checkTest is the test
-// whose check query the caller wraps the draw in (check mode), or
-// kMaxTests when none.
-cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind, UInt32* checkTest) {
-	*checkTest = cull::kMaxTests;
+// The decision for one draw inside the eye pass. In check mode a skip
+// becomes a draw: a skipped shape's test is marked for the second draw at
+// the pass's end, a skipped direct draw is counted.
+cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind) {
 	const unsigned __int64 t0 = __rdtsc();
 	D3DVIEWPORT9 port{};
 	if (FAILED(g_device->GetViewport(&port)) || port.X != g_ports[0].x || port.Y != g_ports[0].y || port.Width != g_ports[0].width ||
@@ -217,34 +216,62 @@ cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind, UInt32* checkTes
 	    cull::RectsFor(bound, origin, view0, view1, proj, g_ports, static_cast<float>(g_settings.margin), &rects, kinds);
 	const cull::Decided decided = cull::Decide(g_table, geometry, g_frame, testKind, g_settings, g_cameras, &g_stats);
 	cull::Count(&g_stats, kind, decided.decision, testKind, decided.newThisFrame, kinds);
+	const bool shape = kind == cull::DrawKind::kShape || kind == cull::DrawKind::kSkinned;
 	if (decided.newThisFrame && testKind == cull::TestKind::kTest) {
 		if (g_batch->count < cull::kMaxTests) {
 			cull::Test& test = g_batch->tests[g_batch->count];
 			test.geometry = geometry;
 			test.rects = rects;
-			test.check = false;
-			if (decided.decision == cull::Decision::kSkip && g_settings.check) {
-				*checkTest = g_batch->count;
-			}
+			test.check = g_settings.check && shape && decided.decision == cull::Decision::kSkip;
 			++g_batch->count;
 			++g_stats.testsIssued;
 		} else {
 			++g_stats.testsBeyondCapacity;
 		}
 	}
+	cull::Decision decision = decided.decision;
+	if (g_settings.check && decision != cull::Decision::kDraw) {
+		if (!shape) {
+			++g_stats.checkDirectDrawn;
+		}
+		decision = cull::Decision::kDraw;
+	}
 	g_stats.decideTicks += __rdtsc() - t0;
-	return decided.decision;
+	return decision;
 }
 
-// Opens the check query of a test; null when the device gives none.
-IDirect3DQuery9* OpenCheck(UInt32 test) {
-	IDirect3DQuery9* query = EnsureQuery(&g_checks[g_batchIndex][test]);
-	if (query == nullptr) {
-		return nullptr;
+// Check mode, after the pass's last draw: every skipped shape drawn once
+// more inside its check query - the pass's own Do_RenderShape, nothing
+// changed around it, so the device's state stays what the engine's cache
+// believes; its pixels that pass the finished depth are the pixels the frame
+// would have shown. ZFUNC is logged once: with LESSEQUAL a shape's own
+// depth passes, with LESS it would not and the count would be low.
+void CheckRedraws() {
+	static bool s_zfuncLogged = false;
+	if (!g_settings.check) {
+		return;
 	}
-	g_batch->tests[test].check = true;
-	query->Issue(D3DISSUE_BEGIN);
-	return query;
+	for (UInt32 i = 0; i < g_batch->count; ++i) {
+		const cull::Test& test = g_batch->tests[i];
+		if (!test.check) {
+			continue;
+		}
+		IDirect3DQuery9* query = EnsureQuery(&g_checks[g_batchIndex][i]);
+		if (query == nullptr) {
+			g_batch->tests[i].check = false;
+			continue;
+		}
+		if (!s_zfuncLogged) {
+			s_zfuncLogged = true;
+			DWORD zfunc = 0;
+			g_device->GetRenderState(D3DRS_ZFUNC, &zfunc);
+			g_log("Route: occlusion cull - check mode's first second draw: the device's ZFUNC is %lu (4 = LESSEQUAL, 2 = LESS)",
+			      static_cast<unsigned long>(zfunc));
+		}
+		query->Issue(D3DISSUE_BEGIN);
+		g_renderShape(reinterpret_cast<void*>(static_cast<std::uintptr_t>(g_renderer)), nullptr, test.geometry);
+		query->Issue(D3DISSUE_END);
+	}
 }
 
 // After the eye pass's last draw: every queued rectangle pair into its
@@ -342,6 +369,7 @@ UInt32 __fastcall CullFinish(void* self, void* /*edx*/) {
 	if (!g_cameraSet) {
 		NoteCamera();  // no draw asked: the ring still gets this frame's camera
 	}
+	CheckRedraws();
 	EndTests();
 	g_stats.passTicks += __rdtsc() - t0;
 	return eax;
@@ -352,48 +380,19 @@ UInt32 __fastcall CullRenderShape(void* self, void* /*edx*/, UInt32 geometry) {
 		return g_renderShape(self, nullptr, geometry);
 	}
 	const cull::DrawKind kind = ReadAt<UInt32>(geometry + kGeometrySkinOffset) != 0 ? cull::DrawKind::kSkinned : cull::DrawKind::kShape;
-	UInt32 checkTest = cull::kMaxTests;
-	const cull::Decision decision = DecideDraw(geometry, kind, &checkTest);
-	if (decision == cull::Decision::kDraw) {
+	if (DecideDraw(geometry, kind) == cull::Decision::kDraw) {
 		return g_renderShape(self, nullptr, geometry);
-	}
-	if (checkTest != cull::kMaxTests) {
-		if (IDirect3DQuery9* query = OpenCheck(checkTest)) {
-			const UInt32 eax = g_renderShape(self, nullptr, geometry);
-			query->Issue(D3DISSUE_END);
-			return eax;
-		}
 	}
 	return 0;  // Do_RenderShape returns nothing its callers read (re/functions/0x007693E0.md)
 }
 
 }  // namespace
 
-bool OcclusionCullBegin(UInt32 geometry, bool strips, UInt32* token) {
-	*token = 0;
+bool OcclusionCullDraws(UInt32 geometry, bool strips) {
 	if (!g_on || !g_active || g_inner != 0 || geometry == 0) {
 		return true;
 	}
-	UInt32 checkTest = cull::kMaxTests;
-	const cull::Decision decision =
-	    DecideDraw(geometry, strips ? cull::DrawKind::kDirectStrips : cull::DrawKind::kDirectShape, &checkTest);
-	if (decision == cull::Decision::kDraw) {
-		return true;
-	}
-	if (checkTest != cull::kMaxTests && OpenCheck(checkTest) != nullptr) {
-		*token = checkTest + 1;
-		return true;
-	}
-	return false;
-}
-
-void OcclusionCullEnd(UInt32 token) {
-	if (token == 0) {
-		return;
-	}
-	if (IDirect3DQuery9* query = g_checks[g_batchIndex][token - 1]) {
-		query->Issue(D3DISSUE_END);
-	}
+	return DecideDraw(geometry, strips ? cull::DrawKind::kDirectStrips : cull::DrawKind::kDirectShape) == cull::Decision::kDraw;
 }
 
 UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {

@@ -23,9 +23,13 @@
 // than X. Whatever X hid lies behind those same pixels, so leaving X out
 // uncovers nothing that was hidden only by X. A moving camera breaks the
 // argument by the motion of one frame; the gate and the margin bound it, the
-// check mode measures what is left: a skipped geometry is drawn anyway
-// inside a query of its own, and the pixels it would have put down are
-// counted.
+// check mode measures what is left: a skipped shape is drawn anyway, and
+// after the pass's last draw it is drawn once more inside a query of its
+// own, against the finished depth buffer: the pixels that pass are the
+// pixels of it the frame would have shown. (At its own draw it may put
+// pixels down that a later draw covers; those are not popping.) A skipped
+// direct draw cannot be drawn again on its own - its caller sets its
+// constants up for a run of geometries - so it is drawn and counted only.
 
 #include "OcclusionProbeLogic.h"
 
@@ -59,7 +63,7 @@ struct Settings {
 	std::uint32_t margin = 2;       // pixels
 	float maxMoveUnits = 100.0f;    // the camera moved further since the verdict: no skip
 	float maxTurnDegrees = 10.0f;   // the camera turned further since the verdict: no skip
-	bool check = false;             // skipped geometries drawn anyway inside a query: the popping measured
+	bool check = false;             // skipped shapes drawn anyway and once more at the pass's end inside a query: the popping measured
 };
 
 // What the culler cannot run beside, by the entry they share (the finish
@@ -283,7 +287,7 @@ constexpr std::uint32_t kMaxTests = 4096;  // tests one pass may hold; the rest 
 struct Test {
 	std::uint32_t geometry = 0;
 	EyeRects rects;
-	bool check = false;  // a check query was opened around the skipped draw
+	bool check = false;  // check mode: a skipped shape, drawn anyway and to be drawn once more at the pass's end inside its check query
 };
 
 struct Batch {
@@ -362,9 +366,10 @@ struct Stats {
 	std::uint64_t resultsVisible = 0;
 	std::uint64_t batchesLost = 0;
 	std::uint64_t motionBlocked = 0;  // a hidden verdict the camera gate refused
-	std::uint64_t checkDrawn = 0;     // check mode: skipped geometries drawn anyway
-	std::uint64_t checkWithPixels = 0;
+	std::uint64_t checkDrawn = 0;     // check mode: skipped shapes drawn anyway and once more at the pass's end (results read)
+	std::uint64_t checkWithPixels = 0;  // of them with a pixel passing the finished depth: the frame would have shown them
 	std::uint64_t checkPixels = 0;
+	std::uint64_t checkDirectDrawn = 0;  // check mode: skipped direct draws drawn anyway, without a measure
 	std::uint64_t decideTicks = 0;
 	std::uint64_t endTestsTicks = 0;
 	std::uint64_t collectTicks = 0;
@@ -578,9 +583,11 @@ inline int FormatSummary(const Stats& s, const Settings& settings, double ticksP
 	          static_cast<unsigned long long>(s.resultsHidden), static_cast<unsigned long long>(s.resultsVisible),
 	          static_cast<unsigned long long>(s.batchesLost), static_cast<unsigned long long>(s.motionBlocked));
 	if (settings.check) {
-		line.Text("; check: %llu skipped draws drawn, %llu of them put pixels down (%u %%), %llu pixels", static_cast<unsigned long long>(s.checkDrawn),
-		          static_cast<unsigned long long>(s.checkWithPixels), Percent(s.checkWithPixels, s.checkDrawn),
-		          static_cast<unsigned long long>(s.checkPixels));
+		line.Text("; check: %llu skipped shapes drawn again at the pass's end, %llu of them visible (%u %%), %llu pixels; %llu skipped direct draws "
+		          "drawn unmeasured",
+		          static_cast<unsigned long long>(s.checkDrawn), static_cast<unsigned long long>(s.checkWithPixels),
+		          Percent(s.checkWithPixels, s.checkDrawn), static_cast<unsigned long long>(s.checkPixels),
+		          static_cast<unsigned long long>(s.checkDirectDrawn));
 	}
 	auto totalMs = [&](std::uint64_t ticks) { return ticksPerMillisecond > 0.0 ? static_cast<double>(ticks) / ticksPerMillisecond : 0.0; };
 	if (ticksPerMillisecond > 0.0) {
@@ -591,7 +598,7 @@ inline int FormatSummary(const Stats& s, const Settings& settings, double ticksP
 		          static_cast<unsigned long long>(s.endTestsTicks), static_cast<unsigned long long>(s.collectTicks),
 		          static_cast<unsigned long long>(s.passTicks));
 	}
-	line.Text("; totals qpc %llu passes %llu draws %llu skipped %llu tests %llu hidden %llu visible %llu checkDrawn %llu checkPixels %llu "
+	line.Text("; totals qpc %llu passes %llu draws %llu skipped %llu tests %llu hidden %llu visible %llu checkDrawn %llu checkVisible %llu "
 	          "passMs %.3f cullMs %.3f",
 	          static_cast<unsigned long long>(qpc), static_cast<unsigned long long>(s.eyePasses), static_cast<unsigned long long>(s.Draws()),
 	          static_cast<unsigned long long>(s.Skipped()), static_cast<unsigned long long>(s.testsIssued),

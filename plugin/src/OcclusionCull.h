@@ -4,7 +4,8 @@
 // single-pass eye pass, geometries whose world bound an occlusion query of
 // the last frames found wholly behind the drawn depth, in both eyes, are not
 // drawn. The decisions are OcclusionCullLogic.h's; this is the part that
-// touches the game and Direct3D. A prototype for the measurement: its
+// touches the game and Direct3D. The direct draw entries ask it through
+// OcclusionCullDraws. A prototype for the measurement: its
 // queries and state block are never released (a device reset with it on
 // fails, as with the occlusion probe).
 
@@ -18,14 +19,12 @@ namespace obng::plugin {
 // eye pass, Do_RenderShape 0x007693E0 for the shape draws) when
 // settings.occlusionCull is on; returns how many were made. The direct draw
 // entries (slots 90/91) belong to the stereo route, which asks the culler
-// through the two functions below.
+// through OcclusionCullDraws below.
 UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log);
 
-// For a direct draw entry about to draw `geometry`: true = draw it (and call
-// OcclusionCullEnd with the token afterwards), false = leave it out. Render
-// thread.
-bool OcclusionCullBegin(UInt32 geometry, bool strips, UInt32* token);
-void OcclusionCullEnd(UInt32 token);
+// For a direct draw entry about to draw `geometry`: true = draw it, false =
+// leave it out. Render thread.
+bool OcclusionCullDraws(UInt32 geometry, bool strips);
 
 // Asks for the culler's summary line; the render thread writes it at its
 // next eye pass (the counts since the last line, then reset). Nothing when

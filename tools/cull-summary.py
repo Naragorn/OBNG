@@ -4,7 +4,7 @@
     tools/cull-summary.py artifacts/shadow/obng-cull/<run> [<run> ...]
 
 OBNG.log carries the culler's lines ("Route: occlusion cull ... ; totals qpc N
-passes P draws D skipped S tests T hidden H visible V checkDrawn C checkPixels X
+passes P draws D skipped S tests T hidden H visible V checkDrawn C checkVisible X
 passMs A cullMs B", the counts since the last line); OBVR.log carries the marks
 with the same clock ("HandScript: mark <name> (... tick N)"). A place is the
 span from a mark <name> to the mark <name>-done; a window belongs to it when
@@ -20,9 +20,9 @@ from pathlib import Path
 
 TOTALS = re.compile(
     r"Route: occlusion cull.*; totals qpc (\d+) passes (\d+) draws (\d+) skipped (\d+) tests (\d+) hidden (\d+) visible (\d+) "
-    r"checkDrawn (\d+) checkPixels (\d+) passMs ([\d.]+) cullMs ([\d.]+)"
+    r"checkDrawn (\d+) checkVisible (\d+) passMs ([\d.]+) cullMs ([\d.]+)"
 )
-FIELDS = ("qpc", "passes", "draws", "skipped", "tests", "hidden", "visible", "check_drawn", "check_pixels", "pass_ms", "cull_ms")
+FIELDS = ("qpc", "passes", "draws", "skipped", "tests", "hidden", "visible", "check_drawn", "check_visible", "pass_ms", "cull_ms")
 MARK = re.compile(r"HandScript: mark (\S+) \(.*tick (\d+)\)")
 
 
@@ -54,7 +54,7 @@ def summarise(run):
         return
     places = sorted((name for name in marks if f"{name}-done" in marks), key=lambda n: marks[n])
     print(f"# {run.name}: {len(windows)} windows, places {', '.join(places)}")
-    print("| place | eye passes | draws/pass | skipped/pass | skipped | eye pass ms | culler ms | tests hidden | check: skips with pixels |")
+    print("| place | eye passes | draws/pass | skipped/pass | skipped | eye pass ms | culler ms | tests hidden | check: skips visible |")
     print("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
     for name in places:
         start, end = marks[name], marks[f"{name}-done"]
@@ -65,7 +65,7 @@ def summarise(run):
                     total[f] += window[f]
         passes = total["passes"] or 1
         tests = total["hidden"] + total["visible"]
-        check = f"{total['check_pixels'] * 100 / total['check_drawn']:.1f} % of {total['check_drawn']}" if total["check_drawn"] else "-"
+        check = f"{total['check_visible'] * 100 / total['check_drawn']:.1f} % of {total['check_drawn']}" if total["check_drawn"] else "-"
         print(
             f"| {name} | {total['passes']} | {total['draws'] / passes:.0f} | {total['skipped'] / passes:.0f} | "
             f"{total['skipped'] * 100 / (total['draws'] or 1):.0f} % | {total['pass_ms'] / passes:.3f} | {total['cull_ms'] / passes:.3f} | "

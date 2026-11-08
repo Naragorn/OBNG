@@ -416,19 +416,22 @@ void TestSummary() {
 	      "the tests");
 	Check(text.find("check:") == std::string::npos, "no check line without the check mode");
 	Check(text.find("per pass: decide 2.000 ms, end tests 3.000 ms, collect 1.000 ms, eye pass 40.000 ms") != std::string::npos, "the cost per pass");
-	Check(text.find("; totals qpc 777 passes 10 draws 1200 skipped 400 tests 600 hidden 400 visible 150 checkDrawn 0 checkPixels 0 passMs 400.000 cullMs 60.000") !=
+	Check(text.find("; totals qpc 777 passes 10 draws 1200 skipped 400 tests 600 hidden 400 visible 150 checkDrawn 0 checkVisible 0 passMs 400.000 cullMs 60.000") !=
 	          std::string::npos,
 	      "the totals for the summary tool");
 	settings.check = true;
 	s.checkDrawn = 400;
 	s.checkWithPixels = 8;
 	s.checkPixels = 1234;
+	s.checkDirectDrawn = 30;
 	cull::FormatSummary(s, settings, 0.0, 778, line, sizeof(line));
 	text = line;
 	Check(text.find("(check mode: skipped draws drawn and counted)") != std::string::npos, "the check mode is named");
-	Check(text.find("check: 400 skipped draws drawn, 8 of them put pixels down (2 %), 1234 pixels") != std::string::npos, "the check's figures");
+	Check(text.find("check: 400 skipped shapes drawn again at the pass's end, 8 of them visible (2 %), 1234 pixels; 30 skipped direct draws drawn unmeasured") !=
+	          std::string::npos,
+	      "the check's figures");
 	Check(text.find("ticks: decide 20000, end tests 30000, collect 10000, eye pass 400000") != std::string::npos, "ticks without a calibration");
-	Check(text.find("checkDrawn 400 checkPixels 8 passMs 0.000 cullMs 0.000") != std::string::npos, "the totals without a calibration: no milliseconds");
+	Check(text.find("checkDrawn 400 checkVisible 8 passMs 0.000 cullMs 0.000") != std::string::npos, "the totals without a calibration: no milliseconds");
 	Stats empty;
 	cull::FormatSummary(empty, Settings{}, 1000.0, 0, line, sizeof(line));
 	Check(std::string(line).find("0 eye passes") != std::string::npos && std::string(line).find("(0 %)") != std::string::npos, "nothing divides by zero");

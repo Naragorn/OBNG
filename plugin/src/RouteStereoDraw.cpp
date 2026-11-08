@@ -960,8 +960,7 @@ void NoteGrassFade(const EyeEnginePort& port, std::uint32_t geometry, bool world
 // The two direct detours share everything but the rebuild they call.
 template <class Ports, class Run>
 UInt32 RouteDirect(void* self, UInt32 geometry, bool strips, Run&& run, std::uint64_t route::Stats::*counter) {
-	UInt32 cullToken = 0;
-	if (!OcclusionCullBegin(geometry, strips, &cullToken)) {
+	if (!OcclusionCullDraws(geometry, strips)) {
 		return 0;  // the culler leaves this geometry out of the eye pass
 	}
 	const RoutedDrawScope routed{self};
@@ -1001,7 +1000,6 @@ UInt32 RouteDirect(void* self, UInt32 geometry, bool strips, Run&& run, std::uin
 		g_stats.shaderClasses.Add(context.seen.shaderVtable);
 		g_stats.reappliesType1 += context.seen.type1;
 	}
-	OcclusionCullEnd(cullToken);
 	FlushSummaryIfRequested();
 	return 0;
 }
