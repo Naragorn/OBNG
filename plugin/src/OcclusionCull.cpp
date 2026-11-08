@@ -257,14 +257,17 @@ void NoteCamera() {
 
 // The decision for one draw inside the eye pass; a skipped geometry's test
 // of this pass is marked, so the result says whether the skip was confirmed.
-// A geometry asked about before in this frame (a later pass of it, or
-// Do_RenderShape under a DrawRenderPass that decided already) gets the
-// frame's decision at once.
-cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind) {
+// A geometry asked about before in this frame gets the frame's decision at
+// once: a later pass of it counts as a repeat (countRepeat), Do_RenderShape
+// under a DrawRenderPass that decided already counts as nothing - the record
+// was the draw.
+cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind, bool countRepeat) {
 	const unsigned __int64 t0 = __rdtsc();
 	if (cull::Verdict* seen = g_table.Find(geometry); seen != nullptr && seen->seenFrame == g_frame) {
-		const oc::RectKind none[2] = {oc::RectKind::kTestable, oc::RectKind::kTestable};
-		cull::Count(&g_stats, kind, seen->decision, cull::TestKind::kTest, false, none);
+		if (countRepeat) {
+			const oc::RectKind none[2] = {oc::RectKind::kTestable, oc::RectKind::kTestable};
+			cull::Count(&g_stats, kind, seen->decision, cull::TestKind::kTest, false, none);
+		}
 		g_stats.decideTicks += __rdtsc() - t0;
 		return seen->decision;
 	}
@@ -415,7 +418,7 @@ UInt32 __fastcall CullDrawRenderPass(void* self, void* /*edx*/, UInt32 record, U
 		return g_drawRenderPass(self, nullptr, record, pass);
 	}
 	const cull::DrawKind kind = ReadAt<UInt32>(geometry + kGeometrySkinOffset) != 0 ? cull::DrawKind::kSkinned : cull::DrawKind::kShape;
-	if (DecideDraw(geometry, kind) == cull::Decision::kDraw) {
+	if (DecideDraw(geometry, kind, true) == cull::Decision::kDraw) {
 		return g_drawRenderPass(self, nullptr, record, pass);
 	}
 	*reinterpret_cast<volatile UInt32*>(static_cast<std::uintptr_t>(kPassIdGlobal)) = pass & 0xFFFFu;
@@ -429,7 +432,7 @@ UInt32 __fastcall CullRenderShape(void* self, void* /*edx*/, UInt32 geometry) {
 		return g_renderShape(self, nullptr, geometry);
 	}
 	const cull::DrawKind kind = ReadAt<UInt32>(geometry + kGeometrySkinOffset) != 0 ? cull::DrawKind::kSkinned : cull::DrawKind::kShape;
-	if (DecideDraw(geometry, kind) == cull::Decision::kDraw) {
+	if (DecideDraw(geometry, kind, false) == cull::Decision::kDraw) {
 		return g_renderShape(self, nullptr, geometry);
 	}
 	return 0;  // Do_RenderShape returns nothing its callers read (re/functions/0x007693E0.md)
@@ -441,7 +444,7 @@ bool OcclusionCullDraws(UInt32 geometry, bool strips) {
 	if (!g_on || !g_active || g_inner != 0 || geometry == 0) {
 		return true;
 	}
-	return DecideDraw(geometry, strips ? cull::DrawKind::kDirectStrips : cull::DrawKind::kDirectShape) == cull::Decision::kDraw;
+	return DecideDraw(geometry, strips ? cull::DrawKind::kDirectStrips : cull::DrawKind::kDirectShape, true) == cull::Decision::kDraw;
 }
 
 UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {

@@ -115,6 +115,34 @@ the culler would take 2 to 4 ms off the scene pass and 1 to 2.5 ms off the
 GPU. Not measured there; the Windows run with [Route] OcclusionCull=1 in
 Nadi's OBNG.ini decides it.
 
+## The pass-record skip and the Reset hook (2026-11-08, run obng-cull/20261108-174227)
+
+DrawRenderPass 0x007A9820 detoured as well: a hidden record returns after
+publishing the pass id and itself, before its light constants (steps 3 and 4
+of re/functions/0x007A9820.md); a geometry asked about before in the frame
+gets the frame's decision without the viewport read and the rectangles.
+The device's Reset (vtable slot 16) is hooked at the first eye pass and
+releases the queries and the state block before the engine's Reset.
+
+Measured against the two earlier on runs (eye pass ms a pass: the finish
+with the culler inside):
+
+| place | eye pass before | eye pass with the record skip | culler's own cost before / after |
+|---|---:|---:|---:|
+| Market District | 1.223 / 1.274 | 1.207 | 0.135 / 0.139 |
+| Talos Plaza | 0.630 / 0.635 | 0.614 | 0.101 / 0.105 |
+| Imperial Dungeon | 0.972 / 0.959 | 0.899 | 0.147 / 0.123 |
+| Weynon Priory house | 0.890 / 0.886 | 0.812 | 0.136 / 0.096 |
+| Gold Road | 1.398 / 1.382 | 1.356 | 0.284 / 0.291 |
+
+0.02 to 0.08 ms a pass less (2 to 8 %), the skips unchanged (0.0 to 0.1 %
+unconfirmed), no crash, "Route: occlusion cull - Reset hooked on the
+device's vtable" in the log. The run saw no device reset, so the release
+path ran only in the unit tests (Ring::DropAll); a reset in play is the
+test it still needs. In that run the shape asked at the record and again at
+Do_RenderShape was counted twice (draws a pass 520 instead of 332 at the
+market); fixed afterwards, the behaviour unchanged.
+
 ## What failed on the way
 
 - A check mode that drew every skipped shape once more after the pass's
@@ -129,9 +157,9 @@ Nadi's OBNG.ini decides it.
 
 ## Open
 
-- A device reset with the culler on fails (queries and state block never
-  released): release them on the reset path before the culler is on in
-  play (small; OBVR's reset handling to be read first).
+- The Reset path is hooked but not yet seen in a run (no reset happened):
+  a run that forces one (alt-tab in windowed mode, a resolution change)
+  settles it.
 - The dual pass gets nothing (no eye data): a per-target verdict table would
   serve it (medium; off Nadi's path, the single pass is live).
 - The margin and the camera gate were not varied: 2 px and 100 units / 10

@@ -779,4 +779,9 @@ the culler (1 340 against 1 496 frames in 20 s). A skipped shape cannot be
 drawn again after the pass: Do_RenderShape 0x007693E0 reads the pass's
 record state, gone by then (crash at 0x007FB4F2 reading a null record, run
 obng-cull/20261108-152718; read from the crash line, the field unverified).
+A skip decided one step earlier, at DrawRenderPass 0x007A9820 (the record
+returns after publishing the pass id and itself, before its light
+constants), took 0.02 to 0.08 ms a pass more off the finish at the five
+places (run obng-cull/20261108-174227, measured); the record's light
+constants (0x007ECB20, 0x007EE390 per light) are that cheap per draw.
 
