@@ -598,3 +598,36 @@ windows at each spot (measured):
   own (Walkers 2026-11-08), so the Havok question is the engine's own
   creatures and the player; open.
 
+
+### iMultiSample=0 runs the single pass since OBVR.dll 7d8b9397, and what the samples cost on the GPU (2026-11-08 20:24-20:36)
+
+OBVR built the single pass for the texture path within the evening (its
+runs in artifacts/shadow/obng-profile-gold-road-eyedump/20261108-202413 and
+-202826 with iMultiSample=0, -203233 with 4; OBVR.dll 7d8b9397 on both
+machines; the Linux INI put back to 4). Measured:
+
+| | iMultiSample=0, first run | iMultiSample=0, second run | iMultiSample=4 |
+|---|---:|---:|---:|
+| stereo path | single pass (eyes taken) | single pass | single pass |
+| eye disparity, far / near bands | 101-103 / 110-115 px | 101-103 / 110-115 px | 101-104 / 110-118 px |
+| GPU before submit, mean, the four later phases | 5.7 / 6.1 / 6.0 / 6.7 ms | 5.6 / 5.7 / 5.7 / 4.9 ms | 6.9 / 6.9 / 6.5 / 5.4 ms |
+| GPU p95, the same phases | 6.8 / 7.4 / 7.3 / 8.3 ms | 6.7 / 7.0 / 7.3 / 6.0 ms | 8.0 / 8.0 / 7.9 / 6.6 ms |
+| frame mean, every phase | 13.6-14.6 ms | 13.5-14.2 ms | 13.6-14.0 ms |
+| frames over 20 ms | 1.1-2.3 % | 0.6-1.6 % | 0.6-1.3 % |
+
+- **The stereo is correct without multisampling** (the disparities equal the
+  4x run's band for band) and the single pass now runs there; the gate of
+  the earlier section is lifted in 7d8b9397.
+- **4x MSAA costs about 1.0-1.2 ms of GPU a frame on the Beyond at 2568x2568
+  an eye, about 17 %** (derived from the two means of the same minute;
+  frames vsync-bound at 75 Hz, so the frame time itself does not move).
+  Carried to the Dream Air's 12-15 ms heavy stretch at the same share,
+  MSAA 0 alone would land at about 10-12.5 ms: on the edge of 11.1 ms, not
+  safely under it. The dynamic resolution stays necessary; the two
+  together are the GPU plan. Windows measures the real share.
+- The stutter of the 19:35 (0) and 19:40 (2) runs is **not** explained by
+  pipeline compilation: OBVR's first 0 run of the evening was as smooth as
+  its second (1.1-2.3 % over 20 ms). Cause unknown; both stuttering runs
+  came right after a different OBNG.dll had been deployed (454727e6 at
+  19:31) and inside a busy half hour of harness runs by four sessions. A
+  repeat of iMultiSample=2 is still owed before 2 can be costed.
