@@ -60,12 +60,33 @@ volatile LONG64 g_sizeForwardTicks[kSizeBuckets] = {};
 volatile LONG64 g_sizeGeometryTicks[kSizeBuckets] = {};
 volatile LONG64 g_sizeGeometryCalls[kSizeBuckets] = {};
 volatile LONG64 g_sizeBoundsTicks[kSizeBuckets] = {};
+volatile LONG64 g_sizeCollisionTicks[kSizeBuckets] = {};
+volatile LONG64 g_sizeCollisionCalls[kSizeBuckets] = {};
+volatile LONG64 g_sizeControllerTicks[kSizeBuckets] = {};
+volatile LONG64 g_sizeControllerCalls[kSizeBuckets] = {};
 
 // The engine port with the geometry bounds timed (QueryPerformanceCounter
 // around each, about 20 ns a read; 15-25 geometries an actor).
 struct TimedPort : eng::Port {
 	LONGLONG geometryTicks = 0;
 	LONGLONG geometryCalls = 0;
+	LONGLONG collisionTicks = 0;
+	LONGLONG collisionCalls = 0;
+	LONGLONG controllerTicks = 0;
+	LONGLONG controllerCalls = 0;
+	// Counted, not timed: a clock read per call would cost more than the
+	// calls (250 controller walks an armoured actor; run 20261109-191706
+	// timed them once: 32-37 us with the clock's own 10 us inside).
+	void AfterWorldData(su::Handle h) {
+		if (eng::Dword(h, eng::kCollisionObjectOffset) != 0) {
+			++collisionCalls;
+		}
+		eng::Port::AfterWorldData(h);
+	}
+	void UpdateObjectControllers(su::Handle h, float time) {
+		++controllerCalls;
+		eng::Port::UpdateObjectControllers(h, time);
+	}
 	void GeometryBoundSelf(su::Handle h) {
 		LARGE_INTEGER a;
 		LARGE_INTEGER b;
@@ -170,6 +191,10 @@ void __fastcall RouteReplacement(void* self, void* /*edx*/, UInt32 timeBits, UIn
 	InterlockedAdd64(&g_sizeGeometryTicks[bucket], port.geometryTicks);
 	InterlockedAdd64(&g_sizeGeometryCalls[bucket], port.geometryCalls);
 	InterlockedAdd64(&g_sizeBoundsTicks[bucket], end.QuadPart - middle.QuadPart);
+	InterlockedAdd64(&g_sizeCollisionTicks[bucket], port.collisionTicks);
+	InterlockedAdd64(&g_sizeCollisionCalls[bucket], port.collisionCalls);
+	InterlockedAdd64(&g_sizeControllerTicks[bucket], port.controllerTicks);
+	InterlockedAdd64(&g_sizeControllerCalls[bucket], port.controllerCalls);
 }
 
 // ---- The timing of the original ---------------------------------------------------------------
@@ -441,7 +466,7 @@ void LogActorUpdateSummary() {
 	g_log("%s: actor update - %lld calls from ApplyAnimData, %lld run %s in %.2f ms (%.1f us each), %lld orders built, %lld rebuilt after a "
 	      "shape change, %lld to the original (root not a plain node)",
 	      g_mode == Mode::Route ? "Route" : "Probe", calls, routed, g_mode == Mode::Route ? "flat" : "in the original, timed", ms, routed > 0 ? ms * 1000.0 / static_cast<double>(routed) : 0.0, built, rebuilt, fallback);
-	char line[900];
+	char line[1400];
 	int at = std::snprintf(line, sizeof(line), "%s: actor update by subtree size (entries):", g_mode == Mode::Route ? "Route" : "Probe");
 	for (unsigned i = 0; i < kSizeBuckets && at > 0 && static_cast<std::size_t>(at) < sizeof(line); ++i) {
 		const LONG64 c = InterlockedExchange64(&g_sizeCalls[i], 0);
@@ -455,15 +480,23 @@ void LogActorUpdateSummary() {
 		const LONG64 geometry = InterlockedExchange64(&g_sizeGeometryTicks[i], 0);
 		const LONG64 geometryCalls = InterlockedExchange64(&g_sizeGeometryCalls[i], 0);
 		const LONG64 bounds = InterlockedExchange64(&g_sizeBoundsTicks[i], 0);
+		const LONG64 collision = InterlockedExchange64(&g_sizeCollisionTicks[i], 0);
+		const LONG64 collisionCalls = InterlockedExchange64(&g_sizeCollisionCalls[i], 0);
+		const LONG64 controller = InterlockedExchange64(&g_sizeControllerTicks[i], 0);
+		const LONG64 controllerCalls = InterlockedExchange64(&g_sizeControllerCalls[i], 0);
 		if (i == kSizeBuckets - 1) {
 			at += std::snprintf(line + at, sizeof(line) - at, " >%u: %lld calls %.1f us each", kSizeBounds[i - 1], c, us);
 		} else {
 			at += std::snprintf(line + at, sizeof(line) - at, " <=%u: %lld calls %.1f us each", kSizeBounds[i], c, us);
 		}
 		if (g_mode == Mode::Route && at > 0 && static_cast<std::size_t>(at) < sizeof(line)) {
-			at += std::snprintf(line + at, sizeof(line) - at, " (forward %.1f, of it %.1f geometry bounds %.1f us, bounds and upward %.1f)",
+			at += std::snprintf(line + at, sizeof(line) - at,
+			                    " (forward %.1f, of it %.1f geometry bounds %.1f us, %.1f collision objects, %.1f controller walks; bounds and upward %.1f)",
 			                    static_cast<double>(forward) * perUs, static_cast<double>(geometryCalls) / static_cast<double>(c),
-			                    static_cast<double>(geometry) * perUs, static_cast<double>(bounds) * perUs);
+			                    static_cast<double>(geometry) * perUs, static_cast<double>(collisionCalls) / static_cast<double>(c),
+			                    static_cast<double>(controllerCalls) / static_cast<double>(c), static_cast<double>(bounds) * perUs);
+			(void)collision;
+			(void)controller;
 		}
 		if (at > 0 && static_cast<std::size_t>(at) < sizeof(line)) {
 			at += std::snprintf(line + at, sizeof(line) - at, ";");

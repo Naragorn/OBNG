@@ -1087,3 +1087,40 @@ window, is an outlier and left out):
 - Per frame on the Gold Road (64 actors, mostly plain): about 1.3 ms ->
   0.75 ms (derived), 0.55 ms saved; with 60 armoured in a crowd about 2.4
   ms -> 1.0-1.1 ms saved on them in all.
+
+### Where an armoured actor's flat update spends its time (2026-11-09 19:10-19:17, runs -191033, -191349, -191706)
+
+The route timed its own parts per class (QueryPerformanceCounter around the
+forward pass, the bound pass and the geometry bounds; one run also around
+every controller walk and collision update, which the clock itself inflates
+by about 10 us a call-set). Per armoured call (300-325 entries), measured:
+
+| part | time | count |
+|---|---:|---:|
+| the whole call | 38-43 us | |
+| forward pass (controllers, worlds, geometry bounds) | 36-41 us | |
+| of it the geometry bounds (skin and model, ours) | 3.3-4.8 us | 13-15 |
+| of it the collision objects' updates (the original's) | about 3 us | 18-25 |
+| of it the controller walks 0x0047C930 (the original's) | about 25 us (32-37 with the clock inside) | 247-256 |
+| of it the compose and the port's reads and writes | about 5 us (the rest) | 300-325 nodes |
+| the bound pass and the upward pass | 2.3-3.2 us | |
+
+- **The controller walk is the armoured actor's cost**: 250 of its 320
+  objects have a property list or a controller chain (HasControllers), so
+  the run calls the original 0x0047C930 for each, which walks the list's
+  items and their controllers - about 100 ns a call, 25 us an actor, two
+  thirds of the call. A plain NPC has 34 such objects (5 us of its 13).
+  The compose itself is small (about 15 ns a node once the walk is gone).
+- **A software prefetch of the next objects' lines changed nothing** (run
+  -191349 against -191033, within the spread): the object's own lines are
+  not the latency.
+- **The lever (derived)**: a per-entry verdict "no property in the list has
+  a controller" kept with the order and the live +0x0C check, so the walk
+  runs only where it can find something. Its correctness rests on knowing
+  every path that attaches a property or gives a property a controller
+  (NiAVObject's attach and detach of properties, NiObjectNET's SetController
+  0x00478300 on a property) - those bump a version that invalidates the
+  orders; the shadow gate verifies the outcome as before. Medium (about
+  0.5 M: the writers to read, the hooks, the gate run); the gain about 25
+  us of an armoured actor's 40 and 5 of a plain one's 13 - the largest
+  remaining piece of the actors' update by far.

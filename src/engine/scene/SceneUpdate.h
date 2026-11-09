@@ -36,6 +36,8 @@ inline constexpr std::uint32_t kNiNodeVtable = 0x00A7E38C;                  // (
 // ---- Vtable slots (read: 0x00707370, 0x0070A0D0, 0x00707580, 0x0070C120, 0x00709EC0) -------------
 inline constexpr std::uint32_t kSlotCollisionUpdateWorldData = 0x50;  // on the collision object at +0xA8
 inline constexpr std::uint32_t kSlotUpdateDownwardPass = 0x60;
+inline constexpr std::uint32_t kSlotUpdateSelectedDownwardPass = 0x64;  // (read 0x007073A9, 0x0070A212)
+inline constexpr std::uint32_t kSlotUpdateRigidDownwardPass = 0x68;     // (read 0x0070A20D)
 inline constexpr std::uint32_t kSlotUpdateWorldData = 0x74;
 inline constexpr std::uint32_t kSlotUpdateWorldBound = 0x78;
 inline constexpr std::uint32_t kSlotUpdateUpwardPass = 0x94;
@@ -90,6 +92,7 @@ struct Tree {
 	}
 	std::uint32_t SlotCount(Handle h) const { return Word(h, kChildSlotsOffset); }
 	Handle ChildAt(Handle h, std::uint32_t i) const { return Dword(Dword(h, kChildrenOffset), 4 * i); }
+	std::uint16_t Flags(Handle h) const { return Word(h, kFlagsOffset); }
 };
 
 inline Transform TransformAt(Handle h, std::uint32_t offset) {
@@ -163,6 +166,18 @@ struct Port {
 	}
 	Bound ReadBound(Handle h) const { return BoundAt(h, kWorldBoundOffset); }
 	void WriteBound(Handle h, const Bound& b) { std::memcpy(Pointer(h + kWorldBoundOffset), &b, sizeof(b)); }
+	// The selected update's extras (SelectedActionPort).
+	std::uint16_t Flags(Handle h) const { return Word(h, kFlagsOffset); }
+	bool HasControllerChain(Handle h) const { return Dword(h, kControllerOffset) != 0; }
+	void UpdateObjectControllersWith(Handle h, float time, bool properties) {
+		reinterpret_cast<UpdateObjectControllersFn>(kUpdateObjectControllersAddress)(Pointer(h), time, properties ? 1 : 0);
+	}
+	void UpdateSelectedOriginal(Handle h, float time) {
+		reinterpret_cast<void(__thiscall*)(void*, float)>(Slot(h, kSlotUpdateSelectedDownwardPass))(Pointer(h), time);
+	}
+	void UpdateRigidOriginal(Handle h, float time) {
+		reinterpret_cast<void(__thiscall*)(void*, float)>(Slot(h, kSlotUpdateRigidDownwardPass))(Pointer(h), time);
+	}
 	void GeometryBoundSelf(Handle h) {
 		const GeometryView geometry{h};
 		const SkinView skin{Dword(h, kSkinInstanceOffset)};

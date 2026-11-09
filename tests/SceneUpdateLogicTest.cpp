@@ -126,7 +126,8 @@ void TestClassify() {
 struct FakeObject {
 	Kind kind = Kind::Node;
 	std::vector<Handle> slots;  // 0 = empty
-	bool controllers = false;
+	bool controllers = false;   // the property list has items (bit 3 reads it)
+	bool chain = false;         // the controller chain at +0x0C (walked whatever the bit)
 	bool collision = false;
 	Transform local{{1, 0, 0, 0, 1, 0, 0, 0, 1}, {0, 0, 0}, 1.0f};
 	Transform world{};
@@ -158,6 +159,7 @@ struct FakeTree {
 	std::map<Handle, FakeObject> objects;
 
 	Kind KindOf(Handle h) const { return objects.at(h).kind; }
+	std::uint16_t Flags(Handle h) const { return objects.at(h).flags; }
 	std::uint32_t SlotCount(Handle h) const {
 		const FakeObject& o = objects.at(h);
 		return o.kind == Kind::Node ? static_cast<std::uint32_t>(o.slots.size()) : 0u;
@@ -204,6 +206,24 @@ struct FakePort {
 	void WriteBound(Handle h, const Bound& b) { tree->objects.at(h).bound = b; }
 	void GeometryBoundSelf(Handle h) {
 		UpdateWorldBound(h);  // the same arithmetic; the call is recorded under the same name
+	}
+	// The selected update's extras.
+	std::uint16_t Flags(Handle h) const { return tree->objects.at(h).flags; }
+	bool HasControllerChain(Handle h) const { return tree->objects.at(h).chain; }
+	void UpdateObjectControllersWith(Handle h, float time, bool properties) {
+		calls.push_back("controllers " + std::to_string(h) + " " + std::to_string(time) + (properties ? " p" : ""));
+	}
+	void UpdateSelectedOriginal(Handle h, float time) {
+		FakeObject& o = tree->objects.at(h);
+		UpdateWorld(ParentWorld(h), o.local, o.world);
+		o.bound = Bound{{o.world.pos[0] + 2, o.world.pos[1], o.world.pos[2]}, o.world.scale * 0.75f};
+		calls.push_back("selected original " + std::to_string(h) + " " + std::to_string(time));
+	}
+	void UpdateRigidOriginal(Handle h, float time) {
+		FakeObject& o = tree->objects.at(h);
+		UpdateWorld(ParentWorld(h), o.local, o.world);
+		o.bound = Bound{{o.world.pos[0] - 2, o.world.pos[1], o.world.pos[2]}, o.world.scale * 1.25f};
+		calls.push_back("rigid original " + std::to_string(h) + " " + std::to_string(time));
 	}
 	void UpdateDownwardOriginal(Handle h, float time, bool controllers) {
 		// What the original would leave: a world and a bound; the subtree is its own.
@@ -394,6 +414,112 @@ void TestRunAgainstReference() {
 	std::printf("  %u trees, %u objects\n", trees, objects);
 }
 
+void TestSelectedOrder() {
+	Section("The selected order: only the children flagged for the visit are entries, every child is merged, a rigid child is the original's");
+	// 1 (node, visited root): [2 (geometry, visited), 3 (node, not visited), 4 (node, visited, rigid), 0, 5 (node visited): [6 (other, visited), 7 (geometry, not visited)]]
+	FakeTree t;
+	t.objects[1] = FakeObject{Kind::Node, {2, 3, 4, 0, 5}};
+	t.objects[2] = FakeObject{Kind::GeometryPlain, {}};
+	t.objects[3] = FakeObject{Kind::Node, {}};
+	t.objects[4] = FakeObject{Kind::Node, {}};
+	t.objects[5] = FakeObject{Kind::Node, {6, 7}};
+	t.objects[6] = FakeObject{Kind::Other, {}};
+	t.objects[7] = FakeObject{Kind::GeometryPlain, {}};
+	for (auto& [h, o] : t.objects) {
+		for (Handle c : o.slots) {
+			if (c != 0) {
+				t.objects[c].parent = h;
+			}
+		}
+	}
+	t.objects[2].flags = kFlagVisit | kFlagTransforms;
+	t.objects[4].flags = kFlagVisit | kFlagRigid | kFlagTransforms;
+	t.objects[5].flags = kFlagVisit | kFlagTransforms;
+	t.objects[6].flags = kFlagVisit;
+	SelectedOrder order = BuildSelected(t, 1);
+	Check(order.entries.size() == 5, "five entries: the root, 2, 4 (rigid), 5 and 6; 3 and 7 are merge-only");
+	Check(order.entries[0].object == 1 && order.entries[1].object == 2 && order.entries[2].object == 4 && order.entries[2].rigid &&
+	          order.entries[3].object == 5 && order.entries[4].object == 6 && order.entries[4].kind == Kind::Other,
+	      "the order and the rigid mark");
+	Check(order.entries[0].childCount == 4 && order.entries[0].slotCount == 5, "the root has four non-null children in five slots");
+	const SelectedChild* c = &order.children[order.entries[0].childrenBegin];
+	Check(c[0].object == 2 && c[0].entry == 1 && c[1].object == 3 && c[1].entry == kNoParent && c[2].object == 4 && c[2].entry == 2 && c[3].object == 5 &&
+	          c[3].entry == 3,
+	      "the children: visited ones point at their entries, the unvisited one at none");
+	Check(order.entries[3].childCount == 2 && order.children[order.entries[3].childrenBegin].entry == 4 &&
+	          order.children[order.entries[3].childrenBegin + 1].entry == kNoParent,
+	      "node 5's children: 6 visited, 7 merge-only");
+	Check(MatchesSelected(order, t), "the unchanged tree matches");
+	FakeTree flagged = t;
+	flagged.objects[3].flags = kFlagVisit;
+	Check(!MatchesSelected(order, flagged), "an unvisited child flagged for the visit: stale");
+	FakeTree unflagged = t;
+	unflagged.objects[2].flags = 0;
+	Check(!MatchesSelected(order, unflagged), "a visited child unflagged: stale");
+	FakeTree rigidNow = t;
+	rigidNow.objects[5].flags |= kFlagRigid;
+	Check(!MatchesSelected(order, rigidNow), "a visited node turned rigid: stale");
+	FakeTree bitsOnly = t;
+	bitsOnly.objects[5].flags &= static_cast<std::uint16_t>(~kFlagTransforms);
+	Check(MatchesSelected(order, bitsOnly), "bits 2 and 3 are read live: not part of the shape");
+	FakeTree grown = t;
+	grown.objects[5].slots.push_back(2);
+	Check(!MatchesSelected(order, grown), "a child added: stale");
+}
+
+void TestRunSelectedAgainstReference() {
+	Section("The flat selected run against the original's recursion over random flagged trees");
+	unsigned next = 5000;
+	bool sameCalls = true;
+	bool sameState = true;
+	unsigned trees = 0;
+	unsigned visited = 0;
+	std::uniform_int_distribution<int> flagDie(0, 15);
+	for (int n = 0; n < 300; ++n) {
+		Handle root;
+		FakeTree original = RandomTree(next, &root);
+		for (auto& [h, o] : original.objects) {
+			const int f = flagDie(g_random);
+			std::uint16_t flags = 0;
+			if (f < 10) {
+				flags |= kFlagVisit;
+			}
+			if (f % 3 != 0) {
+				flags |= kFlagTransforms;
+			}
+			if (f % 4 == 0) {
+				flags |= kFlagControllers;
+			}
+			if (f == 7 || f == 11) {
+				flags |= kFlagRigid;
+			}
+			o.flags = (o.flags & 0x0080) | flags;
+			o.chain = f % 5 == 0;
+		}
+		FakeTree a = original;
+		FakeTree b = original;
+		FakePort pa{&a, {}};
+		FakePort pb{&b, {}};
+		ReferenceSelected(a, pa, root, 0.5f, false);
+		SelectedOrder order = BuildSelected(b, root);
+		visited += static_cast<unsigned>(order.entries.size());
+		RunSelected(order, pb, 0.5f);
+		if (pa.calls != pb.calls) {
+			sameCalls = false;
+		}
+		for (const auto& [h, o] : a.objects) {
+			const FakeObject& p = b.objects.at(h);
+			if (!SameBits(o.world, p.world) || !SameBits(o.bound, p.bound) || o.flags != p.flags) {
+				sameState = false;
+			}
+		}
+		++trees;
+	}
+	Check(sameCalls, "the controller, world, collision, geometry-bound, selected-original and rigid-original calls come in the same order");
+	Check(sameState, "every world transform, bound and flags word ends the same, bit for bit");
+	std::printf("  %u trees, %u visited entries\n", trees, visited);
+}
+
 void SetRounding(unsigned mode) { _mm_setcsr((_mm_getcsr() & ~0x6000u) | (mode << 13)); }
 
 void TestSqrtAsCrt() {
@@ -531,6 +657,8 @@ int main() {
 	TestBuildAndMatches();
 	TestRunAgainstReference();
 	TestRunLeavesBoundCentreWhenNoChild();
+	TestSelectedOrder();
+	TestRunSelectedAgainstReference();
 	TestSqrtAsCrt();
 	TestMergeBound();
 	TestTransformAndInverse();

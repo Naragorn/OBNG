@@ -544,6 +544,11 @@ concept ActionPort = requires(Port& p, Handle h, float f, bool b) {
 	{ p.GeometryBoundSelf(h) };
 };
 
+// Tried and dropped (run 20261109-191349 against -191033): a software
+// prefetch of the object three entries ahead (its three cache lines) changed
+// nothing within the run-to-run spread; the cost per node (about 105 ns
+// against some 40 of arithmetic) is not the object's own lines' latency.
+
 // One object's world data: 0x0070C120 as the port sees it.
 template <ActionPort Port>
 inline void WorldData(Port& port, Handle object) {
@@ -601,7 +606,8 @@ void Reference(const Tree& tree, Port& port, Handle object, float time, bool con
 // (derived: a merge reads only the node's and that child's bound).
 template <ActionPort Port>
 void RunForward(const Order& order, Port& port, float time, bool controllers) {
-	for (const Entry& e : order.entries) {
+	for (std::size_t i = 0; i < order.entries.size(); ++i) {
+		const Entry& e = order.entries[i];
 		if (e.kind == Kind::Other) {
 			port.UpdateDownwardOriginal(e.object, time, controllers);
 			continue;
@@ -650,6 +656,280 @@ template <ActionPort Port>
 void Run(const Order& order, Port& port, float time, bool controllers) {
 	RunForward(order, port, time, controllers);
 	RunBounds(order, port);
+}
+
+// ---- The selected update: the cells' pass (read 2026-11-09) -----------------------------------
+//
+// TESObjectCELL::UpdateSelectedNodes 0x004D4970 runs 0x007073A0 on a cell's
+// roots: the root's +0x64 and then the parent's +0x94. NiNode::
+// UpdateSelectedDownwardPass 0x0070A190: UpdateObjectControllers(time, bit 3
+// of the flags) - the function walks the property list only for the bit
+// but the controller chain always; UpdateWorldData when bit 2; then for
+// every child: when the child's bit 1 is set, its +0x64 (or its +0x68, the
+// rigid pass, when its bit 4 is set too); then the child's bound merged as
+// the full pass does, visited or not. NiAVObject::UpdateSelectedDownwardPass
+// 0x007075B0 (a geometry): the controllers as above, and when bit 2 the
+// world data and the world bound. The rigid pass 0x0070A280 is left to the
+// original (its own bound at +0xCC, no merges): an Other of this run.
+//
+// The flags are read live by Run, as the original reads them; the shape
+// the order rests on includes each child's bit 1 (the visited set), so a
+// controller that flags or unflags a subtree makes the order stale and
+// Matches sends the call to a rebuild.
+inline constexpr std::uint16_t kFlagVisit = 0x0002;        // bit 1: the selective update reaches this child
+inline constexpr std::uint16_t kFlagTransforms = 0x0004;   // bit 2: world data (and a geometry's bound) on a visit
+inline constexpr std::uint16_t kFlagControllers = 0x0008;  // bit 3: the property list's controllers on a visit
+inline constexpr std::uint16_t kFlagRigid = 0x0010;        // bit 4: the rigid pass instead of the selected one
+
+struct SelectedEntry {
+	Handle object = 0;
+	std::uint32_t parent = kNoParent;
+	Kind kind = Kind::Other;  // Other here also covers a rigid node (bit 4): the original's +0x68
+	bool rigid = false;
+	std::uint32_t childrenBegin = 0;  // all non-null children of a node, in index order: entry indices for the visited, handles for the rest
+	std::uint32_t childCount = 0;
+	std::uint32_t slotCount = 0;
+};
+
+// A child of a visited node: visited (an entry) or merge-only (a handle).
+struct SelectedChild {
+	Handle object = 0;
+	std::uint32_t entry = kNoParent;  // kNoParent for a child not visited
+};
+
+struct SelectedOrder {
+	Handle root = 0;
+	std::vector<SelectedEntry> entries;
+	std::vector<SelectedChild> children;
+};
+
+// The tree port of the selected update adds the flags.
+template <class Tree>
+concept SelectedTreePort = TreePort<Tree> && requires(const Tree& t, Handle h) {
+	{ t.Flags(h) } -> std::same_as<std::uint16_t>;
+};
+
+template <SelectedTreePort Tree>
+SelectedOrder BuildSelected(const Tree& tree, Handle root) {
+	SelectedOrder order;
+	order.root = root;
+	struct Pending {
+		Handle object;
+		std::uint32_t parent;
+		bool rigid;
+	};
+	std::vector<Pending> stack;
+	stack.push_back({root, kNoParent, false});
+	// Children lists are appended as each node is expanded; the visited
+	// children's entry indices are filled when those entries are made (a
+	// second pass below), since depth-first order interleaves subtrees.
+	std::vector<std::pair<std::uint32_t, std::uint32_t>> fixups;  // (children index, the child's object) to resolve
+	while (!stack.empty()) {
+		const Pending p = stack.back();
+		stack.pop_back();
+		SelectedEntry e;
+		e.object = p.object;
+		e.parent = p.parent;
+		e.rigid = p.rigid;
+		e.kind = p.rigid ? Kind::Other : tree.KindOf(p.object);
+		const std::uint32_t index = static_cast<std::uint32_t>(order.entries.size());
+		if (e.kind == Kind::Node) {
+			e.slotCount = tree.SlotCount(p.object);
+			e.childrenBegin = static_cast<std::uint32_t>(order.children.size());
+			std::vector<Pending> visited;
+			for (std::uint32_t i = 0; i < e.slotCount; ++i) {
+				const Handle child = tree.ChildAt(p.object, i);
+				if (child == 0) {
+					continue;
+				}
+				SelectedChild c;
+				c.object = child;
+				const std::uint16_t flags = tree.Flags(child);
+				if ((flags & kFlagVisit) != 0) {
+					fixups.push_back({static_cast<std::uint32_t>(order.children.size()), child});
+					visited.push_back({child, index, (flags & kFlagRigid) != 0});
+				}
+				order.children.push_back(c);
+				++e.childCount;
+			}
+			for (auto it = visited.rbegin(); it != visited.rend(); ++it) {
+				stack.push_back(*it);
+			}
+		}
+		order.entries.push_back(e);
+	}
+	// Resolve the visited children to their entries: each visited child is
+	// an entry whose parent is the node; match by object under that parent.
+	for (const auto& [childrenIndex, object] : fixups) {
+		for (std::uint32_t i = 0; i < order.entries.size(); ++i) {
+			if (order.entries[i].object == object && order.entries[i].parent != kNoParent &&
+			    order.entries[order.entries[i].parent].childrenBegin <= childrenIndex &&
+			    childrenIndex < order.entries[order.entries[i].parent].childrenBegin + order.entries[order.entries[i].parent].childCount) {
+				order.children[childrenIndex].entry = i;
+				break;
+			}
+		}
+	}
+	return order;
+}
+
+// The shape still holds: every entry's kind and rigid bit, every node's
+// slots, its non-null children in order, and which of them carry bit 1.
+template <SelectedTreePort Tree>
+bool MatchesSelected(const SelectedOrder& order, const Tree& tree) {
+	for (std::uint32_t i = 0; i < order.entries.size(); ++i) {
+		const SelectedEntry& e = order.entries[i];
+		if (e.rigid) {
+			continue;  // the original's; its flags are its own
+		}
+		if (tree.KindOf(e.object) != e.kind) {
+			return false;
+		}
+		if (e.kind != Kind::Node) {
+			continue;
+		}
+		if (tree.SlotCount(e.object) != e.slotCount) {
+			return false;
+		}
+		std::uint32_t seen = 0;
+		for (std::uint32_t s = 0; s < e.slotCount; ++s) {
+			const Handle child = tree.ChildAt(e.object, s);
+			if (child == 0) {
+				continue;
+			}
+			if (seen >= e.childCount) {
+				return false;
+			}
+			const SelectedChild& c = order.children[e.childrenBegin + seen];
+			if (c.object != child) {
+				return false;
+			}
+			const std::uint16_t flags = tree.Flags(child);
+			const bool visited = (flags & kFlagVisit) != 0;
+			if (visited != (c.entry != kNoParent)) {
+				return false;
+			}
+			if (visited && order.entries[c.entry].rigid != ((flags & kFlagRigid) != 0)) {
+				return false;
+			}
+			++seen;
+		}
+		if (seen != e.childCount) {
+			return false;
+		}
+	}
+	return true;
+}
+
+// The action port of the selected update adds the flags and the two
+// original passes for the objects the run leaves to them.
+template <class Port>
+concept SelectedActionPort = ActionPort<Port> && requires(Port& p, Handle h, float f, bool b) {
+	{ p.Flags(h) } -> std::same_as<std::uint16_t>;
+	{ p.HasControllerChain(h) } -> std::same_as<bool>;                 // +0x0C non-null: walked whatever the bit
+	{ p.UpdateObjectControllersWith(h, f, b) };                        // 0x0047C930(time, bit 3)
+	{ p.UpdateSelectedOriginal(h, f) };                                // the object's own +0x64
+	{ p.UpdateRigidOriginal(h, f) };                                   // the object's own +0x68
+};
+
+// One visited object's own steps (0x0070A190 / 0x007075B0 before the
+// children): the controllers, the world data when bit 2.
+template <SelectedActionPort Port>
+inline void SelectedOwnSteps(Port& port, Handle object, Kind kind, float time) {
+	const std::uint16_t flags = port.Flags(object);
+	const bool properties = (flags & kFlagControllers) != 0;
+	if (port.HasControllerChain(object) || (properties && port.HasControllers(object))) {
+		port.UpdateObjectControllersWith(object, time, properties);
+	}
+	if ((flags & kFlagTransforms) != 0) {
+		WorldData(port, object);
+		if (kind == Kind::GeometryPlain) {
+			port.GeometryBoundSelf(object);
+		} else if (kind == Kind::Geometry) {
+			port.UpdateWorldBound(object);
+		}
+	}
+}
+
+// The original's recursion of the selected pass, the oracle of RunSelected.
+template <SelectedTreePort Tree, SelectedActionPort Port>
+void ReferenceSelected(const Tree& tree, Port& port, Handle object, float time, bool rigid) {
+	if (rigid) {
+		port.UpdateRigidOriginal(object, time);
+		return;
+	}
+	const Kind kind = tree.KindOf(object);
+	if (kind == Kind::Other) {
+		port.UpdateSelectedOriginal(object, time);
+		return;
+	}
+	SelectedOwnSteps(port, object, kind, time);
+	if (kind != Kind::Node) {
+		return;
+	}
+	port.SetBoundRadius(object, 0.0f);
+	const std::uint32_t slots = tree.SlotCount(object);
+	for (std::uint32_t i = 0; i < slots; ++i) {
+		const Handle child = tree.ChildAt(object, i);
+		if (child == 0) {
+			continue;
+		}
+		const std::uint16_t flags = tree.Flags(child);
+		if ((flags & kFlagVisit) != 0) {
+			ReferenceSelected(tree, port, child, time, (flags & kFlagRigid) != 0);
+		}
+		switch (MergeStepFor(port.BoundRadius(object), port.BoundRadius(child))) {
+			case MergeStep::Skip:
+				break;
+			case MergeStep::Copy:
+				port.CopyBound(object, child);
+				break;
+			case MergeStep::Merge:
+				port.MergeBound(object, child);
+				break;
+		}
+	}
+}
+
+// The flat selected run: forwards the visited objects' own steps (the
+// originals for Other and rigid entries), backwards the nodes' bounds over
+// all their children.
+template <SelectedActionPort Port>
+void RunSelected(const SelectedOrder& order, Port& port, float time) {
+	for (std::size_t i = 0; i < order.entries.size(); ++i) {
+		const SelectedEntry& e = order.entries[i];
+		if (e.rigid) {
+			port.UpdateRigidOriginal(e.object, time);
+			continue;
+		}
+		if (e.kind == Kind::Other) {
+			port.UpdateSelectedOriginal(e.object, time);
+			continue;
+		}
+		SelectedOwnSteps(port, e.object, e.kind, time);
+	}
+	for (std::size_t n = order.entries.size(); n-- > 0;) {
+		const SelectedEntry& e = order.entries[n];
+		if (e.rigid || e.kind != Kind::Node) {
+			continue;
+		}
+		Bound own = port.ReadBound(e.object);
+		own.radius = 0.0f;
+		for (std::uint32_t c = 0; c < e.childCount; ++c) {
+			const Bound child = port.ReadBound(order.children[e.childrenBegin + c].object);
+			switch (MergeStepFor(own.radius, child.radius)) {
+				case MergeStep::Skip:
+					break;
+				case MergeStep::Copy:
+					own = child;
+					break;
+				case MergeStep::Merge:
+					MergeBound(own, child);
+					break;
+			}
+		}
+		port.WriteBound(e.object, own);
+	}
 }
 
 }  // namespace obng::engine::scene::scene_update
