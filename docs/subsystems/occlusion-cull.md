@@ -258,6 +258,25 @@ p95 20 and 12 ms, the GPU reading overflowed), the on run clear skies; the
 capture ended before the house and the road. The scenario now forces clear
 weather (fw 38EEE) for the next pair. All measured.
 
+The clean pair (clear skies forced on both sides, OBNG.dll of master a29afc1,
+runs obng-cull/20261109-152412 off and -152818 on), scene_pass mean / p95
+and the GPU before submit mean / p95, both sides at vsync (13.3-13.5 ms):
+
+| place | skipped | scene_pass off -> on | GPU off -> on |
+|---|---:|---|---|
+| Market District | 26 % | 3.98 / 5.77 -> 3.73 / 5.88 ms | 6.12 / 8.02 -> 6.15 / 8.30 |
+| Talos Plaza | 44 % | 1.82 / 3.75 -> 1.72 / 2.95 | 4.12 / 5.65 -> 4.15 / 5.53 |
+| Imperial Dungeon | 43 % | 2.08 / 3.76 -> 1.55 / 2.33 | 4.28 / 5.46 -> 4.02 / 4.70 |
+
+The house and the road fell outside the capture on both sides (the loads
+took longer than on 2026-11-08; 262144 events hold about 140 s). The on
+side repeats 2026-11-08's on figures (market 3.71 -> 3.73, dungeon 1.60 ->
+1.55); the off side came out lower than then at the market and the plaza
+(4.43 -> 3.98, 2.04 -> 1.82), so the culler's gain outdoors is 0.1 to 0.7 ms
+of scene pass depending on the weather and the run, indoors 0.5 ms
+steadily. The GPU figure on Linux follows the submission and says nothing
+here (as the dynamic-resolution runs found). All measured, one run a side.
+
 ### The trace ([Route] OcclusionCullTrace=N, OcclusionCullTraceDepth)
 
 For such a hunt: every 75th eye pass, N times, the log gets the camera and
