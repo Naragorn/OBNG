@@ -52,22 +52,36 @@ through one of these; which is **unread**.
 
 ## Havok's threads (read, measured)
 
-0x0088AEB0, the physics world wrapper's constructor: after the hkWorld is
-made, **only when the dword at the hkWorld's +0xB4 is 9** it allocates a
-0x108-byte object through 0x008BAFD0(world, [0x00B2E2D4]) and keeps it at
-wrapper+0x10; 0x008BAFD0 -> 0x008BAF70 creates the worker threads from that
-count. What +0xB4 is (the simulation type is the candidate) and what sets
-it to 9 is **unread** - the world's construction info is filled in
-0x004D4A20 / 0x004D5000 next to the copy of the setting.
-
-Measured (run obng-actors-count/20261109-230119, iNumHavokThreads=3 in
-Oblivion.ini for that run only, the crowd scenario; the machine was under
-other load and the scene was not drawn in this run, so the numbers are
-weak): Havok's samples on the render thread 1.26 a frame on the road and
-2.50 with 60 NPCs, against 1.01 and 2.37 with one thread - **no step moved
-off the render thread**. Either the world is never made with the
-multithreaded type on this build, or the workers run and the render
-thread waits for them inside Havok. The read of +0xB4's writer settles it.
+- **The switch is `iSimType:HAVOK`, not the thread count** (read): the
+  setting object 0x00B11638 (image value 1) is handed to 0x008896F0 by
+  0x005350F0, which maps it into the byte 0x00B2E2DC - 0 -> 1, 2 -> 2,
+  3 -> 5, **4 -> 9**, anything else (1 included) -> 4. The physics world's
+  construction info takes that byte as its simulation type (0x0088A4F0:
+  cinfo+0x95 = [0x00B2E2DC]); the hkWorld's constructor 0x0089A230 copies
+  it to world+0xB4 and builds the simulation by it (ten cases; unknown
+  values fall back to 4). The wrapper's constructor 0x0088AEB0 creates the
+  worker threads (0x008BAFD0(world, [0x00B2E2D4] = iNumHavokThreads) ->
+  CreateThread in 0x008BAF70, entry 0x008BADF0) **only for type 9**.
+  The live Oblivion.ini has iSimType=1 and iNumHavokThreads=1: the default
+  simulation, no workers. (The image's own initial byte at 0x00B2E2DC is
+  9; the setting overwrites it at start-up.)
+- So iNumHavokThreads alone does nothing (measured, run -230119: Havok on
+  the render thread 1.26 / 2.50 samples a frame on the road / with 60 NPCs
+  against 1.01 / 2.37; weak run, see below).
+- **iSimType=4 with iNumHavokThreads=3** (run obng-actors-count/
+  20261109-230822, Oblivion.ini changed for the run only): the game runs
+  the scenario to its end, no crash. Havok's samples on the render thread
+  were **higher**, 1.95 / 2.56 / 3.08 / 3.48 a frame over the four steps
+  against 1.01 / 1.35 / 1.82 / 2.37, and the road ran at 50 Hz instead of
+  75. Not a result yet: another game was running on the machine in both
+  Havok runs, and the crowd was not drawn in either (the scenario's
+  flake). What the higher share is - the render thread stepping its part
+  and waiting for the workers inside Havok, or the load - needs the
+  repeat on a quiet machine, and the workers' own time (they are not the
+  sampled thread).
+- Unread: what simulation types 1, 2 and 5 are; whether the engine's own
+  callbacks (collision listeners, the character controller) are safe under
+  type 9 on PC - the Xbox 360 build is the one that would have used it.
 
 ## What the frame does in sequence (read: re/functions/0x0040D800.md, 0x0040D4D0.md, 0x0040C830.md)
 
@@ -95,11 +109,10 @@ controller walk 0x0047C930 (+0.6).
   helmets, lip files, FaceGen set-up, pathing requests) and, possibly,
   Havok's workers. Morpher, particles, temp effects and OpenMP are
   switches without readers: setting them does nothing.
-- The cheapest candidate for real parallel work is therefore Havok's
-  existing worker path: if the world can be made with the multithreaded
-  type (one field of the construction info) the engine's own code spreads
-  the step. That is a read of 0x004D4A20 / 0x0088AEB0 and the step's
-  caller, then one run - small.
+- The cheapest candidate for real parallel work is Havok's existing worker
+  path, and it is two INI lines ([HAVOK] iSimType=4, iNumHavokThreads=N):
+  no code of OBNG's. Whether it gains is unmeasured (the first run was
+  under load and showed more Havok time on the render thread, not less).
 - Everything else (the actors' AI and animation beside the scene pass) has
   no existing mechanism; it would be OBNG's own, with the scene graph's
   readers and writers to prove apart - large.
