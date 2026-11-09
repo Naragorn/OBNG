@@ -79,6 +79,24 @@ through one of these; which is **unread**.
   and waiting for the workers inside Havok, or the load - needs the
   repeat on a quiet machine, and the workers' own time (they are not the
   sampled thread).
+- **The pair on the quiet machine** (2026-11-09 23:27-23:33, runs
+  obng-actors-count/20261109-232709 with iSimType=1 and -232937 with
+  iSimType=4 and iNumHavokThreads=3; the crowd drawn in both, the sampler
+  by phase, samples a frame on the render thread):
+
+  | step | frames in 20 s (1 / 4) | out of the pass (1 / 4) | Havok (1 / 4) |
+  |---|---:|---:|---:|
+  | road | 1500 / 1499 | 8.44 / 8.56 | 0.96 / 0.59 |
+  | +20 NPCs | 878 / 895 | 12.54 / 12.50 | 1.14 / 1.11 |
+  | +40 | 746 / 731 | 12.88 / 13.43 | 1.71 / 1.66 |
+  | +60 | 319 / 326 | 17.08 / 17.29 | 2.19 / 1.99 |
+
+  The multithreaded type runs without a crash and takes 0.4 of Havok's
+  samples off the render thread on the empty road and 0-0.2 with the
+  crowd; the frame count and the out-of-pass total do not move. **No
+  gain worth a changed simulation**: Havok is 1-2 ms of the frame and its
+  step here does not spread. The earlier loaded run's higher numbers were
+  the load.
 - Unread: what simulation types 1, 2 and 5 are; whether the engine's own
   callbacks (collision listeners, the character controller) are safe under
   type 9 on PC - the Xbox 360 build is the one that would have used it.
@@ -111,8 +129,9 @@ controller walk 0x0047C930 (+0.6).
   switches without readers: setting them does nothing.
 - The cheapest candidate for real parallel work is Havok's existing worker
   path, and it is two INI lines ([HAVOK] iSimType=4, iNumHavokThreads=N):
-  no code of OBNG's. Whether it gains is unmeasured (the first run was
-  under load and showed more Havok time on the render thread, not less).
+  no code of OBNG's - and measured it gains nothing that shows in the
+  frame (the pair above). The engine has no cheap parallelism left to
+  switch on.
 - Everything else (the actors' AI and animation beside the scene pass) has
   no existing mechanism; it would be OBNG's own, with the scene graph's
   readers and writers to prove apart - large.
