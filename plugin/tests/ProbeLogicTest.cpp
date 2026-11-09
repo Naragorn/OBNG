@@ -408,23 +408,51 @@ void TestActorUpdate() {
 	          ActorUpdateStats::BucketOf(100000) == 4,
 	      "50, 100, 200, 400 close their buckets; beyond 400 the last");
 
+	Section("The parts of one call: the steps' ticks, the walk is the rest, never negative");
+	ActorUpdateParts p;
+	p.nodes = 80;
+	p.worldData = 90;
+	p.controllerWalks = 85;
+	p.merges = 40;
+	p.geometryBounds = 10;
+	p.ticks = 60;  // 20 us at 3000 ticks per ms
+	p.worldDataTicks = 15;
+	p.controllerTicks = 9;
+	p.mergeTicks = 12;
+	p.geometryBoundTicks = 6;
+	Check(p.TimedCalls() == 225 && p.StepTicks() == 42 && p.WalkTicks() == 18, "225 timed steps, 42 ticks in them, 18 in the walk");
+	ActorUpdateParts over = p;
+	over.ticks = 30;
+	Check(over.WalkTicks() == 0, "steps longer than the call (the TSC's own jitter): the walk is 0, not negative");
+
 	Section("The sums per bucket and the line");
 	ActorUpdateStats s;
-	s.Add(80, 90, 60);    // 20 us at 3000 ticks per ms
-	s.Add(120, 130, 90);  // 30 us
-	s.Add(80, 90, 60);
-	s.Add(500, 520, 180);  // 60 us
-	Check(s.Calls() == 4 && s.buckets[1].calls == 2 && s.buckets[1].nodes == 160 && s.buckets[1].worldData == 180 &&
-	          s.buckets[1].ticks == 120 && s.buckets[2].calls == 1 && s.buckets[4].calls == 1 && s.buckets[0].calls == 0,
-	      "two calls of 80 nodes in one bucket, 120 and 500 in theirs");
-	char line[600];
-	FormatActorUpdate(s, 3000.0, line, sizeof(line));
-	Check(std::string(line) == "Probe: scene update - ApplyAnimData by nodes a call: <=100 nodes 2 calls (80 nodes, 90 world data, 20.0 us each, "
-	                           "250 ns a node), <=200 nodes 1 calls (120 nodes, 130 world data, 30.0 us each, 250 ns a node), >400 nodes 1 calls "
-	                           "(500 nodes, 520 world data, 60.0 us each, 120 ns a node);",
-	      "calibrated: the buckets with calls, per call nodes, world data, us, and ns a node");
+	s.Add(p);
+	s.Add(p);
+	ActorUpdateParts big;
+	big.nodes = 500;
+	big.worldData = 520;
+	big.ticks = 180;  // 60 us
+	big.worldDataTicks = 90;
+	s.Add(big);
+	s.Add(120, 130, 90);  // the convenience: 30 us, no steps
+	Check(s.Calls() == 4 && s.buckets[1].calls == 2 && s.buckets[1].sum.nodes == 160 && s.buckets[1].sum.worldData == 180 &&
+	          s.buckets[1].sum.ticks == 120 && s.buckets[1].sum.controllerTicks == 18 && s.buckets[2].calls == 1 &&
+	          s.buckets[4].calls == 1 && s.buckets[0].calls == 0,
+	      "two calls of 80 nodes in one bucket with their parts summed, 120 and 500 in theirs");
+	char line[900];
+	const int wrote = FormatActorUpdate(s, 3000.0, line, sizeof(line));
+	Check(wrote > 0 && static_cast<std::size_t>(wrote) < sizeof(line), "the line fits");
+	Check(std::string(line) ==
+	          "Probe: scene update - ApplyAnimData by nodes a call: <=100 nodes 2 calls (80 nodes, 90 world data, 20.0 us each, 250 ns a node; "
+	          "of it world data 5.0 us, 85 controller walks 3.0 us, 40 merges 4.0 us, 10 geometry bounds 2.0 us, walk 6.0 us, 225 timed steps), "
+	          "<=200 nodes 1 calls (120 nodes, 130 world data, 30.0 us each, 250 ns a node; of it world data 0.0 us, 0 controller walks 0.0 us, "
+	          "0 merges 0.0 us, 0 geometry bounds 0.0 us, walk 30.0 us, 130 timed steps), "
+	          ">400 nodes 1 calls (500 nodes, 520 world data, 60.0 us each, 120 ns a node; of it world data 30.0 us, 0 controller walks 0.0 us, "
+	          "0 merges 0.0 us, 0 geometry bounds 0.0 us, walk 30.0 us, 520 timed steps);",
+	      "calibrated: per call the nodes, the time, ns a node, the steps' share and the walk");
 	FormatActorUpdate(s, 0.0, line, sizeof(line));
-	Check(std::strstr(line, "<=100 nodes 2 calls (80 nodes, 90 world data, 120 ticks)") != nullptr, "uncalibrated: the raw ticks");
+	Check(std::strstr(line, "<=100 nodes 2 calls (80 nodes, 90 world data, 120 ticks, of it steps 84 ticks)") != nullptr, "uncalibrated: the raw ticks");
 	FormatActorUpdate(ActorUpdateStats{}, 3000.0, line, sizeof(line));
 	Check(std::string(line) == "Probe: scene update - ApplyAnimData by nodes a call: none;", "no call: none");
 	char small[20];

@@ -796,6 +796,10 @@ constexpr UInt32 kControllerWalk = 0x0047C930;
 constexpr UInt8 kControllerWalkBytes[] = {0x80, 0x7C, 0x24, 0x08, 0x00, 0x56, 0x57, 0x8B, 0xF9};  // cmp byte [esp+8],0; push esi; push edi; mov edi,ecx (then jz)
 constexpr UInt32 kWorldData = 0x0070C120;
 constexpr UInt8 kWorldDataBytes[] = {0x83, 0xEC, 0x34, 0x53, 0x8B, 0xD9};  // sub esp,34h; push ebx; mov ebx,ecx
+constexpr UInt32 kBoundMerge = 0x0072A6B0;
+constexpr UInt8 kBoundMergeBytes[] = {0x83, 0xEC, 0x20, 0x56, 0x8B, 0xF1};  // sub esp,20h; push esi; mov esi,ecx
+constexpr UInt32 kGeometryBound = 0x00722AA0;
+constexpr UInt8 kGeometryBoundBytes[] = {0x83, 0xEC, 0x20, 0x56, 0x8B, 0xF1};  // sub esp,20h; push esi; mov esi,ecx
 constexpr UInt32 kObjectUpdate = 0x00707370;
 constexpr UInt8 kObjectUpdateBytes[] = {0xD9, 0x44, 0x24, 0x04, 0x56, 0x8B, 0xF1};  // fld [esp+4]; push esi; mov esi,ecx
 // NiObjectNET's controllers (+0x0C) and NiAVObject's property list (+0x9C,
@@ -817,6 +821,29 @@ TimeFlagFn g_leafDownward = nullptr;
 TimeFlagFn g_controllerWalk = nullptr;
 NoArgFn g_worldData = nullptr;
 TimeFlagFn g_objectUpdate = nullptr;
+using OneArgFn = UInt32(__fastcall*)(void* self, void* edx, const void* arg);  // RET 4
+OneArgFn g_boundMerge = nullptr;
+NoArgFn g_geometryBound = nullptr;
+
+// Inside one ApplyAnimData call (CountObjectUpdate below) the tree's steps
+// are timed as well, on that thread only: the flag and the thread id are set
+// around the call, the step sums are the render thread's own until the call
+// ends and adds them, as one batch, to the interlocked buckets. The thread
+// id comes from the TEB (fs:[24h]) - no thread_local, as RangeWalkGame.h
+// says, and no import call per step.
+volatile LONG g_actorActive = 0;
+DWORD g_actorThread = 0;
+UInt64 g_actorWorldDataTicks = 0;
+UInt64 g_actorControllerTicks = 0;
+UInt64 g_actorMergeTicks = 0;
+UInt64 g_actorGeometryBoundTicks = 0;
+UInt64 g_actorMerges = 0;
+UInt64 g_actorGeometryBounds = 0;
+UInt64 g_timedStepOverheadTicks = 0;  // two TSC reads and the arithmetic, measured at install
+
+inline bool InActorUpdate() {
+	return g_actorActive != 0 && __readfsdword(0x24) == g_actorThread;
+}
 bool g_sceneUpdateOn = false;
 probe::ClockPair g_sceneUpdateClock;
 AtomicTiming g_gridTiming;
@@ -833,24 +860,48 @@ struct AtomicActorUpdate {
 		volatile LONG64 calls = 0;
 		volatile LONG64 nodes = 0;
 		volatile LONG64 worldData = 0;
+		volatile LONG64 controllerWalks = 0;
+		volatile LONG64 merges = 0;
+		volatile LONG64 geometryBounds = 0;
 		volatile LONG64 ticks = 0;
+		volatile LONG64 worldDataTicks = 0;
+		volatile LONG64 controllerTicks = 0;
+		volatile LONG64 mergeTicks = 0;
+		volatile LONG64 geometryBoundTicks = 0;
 	};
 	Bucket buckets[probe::ActorUpdateStats::kBuckets];
 
-	void Add(UInt64 nodes, UInt64 worldData, UInt64 ticks) {
-		Bucket& b = buckets[probe::ActorUpdateStats::BucketOf(nodes)];
+	void Add(const probe::ActorUpdateParts& p) {
+		Bucket& b = buckets[probe::ActorUpdateStats::BucketOf(p.nodes)];
 		InterlockedIncrement64(&b.calls);
-		InterlockedAdd64(&b.nodes, static_cast<LONG64>(nodes));
-		InterlockedAdd64(&b.worldData, static_cast<LONG64>(worldData));
-		InterlockedAdd64(&b.ticks, static_cast<LONG64>(ticks));
+		InterlockedAdd64(&b.nodes, static_cast<LONG64>(p.nodes));
+		InterlockedAdd64(&b.worldData, static_cast<LONG64>(p.worldData));
+		InterlockedAdd64(&b.controllerWalks, static_cast<LONG64>(p.controllerWalks));
+		InterlockedAdd64(&b.merges, static_cast<LONG64>(p.merges));
+		InterlockedAdd64(&b.geometryBounds, static_cast<LONG64>(p.geometryBounds));
+		InterlockedAdd64(&b.ticks, static_cast<LONG64>(p.ticks));
+		InterlockedAdd64(&b.worldDataTicks, static_cast<LONG64>(p.worldDataTicks));
+		InterlockedAdd64(&b.controllerTicks, static_cast<LONG64>(p.controllerTicks));
+		InterlockedAdd64(&b.mergeTicks, static_cast<LONG64>(p.mergeTicks));
+		InterlockedAdd64(&b.geometryBoundTicks, static_cast<LONG64>(p.geometryBoundTicks));
 	}
 	probe::ActorUpdateStats TakeSnapshot() {
 		probe::ActorUpdateStats out;
 		for (unsigned i = 0; i < probe::ActorUpdateStats::kBuckets; ++i) {
-			out.buckets[i].calls = static_cast<std::uint64_t>(InterlockedExchange64(&buckets[i].calls, 0));
-			out.buckets[i].nodes = static_cast<std::uint64_t>(InterlockedExchange64(&buckets[i].nodes, 0));
-			out.buckets[i].worldData = static_cast<std::uint64_t>(InterlockedExchange64(&buckets[i].worldData, 0));
-			out.buckets[i].ticks = static_cast<std::uint64_t>(InterlockedExchange64(&buckets[i].ticks, 0));
+			Bucket& b = buckets[i];
+			probe::ActorUpdateStats::Bucket& o = out.buckets[i];
+			const auto take = [](volatile LONG64* v) { return static_cast<std::uint64_t>(InterlockedExchange64(v, 0)); };
+			o.calls = take(&b.calls);
+			o.sum.nodes = take(&b.nodes);
+			o.sum.worldData = take(&b.worldData);
+			o.sum.controllerWalks = take(&b.controllerWalks);
+			o.sum.merges = take(&b.merges);
+			o.sum.geometryBounds = take(&b.geometryBounds);
+			o.sum.ticks = take(&b.ticks);
+			o.sum.worldDataTicks = take(&b.worldDataTicks);
+			o.sum.controllerTicks = take(&b.controllerTicks);
+			o.sum.mergeTicks = take(&b.mergeTicks);
+			o.sum.geometryBoundTicks = take(&b.geometryBoundTicks);
 		}
 		return out;
 	}
@@ -894,32 +945,87 @@ UInt32 __fastcall CountControllerWalk(void* self, void* /*edx*/, UInt32 timeBits
 	if (!properties && !controllers) {
 		InterlockedIncrement64(&g_sceneWalksIdle);
 	}
-	return g_controllerWalk(self, nullptr, timeBits, flag);
+	if (!InActorUpdate()) {
+		return g_controllerWalk(self, nullptr, timeBits, flag);
+	}
+	const unsigned __int64 start = __rdtsc();
+	const UInt32 eax = g_controllerWalk(self, nullptr, timeBits, flag);
+	g_actorControllerTicks += __rdtsc() - start;
+	return eax;
 }
 UInt32 __fastcall CountWorldData(void* self, void* /*edx*/) {
 	InterlockedIncrement64(&g_sceneWorldData);
-	return g_worldData(self, nullptr);
+	if (!InActorUpdate()) {
+		return g_worldData(self, nullptr);
+	}
+	const unsigned __int64 start = __rdtsc();
+	const UInt32 eax = g_worldData(self, nullptr);
+	g_actorWorldDataTicks += __rdtsc() - start;
+	return eax;
+}
+UInt32 __fastcall CountBoundMerge(void* self, void* /*edx*/, const void* other) {
+	if (!InActorUpdate()) {
+		return g_boundMerge(self, nullptr, other);
+	}
+	++g_actorMerges;
+	const unsigned __int64 start = __rdtsc();
+	const UInt32 eax = g_boundMerge(self, nullptr, other);
+	g_actorMergeTicks += __rdtsc() - start;
+	return eax;
+}
+UInt32 __fastcall CountGeometryBound(void* self, void* /*edx*/) {
+	if (!InActorUpdate()) {
+		return g_geometryBound(self, nullptr);
+	}
+	++g_actorGeometryBounds;
+	const unsigned __int64 start = __rdtsc();
+	const UInt32 eax = g_geometryBound(self, nullptr);
+	g_actorGeometryBoundTicks += __rdtsc() - start;
+	return eax;
 }
 UInt32 __fastcall CountObjectUpdate(void* self, void* /*edx*/, UInt32 timeBits, UInt32 flag) {
 	const UInt32 site = static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(_ReturnAddress()));
-	// The counters are the render thread's own within this call (the loader
-	// thread's visits would add to them: a small noise, accepted).
+	if (site != kApplyAnimDataSite) {
+		const unsigned __int64 start = __rdtsc();
+		const UInt32 eax = g_objectUpdate(self, nullptr, timeBits, flag);
+		const unsigned __int64 elapsed = __rdtsc() - start;
+		g_objectUpdateTiming.Add(elapsed);
+		g_objectUpdateSites.Add(site, elapsed);
+		return eax;
+	}
+	// One actor's skeleton: the tree counters' difference across the call
+	// and the steps timed inside it (the loader thread's visits would add to
+	// the counters: a small noise, accepted; a difference that ran backwards
+	// across the summary's reset is dropped, not binned).
 	const LONG64 nodesBefore = g_sceneNodes;
 	const LONG64 worldBefore = g_sceneWorldData;
+	const LONG64 walksBefore = g_sceneWalks;
+	g_actorWorldDataTicks = g_actorControllerTicks = g_actorMergeTicks = g_actorGeometryBoundTicks = 0;
+	g_actorMerges = g_actorGeometryBounds = 0;
+	g_actorThread = __readfsdword(0x24);
+	g_actorActive = 1;
 	const unsigned __int64 start = __rdtsc();
 	const UInt32 eax = g_objectUpdate(self, nullptr, timeBits, flag);
 	const unsigned __int64 elapsed = __rdtsc() - start;
+	g_actorActive = 0;
 	g_objectUpdateTiming.Add(elapsed);
 	g_objectUpdateSites.Add(site, elapsed);
-	if (site == kApplyAnimDataSite) {
-		const LONG64 nodesAfter = g_sceneNodes;
-		const LONG64 worldAfter = g_sceneWorldData;
-		// The summary's reset of the counters can fall inside the call (run
-		// 20261109-145136 had one such call a window, read as 2^64 nodes); a
-		// difference that ran backwards is dropped, not binned.
-		if (nodesAfter >= nodesBefore && worldAfter >= worldBefore) {
-			g_actorUpdate.Add(static_cast<UInt64>(nodesAfter - nodesBefore), static_cast<UInt64>(worldAfter - worldBefore), elapsed);
-		}
+	const LONG64 nodesAfter = g_sceneNodes;
+	const LONG64 worldAfter = g_sceneWorldData;
+	const LONG64 walksAfter = g_sceneWalks;
+	if (nodesAfter >= nodesBefore && worldAfter >= worldBefore && walksAfter >= walksBefore) {
+		probe::ActorUpdateParts p;
+		p.nodes = static_cast<UInt64>(nodesAfter - nodesBefore);
+		p.worldData = static_cast<UInt64>(worldAfter - worldBefore);
+		p.controllerWalks = static_cast<UInt64>(walksAfter - walksBefore);
+		p.merges = g_actorMerges;
+		p.geometryBounds = g_actorGeometryBounds;
+		p.ticks = elapsed;
+		p.worldDataTicks = g_actorWorldDataTicks;
+		p.controllerTicks = g_actorControllerTicks;
+		p.mergeTicks = g_actorMergeTicks;
+		p.geometryBoundTicks = g_actorGeometryBoundTicks;
+		g_actorUpdate.Add(p);
 	}
 	return eax;
 }
@@ -944,6 +1050,33 @@ UInt32 InstallSceneUpdateProbe(LogFn log) {
 	                           reinterpret_cast<const void*>(&CountWorldData), reinterpret_cast<void**>(&g_worldData), log) ? 1 : 0;
 	made += InstallEntryDetour("NiAVObject::Update 0x00707370 (scene update)", kObjectUpdate, kObjectUpdateBytes, sizeof(kObjectUpdateBytes),
 	                           reinterpret_cast<const void*>(&CountObjectUpdate), reinterpret_cast<void**>(&g_objectUpdate), log) ? 1 : 0;
+	made += InstallEntryDetour("NiBound::Merge 0x0072A6B0 (scene update)", kBoundMerge, kBoundMergeBytes, sizeof(kBoundMergeBytes),
+	                           reinterpret_cast<const void*>(&CountBoundMerge), reinterpret_cast<void**>(&g_boundMerge), log) ? 1 : 0;
+	made += InstallEntryDetour("NiGeometry::UpdateWorldBound 0x00722AA0 (scene update)", kGeometryBound, kGeometryBoundBytes,
+	                           sizeof(kGeometryBoundBytes), reinterpret_cast<const void*>(&CountGeometryBound),
+	                           reinterpret_cast<void**>(&g_geometryBound), log) ? 1 : 0;
+	// The probe's own cost per timed step, for reading the walk: the median
+	// of a thousand empty timings.
+	{
+		unsigned __int64 samples[1001];
+		for (unsigned i = 0; i < 1001; ++i) {
+			const unsigned __int64 a = __rdtsc();
+			const unsigned __int64 b = __rdtsc();
+			samples[i] = b - a;
+		}
+		for (unsigned i = 1; i < 1001; ++i) {  // insertion sort, once
+			const unsigned __int64 v = samples[i];
+			unsigned j = i;
+			while (j > 0 && samples[j - 1] > v) {
+				samples[j] = samples[j - 1];
+				--j;
+			}
+			samples[j] = v;
+		}
+		g_timedStepOverheadTicks = samples[500];
+		log("Probe: scene update - a timed step inside ApplyAnimData carries about %llu ticks of the probe's own two TSC reads (median of 1000)",
+		    static_cast<unsigned long long>(g_timedStepOverheadTicks));
+	}
 	g_sceneUpdateOn = made != 0;
 	g_sceneUpdateClock = ReadClocks();
 	return made;

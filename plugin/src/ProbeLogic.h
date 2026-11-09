@@ -558,14 +558,34 @@ inline int FormatSceneUpdate(const SceneUpdateStats& s, double ticksPerMilliseco
 // and sums them in buckets by the node count, so that a street's armoured
 // NPCs and the road's creatures show as what they are: how many nodes an
 // actor has, and what one node costs.
+// What one ApplyAnimData call left in the counters: the nodes visited, the
+// calls of the tree's steps and the ticks each step took inside the call,
+// so the call's time splits into its steps and the walk between them.
+struct ActorUpdateParts {
+	std::uint64_t nodes = 0;             // NiNode::UpdateDownwardPass 0x0070A0D0 visits
+	std::uint64_t worldData = 0;         // NiAVObject::UpdateWorldData 0x0070C120 calls
+	std::uint64_t controllerWalks = 0;   // NiAVObject::UpdateObjectControllers 0x0047C930 calls
+	std::uint64_t merges = 0;            // NiBound::Merge 0x0072A6B0 calls
+	std::uint64_t geometryBounds = 0;    // NiGeometry::UpdateWorldBound 0x00722AA0 calls
+	std::uint64_t ticks = 0;             // the whole call
+	std::uint64_t worldDataTicks = 0;    // inside the call, inclusive per step
+	std::uint64_t controllerTicks = 0;
+	std::uint64_t mergeTicks = 0;
+	std::uint64_t geometryBoundTicks = 0;
+
+	std::uint64_t TimedCalls() const { return worldData + controllerWalks + merges + geometryBounds; }
+	std::uint64_t StepTicks() const { return worldDataTicks + controllerTicks + mergeTicks + geometryBoundTicks; }
+	// The walk: the call's time not inside any timed step (recursion, the
+	// virtual calls, the bound copies), never below zero.
+	std::uint64_t WalkTicks() const { return ticks > StepTicks() ? ticks - StepTicks() : 0; }
+};
+
 struct ActorUpdateStats {
 	static constexpr unsigned kBuckets = 5;
 	static constexpr std::uint64_t kBounds[kBuckets - 1] = {50, 100, 200, 400};  // nodes a call, inclusive upper bounds
 	struct Bucket {
 		std::uint64_t calls = 0;
-		std::uint64_t nodes = 0;
-		std::uint64_t worldData = 0;
-		std::uint64_t ticks = 0;
+		ActorUpdateParts sum;
 	};
 	Bucket buckets[kBuckets] = {};
 
@@ -577,12 +597,26 @@ struct ActorUpdateStats {
 		}
 		return kBuckets - 1;
 	}
-	void Add(std::uint64_t nodes, std::uint64_t worldData, std::uint64_t ticks) {
-		Bucket& b = buckets[BucketOf(nodes)];
+	void Add(const ActorUpdateParts& p) {
+		Bucket& b = buckets[BucketOf(p.nodes)];
 		++b.calls;
-		b.nodes += nodes;
-		b.worldData += worldData;
-		b.ticks += ticks;
+		b.sum.nodes += p.nodes;
+		b.sum.worldData += p.worldData;
+		b.sum.controllerWalks += p.controllerWalks;
+		b.sum.merges += p.merges;
+		b.sum.geometryBounds += p.geometryBounds;
+		b.sum.ticks += p.ticks;
+		b.sum.worldDataTicks += p.worldDataTicks;
+		b.sum.controllerTicks += p.controllerTicks;
+		b.sum.mergeTicks += p.mergeTicks;
+		b.sum.geometryBoundTicks += p.geometryBoundTicks;
+	}
+	void Add(std::uint64_t nodes, std::uint64_t worldData, std::uint64_t ticks) {
+		ActorUpdateParts p;
+		p.nodes = nodes;
+		p.worldData = worldData;
+		p.ticks = ticks;
+		Add(p);
 	}
 	std::uint64_t Calls() const {
 		std::uint64_t n = 0;
@@ -594,8 +628,10 @@ struct ActorUpdateStats {
 };
 
 // "Probe: scene update - ApplyAnimData by nodes a call: <=50 nodes N calls
-// (X nodes, Y world data, Z us each, W ns a node), ...; none" - the buckets
-// with calls only; the raw ticks without a calibration.
+// (X nodes, Y world data, Z us each, W ns a node; of it world data A us,
+// K controller walks B us, M merges C us, G geometry bounds D us, walk E
+// us, T timed steps), ...;" - per call averages, the buckets with calls
+// only; "none" without a call; the raw ticks without a calibration.
 inline int FormatActorUpdate(const ActorUpdateStats& s, double ticksPerMillisecond, char* out, std::size_t capacity) {
 	int at = std::snprintf(out, capacity, "Probe: scene update - ApplyAnimData by nodes a call:");
 	if (s.Calls() == 0) {
@@ -616,20 +652,26 @@ inline int FormatActorUpdate(const ActorUpdateStats& s, double ticksPerMilliseco
 		} else {
 			std::snprintf(label, sizeof(label), "<=%llu", static_cast<unsigned long long>(ActorUpdateStats::kBounds[i]));
 		}
-		const double perCallNodes = static_cast<double>(b.nodes) / static_cast<double>(b.calls);
-		const double perCallWorld = static_cast<double>(b.worldData) / static_cast<double>(b.calls);
+		const double calls = static_cast<double>(b.calls);
+		const ActorUpdateParts& p = b.sum;
 		at += std::snprintf(out + at, capacity - at, "%s %s nodes %llu calls (%.0f nodes, %.0f world data", first ? "" : ",", label,
-		                    static_cast<unsigned long long>(b.calls), perCallNodes, perCallWorld);
+		                    static_cast<unsigned long long>(b.calls), static_cast<double>(p.nodes) / calls, static_cast<double>(p.worldData) / calls);
 		first = false;
 		if (at < 0 || static_cast<std::size_t>(at) >= capacity) {
 			break;
 		}
 		if (ticksPerMillisecond > 0.0) {
-			const double usEach = static_cast<double>(b.ticks) / ticksPerMillisecond * 1000.0 / static_cast<double>(b.calls);
-			const double nsNode = b.nodes == 0 ? 0.0 : static_cast<double>(b.ticks) / ticksPerMillisecond * 1e6 / static_cast<double>(b.nodes);
-			at += std::snprintf(out + at, capacity - at, ", %.1f us each, %.0f ns a node)", usEach, nsNode);
+			const auto us = [&](std::uint64_t t) { return static_cast<double>(t) / ticksPerMillisecond * 1000.0 / calls; };
+			const double nsNode = p.nodes == 0 ? 0.0 : static_cast<double>(p.ticks) / ticksPerMillisecond * 1e6 / static_cast<double>(p.nodes);
+			at += std::snprintf(out + at, capacity - at,
+			                    ", %.1f us each, %.0f ns a node; of it world data %.1f us, %.0f controller walks %.1f us, %.0f merges %.1f us, "
+			                    "%.0f geometry bounds %.1f us, walk %.1f us, %.0f timed steps)",
+			                    us(p.ticks), nsNode, us(p.worldDataTicks), static_cast<double>(p.controllerWalks) / calls, us(p.controllerTicks),
+			                    static_cast<double>(p.merges) / calls, us(p.mergeTicks), static_cast<double>(p.geometryBounds) / calls,
+			                    us(p.geometryBoundTicks), us(p.WalkTicks()), static_cast<double>(p.TimedCalls()) / calls);
 		} else {
-			at += std::snprintf(out + at, capacity - at, ", %llu ticks)", static_cast<unsigned long long>(b.ticks));
+			at += std::snprintf(out + at, capacity - at, ", %llu ticks, of it steps %llu ticks)", static_cast<unsigned long long>(p.ticks),
+			                    static_cast<unsigned long long>(p.StepTicks()));
 		}
 	}
 	if (at >= 0 && static_cast<std::size_t>(at) < capacity) {
