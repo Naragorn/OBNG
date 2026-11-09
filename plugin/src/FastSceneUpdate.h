@@ -14,13 +14,16 @@
 //     transforms bit for bit. A root that is not a plain node or a shape the
 //     order cannot describe goes to the original (FastSceneUpdate.cpp,
 //     InstallRouteActorUpdate).
-//   [Shadow] ActorUpdate=1: the subtree's world transforms and bounds are
-//     saved, the original runs, its results are saved, the state is put
-//     back, the flat run runs on it (without the controllers, which ran
-//     already), the two results are compared per object bit for bit, and
-//     the original's results are put back for the game. The Other subtrees
-//     (the heads' BSFaceGenNiNode) and the collision objects run twice:
-//     a gate run, never play (InstallShadowActorUpdate).
+//   [Shadow] ActorUpdate=1: the flat run runs once, with the original's
+//     arithmetic beside it - every world transform also computed by the
+//     original NiTransform compose 0x0053D7A0 and compared bit for bit (the
+//     original's written), every node's bound recomputed afterwards by the
+//     original NiNode::UpdateWorldBound 0x0070A360 and compared (the
+//     original's kept). The game gets the original's numbers; the calls and
+//     their order are the rebuild's, held against the original's bytes by
+//     the oracle test. A subtree cannot run twice in a frame (controllers
+//     fire once, the heads step the face animation by the tick), so this is
+//     the gate (InstallShadowActorUpdate).
 //
 // Both patch the same entry; Load lets the shadow win when both are asked,
 // and neither is installed beside [Probe] SceneUpdate, whose detour sits on

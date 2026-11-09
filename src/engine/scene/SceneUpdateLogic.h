@@ -130,18 +130,24 @@ inline void UpdateWorld(const Transform* parentWorld, const Transform& local, Tr
 //
 // Read in 0x0070A0D0 (0x0070A12F..0x0070A16E) and the same in NiNode::
 // UpdateWorldBound 0x0070A360: FLDZ; FCOM child.radius; TEST AH,0x44; JNP
-// skip - the child is skipped when its radius compares equal to 0.0 (C3) or
-// unordered (C2: a NaN); FCOMP own.radius; TEST AH,0x44; JP merge - the
-// child's bound is merged (NiBound::Merge 0x0072A6B0) when the node's radius
-// is neither 0.0 nor NaN, copied over the node's bound otherwise. The sign
-// of a zero plays no part (FCOM treats -0.0 as equal to 0.0).
+// skip - FCOM leaves C3 alone for equal (AH & 0x44 = 0x40, odd parity, the
+// jump taken: the child is skipped when its radius is 0.0), C0 or nothing
+// for less or greater (0x00: even parity, not taken), and C3, C2 and C0 for
+// unordered (0x44: even parity, not taken - a NaN radius is not skipped).
+// FCOMP own.radius; TEST AH,0x44; JP merge - taken for a node radius that
+// is non-zero (0x00) or NaN (0x44): the child's bound is merged (NiBound::
+// Merge 0x0072A6B0); for a node radius of 0.0 the child's bound is copied
+// over the node's. The sign of a zero plays no part (-0.0 compares equal).
+// The NaN cases were read wrong at first (as skips and copies) and shown
+// wrong by the gate run of 2026-11-09 16:53: an actor whose child bound
+// carried a NaN radius had it merged by the original.
 enum class MergeStep { Skip, Copy, Merge };
 
 inline MergeStep MergeStepFor(float ownRadius, float childRadius) {
-	if (childRadius == 0.0f || std::isnan(childRadius)) {
+	if (childRadius == 0.0f) {
 		return MergeStep::Skip;
 	}
-	if (ownRadius == 0.0f || std::isnan(ownRadius)) {
+	if (ownRadius == 0.0f) {
 		return MergeStep::Copy;
 	}
 	return MergeStep::Merge;

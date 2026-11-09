@@ -8,7 +8,6 @@
 #include <cstdio>
 #include <cstring>
 #include <unordered_map>
-#include <vector>
 
 #include "ShadowRecorder.h"
 #include "engine/scene/SceneUpdate.h"
@@ -123,29 +122,52 @@ void __fastcall RouteReplacement(void* self, void* /*edx*/, UInt32 timeBits, UIn
 }
 
 // ---- The shadow ------------------------------------------------------------------------------
+//
+// One run, the rebuild's, with the original's arithmetic beside it: the
+// subtree cannot run twice in a frame (the controllers fire once, the heads'
+// BSFaceGenNiNode steps the face animation by the tick - re/functions/
+// 0x0055D4C0.md - and a controller may rewrite an earlier node's local), so
+// the gate verifies each value where it is made. Every world transform is
+// computed by Compose and by the original 0x0053D7A0 on the same parent
+// world and local, compared bit for bit, and the original's is written;
+// every node's bound, after the flat merge pass, is recomputed by the
+// original NiNode::UpdateWorldBound 0x0070A360 (vtable +0x78) from the
+// children's bounds, compared, and the original's stays. The game thus gets
+// the original's numbers; the calls, their order and the merge decisions
+// are the rebuild's, which the oracle test holds against the original's
+// bytes (tests/SceneUpdateOracleTest.cpp).
 
-struct State {
-	std::vector<su::Transform> worlds;
-	std::vector<su::Bound> bounds;
+using ComposeFn = su::Transform*(__thiscall*)(const su::Transform* parentWorld, su::Transform* out, const su::Transform* local);
+constexpr UInt32 kComposeAddress = 0x0053D7A0;  // read: 0x0070C13B calls it with ECX = parent+0x64, (out, local), RET 8
+
+struct VerifyPort : eng::Port {
+	unsigned worldsCompared = 0;
+	unsigned worldsDiffer = 0;
+	su::Handle firstDiffering = 0;
+	su::Transform firstOurs{};
+	su::Transform firstOriginal{};
+
+	void WriteWorld(su::Handle h, const su::Transform& ours) {
+		su::Transform original;
+		const su::Transform* parent = ParentWorld(h);
+		const su::Transform local = Local(h);
+		if (parent == nullptr) {
+			original = local;
+		} else {
+			reinterpret_cast<ComposeFn>(kComposeAddress)(parent, &original, &local);
+		}
+		++worldsCompared;
+		if (std::memcmp(&original, &ours, sizeof(su::Transform)) != 0) {
+			if (worldsDiffer == 0) {
+				firstDiffering = h;
+				firstOurs = ours;
+				firstOriginal = original;
+			}
+			++worldsDiffer;
+		}
+		eng::Port::WriteWorld(h, original);
+	}
 };
-
-void Take(const su::Order& order, State& s) {
-	s.worlds.resize(order.entries.size());
-	s.bounds.resize(order.entries.size());
-	for (std::size_t i = 0; i < order.entries.size(); ++i) {
-		const su::Handle h = order.entries[i].object;
-		std::memcpy(&s.worlds[i], eng::Pointer(h + eng::kWorldTransformOffset), sizeof(su::Transform));
-		std::memcpy(&s.bounds[i], eng::Pointer(h + eng::kWorldBoundOffset), sizeof(su::Bound));
-	}
-}
-
-void Put(const su::Order& order, const State& s) {
-	for (std::size_t i = 0; i < order.entries.size(); ++i) {
-		const su::Handle h = order.entries[i].object;
-		std::memcpy(eng::Pointer(h + eng::kWorldTransformOffset), &s.worlds[i], sizeof(su::Transform));
-		std::memcpy(eng::Pointer(h + eng::kWorldBoundOffset), &s.bounds[i], sizeof(su::Bound));
-	}
-}
 
 void Hex(const void* bytes, UInt32 count, char* out) {
 	const UInt8* b = static_cast<const UInt8*>(bytes);
@@ -167,50 +189,63 @@ void __fastcall ShadowReplacement(void* self, void* /*edx*/, UInt32 timeBits, UI
 		Original(self, timeBits, flag);
 		return;
 	}
-	// A copy of the order: the original's run below may change the tree
-	// (an Other subtree may attach nodes), and the comparison must walk the
-	// objects the run was built for.
-	const su::Order kept = *order;
-	State before;
-	Take(kept, before);
-	Original(self, timeBits, flag);
-	State original;
-	Take(kept, original);
-	Put(kept, before);
+	const su::Order kept = *order;  // the run's own copy: another root's rebuild must not move it
+	VerifyPort port;
 	{
 		eng::RoundingFromX87 rounding;
-		eng::Port port;
-		su::Run(kept, port, TimeOf(timeBits), false);  // the controllers ran in the original's pass
+		su::Run(kept, port, TimeOf(timeBits), (flag & 0xFF) != 0);
 	}
-	State ours;
-	Take(kept, ours);
-	Put(kept, original);
+	// The bounds: children first (the reverse of the depth-first order), the
+	// original's own merge from the children's bounds against the flat pass's.
+	unsigned boundsCompared = 0;
+	unsigned boundsDiffer = 0;
+	su::Handle firstBound = 0;
+	su::Bound firstBoundOurs{};
+	su::Bound firstBoundOriginal{};
+	for (std::size_t n = kept.entries.size(); n-- > 0;) {
+		const su::Entry& e = kept.entries[n];
+		if (e.kind != su::Kind::Node) {
+			continue;
+		}
+		su::Bound ours;
+		std::memcpy(&ours, eng::Pointer(e.object + eng::kWorldBoundOffset), sizeof(ours));
+		port.UpdateWorldBound(e.object);  // NiNode::UpdateWorldBound 0x0070A360 through the vtable: radius 0, the children merged
+		su::Bound original;
+		std::memcpy(&original, eng::Pointer(e.object + eng::kWorldBoundOffset), sizeof(original));
+		++boundsCompared;
+		if (std::memcmp(&ours, &original, sizeof(ours)) != 0) {
+			if (boundsDiffer == 0) {
+				firstBound = e.object;
+				firstBoundOurs = ours;
+				firstBoundOriginal = original;
+			}
+			++boundsDiffer;
+		}
+	}
+	eng::UpdateUpwardFrom(root);
 	InterlockedIncrement64(&g_routed);
+	if (port.worldsDiffer == 0 && boundsDiffer == 0) {
+		RecordCall(Shadowed::ActorUpdate, false, "", "");
+		return;
+	}
 	char inputs[96];
 	std::snprintf(inputs, sizeof(inputs), "root=%08X entries=%u time=%g flag=%u", root, static_cast<unsigned>(kept.entries.size()),
 	              TimeOf(timeBits), flag & 0xFF);
-	for (std::size_t i = 0; i < kept.entries.size(); ++i) {
-		const bool world = std::memcmp(&original.worlds[i], &ours.worlds[i], sizeof(su::Transform)) != 0;
-		const bool bound = std::memcmp(&original.bounds[i], &ours.bounds[i], sizeof(su::Bound)) != 0;
-		if (!world && !bound) {
-			continue;
-		}
-		char a[sizeof(su::Transform) * 2 + 1];
-		char b[sizeof(su::Transform) * 2 + 1];
-		if (world) {
-			Hex(&original.worlds[i], sizeof(su::Transform), a);
-			Hex(&ours.worlds[i], sizeof(su::Transform), b);
-		} else {
-			Hex(&original.bounds[i], sizeof(su::Bound), a);
-			Hex(&ours.bounds[i], sizeof(su::Bound), b);
-		}
-		char detail[320];
-		std::snprintf(detail, sizeof(detail), " entry %u object %08X kind %d %s: original %s; rebuild %s", static_cast<unsigned>(i),
-		              kept.entries[i].object, static_cast<int>(kept.entries[i].kind), world ? "world" : "bound", a, b);
-		RecordCall(Shadowed::ActorUpdate, true, detail, inputs);
-		return;
+	char a[sizeof(su::Transform) * 2 + 1];
+	char b[sizeof(su::Transform) * 2 + 1];
+	char detail[400];
+	if (port.worldsDiffer != 0) {
+		Hex(&port.firstOriginal, sizeof(su::Transform), a);
+		Hex(&port.firstOurs, sizeof(su::Transform), b);
+		std::snprintf(detail, sizeof(detail), " %u of %u worlds differ, %u of %u bounds; first world: object %08X original %s; rebuild %s",
+		              port.worldsDiffer, port.worldsCompared, boundsDiffer, boundsCompared, port.firstDiffering, a, b);
+	} else {
+		Hex(&firstBoundOriginal, sizeof(su::Bound), a);
+		Hex(&firstBoundOurs, sizeof(su::Bound), b);
+		std::snprintf(detail, sizeof(detail), " %u of %u bounds differ (worlds all equal, %u); first bound: node %08X original %s; rebuild %s",
+		              boundsDiffer, boundsCompared, port.worldsCompared, firstBound, a, b);
 	}
-	RecordCall(Shadowed::ActorUpdate, false, "", "");
+	RecordCall(Shadowed::ActorUpdate, true, detail, inputs);
 }
 
 }  // namespace

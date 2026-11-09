@@ -21,6 +21,7 @@
 #include "engine/scene/SceneUpdate.h"
 #include "engine/scene/SceneUpdateLogic.h"
 
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -52,9 +53,11 @@ void __thiscall LeafDownward(void* self, float /*time*/, std::uint8_t /*controll
 	b.center[0] = world.pos[0];
 	b.center[1] = world.pos[1];
 	b.center[2] = world.pos[2];
-	// A small scale gives radius 0: skipped by the merge (decided from the
-	// values, so both copies of a tree decide alike).
-	b.radius = world.scale < 0.6f ? 0.0f : world.scale;
+	// A small scale gives radius 0 (skipped by the merge), a large one a NaN
+	// radius (the gate run of 2026-11-09 16:53 met one in the game: merged,
+	// not skipped) - decided from the values, so both copies of a tree decide
+	// alike.
+	b.radius = world.scale < 0.6f ? 0.0f : world.scale > 3.6f ? std::nanf("") : world.scale;
 	std::memcpy(eng::Pointer(h + eng::kWorldBoundOffset), &b, sizeof(b));
 }
 

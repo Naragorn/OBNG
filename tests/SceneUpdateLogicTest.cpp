@@ -94,15 +94,16 @@ void TestCompose() {
 }
 
 void TestMergeStep() {
-	Section("The bound merge's decision (0x0070A12F..6E): child 0 or NaN skipped, own 0 or NaN copied over, else merged");
+	Section("The bound merge's decision (0x0070A12F..6E): child 0 skipped, own 0 copied over, else merged; a NaN is neither 0 nor skipped");
 	const float nan = std::nanf("");
 	Check(MergeStepFor(0.0f, 5.0f) == MergeStep::Copy, "own 0, child 5: copy");
 	Check(MergeStepFor(-0.0f, 5.0f) == MergeStep::Copy, "own -0, child 5: copy (FCOM treats -0 as 0)");
-	Check(MergeStepFor(nan, 5.0f) == MergeStep::Copy, "own NaN, child 5: copy (C2 falls through to the copy)");
+	Check(MergeStepFor(nan, 5.0f) == MergeStep::Merge, "own NaN, child 5: merge (unordered sets C3, C2 and C0: even parity, the merge branch)");
 	Check(MergeStepFor(3.0f, 5.0f) == MergeStep::Merge, "own 3, child 5: merge");
 	Check(MergeStepFor(3.0f, 0.0f) == MergeStep::Skip, "child 0: skip");
 	Check(MergeStepFor(3.0f, -0.0f) == MergeStep::Skip, "child -0: skip");
-	Check(MergeStepFor(3.0f, nan) == MergeStep::Skip, "child NaN: skip");
+	Check(MergeStepFor(3.0f, nan) == MergeStep::Merge, "child NaN: not skipped, merged (the gate run of 16:53 showed the original doing so)");
+	Check(MergeStepFor(0.0f, nan) == MergeStep::Copy, "own 0, child NaN: copied over");
 	Check(MergeStepFor(0.0f, 0.0f) == MergeStep::Skip, "both 0: skip (the child's test comes first)");
 }
 
