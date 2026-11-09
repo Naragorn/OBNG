@@ -1,0 +1,74 @@
+# The OCCLUSION CULLER's open bug (docs/subsystems/occlusion-cull.md, Nadi's
+# Windows headset 2026-11-08: things pop, the whole picture blue at times, with
+# iMultiSample=0 - the image-space texture route the Linux culler runs never
+# used): the Gold Road at -27 -3 in the single pass, the head still, then
+# turning as a headset does (`head spin` 1.2 and 2.4 degrees a frame: 90 and
+# 180 degrees a second at 75 Hz), both eyes dumped at every mark and the right
+# eye for the 24 frames after it ([Debug] EyeDump / EyeDumpFrames), so the
+# pictures show whether something pops or turns blue on this route, and
+# OBNG.log's summary says how many skips the same pass's test left unconfirmed.
+# Oblivion.ini must have iMultiSample=0 for this run (the texture route); set
+# it by hand before, put it back after. Two sides: -on.ini (the culler) and
+# -off.ini (the route alone) - blue on both sides is the route's, blue on the
+# on side only is the culler's.
+#
+# 2026-11-09: the blue was found to be drawn geometry after a skipped list
+# leader (docs/subsystems/occlusion-cull.md), on every route; this scenario
+# with -on.ini is the check that no frame shows pure blue:
+#   python3 tools/cull-blue.py artifacts/shadow/obng-cull-texture-turn/<run>
+# (0.0 in every frame with the fix).
+#
+# Run, from OBNG's folder (OBNG.dll deployed, iMultiSample=0):
+#   tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-cull-on.ini tools/hand-scripts/obng-cull-texture-turn.txt --save OBVRHarnessMOO --run-timeout 240
+#   (then -off.ini)
+
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Render SinglePassStereo=1
+ini Debug EyeDump=1
+ini Debug EyeDumpFrames=24
+expect Single-pass stereo: OBNG took the eyes ok (0)
+ini Performance Enabled=1
+ini Performance GpuTiming=1
+ini Performance StartAfterSeconds=20
+ini Performance CaptureSeconds=50
+ini Performance MaxRecords=131072
+ini Performance Sampler=0
+expect Performance: capture 1 started
+expect Performance: export
+console-at ready tgm
+console-at ready tai
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at ready cow Tamriel -27 -3
+
+expect HandScript: finished
+reject menu Container
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 16
+head yaw 0
+wait 2
+mark still
+wait 2
+head spin 1.2
+wait 1
+mark slow-turn
+wait 3
+head spin 2.4
+wait 1
+mark fast-turn
+wait 3
+head spin 0
+wait 1
+mark stopped
+wait 2
+head yaw 0
+head spin -2.4
+wait 1
+mark fast-turn-back
+wait 3
+head spin 0
+wait 2
+mark done

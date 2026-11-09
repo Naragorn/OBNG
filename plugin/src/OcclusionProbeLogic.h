@@ -70,7 +70,8 @@ struct ScreenRect {
 	float top;
 	float right;
 	float bottom;
-	float depth;
+	float depth;           // the bound's nearest corner
+	float farDepth = 0.0f; // its farthest corner (at most 1), for the culler's trace
 };
 
 enum class RectKind : std::uint8_t {
@@ -107,6 +108,7 @@ inline RectKind BoundRect(const Bound& bound, const float origin[3], const float
 	float minY = 0.0f;
 	float maxY = 0.0f;
 	float minZ = 0.0f;
+	float maxZ = 0.0f;
 	for (int corner = 0; corner < 8; ++corner) {
 		const float x = centre[0] + ((corner & 1) != 0 ? bound.radius : -bound.radius);
 		const float y = centre[1] + ((corner & 2) != 0 ? bound.radius : -bound.radius);
@@ -124,7 +126,7 @@ inline RectKind BoundRect(const Bound& bound, const float origin[3], const float
 		if (corner == 0) {
 			minX = maxX = ndcX;
 			minY = maxY = ndcY;
-			minZ = ndcZ;
+			minZ = maxZ = ndcZ;
 			continue;
 		}
 		minX = ndcX < minX ? ndcX : minX;
@@ -132,6 +134,7 @@ inline RectKind BoundRect(const Bound& bound, const float origin[3], const float
 		minY = ndcY < minY ? ndcY : minY;
 		maxY = ndcY > maxY ? ndcY : maxY;
 		minZ = ndcZ < minZ ? ndcZ : minZ;
+		maxZ = ndcZ > maxZ ? ndcZ : maxZ;
 	}
 	if (!std::isfinite(minX) || !std::isfinite(maxX) || !std::isfinite(minY) || !std::isfinite(maxY) || !std::isfinite(minZ)) {
 		return RectKind::kNoBound;
@@ -152,7 +155,7 @@ inline RectKind BoundRect(const Bound& bound, const float origin[3], const float
 	if (!(left < right) || !(top < bottom)) {
 		return RectKind::kOutsideFrustum;
 	}
-	*out = ScreenRect{left, top, right, bottom, minZ};
+	*out = ScreenRect{left, top, right, bottom, minZ, maxZ > 1.0f ? 1.0f : maxZ};
 	return RectKind::kTestable;
 }
 

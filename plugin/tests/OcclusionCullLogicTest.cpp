@@ -403,6 +403,7 @@ void TestSummary() {
 	s.skipsConfirmed = 380;
 	s.skipsUnconfirmed = 20;
 	s.skippedAtRecord = 300;
+	s.firstOfListKept = 20;
 	s.deviceResets = 1;
 	s.decideTicks = 20000;
 	s.endTestsTicks = 30000;
@@ -417,9 +418,9 @@ void TestSummary() {
 	          std::string::npos,
 	      "per pass, the shares");
 	Check(text.find("shapes 100 drawn 40 skipped skinned 20 drawn 0 skipped;") != std::string::npos, "by kind, kinds without draws left out");
-	Check(text.find("; 30 skips a pass decided at the pass record; tests 60 a pass (0 beyond capacity, 0 table full), results 400 hidden / 150 visible, "
+	Check(text.find("; 30 skips a pass decided at the pass record, 2 hidden list leaders drawn; tests 60 a pass (0 beyond capacity, 0 table full), results 400 hidden / 150 visible, "
 	                "2 batches lost, 5 verdicts refused by the camera gate, 1 device resets") != std::string::npos,
-	      "the tests, the record skips and the resets");
+	      "the tests, the record skips, the list leaders and the resets");
 	Check(text.find("; skips tested in their own pass: 380 confirmed hidden, 20 unconfirmed (5 %, the popping's upper bound)") != std::string::npos,
 	      "the skips confirmed by their own pass's test");
 	Check(text.find("per pass: decide 2.000 ms, end tests 3.000 ms, collect 1.000 ms, eye pass 40.000 ms") != std::string::npos, "the cost per pass");
@@ -435,6 +436,157 @@ void TestSummary() {
 	Check(std::string(line).find("0 eye passes") != std::string::npos && std::string(line).find("(0 %)") != std::string::npos, "nothing divides by zero");
 }
 
+void TestListLeaders() {
+	Section("The first record of every pass list is drawn whatever its verdict");
+	cull::ListTracker lists;
+	Check(lists.First(132) && !lists.First(132) && !lists.First(132) && lists.First(185) && !lists.First(185) && lists.First(132),
+	      "a record whose pass id differs from the last one's leads its list");
+	lists.Reset();
+	Check(lists.First(132), "after the reset the next record leads");
+
+	Section("The tests' viewport holds both eyes");
+	Viewport ports[2] = {{0, 0, 2568, 2568, 0.0f, 1.0f}, {2568, 0, 2568, 2568, 0.0f, 1.0f}};
+	Viewport both{};
+	cull::UnionViewport(ports, &both);
+	Check(both.x == 0 && both.y == 0 && both.width == 5136 && both.height == 2568 && both.minZ == 0.0f && both.maxZ == 1.0f, "side by side: the whole frame");
+	Viewport one[2] = {{100, 50, 200, 300, 0.0f, 1.0f}, {0, 0, 0, 0, 0.0f, 1.0f}};
+	cull::UnionViewport(one, &both);
+	Check(both.x == 100 && both.y == 50 && both.width == 200 && both.height == 300, "a second port without area adds nothing");
+}
+
+void TestTrace() {
+	Section("The trace: which passes, the control rectangles, the planes, the lines");
+	cull::TraceSettings off;
+	Check(!cull::TraceDue(75, off, 0), "off: no pass is traced");
+	cull::TraceSettings t;
+	t.passes = 2;
+	t.every = 75;
+	Check(!cull::TraceDue(74, t, 0) && cull::TraceDue(75, t, 0) && cull::TraceDue(150, t, 1) && !cull::TraceDue(225, t, 2),
+	      "every 75th pass, as many times as asked");
+	Viewport ports[2] = {{0, 0, 100, 50, 0.0f, 1.0f}, {100, 0, 100, 50, 0.0f, 1.0f}};
+	EyeRects c = cull::ControlRects(ports, 1.0f);
+	Check(c.has[0] && c.has[1] && c.rect[0].left == 0.0f && c.rect[0].top == 0.0f && c.rect[0].right == 100.0f && c.rect[0].bottom == 50.0f &&
+	          c.rect[1].left == 100.0f && c.rect[1].right == 200.0f && c.rect[1].depth == 1.0f && c.rect[0].depth == 1.0f,
+	      "the control: both ports whole at the depth");
+	Viewport none[2] = {{0, 0, 100, 50, 0.0f, 1.0f}, {0, 0, 0, 0, 0.0f, 1.0f}};
+	Check(cull::ControlRects(none, 0.0f).has[0] && !cull::ControlRects(none, 0.0f).has[1], "a port without area gets no control rectangle");
+
+	float proj[16] = {};
+	const float n = 10.0f;
+	const float f = 10000.0f;
+	proj[0] = 1.0f;
+	proj[5] = 1.0f;
+	proj[10] = f / (f - n);
+	proj[11] = 1.0f;
+	proj[14] = -n * f / (f - n);
+	float nearPlane = 0.0f;
+	float farPlane = 0.0f;
+	Check(cull::NearFar(proj, &nearPlane, &farPlane) && std::fabs(nearPlane - n) < 0.01f && std::fabs(farPlane - f) / f < 0.001f,
+	      "the planes back out of a perspective projection");
+	float ortho[16] = {};
+	ortho[15] = 1.0f;
+	ortho[10] = 0.5f;
+	Check(!cull::NearFar(ortho, &nearPlane, &farPlane), "an orthographic projection has no planes to give");
+
+	char line[700];
+	Camera camera;
+	camera.position[0] = 1.5f;
+	camera.position[1] = -2.5f;
+	camera.position[2] = 100.0f;
+	camera.direction[1] = 1.0f;
+	Check(cull::FormatTraceCamera(75, camera, proj, ports, line, sizeof(line)) > 0, "the head line written");
+	std::string head(line);
+	Check(head.find("Route: occlusion cull trace pass 75 - camera 1.5 -2.5 100.0 looking 0.000 1.000 0.000; near 10.00 far 10000") == 0, "the camera and the planes");
+	Check(head.find("; port 0 0,0 100x50 z 0.00..1.00; port 1 100,0 100x50 z 0.00..1.00") != std::string::npos, "the ports");
+	cull::FormatTraceCamera(76, camera, ortho, ports, line, sizeof(line));
+	Check(std::string(line).find("not a perspective projection (_34 0.000 _33 0.500 _43 0.000)") != std::string::npos, "another projection is named as such");
+
+	cull::Test control;
+	control.control = true;
+	control.rects = c;
+	Check(cull::FormatTraceTest(5, 30, control, "", "", Bound{}, 1234, line, sizeof(line)) > 0 &&
+	          std::string(line) == "Route: occlusion cull trace pass 5 control at z 1.000: 1234 pixels",
+	      "the control's line");
+	cull::Test g;
+	g.geometry = 0x12345678;
+	g.kind = static_cast<std::uint8_t>(DrawKind::kDirectShape);
+	g.skipped = true;
+	g.rects.has[0] = true;
+	g.rects.rect[0] = oc::ScreenRect{10.0f, 20.0f, 30.0f, 40.0f, 0.5f};
+	Bound b{{1.0f, 2.0f, 3.0f}, 4.0f};
+	cull::FormatTraceTest(5, 3, g, "Rock01", "Rocks", b, 0, line, sizeof(line));
+	Check(std::string(line) == "Route: occlusion cull trace pass 5 test 3: direct shapes 12345678 \"Rock01\" in \"Rocks\" bound 1.0 2.0 3.0 r 4.0; eye 0 10,20-30,40 z 0.500000 eye 1 none; skipped, 0 pixels -> hidden",
+	      "a test's line");
+	g.skipped = false;
+	g.rects.has[1] = true;
+	g.rects.rect[1] = oc::ScreenRect{110.0f, 20.0f, 130.0f, 40.0f, 0.25f};
+	cull::FormatTraceTest(5, 4, g, "Rock01", "Rocks", b, 77, line, sizeof(line));
+	Check(std::string(line).find("eye 0 10,20-30,40 z 0.500000 eye 1 110,20-130,40 z 0.250000; drawn, 77 pixels -> visible") != std::string::npos,
+	      "both eyes, drawn, visible");
+	g.rects.rect[0].farDepth = 0.75f;
+	cull::FormatTraceTest(5, 4, g, "Rock01", "Rocks", b, 0, line, sizeof(line), 500);
+	Check(std::string(line).find("; drawn, 0 pixels -> hidden; at depth 0.750000 500 pixels -> something at or behind it") != std::string::npos,
+	      "the second query's result beside the final one");
+	cull::FormatTraceTest(5, 4, g, "Rock01", "Rocks", b, 0, line, sizeof(line), 0);
+	Check(std::string(line).find("at depth 0.750000 0 pixels -> everything nearer") != std::string::npos, "nothing at the second depth either");
+	Check(sizeof(cull::kControlDepths) / sizeof(float) == 8 && cull::kControlDepths[0] == 0.0f && cull::kControlDepths[7] == 1.0f, "the control depths");
+	g.rects.rect[1].farDepth = 0.9f;
+	float farVertices[cull::kMaxRectVertices * 4];
+	Check(cull::RectTriangles(g.rects, farVertices, true) == 12 && farVertices[2] == 0.75f && farVertices[6 * 4 + 2] == 0.9f &&
+	          cull::RectTriangles(g.rects, farVertices) == 12 && farVertices[2] == 0.5f,
+	      "the far triangles take each rectangle's far depth, the plain ones the near");
+
+	Section("The pass ids of a traced pass");
+	cull::PassIds ids;
+	ids.Note(7, 0, 0, 1, "Wall", 15);
+	ids.Note(7, 0, 0, 1, "Wall2", 0);
+	ids.Note(9, 1, 1, 1, "Leaf", 15);
+	ids.Note(7, 0, 0, 1, "Wall3", 15);
+	Check(ids.draws == 4 && ids.count == 3 && ids.seen[0].draws == 2 && ids.seen[1].id == 9 && ids.seen[1].blend == 1 && ids.seen[2].draws == 1 &&
+	          std::string(ids.seen[0].name) == "Wall" && ids.seen[0].colour == 15,
+	      "runs of one id are one entry each, the first draw's states and name kept");
+	for (std::uint32_t i = 0; i < cull::kPassIdsKept + 3; ++i) {
+		ids.Note(100 + i, 0, 0, 1, "x");
+	}
+	Check(ids.count == cull::kPassIdsKept && ids.dropped == 6 && ids.draws == 4 + cull::kPassIdsKept + 3, "beyond the kept runs the changes are counted");
+	cull::PassIds few;
+	few.Note(7, 0, 0, 1, "Wall", 15);
+	few.Note(9, 1, 1, 1, "Leaf", 0);
+	Batch tested;
+	tested.count = 12;
+	char idsLine[1400];
+	cull::FormatPassIds(75, few, tested, idsLine, sizeof(idsLine));
+	Check(std::string(idsLine) == "Route: occlusion cull trace pass 75 - 2 renderer draws, 12 tests; pass ids: 7 x1 (0/0/1/15) \"Wall\" 9 x1 (1/1/1/0) \"Leaf\"",
+	      "the pass ids line");
+	ids.Reset();
+	Check(ids.count == 0 && ids.draws == 0 && ids.dropped == 0, "reset for the next traced pass");
+
+	Section("A control test is read, recorded nowhere, counted nowhere");
+	Ring r;
+	bool lost = false;
+	Batch& a = r.Begin(1, &lost);
+	a.tests[0] = control;
+	a.tests[1].geometry = 0x1000;
+	a.count = 2;
+	a.pending = true;
+	Table table;
+	table.Claim(0x1000, 1);
+	Stats stats;
+	cull::Collect(&r, &table, &stats, [&](const Batch&, std::uint32_t, std::uint32_t* pixels) {
+		*pixels = 0;
+		return Read::kDone;
+	});
+	Check(a.cursor == 2 && !a.pending && stats.resultsHidden == 1 && stats.resultsVisible == 0, "the control read past, the geometry's result counted once");
+	Check(table.Find(0x1000)->hiddenFrame == 1, "the geometry's verdict recorded");
+	bool emptyTouched = false;
+	for (const Verdict& v : table.slots) {
+		if (v.geometry == 0 && v.hiddenFrame != 0) {
+			emptyTouched = true;
+		}
+	}
+	Check(!emptyTouched, "no empty slot took the control's result");
+}
+
 }  // namespace
 
 int main() {
@@ -446,5 +598,7 @@ int main() {
 	TestDecide();
 	TestRingAndCollect();
 	TestSummary();
+	TestListLeaders();
+	TestTrace();
 	return Failures();
 }

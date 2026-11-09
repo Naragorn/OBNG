@@ -1,0 +1,47 @@
+# The culler's wrong skips (the Gold Road runs of 2026-11-09: visible rocks,
+# logs and bushes in the flower field left blue, on the texture path and at
+# MSAA 4 alike): the same still look at two places without placed plants, the
+# Market District and the Imperial Prison, both eyes dumped and the right eye
+# for 24 frames after each mark. Blue there too says the culler's test is wrong
+# everywhere; clean pictures point at the plants' depth.
+#   tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-cull-on.ini tools/hand-scripts/obng-cull-places-dump.txt --save OBVRHarnessMOO --run-timeout 240
+
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Render SinglePassStereo=1
+ini Debug EyeDump=1
+ini Debug EyeDumpFrames=24
+expect Single-pass stereo: OBNG took the eyes ok (0)
+console-at ready tgm
+console-at ready tai
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at ready coc ICMarketDistrict01
+console-at market-done coc ImperialDungeon01
+
+expect HandScript: finished
+reject menu Container
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 16
+head yaw 0
+wait 2
+mark market
+wait 2
+head yaw -90
+wait 2
+mark market-left
+wait 2
+head yaw 0
+mark market-done
+wait 16
+head yaw 0
+wait 2
+mark dungeon
+wait 2
+head yaw -90
+wait 2
+mark dungeon-left
+wait 2
+mark done

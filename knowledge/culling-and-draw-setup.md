@@ -785,3 +785,23 @@ constants), took 0.02 to 0.08 ms a pass more off the finish at the five
 places (run obng-cull/20261108-174227, measured); the record's light
 constants (0x007ECB20, 0x007EE390 per light) are that cheap per draw.
 
+
+
+### A pass list's first record is drawn inside the shader state's bracket (2026-11-09)
+
+**Read** (re/functions/0x007AC9A0.md steps 2 and 5): RenderPassList
+0x007AC9A0 begins the pass's shader state from the first item's shader
+(0x007D1320 for shader types 1..5, 0x007FD260 for 0x1B), draws the list's
+first record through DrawRenderPass 0x007A9820, ends the state (0x007D1800
+or the stub 0x0060D0A0), and only then draws the rest of the list.
+**Measured** (the occlusion culler's trace, docs/subsystems/occlusion-cull.md,
+runs obng-cull-texture-turn/20261109-134743 and obng-cull-places-dump/
+20261109-12*): when the culler left the first record out, the records
+drawn after it in the same list came out pure blue (0, 0, 255) - opaque
+draws with the colour mask on, at the right depth, without their
+textures; the Market District's walls when looking left, the Gold Road's
+log and rocks. Drawing the first record whatever the verdict ended it. So
+whatever the first draw does inside the bracket (its shader pipeline open,
+slots 10/11, is the candidate) is state the later records of the list
+rely on; a renderer that leaves records out must keep the list leader.
+What the state is, is unread.

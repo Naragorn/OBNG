@@ -168,23 +168,91 @@ market); fixed afterwards, the behaviour unchanged.
 - The 37 untestable draws a pass (near-plane bounds) cannot be culled by a
   bound; the player's body is OBVR's CullHiddenHead, the rest is the sky.
 
-- **Open bug (Nadi, 2026-11-08 ~21:15, Windows headset, OBNG.dll 006748a,
-  OBVR single pass with iMultiSample=0): things pop, and "alles blau
-  manchmal" - the whole picture blue at times. Turned off again
-  (OcclusionCull=0 in the Windows OBNG.ini).**
-  - *Measured (OBNG.log, 15 ten-second summaries):* 10-14 % of a pass's
-    draws skipped; skipsUnconfirmed 0.3 to 3.6 % of the skips (525 of
-    192566 up to 1046 of 29426), against 0.0 to 0.1 % in the Linux runs;
-    the culler's own time 11-14 % of the pass's (cullMs / passMs). No
-    Reset line beyond the hook: the device was not reset.
-  - *Not known:* what the blue is. Guesses, none checked: the fog or sky
-    colour where the skipped geometry should be (a near-plane or
-    large-bound shape skipped while it covers the view), or the
-    image-space texture route of iMultiSample=0, which the Linux culler
-    runs never used (they ran MSAA 4). The popping fits the higher
-    unconfirmed share: the headset turns faster than the gate's 10
-    degrees per verdict age.
-  - *First step:* the Linux culler run with iMultiSample=0 (the texture
-    route) and an eye dump at a fast turn; if blue shows there, the route
-    is the cause, else the Windows headset with a smaller turn gate.
-  - *Logs:* artifacts/windows-headset-occlusion-20261108 (not in Git).
+- ~~Open bug (Nadi, 2026-11-08 ~21:15, Windows headset): things pop, "alles
+  blau manchmal"~~ **Found and fixed 2026-11-09, see the next section.**
+
+## The blue geometry (2026-11-09): the first record of a pass list
+
+Nadi's Windows headset (2026-11-08 ~21:15, OBNG.dll 006748a, single pass
+with iMultiSample=0) showed popping and, at times, the whole picture blue;
+the culler was turned off. Reproduced in the Linux harness the next morning
+with the same DLL state, the eyes dumped at every mark
+(tools/hand-scripts/obng-cull-texture-turn.txt: the Gold Road at -27 -3,
+the head still, then turning at 90 and 180 degrees a second;
+obng-cull-places-dump.txt: the Market District and the Imperial Prison, a
+still look and a 90-degree turn). All measured, runs
+artifacts/shadow/obng-cull-texture-turn/20261109-12* and
+obng-cull-places-dump/20261109-12*/13*:
+
+- Pure blue (0, 0, 255) silhouettes of the fallen log at the player's feet,
+  rocks and a bush at the Gold Road still view (9-10 % of the eye), and of
+  nearly every building wall when looking left in the Market District
+  (69-75 %); the culler off: none. Alike on the image-space texture route
+  (iMultiSample=0) and at MSAA 4, with the grass off (`tg`) and with it,
+  and with two OBNG.dll builds (17d076eb and the day's). The Market case
+  came and went between runs, the Gold Road case came every run.
+- The summary's "skips unconfirmed" stayed at 0.0-0.1 % throughout: the
+  metric cannot see this, because the blue things are **drawn**, not
+  skipped (below). The Linux measurement runs of 2026-11-08 never had their
+  pictures looked at; they carried the same blue.
+- The trace ([Route] OcclusionCullTrace, below) at the Gold Road still
+  view: the blue log "LandscapeLogScotchPine01" reaches the renderer every
+  pass as one draw of pass id 185 with alpha blend off, alpha test off,
+  depth write on and the colour mask 7 - a normal opaque draw that comes
+  out blue. The depth buffer under the blue holds depth between 0.9 and
+  0.99 (40 to 400 units): the blue is drawn geometry at the right depth
+  with the wrong colour, not a hole. The culler's own camera, projection,
+  surfaces, viewports and control rectangles (both eyes at depth 0: every
+  pixel; at depth 1: the sky's share) were all as expected; the second
+  queries at the far depth and at depth 0.5 found nothing wrong with the
+  rectangles either.
+- The pass-id trace put the log's siblings in view: in the passes where
+  the Ayleid arches at the left edge of the view were skipped at their
+  records (hidden behind trees, rightly), the first draw reaching the
+  renderer in the pass-132 list changed from "ARArch03:1" to the log, and
+  the pure blue followed the draws after a skipped list leader.
+- **Read** (re/functions/0x007AC9A0.md steps 2 and 5): RenderPassList
+  begins the pass's shader state with the first item's shader (0x007D1320),
+  draws the list's FIRST record through DrawRenderPass, ends the state
+  (0x007D1800), then draws the rest. With the first record left out, the
+  begin and the end run with no draw between them, and the records drawn
+  after it come out without their textures. What exactly the first draw
+  does inside the bracket that the later ones need is unread (the shader
+  slots 10/11/17 of the first item's pipeline are the candidates); the fix
+  does not depend on it.
+- **The fix** (ListTracker in OcclusionCullLogic.h): the first record of
+  every pass list is drawn whatever its verdict. The lists come one pass
+  id at a time, so a record whose pass id differs from the previous
+  record's leads its list; CullDrawRenderPass draws it (and the
+  Do_RenderShape under it) with g_forceDraw, counted in the summary as
+  "hidden list leaders drawn" (1 a pass on the Gold Road, 2026-11-09
+  13:53). **Measured:** the Gold Road and the Market/Prison scenario with
+  the fix, every dumped frame 0.0 % pure blue (tools/cull-blue.py; runs
+  obng-cull-texture-turn/20261109-135348, obng-cull-places-dump/20261109-135611);
+  the Gold Road still skips 47 % of the draws, 270 of 224 852 skips
+  unconfirmed.
+- **Also fixed:** the end tests ran under the pass's last viewport, eye
+  0's, which clipped every second-eye rectangle away - "hidden in both
+  eyes" was eye 0 alone in every run so far. EndTests now sets one
+  viewport over both ports (UnionViewport), the state block puts the old
+  one back.
+- **Also seen:** on the Gold Road the finish at the eye-pass site runs
+  twice a frame - the second is the water reflection (all its draws
+  outside eye 0's viewport, a 1024x1024 target, 6-13 draws); in the Market
+  and the Prison once. The culler counts it as an eye pass, so there
+  OcclusionCullMaxAge counts half frames.
+
+### The trace ([Route] OcclusionCullTrace=N, OcclusionCullTraceDepth)
+
+For such a hunt: every 75th eye pass, N times, the log gets the camera and
+the planes, the render target, depth-stencil and viewport at the pass and
+at the tests, every renderer draw's pass id in order with its draw count
+and the alpha blend / alpha test / depth write / colour mask of its first
+draw (OcclusionCullNoteDraw from the route's two entries), eight control
+rectangles over both ports at depths 0, 0.5, 0.9, 0.99, 0.995, 0.997,
+0.999 and 1 (a depth histogram of the buffer), and every hidden or skipped
+test among the pass's first 512 with its name, parent node, bound,
+rectangles, depth and pixel count, plus a second query of the same
+rectangles at the bound's far depth (or at OcclusionCullTraceDepth). INI:
+tools/hand-scripts/obng-measure-cull-trace.ini. Off by default, costs
+nothing then.

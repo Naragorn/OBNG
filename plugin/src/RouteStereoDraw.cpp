@@ -657,6 +657,7 @@ struct RecordingShaderPort {
 UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry, UInt32 data, UInt32 skin, UInt32 world, UInt32 worldBound,
                                      UInt32 record) {
 	const RoutedDrawScope routed{self};
+	OcclusionCullNoteDraw(geometry);
 	whole_engine::EnginePorts ports{static_cast<whole_engine::NiDX9RendererView*>(self),
 	                                reinterpret_cast<whole_engine::ShaderInterfaceCastFn>(whole_engine::kShaderInterfaceCastAddress)};
 	ReapplySeen seen_;
@@ -699,6 +700,7 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
 
 UInt32 __fastcall RouteDrawSkinned(void* self, void* /*edx*/, UInt32 geometry, UInt32 data, UInt32 skin, UInt32 world, UInt32 worldBound) {
 	const RoutedDrawScope routed{self};
+	OcclusionCullNoteDraw(geometry);
 	eye::SwitchCounters counters;
 	ReapplySeen seen_;
 	SkinnedEnginePorts ports{static_cast<skinned_engine::NiDX9RendererView*>(self), nullptr, &seen_};

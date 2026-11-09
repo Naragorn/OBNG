@@ -146,15 +146,20 @@ inline TestKind RectsFor(const oc::Bound& bound, const float origin[3], const fl
 
 // The rectangles as one triangle list of pre-transformed vertices (x, y,
 // depth, rhw), six vertices a rectangle; returns the vertex count (6 or 12).
+// With atFar, the rectangles sit at the bound's farthest depth (the trace).
 constexpr std::uint32_t kMaxRectVertices = 12;
-inline std::uint32_t RectTriangles(const EyeRects& rects, float out[kMaxRectVertices * 4]) {
+inline std::uint32_t RectTriangles(const EyeRects& rects, float out[kMaxRectVertices * 4], bool atFar = false) {
 	std::uint32_t vertices = 0;
 	for (int eye = 0; eye < 2; ++eye) {
 		if (!rects.has[eye]) {
 			continue;
 		}
 		float quad[16];
-		oc::QuadVertices(rects.rect[eye], quad);
+		oc::ScreenRect rect = rects.rect[eye];
+		if (atFar) {
+			rect.depth = rect.farDepth;
+		}
+		oc::QuadVertices(rect, quad);
 		static const int kOrder[6] = {0, 1, 2, 2, 1, 3};
 		for (int corner : kOrder) {
 			std::memcpy(out + vertices * 4, quad + corner * 4, 4 * sizeof(float));
@@ -289,13 +294,29 @@ struct Test {
 	std::uint32_t geometry = 0;
 	EyeRects rects;
 	bool skipped = false;  // the geometry was left out of the pass this test belongs to
+	bool control = false;  // a trace control (ControlRects): no geometry, no verdict, logged only
+	std::uint8_t kind = 0;  // DrawKind, for the trace
 };
+
+constexpr std::uint32_t kTraceTests = 512;  // tests of a traced pass whose names are kept and whose results are logged (the hidden ones)
 
 struct Batch {
 	std::uint32_t frame = 0;
 	std::uint32_t count = 0;
 	std::uint32_t cursor = 0;  // the first test whose result is not read yet
 	bool pending = false;      // issued, results outstanding
+	bool traced = false;       // [Route] OcclusionCullTrace: this pass's first tests are logged with their results
+	char names[kTraceTests][oc::kNameWidth] = {};
+	char parents[kTraceTests][oc::kNameWidth] = {};  // the geometry's parent node's name
+	oc::Bound bounds[kTraceTests] = {};
+	// The far tests of a traced pass: the first tests issued once more at the
+	// pass's end with their rectangles at the bound's farthest depth - what
+	// lies in front of the whole bound, not only of its nearest point.
+	bool earlyIssued = false;
+	std::uint32_t earlyCount = 0;
+	std::uint32_t earlyAtDraw = 0;   // the renderer draw (from 1) the early tests went before
+	std::uint32_t earlyPassId = 0;   // its pass id
+	char earlyName[oc::kNameWidth] = {};
 	Test tests[kMaxTests];
 };
 
@@ -381,6 +402,7 @@ struct Stats {
 	std::uint64_t batchesLost = 0;
 	std::uint64_t motionBlocked = 0;  // a hidden verdict the camera gate refused
 	std::uint64_t skippedAtRecord = 0;  // skips decided at the pass record (DrawRenderPass 0x007A9820), before the light constants
+	std::uint64_t firstOfListKept = 0;  // hidden records drawn anyway because they lead their pass list (ListTracker)
 	std::uint64_t deviceResets = 0;     // the device's Reset seen: the queries and the state block given up and made anew
 	std::uint64_t skipsConfirmed = 0;   // a skipped geometry whose test of the same pass found its bound hidden: it could not have shown
 	std::uint64_t skipsUnconfirmed = 0; // ... found its bound seen: the upper bound of the popping
@@ -476,6 +498,29 @@ inline void Count(Stats* stats, DrawKind kind, Decision decision, TestKind testK
 	}
 }
 
+// ---- The first record of a pass list ------------------------------------------------
+//
+// RenderPassList 0x007AC9A0 begins the pass's shader state, draws the list's
+// FIRST record, ends the state, then draws the rest (re/functions/
+// 0x007AC9A0.md steps 2 and 5). A first record left out leaves the begin and
+// the end with no draw between them, and the records after it come out
+// without their textures (measured 2026-11-09: the pure blue log and walls,
+// docs/subsystems/occlusion-cull.md). So the first record of every list is
+// drawn whatever its verdict. The lists come one pass id at a time, so a
+// record whose pass id differs from the last record's leads its list.
+struct ListTracker {
+	std::uint32_t lastPass = 0xFFFFFFFFu;
+
+	void Reset() { lastPass = 0xFFFFFFFFu; }
+
+	// True for the first record of a list.
+	bool First(std::uint32_t pass) {
+		const bool first = pass != lastPass;
+		lastPass = pass;
+		return first;
+	}
+};
+
 // ---- Reading the results ------------------------------------------------------------
 
 enum class Read : std::uint8_t { kDone, kNotYet, kFailed };
@@ -503,6 +548,10 @@ void Collect(Ring* ring, Table* table, Stats* stats, ReadFn&& read) {
 				break;
 			}
 			const bool hidden = pixels == 0;
+			if (t.control) {
+				++b->cursor;  // a trace control: no geometry behind it, nothing to record or count
+				continue;
+			}
 			table->Record(t.geometry, b->frame, hidden);
 			if (hidden) {
 				++stats->resultsHidden;
@@ -591,9 +640,9 @@ inline int FormatSummary(const Stats& s, const Settings& settings, double ticksP
 		}
 		line.Text(" %s %.0f drawn %.0f skipped", KindName(static_cast<DrawKind>(i)), perPass(k.draws), perPass(k.skipped + k.skippedFrustum));
 	}
-	line.Text("; %.0f skips a pass decided at the pass record; tests %.0f a pass (%llu beyond capacity, %llu table full), results %llu hidden / "
+	line.Text("; %.0f skips a pass decided at the pass record, %.0f hidden list leaders drawn; tests %.0f a pass (%llu beyond capacity, %llu table full), results %llu hidden / "
 	          "%llu visible, %llu batches lost, %llu verdicts refused by the camera gate, %llu device resets",
-	          perPass(s.skippedAtRecord), perPass(s.testsIssued), static_cast<unsigned long long>(s.testsBeyondCapacity),
+	          perPass(s.skippedAtRecord), perPass(s.firstOfListKept), perPass(s.testsIssued), static_cast<unsigned long long>(s.testsBeyondCapacity),
 	          static_cast<unsigned long long>(s.tableFull), static_cast<unsigned long long>(s.resultsHidden),
 	          static_cast<unsigned long long>(s.resultsVisible), static_cast<unsigned long long>(s.batchesLost),
 	          static_cast<unsigned long long>(s.motionBlocked), static_cast<unsigned long long>(s.deviceResets));
@@ -616,6 +665,179 @@ inline int FormatSummary(const Stats& s, const Settings& settings, double ticksP
 	          static_cast<unsigned long long>(s.resultsHidden), static_cast<unsigned long long>(s.resultsVisible),
 	          static_cast<unsigned long long>(s.skipsConfirmed), static_cast<unsigned long long>(s.skipsUnconfirmed), totalMs(s.passTicks),
 	          totalMs(s.decideTicks + s.endTestsTicks + s.collectTicks));
+	return line.at;
+}
+
+// ---- The trace ([Route] OcclusionCullTrace) -------------------------------------------
+//
+// For the open bug of 2026-11-09 (visible geometry skipped: pure blue where
+// rocks, logs and whole buildings should be): every `every`-th eye pass,
+// `passes` times, logs its camera, its surfaces and viewports at the pass
+// and at the tests, two control rectangles (both ports whole, at depth 0 and
+// at depth 1: what nothing hides and what everything hides) and the first
+// kTraceTests tests with their rectangles, depths and pixel counts.
+
+struct TraceSettings {
+	std::uint32_t passes = 0;  // eye passes to trace; 0 off
+	std::uint32_t every = 75;  // one pass in this many is traced (about one a second at 75 Hz)
+	float probeDepth = -1.0f;  // >= 0: the second query of a traced test sits at this depth instead of the bound's far one
+};
+constexpr float kControlDepths[] = {0.0f, 0.5f, 0.9f, 0.99f, 0.995f, 0.997f, 0.999f, 1.0f};
+
+inline bool TraceDue(std::uint32_t frame, const TraceSettings& trace, std::uint32_t tracedSoFar) {
+	return trace.passes != 0 && tracedSoFar < trace.passes && trace.every != 0 && frame % trace.every == 0;
+}
+
+// The one viewport that holds both eyes' ports (depth 0..1), for the tests.
+inline void UnionViewport(const oc::Viewport port[2], oc::Viewport* out) {
+	std::uint32_t left = port[0].x;
+	std::uint32_t top = port[0].y;
+	std::uint32_t right = port[0].x + port[0].width;
+	std::uint32_t bottom = port[0].y + port[0].height;
+	if (port[1].width != 0 && port[1].height != 0) {
+		left = port[1].x < left ? port[1].x : left;
+		top = port[1].y < top ? port[1].y : top;
+		right = port[1].x + port[1].width > right ? port[1].x + port[1].width : right;
+		bottom = port[1].y + port[1].height > bottom ? port[1].y + port[1].height : bottom;
+	}
+	*out = oc::Viewport{left, top, right - left, bottom - top, 0.0f, 1.0f};
+}
+
+// Both ports whole at one depth: the control test.
+inline EyeRects ControlRects(const oc::Viewport port[2], float depth) {
+	EyeRects out;
+	for (int eye = 0; eye < 2; ++eye) {
+		const float left = static_cast<float>(port[eye].x);
+		const float top = static_cast<float>(port[eye].y);
+		out.rect[eye] = oc::ScreenRect{left, top, left + static_cast<float>(port[eye].width), top + static_cast<float>(port[eye].height), depth};
+		out.has[eye] = port[eye].width != 0 && port[eye].height != 0;
+	}
+	return out;
+}
+
+// The near and far planes of a perspective projection (0x00762640.md: _33 =
+// f/(f-n), _43 = -nf/(f-n)); false for another kind of matrix.
+inline bool NearFar(const float proj[16], float* nearPlane, float* farPlane) {
+	const float a = proj[10];
+	const float b = proj[14];
+	if (!(proj[11] == 1.0f) || !(a > 1.0f) || !(b < 0.0f)) {
+		return false;
+	}
+	*nearPlane = -b / a;
+	*farPlane = b / (1.0f - a);
+	return true;
+}
+
+inline void TextRect(oc::LineWriter& line, const EyeRects& rects, int eye) {
+	if (!rects.has[eye]) {
+		line.Text(" eye %d none", eye);
+		return;
+	}
+	const oc::ScreenRect& r = rects.rect[eye];
+	line.Text(" eye %d %.0f,%.0f-%.0f,%.0f z %.6f", eye, static_cast<double>(r.left), static_cast<double>(r.top), static_cast<double>(r.right),
+	          static_cast<double>(r.bottom), static_cast<double>(r.depth));
+}
+
+// One traced pass's head: the camera, the planes and the ports.
+inline int FormatTraceCamera(std::uint32_t frame, const Camera& camera, const float proj[16], const oc::Viewport port[2], char* out,
+                             std::size_t capacity) {
+	oc::LineWriter line{out, capacity};
+	float nearPlane = 0.0f;
+	float farPlane = 0.0f;
+	const bool perspective = NearFar(proj, &nearPlane, &farPlane);
+	line.Text("Route: occlusion cull trace pass %u - camera %.1f %.1f %.1f looking %.3f %.3f %.3f; ", frame, static_cast<double>(camera.position[0]),
+	          static_cast<double>(camera.position[1]), static_cast<double>(camera.position[2]), static_cast<double>(camera.direction[0]),
+	          static_cast<double>(camera.direction[1]), static_cast<double>(camera.direction[2]));
+	if (perspective) {
+		line.Text("near %.2f far %.0f", static_cast<double>(nearPlane), static_cast<double>(farPlane));
+	} else {
+		line.Text("not a perspective projection (_34 %.3f _33 %.3f _43 %.3f)", static_cast<double>(proj[11]), static_cast<double>(proj[10]),
+		          static_cast<double>(proj[14]));
+	}
+	for (int eye = 0; eye < 2; ++eye) {
+		line.Text("; port %d %u,%u %ux%u z %.2f..%.2f", eye, port[eye].x, port[eye].y, port[eye].width, port[eye].height,
+		          static_cast<double>(port[eye].minZ), static_cast<double>(port[eye].maxZ));
+	}
+	return line.at;
+}
+
+// One traced test with its result; with farPixels >= 0, the same rectangles'
+// pixels at the bound's farthest depth.
+inline int FormatTraceTest(std::uint32_t frame, std::uint32_t index, const Test& test, const char* name, const char* parent,
+                           const oc::Bound& bound, std::uint32_t pixels, char* out, std::size_t capacity, long long farPixels = -1) {
+	oc::LineWriter line{out, capacity};
+	if (test.control) {
+		line.Text("Route: occlusion cull trace pass %u control at z %.3f: %u pixels", frame, static_cast<double>(test.rects.rect[0].depth), pixels);
+		return line.at;
+	}
+	line.Text("Route: occlusion cull trace pass %u test %u: %s %08X \"%s\" in \"%s\" bound %.1f %.1f %.1f r %.1f;", frame, index,
+	          KindName(static_cast<DrawKind>(test.kind)), test.geometry, name, parent, static_cast<double>(bound.centre[0]),
+	          static_cast<double>(bound.centre[1]), static_cast<double>(bound.centre[2]), static_cast<double>(bound.radius));
+	TextRect(line, test.rects, 0);
+	TextRect(line, test.rects, 1);
+	line.Text("; %s, %u pixels -> %s", test.skipped ? "skipped" : "drawn", pixels, pixels == 0 ? "hidden" : "visible");
+	if (farPixels >= 0) {
+		line.Text("; at depth %.6f %lld pixels -> %s", static_cast<double>(test.rects.rect[0].farDepth), farPixels,
+		          farPixels == 0 ? "everything nearer" : "something at or behind it");
+	}
+	return line.at;
+}
+
+// The pass ids of a traced pass's renderer draws, in the order they came,
+// each with its draw count and the alpha states of its first draw.
+struct PassIdSeen {
+	std::uint32_t id = 0;
+	std::uint32_t draws = 0;
+	std::uint32_t blend = 0;   // D3DRS_ALPHABLENDENABLE at the first draw
+	std::uint32_t test = 0;    // D3DRS_ALPHATESTENABLE
+	std::uint32_t zWrite = 0;  // D3DRS_ZWRITEENABLE
+	std::uint32_t colour = 0;  // D3DRS_COLORWRITEENABLE
+	char name[oc::kNameWidth] = {};
+};
+constexpr std::uint32_t kPassIdsKept = 48;
+struct PassIds {
+	PassIdSeen seen[kPassIdsKept];
+	std::uint32_t count = 0;
+	std::uint32_t draws = 0;    // every renderer draw of the pass
+	std::uint32_t dropped = 0;  // id changes beyond the kept ones
+
+	void Reset() { *this = PassIds{}; }
+
+	// One renderer draw: a run of the same id grows its entry, a change starts one.
+	void Note(std::uint32_t id, std::uint32_t blend, std::uint32_t test, std::uint32_t zWrite, const char* name, std::uint32_t colour = 15) {
+		++draws;
+		if (count != 0 && seen[count - 1].id == id) {
+			++seen[count - 1].draws;
+			return;
+		}
+		if (count == kPassIdsKept) {
+			++dropped;
+			return;
+		}
+		PassIdSeen& s = seen[count++];
+		s.id = id;
+		s.draws = 1;
+		s.blend = blend;
+		s.test = test;
+		s.zWrite = zWrite;
+		s.colour = colour;
+		oc::CopyName(name, s.name);
+	}
+};
+
+// The pass ids line: "id x draws (b/t/z/c) \"first name\"" per run; b = alpha
+// blend, t = alpha test, z = depth write, c = colour write mask at the run's
+// first draw.
+inline int FormatPassIds(std::uint32_t frame, const PassIds& ids, const Batch& batch, char* out, std::size_t capacity) {
+	oc::LineWriter line{out, capacity};
+	line.Text("Route: occlusion cull trace pass %u - %u renderer draws, %u tests; pass ids:", frame, ids.draws, batch.count);
+	for (std::uint32_t i = 0; i < ids.count; ++i) {
+		const PassIdSeen& s = ids.seen[i];
+		line.Text(" %u x%u (%u/%u/%u/%u) \"%s\"", s.id, s.draws, s.blend, s.test, s.zWrite, s.colour, s.name);
+	}
+	if (ids.dropped != 0) {
+		line.Text(" ... %u more runs", ids.dropped);
+	}
 	return line.at;
 }
 

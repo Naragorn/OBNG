@@ -27,6 +27,12 @@ UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log);
 // leave it out. Render thread.
 bool OcclusionCullDraws(UInt32 geometry, bool strips);
 
+// Every renderer draw of the eye pass, before it runs (the route's two entry
+// detours): nothing unless the pass is traced ([Route] OcclusionCullTrace) -
+// then the pass id and alpha states are noted, and the first alpha-blended
+// draw issues the early tests. Render thread.
+void OcclusionCullNoteDraw(UInt32 geometry);
+
 // Asks for the culler's summary line; the render thread writes it at its
 // next eye pass (the counts since the last line, then reset). Nothing when
 // the culler is off.

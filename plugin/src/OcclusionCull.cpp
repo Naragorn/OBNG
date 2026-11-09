@@ -80,6 +80,8 @@ constexpr UInt32 kRendererInverseViewOffset = 0xA00;
 constexpr UInt32 kOriginGlobal = 0x00B3F92C;
 constexpr UInt32 kGeometryBoundOffset = 0x20;
 constexpr UInt32 kGeometrySkinOffset = 0xB8;
+constexpr UInt32 kObjectNameOffset = 0x08;  // NiObjectNET's name (the probe's)
+constexpr UInt32 kObjectParentOffset = 0x1C;  // NiAVObject's parent (the probe's)
 
 static_assert(sizeof(D3DVIEWPORT9) == sizeof(oc::Viewport), "the logic's viewport is D3DVIEWPORT9");
 
@@ -100,6 +102,12 @@ cull::Table g_table;
 cull::Ring g_ring;
 cull::Cameras g_cameras;
 cull::Stats g_stats;
+cull::TraceSettings g_trace;
+UInt32 g_traced = 0;  // passes traced so far
+cull::PassIds g_passIds;  // the traced pass's renderer draws by pass id
+cull::ListTracker g_lists;  // which record leads its pass list
+bool g_forceDraw = false;   // a list's first record is being drawn whatever its verdict
+IDirect3DQuery9* g_earlyQueries[cull::kTraceTests] = {};
 IDirect3DQuery9* g_queries[cull::kBatches][cull::kMaxTests] = {};
 UInt32 g_frame = 0;         // eye passes with eye data, from 1
 bool g_active = false;      // inside the eye pass's finish
@@ -143,6 +151,50 @@ void FlushSummaryIfRequested() {
 	g_stats.Reset();
 }
 
+// The geometry's name for the trace; a pointer that cannot be read gives the
+// empty name (the probe's ReadName).
+void ReadName(UInt32 geometry, char out[oc::kNameWidth]) {
+	char raw[oc::kNameWidth] = {};
+	__try {
+		const char* name = *reinterpret_cast<const char* const*>(static_cast<std::uintptr_t>(geometry + kObjectNameOffset));
+		for (std::size_t i = 0; name != nullptr && i + 1 < oc::kNameWidth && name[i] != '\0'; ++i) {
+			raw[i] = name[i];
+		}
+	} __except (EXCEPTION_EXECUTE_HANDLER) {
+		raw[0] = '\0';
+	}
+	oc::CopyName(raw, out);
+}
+
+// The trace's view of the device: the render target, the depth-stencil and
+// the viewport bound right now.
+void LogSurfaces(const char* when) {
+	D3DSURFACE_DESC target{};
+	D3DSURFACE_DESC depth{};
+	bool haveTarget = false;
+	bool haveDepth = false;
+	IDirect3DSurface9* surface = nullptr;
+	if (SUCCEEDED(g_device->GetRenderTarget(0, &surface)) && surface != nullptr) {
+		haveTarget = SUCCEEDED(surface->GetDesc(&target));
+		surface->Release();
+	}
+	surface = nullptr;
+	if (SUCCEEDED(g_device->GetDepthStencilSurface(&surface)) && surface != nullptr) {
+		haveDepth = SUCCEEDED(surface->GetDesc(&depth));
+		surface->Release();
+	}
+	D3DVIEWPORT9 port{};
+	const bool havePort = SUCCEEDED(g_device->GetViewport(&port));
+	DWORD zEnable = 0;
+	g_device->GetRenderState(D3DRS_ZENABLE, &zEnable);
+	g_log("Route: occlusion cull trace pass %u %s - target %ux%u format %u samples %u (%s), depth %ux%u format %u samples %u (%s), viewport %lu,%lu "
+	      "%lux%lu z %.2f..%.2f (%s), ZENABLE %lu",
+	      g_frame, when, target.Width, target.Height, static_cast<unsigned>(target.Format), static_cast<unsigned>(target.MultiSampleType),
+	      haveTarget ? "read" : "none", depth.Width, depth.Height, static_cast<unsigned>(depth.Format), static_cast<unsigned>(depth.MultiSampleType),
+	      haveDepth ? "read" : "none", port.X, port.Y, port.Width, port.Height, static_cast<double>(port.MinZ), static_cast<double>(port.MaxZ),
+	      havePort ? "read" : "none", static_cast<unsigned long>(zEnable));
+}
+
 void RefuseOnce(const char* what, HRESULT result) {
 	if (!g_refusedLogged) {
 		g_refusedLogged = true;
@@ -160,6 +212,12 @@ void ReleaseDeviceObjects() {
 				query->Release();
 				query = nullptr;
 			}
+		}
+	}
+	for (IDirect3DQuery9*& query : g_earlyQueries) {
+		if (query != nullptr) {
+			query->Release();
+			query = nullptr;
 		}
 	}
 	if (g_block != nullptr) {
@@ -253,6 +311,13 @@ void NoteCamera() {
 	std::memcpy(inverseRow, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(g_renderer + kRendererInverseViewOffset + 12 * sizeof(float))),
 	            sizeof(inverseRow));
 	g_cameras.Set(g_frame, cull::CameraOf(view, inverseRow));
+	if (g_batch != nullptr && g_batch->traced) {
+		float proj[16];
+		std::memcpy(proj, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(g_renderer + kRendererProjOffset)), sizeof(proj));
+		char line[600];
+		cull::FormatTraceCamera(g_frame, g_cameras.At(g_frame), proj, g_ports, line, sizeof(line));
+		g_log("%s", line);
+	}
 }
 
 // The decision for one draw inside the eye pass; a skipped geometry's test
@@ -301,6 +366,13 @@ cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind, bool countRepeat
 			test.geometry = geometry;
 			test.rects = rects;
 			test.skipped = decided.decision == cull::Decision::kSkip;
+			test.control = false;
+			test.kind = static_cast<std::uint8_t>(kind);
+			if (g_batch->traced && g_batch->count < cull::kTraceTests) {
+				ReadName(geometry, g_batch->names[g_batch->count]);
+				ReadName(ReadAt<UInt32>(geometry + kObjectParentOffset), g_batch->parents[g_batch->count]);
+				g_batch->bounds[g_batch->count] = bound;
+			}
 			++g_batch->count;
 			++g_stats.testsIssued;
 		} else {
@@ -313,13 +385,63 @@ cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind, bool countRepeat
 
 // After the eye pass's last draw: every queued rectangle pair into its
 // query, on the finished depth buffer.
+// The traced pass's first tests once more at the pass's end, the rectangles
+// at the bound's farthest depth: whether the depth in front lies before the
+// whole bound or within it. Inside EndTests' state block.
+void IssueFarTests() {
+	g_batch->earlyIssued = true;
+	const UInt32 count = g_batch->count < cull::kTraceTests ? g_batch->count : cull::kTraceTests;
+	float vertices[cull::kMaxRectVertices * 4];
+	UInt32 issued = 0;
+	for (UInt32 i = 0; i < count; ++i) {
+		if (g_batch->tests[i].control) {
+			break;
+		}
+		IDirect3DQuery9* query = EnsureQuery(&g_earlyQueries[i]);
+		if (query == nullptr) {
+			break;
+		}
+		if (g_trace.probeDepth >= 0.0f) {
+			for (int eye = 0; eye < 2; ++eye) {
+				g_batch->tests[i].rects.rect[eye].farDepth = g_trace.probeDepth;
+			}
+		}
+		const UInt32 vertexCount = cull::RectTriangles(g_batch->tests[i].rects, vertices, true);
+		query->Issue(D3DISSUE_BEGIN);
+		g_device->DrawPrimitiveUP(D3DPT_TRIANGLELIST, vertexCount / 3, vertices, 4 * sizeof(float));
+		query->Issue(D3DISSUE_END);
+		++issued;
+	}
+	g_batch->earlyCount = issued;
+}
+
 void EndTests() {
+	if (g_batch->traced) {
+		char ids[1400];
+		cull::FormatPassIds(g_frame, g_passIds, *g_batch, ids, sizeof(ids));
+		g_log("%s", ids);
+		LogSurfaces("at the tests");
+		for (float depth : cull::kControlDepths) {
+			if (g_batch->count < cull::kMaxTests) {
+				cull::Test& control = g_batch->tests[g_batch->count];
+				control = cull::Test{};
+				control.control = true;
+				control.rects = cull::ControlRects(g_ports, depth);
+				++g_batch->count;
+			}
+		}
+	}
 	if (g_batch->count == 0) {
 		return;
 	}
 	const unsigned __int64 t0 = __rdtsc();
 	g_block->Capture();
 	occlusion_device::SetTestState(g_device);
+	// Both eyes' ports in one viewport: the pass ends with eye 0's viewport, which
+	// would clip the second eye's rectangles away (measured 2026-11-09).
+	D3DVIEWPORT9 both{};
+	cull::UnionViewport(g_ports, reinterpret_cast<oc::Viewport*>(&both));
+	g_device->SetViewport(&both);
 	float vertices[cull::kMaxRectVertices * 4];
 	for (UInt32 i = 0; i < g_batch->count; ++i) {
 		IDirect3DQuery9* query = EnsureQuery(&g_queries[g_batchIndex][i]);
@@ -331,6 +453,9 @@ void EndTests() {
 		query->Issue(D3DISSUE_BEGIN);
 		g_device->DrawPrimitiveUP(D3DPT_TRIANGLELIST, count / 3, vertices, 4 * sizeof(float));
 		query->Issue(D3DISSUE_END);
+	}
+	if (g_batch->traced) {
+		IssueFarTests();
 	}
 	g_block->Apply();
 	g_batch->pending = g_batch->count != 0;
@@ -354,7 +479,22 @@ void Collect() {
 	const unsigned __int64 t0 = __rdtsc();
 	cull::Collect(&g_ring, &g_table, &g_stats, [](const cull::Batch& batch, UInt32 test, std::uint32_t* pixels) {
 		const UInt32 index = static_cast<UInt32>(&batch - g_ring.batches);
-		return ReadQuery(g_queries[index][test], pixels);
+		const cull::Read read = ReadQuery(g_queries[index][test], pixels);
+		// The trace logs the controls and every hidden or skipped test it kept.
+		if (batch.traced && read == cull::Read::kDone &&
+		    (batch.tests[test].control || (test < cull::kTraceTests && (*pixels == 0 || batch.tests[test].skipped)))) {
+			char line[800];
+			const bool named = test < cull::kTraceTests && !batch.tests[test].control;
+			long long farPixels = -1;
+			if (named && batch.earlyIssued && test < batch.earlyCount) {
+				std::uint32_t pixelsAtFar = 0;
+				farPixels = ReadQuery(g_earlyQueries[test], &pixelsAtFar) == cull::Read::kDone ? static_cast<long long>(pixelsAtFar) : -1;
+			}
+			cull::FormatTraceTest(batch.frame, test, batch.tests[test], named ? batch.names[test] : "", named ? batch.parents[test] : "",
+			                      named ? batch.bounds[test] : oc::Bound{}, *pixels, line, sizeof(line), farPixels);
+			g_log("%s", line);
+		}
+		return read;
 	});
 	g_stats.collectTicks += __rdtsc() - t0;
 }
@@ -395,7 +535,16 @@ UInt32 __fastcall CullFinish(void* self, void* /*edx*/) {
 	if (lost) {
 		++g_stats.batchesLost;
 	}
+	g_batch->traced = cull::TraceDue(g_frame, g_trace, g_traced);
+	g_batch->earlyIssued = false;
+	g_batch->earlyCount = 0;
+	if (g_batch->traced) {
+		++g_traced;
+		g_passIds.Reset();
+		LogSurfaces("at the pass");
+	}
 	g_cameraSet = false;
+	g_lists.Reset();
 	g_active = true;
 	const UInt32 eax = g_finish(self, nullptr);
 	g_active = false;
@@ -418,8 +567,18 @@ UInt32 __fastcall CullDrawRenderPass(void* self, void* /*edx*/, UInt32 record, U
 		return g_drawRenderPass(self, nullptr, record, pass);
 	}
 	const cull::DrawKind kind = ReadAt<UInt32>(geometry + kGeometrySkinOffset) != 0 ? cull::DrawKind::kSkinned : cull::DrawKind::kShape;
+	const bool first = g_lists.First(pass & 0xFFFFu);
 	if (DecideDraw(geometry, kind, true) == cull::Decision::kDraw) {
 		return g_drawRenderPass(self, nullptr, record, pass);
+	}
+	if (first) {
+		// The list's first record is drawn inside the pass's shader state (RenderPassList
+		// steps 2 and 5): left out, the records after it lose their textures.
+		++g_stats.firstOfListKept;
+		g_forceDraw = true;
+		const UInt32 eax = g_drawRenderPass(self, nullptr, record, pass);
+		g_forceDraw = false;
+		return eax;
 	}
 	*reinterpret_cast<volatile UInt32*>(static_cast<std::uintptr_t>(kPassIdGlobal)) = pass & 0xFFFFu;
 	*reinterpret_cast<volatile UInt32*>(static_cast<std::uintptr_t>(kPassRecordGlobal)) = record;
@@ -432,13 +591,30 @@ UInt32 __fastcall CullRenderShape(void* self, void* /*edx*/, UInt32 geometry) {
 		return g_renderShape(self, nullptr, geometry);
 	}
 	const cull::DrawKind kind = ReadAt<UInt32>(geometry + kGeometrySkinOffset) != 0 ? cull::DrawKind::kSkinned : cull::DrawKind::kShape;
-	if (DecideDraw(geometry, kind, false) == cull::Decision::kDraw) {
+	if (DecideDraw(geometry, kind, false) == cull::Decision::kDraw || g_forceDraw) {
 		return g_renderShape(self, nullptr, geometry);
 	}
 	return 0;  // Do_RenderShape returns nothing its callers read (re/functions/0x007693E0.md)
 }
 
 }  // namespace
+
+void OcclusionCullNoteDraw(UInt32 geometry) {
+	if (!g_on || !g_active || g_inner != 0 || g_batch == nullptr || !g_batch->traced) {
+		return;
+	}
+	DWORD blend = 0;
+	DWORD test = 0;
+	DWORD zWrite = 0;
+	DWORD colour = 0;
+	g_device->GetRenderState(D3DRS_ALPHABLENDENABLE, &blend);
+	g_device->GetRenderState(D3DRS_ALPHATESTENABLE, &test);
+	g_device->GetRenderState(D3DRS_ZWRITEENABLE, &zWrite);
+	g_device->GetRenderState(D3DRS_COLORWRITEENABLE, &colour);
+	char name[oc::kNameWidth];
+	ReadName(geometry, name);
+	g_passIds.Note(ReadAt<UInt32>(kPassIdGlobal) & 0xFFFFu, blend, test, zWrite, name, colour);
+}
 
 bool OcclusionCullDraws(UInt32 geometry, bool strips) {
 	if (!g_on || !g_active || g_inner != 0 || geometry == 0) {
@@ -458,6 +634,8 @@ UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {
 	g_settings.margin = settings.occlusionCullMargin;
 	g_settings.maxMoveUnits = settings.occlusionCullMaxMove;
 	g_settings.maxTurnDegrees = settings.occlusionCullMaxTurn;
+	g_trace.passes = settings.occlusionCullTrace;
+	g_trace.probeDepth = settings.occlusionCullTraceDepth;
 	UInt32 made = 0;
 	made += InstallEntryDetour("FinishAccumulating 0x007AE070 (occlusion cull: the eye pass)", kFinish, kFinishBytes, sizeof(kFinishBytes),
 	                           reinterpret_cast<const void*>(&CullFinish), reinterpret_cast<void**>(&g_finish), log, DetourRole::Route) ? 1 : 0;
@@ -474,9 +652,9 @@ UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {
 	}
 	g_on = made == kRouteOcclusionCullDetours;
 	g_summaryClock = ReadClocks();
-	log("Route: occlusion cull %s - a hidden verdict holds %u frame%s, rectangles grown %u px, camera gate %.0f units / %.0f degrees",
+	log("Route: occlusion cull %s - a hidden verdict holds %u frame%s, rectangles grown %u px, camera gate %.0f units / %.0f degrees, trace %u passes",
 	    g_on ? "on" : "off (not both detours made)", g_settings.maxAge, g_settings.maxAge == 1 ? "" : "s", g_settings.margin,
-	    static_cast<double>(g_settings.maxMoveUnits), static_cast<double>(g_settings.maxTurnDegrees));
+	    static_cast<double>(g_settings.maxMoveUnits), static_cast<double>(g_settings.maxTurnDegrees), g_trace.passes);
 	return made;
 }
 
