@@ -376,8 +376,33 @@ void TestSceneUpdate() {
 	      "nothing counted: no division by zero");
 }
 
+void TestObjectUpdateSites() {
+	Section("NiAVObject::Update by return site: a wider table of the same shape (32 sites), the 33rd in others");
+	Check(ObjectUpdateSites::kSites == 32 && StepSites::kSites == 8, "the two tables differ in width only");
+	ObjectUpdateSites sites;
+	for (unsigned i = 0; i < ObjectUpdateSites::kSites; ++i) {
+		sites.Add(0x00471F20u + 16 * i, 30000);  // 10 us each at 3000 ticks per ms
+	}
+	sites.Add(0x00471F20u, 30000);
+	Check(sites.used == 32 && sites.sites[0].timing.calls == 2 && sites.sites[0].timing.ticks == 60000 && sites.others.calls == 0,
+	      "32 distinct sites fill the table; a repeat adds to its site");
+	sites.Add(0x00603CA0u, 30000);
+	Check(sites.used == 32 && sites.others.calls == 1 && sites.others.ticks == 30000, "a 33rd site goes to others");
+	char line[1600];
+	const int wrote = FormatStepSites("NiAVObject::Update", sites, 3000.0, line, sizeof(line));
+	Check(wrote > 0 && static_cast<std::size_t>(wrote) < sizeof(line) && std::strlen(line) == static_cast<std::size_t>(wrote),
+	      "32 sites and others fit one summary line");
+	const char* head = " NiAVObject::Update by return site: 0x00471F20 2 calls 20.00 ms, 0x00471F30 1 calls 10.00 ms,";
+	Check(std::strncmp(line, head, std::strlen(head)) == 0, "the same format as the pass steps' sites");
+	Check(std::strstr(line, "0x00471F20 ") == line + 36 && std::strstr(line, ", +others 1 calls 10.00 ms;") != nullptr,
+	      "others at the end");
+	FormatStepSites("NiAVObject::Update", ObjectUpdateSites{}, 3000.0, line, sizeof(line));
+	Check(std::string(line) == " NiAVObject::Update by return site: none;", "no call: none");
+}
+
 int main() {
 	TestSceneUpdate();
+	TestObjectUpdateSites();
 	TestUploads();
 	TestPackCache();
 	TestStepTiming();

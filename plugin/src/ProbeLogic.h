@@ -163,8 +163,13 @@ inline int FormatStepTiming(const char* name, const StepTiming& t, double ticksP
 
 // A timed step split by return site: the first kSites distinct callers
 // with their calls and ticks, every other caller summed in `others`.
-struct StepSites {
-	static constexpr unsigned kSites = 8;
+// A step split by its return site, as the probes see it: the first N
+// distinct sites keep a slot (first come, first kept), the rest add to
+// others. Eight for the pass steps (eighteen calls a frame), thirty-two for
+// NiAVObject::Update 0x00707370, which the exe calls from 145 sites.
+template <unsigned N>
+struct SiteTable {
+	static constexpr unsigned kSites = N;
 	struct Site {
 		std::uint32_t address;
 		StepTiming timing;
@@ -189,11 +194,14 @@ struct StepSites {
 		others.ticks += ticks;
 	}
 };
+using StepSites = SiteTable<8>;
+using ObjectUpdateSites = SiteTable<32>;
 
 // " name by return site: 0x... N calls X ms, ...[, +N others X ms];" with the
 // calibration (the raw ticks without one); nothing but " name by return
 // site: none;" when no call was seen. Returns the characters written.
-inline int FormatStepSites(const char* name, const StepSites& s, double ticksPerMillisecond, char* out, std::size_t capacity) {
+template <unsigned N>
+inline int FormatStepSites(const char* name, const SiteTable<N>& s, double ticksPerMillisecond, char* out, std::size_t capacity) {
 	int at = std::snprintf(out, capacity, " %s by return site:", name);
 	if (s.used == 0) {
 		if (at >= 0 && static_cast<std::size_t>(at) < capacity) {

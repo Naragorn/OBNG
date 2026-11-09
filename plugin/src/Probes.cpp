@@ -193,16 +193,16 @@ struct AtomicTiming {
 	}
 };
 
-// The finish split by return site: a slot is claimed with a compare-exchange
-// on its address, as AtomicCounts does; eighteen calls a frame, so the scan
-// is cheap.
+// A step split by return site: a slot is claimed with a compare-exchange on
+// its address, as AtomicCounts does. probe::SiteTable<N> is the snapshot.
+template <unsigned N>
 struct AtomicSiteTiming {
-	volatile LONG addresses[probe::StepSites::kSites] = {};
-	AtomicTiming timings[probe::StepSites::kSites];
+	volatile LONG addresses[N] = {};
+	AtomicTiming timings[N];
 	AtomicTiming others;
 
 	void Add(UInt32 returnAddress, unsigned __int64 elapsed) {
-		for (unsigned i = 0; i < probe::StepSites::kSites; ++i) {
+		for (unsigned i = 0; i < N; ++i) {
 			const LONG seen = InterlockedCompareExchange(&addresses[i], static_cast<LONG>(returnAddress), 0);
 			if (seen == 0 || static_cast<UInt32>(seen) == returnAddress) {
 				timings[i].Add(elapsed);
@@ -211,16 +211,16 @@ struct AtomicSiteTiming {
 		}
 		others.Add(elapsed);
 	}
-	probe::StepSites TakeSnapshot() {
-		probe::StepSites out;
-		for (unsigned i = 0; i < probe::StepSites::kSites; ++i) {
+	probe::SiteTable<N> TakeSnapshot() {
+		probe::SiteTable<N> out;
+		for (unsigned i = 0; i < N; ++i) {
 			const LONG address = addresses[i];
 			if (address == 0) {
 				break;
 			}
 			const probe::StepTiming t = timings[i].TakeSnapshot();
 			if (t.calls != 0) {
-				out.sites[out.used++] = probe::StepSites::Site{static_cast<std::uint32_t>(address), t};
+				out.sites[out.used++] = typename probe::SiteTable<N>::Site{static_cast<std::uint32_t>(address), t};
 			}
 		}
 		out.others = others.TakeSnapshot();
@@ -229,7 +229,7 @@ struct AtomicSiteTiming {
 };
 
 AtomicTiming g_steps[static_cast<int>(Step::Count)];
-AtomicSiteTiming g_finishSites;
+AtomicSiteTiming<probe::StepSites::kSites> g_finishSites;  // eighteen calls a frame: the scan is cheap
 bool g_stepInstalled[static_cast<int>(Step::Count)] = {};
 bool g_stepsOn = false;
 probe::ClockPair g_stepClock;  // the clocks at the last summary (0: none yet)
@@ -821,6 +821,9 @@ bool g_sceneUpdateOn = false;
 probe::ClockPair g_sceneUpdateClock;
 AtomicTiming g_gridTiming;
 AtomicTiming g_objectUpdateTiming;
+// The same calls split by their return site: which callers (the actor update
+// 0x00471F20 among 145 in the exe) take the time.
+AtomicSiteTiming<probe::ObjectUpdateSites::kSites> g_objectUpdateSites;
 volatile LONG64 g_sceneCells = 0;
 volatile LONG64 g_sceneNodes = 0;
 volatile LONG64 g_sceneSelected = 0;
@@ -866,9 +869,12 @@ UInt32 __fastcall CountWorldData(void* self, void* /*edx*/) {
 	return g_worldData(self, nullptr);
 }
 UInt32 __fastcall CountObjectUpdate(void* self, void* /*edx*/, UInt32 timeBits, UInt32 flag) {
+	const UInt32 site = static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(_ReturnAddress()));
 	const unsigned __int64 start = __rdtsc();
 	const UInt32 eax = g_objectUpdate(self, nullptr, timeBits, flag);
-	g_objectUpdateTiming.Add(__rdtsc() - start);
+	const unsigned __int64 elapsed = __rdtsc() - start;
+	g_objectUpdateTiming.Add(elapsed);
+	g_objectUpdateSites.Add(site, elapsed);
 	return eax;
 }
 
@@ -915,8 +921,11 @@ void LogSceneUpdate() {
 	s.controllerWalks = static_cast<std::uint64_t>(InterlockedExchange64(&g_sceneWalks, 0));
 	s.controllerWalksIdle = static_cast<std::uint64_t>(InterlockedExchange64(&g_sceneWalksIdle, 0));
 	s.worldData = static_cast<std::uint64_t>(InterlockedExchange64(&g_sceneWorldData, 0));
-	char line[700];
+	char line[1600];
 	probe::FormatSceneUpdate(s, ticksPerMs, line, sizeof(line));
+	g_log("%s", line);
+	const int at = std::snprintf(line, sizeof(line), "Probe: scene update -");
+	probe::FormatStepSites("NiAVObject::Update", g_objectUpdateSites.TakeSnapshot(), ticksPerMs, line + at, sizeof(line) - at);
 	g_log("%s", line);
 }
 
