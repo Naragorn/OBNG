@@ -38,7 +38,7 @@ file(GLOB_RECURSE engine_sources CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/.
 if(engine_sources)
 	add_library(obng_engine STATIC ${engine_sources})
 	target_include_directories(obng_engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../src)
-	target_compile_options(obng_engine PRIVATE -Wall -Wextra -Werror)
+	target_compile_options(obng_engine PRIVATE -Wall -Wextra -Werror -msse2 -mfpmath=sse -ffp-contract=off)
 endif()
 
 file(GLOB test_sources CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*Test.cpp)
@@ -46,7 +46,9 @@ foreach(source ${test_sources})
 	get_filename_component(name ${source} NAME_WE)
 	add_executable(${name} ${source})
 	target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src ${CMAKE_CURRENT_SOURCE_DIR})
-	target_compile_options(${name} PRIVATE -Wall -Wextra -Werror)
+	# SSE arithmetic without contraction: float by float, as the DLL's clang-cl
+	# build computes and as the exe's x87 at precision control 24 rounds.
+	target_compile_options(${name} PRIVATE -Wall -Wextra -Werror -msse2 -mfpmath=sse -ffp-contract=off)
 	if(engine_sources)
 		target_link_libraries(${name} PRIVATE obng_engine)
 	endif()
