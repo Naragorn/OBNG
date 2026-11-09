@@ -824,6 +824,38 @@ AtomicTiming g_objectUpdateTiming;
 // The same calls split by their return site: which callers (the actor update
 // 0x00471F20 among 145 in the exe) take the time.
 AtomicSiteTiming<probe::ObjectUpdateSites::kSites> g_objectUpdateSites;
+// The calls from ApplyAnimData 0x00471FBE (one actor each) by the nodes they
+// visit: the tree counters' difference across the call, the ticks, in the
+// logic's buckets (probe::ActorUpdateStats), interlocked per field.
+constexpr UInt32 kApplyAnimDataSite = 0x00471FBE;  // the return into ActorAnimData::ApplyAnimData 0x00471F20
+struct AtomicActorUpdate {
+	struct Bucket {
+		volatile LONG64 calls = 0;
+		volatile LONG64 nodes = 0;
+		volatile LONG64 worldData = 0;
+		volatile LONG64 ticks = 0;
+	};
+	Bucket buckets[probe::ActorUpdateStats::kBuckets];
+
+	void Add(UInt64 nodes, UInt64 worldData, UInt64 ticks) {
+		Bucket& b = buckets[probe::ActorUpdateStats::BucketOf(nodes)];
+		InterlockedIncrement64(&b.calls);
+		InterlockedAdd64(&b.nodes, static_cast<LONG64>(nodes));
+		InterlockedAdd64(&b.worldData, static_cast<LONG64>(worldData));
+		InterlockedAdd64(&b.ticks, static_cast<LONG64>(ticks));
+	}
+	probe::ActorUpdateStats TakeSnapshot() {
+		probe::ActorUpdateStats out;
+		for (unsigned i = 0; i < probe::ActorUpdateStats::kBuckets; ++i) {
+			out.buckets[i].calls = static_cast<std::uint64_t>(InterlockedExchange64(&buckets[i].calls, 0));
+			out.buckets[i].nodes = static_cast<std::uint64_t>(InterlockedExchange64(&buckets[i].nodes, 0));
+			out.buckets[i].worldData = static_cast<std::uint64_t>(InterlockedExchange64(&buckets[i].worldData, 0));
+			out.buckets[i].ticks = static_cast<std::uint64_t>(InterlockedExchange64(&buckets[i].ticks, 0));
+		}
+		return out;
+	}
+};
+AtomicActorUpdate g_actorUpdate;
 volatile LONG64 g_sceneCells = 0;
 volatile LONG64 g_sceneNodes = 0;
 volatile LONG64 g_sceneSelected = 0;
@@ -870,11 +902,18 @@ UInt32 __fastcall CountWorldData(void* self, void* /*edx*/) {
 }
 UInt32 __fastcall CountObjectUpdate(void* self, void* /*edx*/, UInt32 timeBits, UInt32 flag) {
 	const UInt32 site = static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(_ReturnAddress()));
+	// The counters are the render thread's own within this call (the loader
+	// thread's visits would add to them: a small noise, accepted).
+	const LONG64 nodesBefore = g_sceneNodes;
+	const LONG64 worldBefore = g_sceneWorldData;
 	const unsigned __int64 start = __rdtsc();
 	const UInt32 eax = g_objectUpdate(self, nullptr, timeBits, flag);
 	const unsigned __int64 elapsed = __rdtsc() - start;
 	g_objectUpdateTiming.Add(elapsed);
 	g_objectUpdateSites.Add(site, elapsed);
+	if (site == kApplyAnimDataSite) {
+		g_actorUpdate.Add(static_cast<UInt64>(g_sceneNodes - nodesBefore), static_cast<UInt64>(g_sceneWorldData - worldBefore), elapsed);
+	}
 	return eax;
 }
 
@@ -926,6 +965,8 @@ void LogSceneUpdate() {
 	g_log("%s", line);
 	const int at = std::snprintf(line, sizeof(line), "Probe: scene update -");
 	probe::FormatStepSites("NiAVObject::Update", g_objectUpdateSites.TakeSnapshot(), ticksPerMs, line + at, sizeof(line) - at);
+	g_log("%s", line);
+	probe::FormatActorUpdate(g_actorUpdate.TakeSnapshot(), ticksPerMs, line, sizeof(line));
 	g_log("%s", line);
 }
 

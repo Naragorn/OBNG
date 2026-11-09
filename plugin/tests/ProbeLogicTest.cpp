@@ -400,9 +400,42 @@ void TestObjectUpdateSites() {
 	Check(std::string(line) == " NiAVObject::Update by return site: none;", "no call: none");
 }
 
+void TestActorUpdate() {
+	Section("ApplyAnimData by nodes a call: the buckets' bounds are inclusive");
+	Check(ActorUpdateStats::BucketOf(0) == 0 && ActorUpdateStats::BucketOf(50) == 0 && ActorUpdateStats::BucketOf(51) == 1 &&
+	          ActorUpdateStats::BucketOf(100) == 1 && ActorUpdateStats::BucketOf(101) == 2 && ActorUpdateStats::BucketOf(200) == 2 &&
+	          ActorUpdateStats::BucketOf(201) == 3 && ActorUpdateStats::BucketOf(400) == 3 && ActorUpdateStats::BucketOf(401) == 4 &&
+	          ActorUpdateStats::BucketOf(100000) == 4,
+	      "50, 100, 200, 400 close their buckets; beyond 400 the last");
+
+	Section("The sums per bucket and the line");
+	ActorUpdateStats s;
+	s.Add(80, 90, 60);    // 20 us at 3000 ticks per ms
+	s.Add(120, 130, 90);  // 30 us
+	s.Add(80, 90, 60);
+	s.Add(500, 520, 180);  // 60 us
+	Check(s.Calls() == 4 && s.buckets[1].calls == 2 && s.buckets[1].nodes == 160 && s.buckets[1].worldData == 180 &&
+	          s.buckets[1].ticks == 120 && s.buckets[2].calls == 1 && s.buckets[4].calls == 1 && s.buckets[0].calls == 0,
+	      "two calls of 80 nodes in one bucket, 120 and 500 in theirs");
+	char line[600];
+	FormatActorUpdate(s, 3000.0, line, sizeof(line));
+	Check(std::string(line) == "Probe: scene update - ApplyAnimData by nodes a call: <=100 nodes 2 calls (80 nodes, 90 world data, 20.0 us each, "
+	                           "250 ns a node), <=200 nodes 1 calls (120 nodes, 130 world data, 30.0 us each, 250 ns a node), >400 nodes 1 calls "
+	                           "(500 nodes, 520 world data, 60.0 us each, 120 ns a node);",
+	      "calibrated: the buckets with calls, per call nodes, world data, us, and ns a node");
+	FormatActorUpdate(s, 0.0, line, sizeof(line));
+	Check(std::strstr(line, "<=100 nodes 2 calls (80 nodes, 90 world data, 120 ticks)") != nullptr, "uncalibrated: the raw ticks");
+	FormatActorUpdate(ActorUpdateStats{}, 3000.0, line, sizeof(line));
+	Check(std::string(line) == "Probe: scene update - ApplyAnimData by nodes a call: none;", "no call: none");
+	char small[20];
+	FormatActorUpdate(s, 3000.0, small, sizeof(small));
+	Check(std::strlen(small) < sizeof(small), "a small buffer is never overrun");
+}
+
 int main() {
 	TestSceneUpdate();
 	TestObjectUpdateSites();
+	TestActorUpdate();
 	TestUploads();
 	TestPackCache();
 	TestStepTiming();

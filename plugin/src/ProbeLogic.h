@@ -549,6 +549,95 @@ inline int FormatSceneUpdate(const SceneUpdateStats& s, double ticksPerMilliseco
 	return at;
 }
 
+// ---- ApplyAnimData by the nodes a call visits --------------------------------
+//
+// NiAVObject::Update called from ActorAnimData::ApplyAnimData 0x00471F20
+// (return site 0x00471FBE) is one actor's skeleton propagated to world space.
+// Per call the probe takes the difference of the tree counters (NiNode::
+// UpdateDownwardPass visits and UpdateWorldData calls) and the call's ticks,
+// and sums them in buckets by the node count, so that a street's armoured
+// NPCs and the road's creatures show as what they are: how many nodes an
+// actor has, and what one node costs.
+struct ActorUpdateStats {
+	static constexpr unsigned kBuckets = 5;
+	static constexpr std::uint64_t kBounds[kBuckets - 1] = {50, 100, 200, 400};  // nodes a call, inclusive upper bounds
+	struct Bucket {
+		std::uint64_t calls = 0;
+		std::uint64_t nodes = 0;
+		std::uint64_t worldData = 0;
+		std::uint64_t ticks = 0;
+	};
+	Bucket buckets[kBuckets] = {};
+
+	static unsigned BucketOf(std::uint64_t nodes) {
+		for (unsigned i = 0; i < kBuckets - 1; ++i) {
+			if (nodes <= kBounds[i]) {
+				return i;
+			}
+		}
+		return kBuckets - 1;
+	}
+	void Add(std::uint64_t nodes, std::uint64_t worldData, std::uint64_t ticks) {
+		Bucket& b = buckets[BucketOf(nodes)];
+		++b.calls;
+		b.nodes += nodes;
+		b.worldData += worldData;
+		b.ticks += ticks;
+	}
+	std::uint64_t Calls() const {
+		std::uint64_t n = 0;
+		for (const Bucket& b : buckets) {
+			n += b.calls;
+		}
+		return n;
+	}
+};
+
+// "Probe: scene update - ApplyAnimData by nodes a call: <=50 nodes N calls
+// (X nodes, Y world data, Z us each, W ns a node), ...; none" - the buckets
+// with calls only; the raw ticks without a calibration.
+inline int FormatActorUpdate(const ActorUpdateStats& s, double ticksPerMillisecond, char* out, std::size_t capacity) {
+	int at = std::snprintf(out, capacity, "Probe: scene update - ApplyAnimData by nodes a call:");
+	if (s.Calls() == 0) {
+		if (at >= 0 && static_cast<std::size_t>(at) < capacity) {
+			at += std::snprintf(out + at, capacity - at, " none;");
+		}
+		return at;
+	}
+	bool first = true;
+	for (unsigned i = 0; i < ActorUpdateStats::kBuckets && at >= 0 && static_cast<std::size_t>(at) < capacity; ++i) {
+		const ActorUpdateStats::Bucket& b = s.buckets[i];
+		if (b.calls == 0) {
+			continue;
+		}
+		char label[16];
+		if (i == ActorUpdateStats::kBuckets - 1) {
+			std::snprintf(label, sizeof(label), ">%llu", static_cast<unsigned long long>(ActorUpdateStats::kBounds[i - 1]));
+		} else {
+			std::snprintf(label, sizeof(label), "<=%llu", static_cast<unsigned long long>(ActorUpdateStats::kBounds[i]));
+		}
+		const double perCallNodes = static_cast<double>(b.nodes) / static_cast<double>(b.calls);
+		const double perCallWorld = static_cast<double>(b.worldData) / static_cast<double>(b.calls);
+		at += std::snprintf(out + at, capacity - at, "%s %s nodes %llu calls (%.0f nodes, %.0f world data", first ? "" : ",", label,
+		                    static_cast<unsigned long long>(b.calls), perCallNodes, perCallWorld);
+		first = false;
+		if (at < 0 || static_cast<std::size_t>(at) >= capacity) {
+			break;
+		}
+		if (ticksPerMillisecond > 0.0) {
+			const double usEach = static_cast<double>(b.ticks) / ticksPerMillisecond * 1000.0 / static_cast<double>(b.calls);
+			const double nsNode = b.nodes == 0 ? 0.0 : static_cast<double>(b.ticks) / ticksPerMillisecond * 1e6 / static_cast<double>(b.nodes);
+			at += std::snprintf(out + at, capacity - at, ", %.1f us each, %.0f ns a node)", usEach, nsNode);
+		} else {
+			at += std::snprintf(out + at, capacity - at, ", %llu ticks)", static_cast<unsigned long long>(b.ticks));
+		}
+	}
+	if (at >= 0 && static_cast<std::size_t>(at) < capacity) {
+		at += std::snprintf(out + at, capacity - at, ";");
+	}
+	return at;
+}
+
 // ---- The constant uploads' redundancy probe -----------------------------------------
 //
 // Does a vertex constant upload write what its register range already holds?
