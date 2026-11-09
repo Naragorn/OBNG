@@ -685,3 +685,61 @@ Measured unless marked:
 - Spot 3's capture (1-38) sampled sparsely (1 032 samples in the 10 s
   window against 8 143 at spot 2) and 86 % of its out-of-pass samples are
   the wait: the lightest spot.
+
+## NiAVObject::Update by caller (2026-11-09 14:23, [Probe] SceneUpdate with the site table, run obng-profile-gold-road-single/20261109-142316)
+
+OBNG.dll db25d956 (master e994908: the scene update probe keeps calls and
+ticks per return site of NiAVObject::Update 0x00707370, 160 slots for the
+exe's 145 call sites), the Gold Road single-pass profile scenario, the
+route on, OBVR.dll 1391cd67, OblivionWalkers on, Linux headless, nothing
+else running on the machine. The first run (-141833, 32 slots) is void: the
+slots were claimed while the cell loaded and 67 of the 70 play-time calls a
+frame landed in others. Per grid update (one a frame), the 10 s windows
+(measured; the spots assigned from the script's timeline, derived):
+
+| windows | spot | NiAVObject::Update calls / ms a frame | 0x00471FBE (ApplyAnimData) calls / ms | 0x78D11025 (OBVR UpdateNodeTransforms) calls / ms | everything else |
+|---|---|---:|---:|---:|---:|
+| 3-6 | 1 | 62-65 / 0.65-0.68 | 24-25 / 0.50-0.54 | 22-26 / 0.11-0.14 | 13-15 calls, 0.03 ms |
+| 7-11 | 2 and its walk | 74-90 / 0.95-1.01 | 33-35 / 0.78-0.83 | 22-25 / 0.11-0.13 | 16-32 calls, 0.03-0.05 ms |
+| 12-13 | 3 | 78-117 / 0.83-0.95 | 17 / 0.65-0.67 | 22-39 / 0.11-0.20 | 38-61 calls, 0.03-0.08 ms |
+
+- **One call site takes four fifths of the time**: 0x00471FBE, the call
+  inside ActorAnimData::ApplyAnimData 0x00471F20 (`kApplyAnimData`, OBVR's
+  GameAddresses.h; Enhanced Camera's name). Read (re/export 0x471f20.c):
+  the function takes the AnimData, detaches the controller of the two
+  objects at +0x04 and +0x08 (0x00478300 swaps the refcounted pointer at
+  +0x0C), calls NiAVObject::Update on the node at +0x94 with the flag 1,
+  and attaches the two controllers again - the skeleton's downward pass
+  with the controllers out of the way, one per actor. Its callers are the
+  actor update 0x00603CA0 (unconditional in its path after the process
+  level tests, `in_ECX[0x2c]`) and 0x00474510 (0x00471C00 then
+  ApplyAnimData). 25 calls a frame at spot 1, 35 at spot 2, 17 at spot 3:
+  one per actor the update runs for (derived from the counts; which actors
+  is unread), 20-23 us each at spots 1-2 and 38 us at spot 3 (fewer, nearer
+  or busier actors; unread).
+- **The second site is OBVR's**: 0x78D11025 is the one call in OBVR's
+  `UpdateNodeTransforms` (GameCamera.cpp:205; every OBVR caller - hands,
+  weapon, player body, menu nodes, teleport - funnels through it). 22-26
+  calls a frame at 5 us each, 0.11-0.14 ms: small nodes. An OBVR item, not
+  an engine one; noted for OBVR.
+- **The other 143 sites together are 0.03-0.08 ms a frame**: the player's
+  own update sites (0x0058FD7D 2 calls, 0x0047CADA 4 calls, 0x0049C335,
+  0x0049C88D, 0x0040C9AA, 0x0040C9F5, 0x0066BE91 the camera node, 0x004425BC
+  one call each), the cell loader's sites while a cell streams in (window
+  7 and 11: 0x004DC20C 7-8 calls). Nothing to gain there.
+- **What an actor update LOD can gain (derived)**: ApplyAnimData is
+  0.5-0.8 ms a frame here, 20-23 us an actor. Running it every second
+  frame for the actors beyond some distance saves half their share: with
+  half the actors distant, 0.13-0.2 ms a frame on the Gold Road, more in a
+  city or a battle where the count is higher. The actors' bones then hold
+  the previous frame's world transforms on the skipped frame (the
+  animation itself keeps running; only the propagation to world space
+  lags a frame). OBVR's body IK and hit tests read the player's and the
+  near actors' bones, which an LOD leaves at full rate. Medium (about
+  0.8-1.2 M tokens): the distance must be read at the call site (the
+  actor's position against the player's), the skip must leave the
+  shadows' and the culler's bounds consistent (unread), and the headset
+  decides whether 37 Hz propagation on distant actors is visible.
+- The probe's own cost sits inside the numbers (the detours on the
+  tree's functions, see the caveat above); the ratio between the sites is
+  what this run establishes.
