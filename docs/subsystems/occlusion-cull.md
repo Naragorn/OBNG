@@ -242,6 +242,22 @@ obng-cull-places-dump/20261109-12*/13*:
   and the Prison once. The culler counts it as an eye pass, so there
   OcclusionCullMaxAge counts half frames.
 
+### The A/B with the fix (2026-11-09, runs obng-cull/20261109-145453 off, -145901 on)
+
+The five places again, OBNG.dll of master 8e97433 (the fix in), both eyes
+tested. Skipped per pass: market 27 %, plaza 46 %, dungeon 42 %, house 45 %,
+road 50 % - the same shares as on 2026-11-08 with eye 0 alone, so the
+second eye's test takes next to nothing away; unconfirmed 0.0-0.1 % as
+before. The culler's own cost 0.10-0.28 ms a pass as before. Frames: the
+dungeon (indoors, no weather) scene_pass 2.21 / 4.08 -> 1.66 / 2.58 ms
+mean / p95, the GPU before submit 4.39 / 5.78 -> 4.17 / 5.05 ms, the frame
+13.41 -> 13.37 ms at vsync - the 2026-11-08 figures again. The outdoor
+places of this pair are not comparable: the off run had rain or worse
+weather (market 12 % and plaza 33 % of the frames over 20 ms, scene_pass
+p95 20 and 12 ms, the GPU reading overflowed), the on run clear skies; the
+capture ended before the house and the road. The scenario now forces clear
+weather (fw 38EEE) for the next pair. All measured.
+
 ### The trace ([Route] OcclusionCullTrace=N, OcclusionCullTraceDepth)
 
 For such a hunt: every 75th eye pass, N times, the log gets the camera and
