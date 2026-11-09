@@ -8,6 +8,7 @@ EyeDumpFrames pictures OBVR-Eye-Right-<mark>[-fNN].png) the share of pixels
 that are pure blue, one number per frame. 0.0 everywhere is the pass mark.
 
     python3 tools/cull-blue.py artifacts/shadow/obng-cull-texture-turn/<run> ...
+    python3 tools/cull-blue.py <run> --pattern '*-game.png'   the harness's gamescope pictures
 """
 import glob
 import os
@@ -17,12 +18,24 @@ import numpy as np
 from PIL import Image
 
 
-def main(runs):
+def main(args):
+    pattern = "OBVR-Eye-Right-*.png"
+    runs = []
+    i = 0
+    while i < len(args):
+        if args[i] == "--pattern" and i + 1 < len(args):
+            pattern = args[i + 1]
+            i += 2
+            continue
+        runs.append(args[i])
+        i += 1
     for run in runs:
         print("===", run)
         series = {}
-        for path in sorted(glob.glob(os.path.join(run, "OBVR-Eye-Right-*.png"))):
-            name = os.path.basename(path)[len("OBVR-Eye-Right-"):-len(".png")]
+        for path in sorted(glob.glob(os.path.join(run, pattern))):
+            name = os.path.basename(path)[:-len(".png")]
+            if name.startswith("OBVR-Eye-Right-"):
+                name = name[len("OBVR-Eye-Right-"):]
             key = name.split("-f")[0] if "-f" in name else name
             picture = np.asarray(Image.open(path).convert("RGB"))
             blue = ((picture[..., 2] > 200) & (picture[..., 0] < 40) & (picture[..., 1] < 40)).mean() * 100

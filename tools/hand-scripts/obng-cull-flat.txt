@@ -1,0 +1,151 @@
+# The OCCLUSION CULLER in the FLAT game ([Route] OcclusionCullFlat=1): the
+# five places of obng-cull.txt with OBVR rendering nothing to the headset
+# ([Render] Enabled=0 - OBVR registers as a background app, the game draws
+# its one camera into its window as the flat game does) and the single pass
+# off, so the route has no eye data and the culler runs with the render
+# target as its one port. OBVR's hand script still drives the places and the
+# head, and the harness takes gamescope pictures of the game window at every
+# mark (<run>/NN-<mark>-game.png) - the check that nothing comes out blue
+# (tools/cull-blue.py <run> --pattern '*-game.png'). OBVR's frame capture
+# needs the headset renderer and is off here; the culler's own summary
+# (tools/cull-summary.py) gives the eye pass ms and the skips per place.
+# Two sides: obng-measure-cull-flat-off.ini / -on.ini.
+#
+# Run, from OBNG's folder:
+#   tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-cull-flat-off.ini tools/hand-scripts/obng-cull-flat.txt --save OBVRHarnessMOO --run-timeout 480
+#   (then -on.ini)
+
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Render Enabled=0
+ini Render SinglePassStereo=0
+console-at ready tgm
+# The weather fixed to clear (fw 38EEE, as water-turn-jitter.txt): the A/B of
+# 2026-11-09 14:54/14:59 had rain on one side (hitches, 12-33 % of the frames
+# over 20 ms, the scene pass 1-3 ms higher outdoors), which no culler can be
+# measured against. Added after that run; the runs before it had the save's
+# own weather.
+console-at ready fw 38EEE
+# AI off: a passer-by who greets the player opens the Dialog menu, the console lines
+# stop and the run stays in the Market District (run obng-occlusion-headcull-off/20261105-103908).
+console-at ready tai
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at ready coc ICMarketDistrict01
+console-at market-done coc ICTalosPlazaDistrict01
+console-at plaza-done coc ImperialDungeon01
+console-at dungeon-done coc WeynonPrioryHouse
+console-at house-done cow Tamriel -27 -3
+
+expect HandScript: finished
+reject menu Container
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 16
+head yaw 0
+wait 0.5
+mark market
+wait 2.5
+head yaw -45
+wait 2.5
+head yaw -90
+wait 2.5
+head yaw -135
+wait 2.5
+head yaw 180
+wait 2.5
+head yaw 135
+wait 2.5
+head yaw 90
+wait 2.5
+head yaw 45
+wait 2.5
+head yaw 0
+mark market-done
+wait 16
+head yaw 0
+wait 0.5
+mark plaza
+wait 2.5
+head yaw -45
+wait 2.5
+head yaw -90
+wait 2.5
+head yaw -135
+wait 2.5
+head yaw 180
+wait 2.5
+head yaw 135
+wait 2.5
+head yaw 90
+wait 2.5
+head yaw 45
+wait 2.5
+head yaw 0
+mark plaza-done
+wait 16
+head yaw 0
+wait 0.5
+mark dungeon
+wait 2.5
+head yaw -45
+wait 2.5
+head yaw -90
+wait 2.5
+head yaw -135
+wait 2.5
+head yaw 180
+wait 2.5
+head yaw 135
+wait 2.5
+head yaw 90
+wait 2.5
+head yaw 45
+wait 2.5
+head yaw 0
+mark dungeon-done
+wait 16
+head yaw 0
+wait 0.5
+mark house
+wait 2.5
+head yaw -45
+wait 2.5
+head yaw -90
+wait 2.5
+head yaw -135
+wait 2.5
+head yaw 180
+wait 2.5
+head yaw 135
+wait 2.5
+head yaw 90
+wait 2.5
+head yaw 45
+wait 2.5
+head yaw 0
+mark house-done
+wait 16
+head yaw 0
+wait 0.5
+mark road
+wait 2.5
+head yaw -45
+wait 2.5
+head yaw -90
+wait 2.5
+head yaw -135
+wait 2.5
+head yaw 180
+wait 2.5
+head yaw 135
+wait 2.5
+head yaw 90
+wait 2.5
+head yaw 45
+wait 2.5
+head yaw 0
+mark road-done
+wait 8
+mark done

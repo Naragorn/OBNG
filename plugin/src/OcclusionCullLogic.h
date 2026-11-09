@@ -125,13 +125,18 @@ inline void Inflate(oc::ScreenRect* rect, float margin, const oc::Viewport& port
 }
 
 // Both eyes' rectangles of a bound; kinds[] says what each eye's projection
-// gave.
+// gave. With eyes == 1 (the flat game, [Route] OcclusionCullFlat) only eye 0
+// is projected; eye 1 counts as outside.
 inline TestKind RectsFor(const oc::Bound& bound, const float origin[3], const float view0[16], const float view1[16], const float proj[16],
-                         const oc::Viewport port[2], float margin, EyeRects* out, oc::RectKind kinds[2]) {
+                         const oc::Viewport port[2], float margin, EyeRects* out, oc::RectKind kinds[2], std::uint32_t eyes = 2) {
 	const float* views[2] = {view0, view1};
 	std::uint32_t testable = 0;
 	for (int eye = 0; eye < 2; ++eye) {
 		out->has[eye] = false;
+		if (eye == 1 && eyes < 2) {
+			kinds[eye] = oc::RectKind::kOutsideFrustum;
+			continue;
+		}
 		kinds[eye] = oc::BoundRect(bound, origin, views[eye], proj, port[eye], &out->rect[eye]);
 		if (kinds[eye] == oc::RectKind::kTestable) {
 			Inflate(&out->rect[eye], margin, port[eye]);
@@ -389,6 +394,7 @@ struct KindCounts {
 struct Stats {
 	std::uint64_t eyePasses = 0;
 	std::uint64_t passesWithoutEyes = 0;  // the route had no eye data: the pass ran untouched
+	std::uint64_t flatPasses = 0;         // ... or, with OcclusionCullFlat, ran with the one camera
 	KindCounts kinds[static_cast<int>(DrawKind::kCount)];
 	std::uint64_t untestableNear = 0;
 	std::uint64_t untestableNoBound = 0;
@@ -498,6 +504,17 @@ inline void Count(Stats* stats, DrawKind kind, Decision decision, TestKind testK
 	}
 }
 
+// ---- The flat game's one camera ([Route] OcclusionCullFlat) ----------------------------
+//
+// Without the route's eye data (the flat game: no OBVR, one camera a pass)
+// the pass's one port is the render target itself; the second port has no
+// area and is never projected. Not for OBVR's dual pass, whose two passes a
+// frame have two cameras but one verdict table.
+inline void FlatPorts(std::uint32_t targetWidth, std::uint32_t targetHeight, oc::Viewport out[2]) {
+	out[0] = oc::Viewport{0, 0, targetWidth, targetHeight, 0.0f, 1.0f};
+	out[1] = oc::Viewport{0, 0, 0, 0, 0.0f, 1.0f};
+}
+
 // ---- The first record of a pass list ------------------------------------------------
 //
 // RenderPassList 0x007AC9A0 begins the pass's shader state, draws the list's
@@ -605,10 +622,10 @@ inline int FormatSummary(const Stats& s, const Settings& settings, double ticksP
 	auto perPass = [&](std::uint64_t n) { return static_cast<double>(n) / passes; };
 	auto ms = [&](std::uint64_t ticks) { return ticksPerMillisecond > 0.0 ? static_cast<double>(ticks) / ticksPerMillisecond / passes : 0.0; };
 	(void)settings;
-	line.Text("Route: occlusion cull - %llu eye passes (%llu without eye data); per pass %.0f draws, %.0f skipped (%u %%), %.0f outside both "
+	line.Text("Route: occlusion cull - %llu eye passes (%llu without eye data, %llu flat); per pass %.0f draws, %.0f skipped (%u %%), %.0f outside both "
 	          "frustums, %.0f untestable (near %.0f, no bound %.0f, viewport %.0f), %.0f repeats, %.0f outside eye 0's viewport",
 	          static_cast<unsigned long long>(s.eyePasses),
-	          static_cast<unsigned long long>(s.passesWithoutEyes), perPass(s.Draws()), perPass(s.Skipped()), Percent(s.Skipped(), s.Draws()),
+	          static_cast<unsigned long long>(s.passesWithoutEyes), static_cast<unsigned long long>(s.flatPasses), perPass(s.Draws()), perPass(s.Skipped()), Percent(s.Skipped(), s.Draws()),
 	          perPass([&] {
 		          std::uint64_t n = 0;
 		          for (const KindCounts& k : s.kinds) {

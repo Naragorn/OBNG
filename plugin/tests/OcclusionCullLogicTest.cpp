@@ -80,8 +80,8 @@ struct Scene {
 		ports[0] = kPort0;
 		ports[1] = kPort1;
 	}
-	TestKind Rects(const Bound& b, float margin, EyeRects* out, RectKind kinds[2]) const {
-		return cull::RectsFor(b, kOrigin, view0, view1, proj, ports, margin, out, kinds);
+	TestKind Rects(const Bound& b, float margin, EyeRects* out, RectKind kinds[2], std::uint32_t eyes = 2) const {
+		return cull::RectsFor(b, kOrigin, view0, view1, proj, ports, margin, out, kinds, eyes);
 	}
 };
 
@@ -413,7 +413,7 @@ void TestSummary() {
 	char line[1200];
 	Check(cull::FormatSummary(s, settings, 1000.0, 777, line, sizeof(line)) > 0, "written");
 	std::string text(line);
-	Check(text.find("Route: occlusion cull - 10 eye passes (1 without eye data)") == 0, "the head");
+	Check(text.find("Route: occlusion cull - 10 eye passes (1 without eye data, 0 flat)") == 0, "the head");
 	Check(text.find("per pass 120 draws, 40 skipped (33 %), 10 outside both frustums, 2 untestable (near 2, no bound 0, viewport 0), 5 repeats") !=
 	          std::string::npos,
 	      "per pass, the shares");
@@ -434,6 +434,39 @@ void TestSummary() {
 	Stats empty;
 	cull::FormatSummary(empty, Settings{}, 1000.0, 0, line, sizeof(line));
 	Check(std::string(line).find("0 eye passes") != std::string::npos && std::string(line).find("(0 %)") != std::string::npos, "nothing divides by zero");
+}
+
+void TestFlat() {
+	Section("The flat game: one camera, the render target as the port");
+	Viewport ports[2];
+	cull::FlatPorts(1920, 1080, ports);
+	Check(ports[0].x == 0 && ports[0].y == 0 && ports[0].width == 1920 && ports[0].height == 1080 && ports[0].minZ == 0.0f && ports[0].maxZ == 1.0f,
+	      "the first port is the target");
+	Check(ports[1].width == 0 && ports[1].height == 0, "the second port has no area");
+	Scene scene;
+	scene.ports[1] = ports[1];  // the single pass's second port gone, as in the flat game
+	EyeRects rects;
+	RectKind kinds[2];
+	Check(scene.Rects(At(0.0f, 100.0f, 0.0f, 10.0f), 0.0f, &rects, kinds, 1) == TestKind::kTest && rects.has[0] && !rects.has[1] &&
+	          kinds[0] == RectKind::kTestable && kinds[1] == RectKind::kOutsideFrustum,
+	      "one eye: the bound's rectangle in eye 0 alone, eye 1 never projected");
+	Check(scene.Rects(At(0.0f, 100.0f, 0.0f, 10.0f), 0.0f, &rects, kinds, 2) == TestKind::kNone && kinds[1] == RectKind::kViewport,
+	      "two eyes against a second port without area: untestable, as before");
+	Check(scene.Rects(At(-500.0f, 100.0f, 0.0f, 1.0f), 0.0f, &rects, kinds, 1) == TestKind::kBothOutside, "one eye, the bound beside the view: outside");
+	Check(scene.Rects(At(0.0f, 5.0f, 0.0f, 10.0f), 0.0f, &rects, kinds, 1) == TestKind::kNone && kinds[0] == RectKind::kCrossesNear,
+	      "one eye, the bound at the camera: none");
+	float vertices[cull::kMaxRectVertices * 4];
+	scene.Rects(At(0.0f, 100.0f, 0.0f, 10.0f), 0.0f, &rects, kinds, 1);
+	Check(cull::RectTriangles(rects, vertices) == 6, "one rectangle, six vertices");
+	Viewport both{};
+	cull::UnionViewport(ports, &both);
+	Check(both.width == 1920 && both.height == 1080, "the tests' viewport is the target");
+	Stats s;
+	s.eyePasses = 3;
+	s.flatPasses = 3;
+	char line[1200];
+	cull::FormatSummary(s, Settings{}, 1000.0, 0, line, sizeof(line));
+	Check(std::string(line).find("3 eye passes (0 without eye data, 3 flat)") != std::string::npos, "the summary counts the flat passes");
 }
 
 void TestListLeaders() {
@@ -599,6 +632,7 @@ int main() {
 	TestRingAndCollect();
 	TestSummary();
 	TestListLeaders();
+	TestFlat();
 	TestTrace();
 	return Failures();
 }

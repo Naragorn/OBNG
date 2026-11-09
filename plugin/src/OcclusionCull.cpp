@@ -120,6 +120,8 @@ IDirect3DStateBlock9* g_block = nullptr;
 UInt32 g_renderer = 0;
 ObngStereoEyes g_eyes{};
 oc::Viewport g_ports[2];
+UInt32 g_eyeCount = 2;  // this pass's cameras: 2 with the route's eye data, 1 in the flat game
+bool g_flat = false;    // [Route] OcclusionCullFlat
 bool g_refusedLogged = false;
 volatile LONG g_summaryRequested = 0;
 probe::ClockPair g_summaryClock;
@@ -287,6 +289,23 @@ bool BeginPass() {
 	return true;
 }
 
+// The render target's size, for the flat game's port.
+bool TargetSize(UInt32* width, UInt32* height) {
+	IDirect3DSurface9* surface = nullptr;
+	if (FAILED(g_device->GetRenderTarget(0, &surface)) || surface == nullptr) {
+		return false;
+	}
+	D3DSURFACE_DESC desc{};
+	const bool read = SUCCEEDED(surface->GetDesc(&desc));
+	surface->Release();
+	if (!read || desc.Width == 0 || desc.Height == 0) {
+		return false;
+	}
+	*width = desc.Width;
+	*height = desc.Height;
+	return true;
+}
+
 IDirect3DQuery9* EnsureQuery(IDirect3DQuery9** slot) {
 	if (*slot == nullptr) {
 		const HRESULT made = g_device->CreateQuery(D3DQUERYTYPE_OCCLUSION, slot);
@@ -353,11 +372,13 @@ cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind, bool countRepeat
 	std::memcpy(origin, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(kOriginGlobal)), sizeof(origin));
 	std::memcpy(view0, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(g_renderer + kRendererViewOffset)), sizeof(view0));
 	std::memcpy(proj, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(g_renderer + kRendererProjOffset)), sizeof(proj));
-	cull::SecondEyeView(view0, g_eyes.secondEyeOffset, view1);
+	if (g_eyeCount == 2) {
+		cull::SecondEyeView(view0, g_eyes.secondEyeOffset, view1);
+	}
 	cull::EyeRects rects;
 	oc::RectKind kinds[2];
 	const cull::TestKind testKind =
-	    cull::RectsFor(bound, origin, view0, view1, proj, g_ports, static_cast<float>(g_settings.margin), &rects, kinds);
+	    cull::RectsFor(bound, origin, view0, view1, proj, g_ports, static_cast<float>(g_settings.margin), &rects, kinds, g_eyeCount);
 	const cull::Decided decided = cull::Decide(g_table, geometry, g_frame, testKind, g_settings, g_cameras, &g_stats);
 	cull::Count(&g_stats, kind, decided.decision, testKind, decided.newThisFrame, kinds);
 	if (decided.newThisFrame && testKind == cull::TestKind::kTest) {
@@ -515,19 +536,34 @@ UInt32 __fastcall CullFinish(void* self, void* /*edx*/) {
 	if (site != kEyePassSite) {
 		return g_finish(self, nullptr);
 	}
-	if (!StereoEyeData(&g_eyes)) {
+	const bool eyesGiven = StereoEyeData(&g_eyes);
+	if (!eyesGiven && !g_flat) {
 		++g_stats.passesWithoutEyes;
 		return g_finish(self, nullptr);
 	}
 	if (!BeginPass()) {
 		return g_finish(self, nullptr);
 	}
+	if (eyesGiven) {
+		g_eyeCount = 2;
+		for (int eye = 0; eye < 2; ++eye) {
+			std::memcpy(&g_ports[eye], &g_eyes.viewport[eye], sizeof(oc::Viewport));
+		}
+	} else {
+		// The flat game: the one camera's port is the render target itself.
+		UInt32 width = 0;
+		UInt32 height = 0;
+		if (!TargetSize(&width, &height)) {
+			++g_stats.passesWithoutEyes;
+			return g_finish(self, nullptr);
+		}
+		g_eyeCount = 1;
+		cull::FlatPorts(width, height, g_ports);
+		++g_stats.flatPasses;
+	}
 	const unsigned __int64 t0 = __rdtsc();
 	++g_frame;
 	++g_stats.eyePasses;
-	for (int eye = 0; eye < 2; ++eye) {
-		std::memcpy(&g_ports[eye], &g_eyes.viewport[eye], sizeof(oc::Viewport));
-	}
 	Collect();
 	bool lost = false;
 	g_batchIndex = g_frame % cull::kBatches;
@@ -636,6 +672,7 @@ UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {
 	g_settings.maxTurnDegrees = settings.occlusionCullMaxTurn;
 	g_trace.passes = settings.occlusionCullTrace;
 	g_trace.probeDepth = settings.occlusionCullTraceDepth;
+	g_flat = settings.occlusionCullFlat;
 	UInt32 made = 0;
 	made += InstallEntryDetour("FinishAccumulating 0x007AE070 (occlusion cull: the eye pass)", kFinish, kFinishBytes, sizeof(kFinishBytes),
 	                           reinterpret_cast<const void*>(&CullFinish), reinterpret_cast<void**>(&g_finish), log, DetourRole::Route) ? 1 : 0;
@@ -652,9 +689,11 @@ UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {
 	}
 	g_on = made == kRouteOcclusionCullDetours;
 	g_summaryClock = ReadClocks();
-	log("Route: occlusion cull %s - a hidden verdict holds %u frame%s, rectangles grown %u px, camera gate %.0f units / %.0f degrees, trace %u passes",
+	log("Route: occlusion cull %s - a hidden verdict holds %u frame%s, rectangles grown %u px, camera gate %.0f units / %.0f degrees, trace %u passes, "
+	    "%s",
 	    g_on ? "on" : "off (not both detours made)", g_settings.maxAge, g_settings.maxAge == 1 ? "" : "s", g_settings.margin,
-	    static_cast<double>(g_settings.maxMoveUnits), static_cast<double>(g_settings.maxTurnDegrees), g_trace.passes);
+	    static_cast<double>(g_settings.maxMoveUnits), static_cast<double>(g_settings.maxTurnDegrees), g_trace.passes,
+	    g_flat ? "without eye data the flat game's one camera (the render target as its port)" : "without eye data the pass runs untouched");
 	return made;
 }
 
