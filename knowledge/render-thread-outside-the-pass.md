@@ -660,8 +660,16 @@ Measured unless marked:
   Oblivion.ini holds iMultiSample=2. The results note says iMultiSample=0;
   the logs win. So these runs do not measure the texture path's single
   pass on Windows; they measure MSAA 2 on the back-buffer path.
-- **The square root's route was off**: the Windows OBNG.ini has no Sqrt key
-  (default 0; read 2026-11-09), OBNG.dll 4a2f6474 there. The sampler shows
+- **The square root's route was off**: the Windows OBNG.ini had no Sqrt key
+  (default 0; read 2026-11-09, both the file and its 2026-11-08 21:12
+  backup). The OBNG.dll there is the build of 2026-11-08 17:48 (md5
+  d0f87c89...), which knows the key: its log prints "Route RangeWalk=0
+  Sqrt=0". The evening captures of 2026-11-08 (1-32, 1-33) ran with the
+  route off as well: the CRT error path has 137 and 158 of their 60 530 and
+  55 645 samples (the routed Linux run -180031 has 0). The Windows pair
+  with and without the route does not exist yet; `Sqrt=1` was added under
+  [Route] in the Windows OBNG.ini on 2026-11-09 (backup
+  OBNG.ini.bak-2026-11-09) for Nadi's run. The sampler shows
   the CRT error path at 2.7 % of the out-of-pass and 1.5 % of the in-pass
   samples at spot 2 (window s2-y0..s2-y45, 8 143 samples) - about 0.3 ms a
   frame still to gain on Windows by one INI line.
