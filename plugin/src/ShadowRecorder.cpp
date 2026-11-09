@@ -6,6 +6,7 @@
 #include "RouteRangeWalk.h"
 #include "OcclusionCull.h"
 #include "FastSceneUpdate.h"
+#include "FastVolatilePack.h"
 #include "RouteStereoDraw.h"
 #include "ShadowRangeWalk.h"
 
@@ -17,7 +18,7 @@ namespace {
 const char* const kNames[] = {"TimeInfo::Update", "TimeInfo::Init", "TimeInfo::Freeze", "TimeInfo::Unfreeze",
                               "LoadingMenu::Tick", "LoadingMenu::LoadingMenu",
                               "ShadowSceneLight::CollectGeometryInRange", "_CIsqrt",
-                              "NiAVObject::Update (ApplyAnimData)", "NiAVObject::UpdateSelected (cells)"};
+                              "NiAVObject::Update (ApplyAnimData)", "NiAVObject::UpdateSelected (cells)", "PackSkinnedGeometryBuffer (volatile, unchanged)"};
 static_assert(sizeof(kNames) / sizeof(kNames[0]) == static_cast<int>(Shadowed::Count), "one name per shadowed function");
 
 SRWLOCK g_lock = SRWLOCK_INIT;
@@ -113,6 +114,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogRouteSummary();
 	LogStereoDrawSummary();
 	LogActorUpdateSummary();
+	LogVolatilePackSummary();
 	LogOcclusionCullSummary();
 	if (planner != nullptr && g_settings.havokPlanner && sample.frames != 0) {
 		const float stepSeconds = *reinterpret_cast<volatile float*>(0x00BA790C);

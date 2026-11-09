@@ -76,6 +76,9 @@ struct Host {
 	uint32_t (*installRouteActorUpdate)(const RouteSettings& settings);
 	// [Probe] ActorUpdateTiming: the original timed at the same entry (FastSceneUpdate.cpp).
 	uint32_t (*installActorUpdateTiming)(const ShadowSettings& settings);
+	// The volatile pack's shadow and route (FastVolatilePack.cpp): two detours each.
+	uint32_t (*installShadowVolatilePack)(const ShadowSettings& settings);
+	uint32_t (*installRouteVolatilePack)(const RouteSettings& settings);
 };
 
 // How many counting detours the settings ask for: five hot functions of the

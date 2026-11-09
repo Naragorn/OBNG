@@ -393,6 +393,10 @@ std::unordered_map<std::uint64_t, std::uint64_t>* g_keyPacked = nullptr;  // (da
 std::unordered_map<std::uint64_t, unsigned char*>* g_keyBytes = nullptr;
 std::uint64_t g_offsetDiffers[88] = {};
 std::uint64_t g_verticesCompared = 0, g_verticesDiffer = 0;
+// The gate's question: a pack whose source arrays did not change - does any
+// byte outside the 16 at +40 differ from that key's last pack?
+std::uint64_t g_cleanPacksCompared = 0, g_cleanPacksOutsideGap = 0;
+UInt32 g_declsDescribed[8] = {};
 std::uint64_t g_cleanSame = 0, g_cleanChanged = 0, g_dirtySame = 0, g_dirtyChanged = 0, g_morphCalls = 0;
 
 UInt32 __fastcall ProbeFaceMorph(void* self, void* /*edx*/, UInt32 changed) {
@@ -526,12 +530,16 @@ UInt32 __fastcall ProbeUnlock(void* self, void* /*edx*/, UInt32 d3dBuffer) {
 			if (kept == nullptr) {
 				kept = static_cast<unsigned char*>(HeapAlloc(GetProcessHeap(), 0, bytes));
 			} else if (verdict == probe::PackVerdict::Changed) {
+				bool outsideGap = false;
 				for (UInt32 v = 0; v < bytes / 88; ++v) {
 					bool any = false;
 					for (UInt32 o = 0; o < 88; ++o) {
 						if (kept[v * 88 + o] != staging[v * 88 + o]) {
 							++g_offsetDiffers[o];
 							any = true;
+							if (o < 40 || o >= 56) {
+								outsideGap = true;
+							}
 						}
 					}
 					++g_verticesCompared;
@@ -539,9 +547,41 @@ UInt32 __fastcall ProbeUnlock(void* self, void* /*edx*/, UInt32 d3dBuffer) {
 						++g_verticesDiffer;
 					}
 				}
+				if (clean) {
+					++g_cleanPacksCompared;
+					if (outsideGap) {
+						++g_cleanPacksOutsideGap;
+					}
+				}
 			}
 			if (kept != nullptr) {
 				std::memcpy(kept, staging, bytes);
+			}
+			// The declaration's entries, once per declaration: offset, selector, type.
+			for (UInt32& described : g_declsDescribed) {
+				if (described == context->decl) {
+					break;
+				}
+				if (described != 0) {
+					continue;
+				}
+				described = context->decl;
+				const UInt32 decl = context->decl;
+				const UInt32 entryCount = ReadAt<UInt32>(decl + 0x1C);
+				const UInt32 stream = ReadAt<UInt32>(decl + 0x24) + context->stream * 16;
+				const UInt32 entries = ReadAt<UInt32>(stream + 0x08);
+				char text[700];
+				int n = std::snprintf(text, sizeof(text), "Probe: declaration %08X stream %u stride %u, %u entries (offset:selector:type):", decl, context->stream,
+				                      ReadAt<UInt32>(stream + 0x0C), entryCount);
+				for (UInt32 e = 0; e < entryCount && e < 24 && n < 640 && entries != 0; ++e) {
+					n += std::snprintf(text + n, sizeof(text) - n, " %u:%d:%u", ReadAt<UInt32>(entries + e * 0x1C + 0x04),
+					                   static_cast<int>(ReadAt<UInt32>(entries + e * 0x1C + 0x08)), ReadAt<UInt32>(entries + e * 0x1C + 0x0C));
+				}
+				const UInt32 data = context->geometry;
+				std::snprintf(text + n, sizeof(text) - n, "; data colours %08X, partition bones a vertex %u, shader flag +0x34 n/a", ReadAt<UInt32>(data + 0x24),
+				              context->partition != 0 ? ReadAt<UInt16>(context->partition + 0x24) : 0);
+				g_log("%s", text);
+				break;
 			}
 		}
 	}
@@ -610,6 +650,8 @@ void LogPackCache() {
 		g_verticesDiffer = g_verticesCompared = 0;
 		ReleaseSRWLockExclusive(&g_packLock);
 		g_log("%s", offsets);
+		g_log("Probe: pack cache gate - changed packs with an unchanged source: %llu compared, %llu with a difference outside vertex bytes 40..55",
+		      g_cleanPacksCompared, g_cleanPacksOutsideGap);
 	}
 	{
 		const probe::ClockPair now = ReadClocks();

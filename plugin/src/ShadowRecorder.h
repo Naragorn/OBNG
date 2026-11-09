@@ -21,6 +21,7 @@ enum class Shadowed : int {
 	FastSqrt,
 	ActorUpdate,
 	GridUpdate,
+	VolatilePack,
 	Count,
 };
 

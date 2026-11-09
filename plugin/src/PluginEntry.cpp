@@ -53,6 +53,11 @@ bool Load(const ExtenderInterfaceHead& xse, const Host& host) {
 		if (scene.actorUpdate || scene.gridUpdate) {
 			made += host.installShadowActorUpdate(scene);
 		}
+		if (s.volatilePack && s.packCache) {
+			host.log("Shadow: the volatile pack skipped - the PackCache probe takes the same entries");
+		} else if (s.volatilePack) {
+			made += host.installShadowVolatilePack(s);
+		}
 		host.log("Shadow: %u of %u detours made", made, s.Asked());
 	}
 	if (r.Asked() == 0) {
@@ -89,6 +94,13 @@ bool Load(const ExtenderInterfaceHead& xse, const Host& host) {
 		}
 		if (scene.actorUpdate || scene.gridUpdate) {
 			made += host.installRouteActorUpdate(scene);
+		}
+		if (r.volatilePack && s.packCache) {
+			host.log("Route: the volatile pack skipped - the PackCache probe takes the same entries");
+		} else if (r.volatilePack && RouteSkippedForShadow(s.volatilePack, r.volatilePack)) {
+			host.log("Route: the volatile pack skipped - its shadow takes the same entries and wins");
+		} else if (r.volatilePack) {
+			made += host.installRouteVolatilePack(r);
 		}
 		host.log("Route: %u of %u detours made", made, r.Asked());
 	}

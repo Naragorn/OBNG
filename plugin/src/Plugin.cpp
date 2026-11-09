@@ -10,6 +10,7 @@
 #include "Probes.h"
 #include "FastSceneUpdate.h"
 #include "FastSqrt.h"
+#include "FastVolatilePack.h"
 #include "RouteRangeWalk.h"
 #include "RouteStereoDraw.h"
 #include "ShadowRangeWalk.h"
@@ -99,6 +100,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	s.sqrt = GetPrivateProfileIntA("Shadow", "Sqrt", 0, path) != 0;
 	s.actorUpdate = GetPrivateProfileIntA("Shadow", "ActorUpdate", 0, path) != 0;
 	s.gridUpdate = GetPrivateProfileIntA("Shadow", "GridUpdate", 0, path) != 0;
+	s.volatilePack = GetPrivateProfileIntA("Shadow", "VolatilePack", 0, path) != 0;
 	s.fpuControlWord = GetPrivateProfileIntA("Probe", "FpuControlWord", 1, path) != 0;
 	s.havokPlanner = GetPrivateProfileIntA("Probe", "HavokPlanner", 1, path) != 0;
 	s.callCounters = GetPrivateProfileIntA("Probe", "CallCounters", 0, path) != 0;
@@ -125,6 +127,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	r.sqrt = GetPrivateProfileIntA("Route", "Sqrt", 0, path) != 0;
 	r.actorUpdate = GetPrivateProfileIntA("Route", "ActorUpdate", 0, path) != 0;
 	r.gridUpdate = GetPrivateProfileIntA("Route", "GridUpdate", 0, path) != 0;
+	r.volatilePack = GetPrivateProfileIntA("Route", "VolatilePack", 0, path) != 0;
 	r.stereoDraw = GetPrivateProfileIntA("Route", "StereoDraw", 0, path) != 0;
 	bool eyesKnown = false;
 	r.stereoEyes = obng::plugin::StereoEyesFromIni(GetPrivateProfileIntA("Route", "StereoEyes", 1, path), &eyesKnown);
@@ -257,6 +260,14 @@ uint32_t InstallActorUpdateTimingSideEffect(const obng::plugin::ShadowSettings& 
 	return obng::plugin::InstallActorUpdateTiming(settings, &Log);
 }
 
+uint32_t InstallShadowVolatilePackSideEffect(const obng::plugin::ShadowSettings& settings) {
+	return obng::plugin::InstallShadowVolatilePack(settings, &Log);
+}
+
+uint32_t InstallRouteVolatilePackSideEffect(const obng::plugin::RouteSettings& settings) {
+	return obng::plugin::InstallRouteVolatilePack(settings, &Log);
+}
+
 const obng::plugin::Host kHost{&ResetLog,
                                &Log,
                                &ReadSettings,
@@ -273,7 +284,9 @@ const obng::plugin::Host kHost{&ResetLog,
                                &InstallRouteSqrtSideEffect,
                                &InstallShadowActorUpdateSideEffect,
                                &InstallRouteActorUpdateSideEffect,
-                               &InstallActorUpdateTimingSideEffect};
+                               &InstallActorUpdateTimingSideEffect,
+                               &InstallShadowVolatilePackSideEffect,
+                               &InstallRouteVolatilePackSideEffect};
 
 }  // namespace
 

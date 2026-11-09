@@ -50,6 +50,8 @@ struct Fake {
 	int actorRouteInstalls = 0;
 	uint32_t actorRouteMade = 1;
 	int actorTimingInstalls = 0;
+	int volatileShadowInstalls = 0;
+	int volatileRouteInstalls = 0;
 	ShadowSettings sceneShadowSeen;
 	RouteSettings sceneRouteSeen;
 	std::vector<std::string> calls;  // the side effects in the order Load made them
@@ -160,6 +162,16 @@ uint32_t FakeInstallRouteActorUpdate(const RouteSettings& settings) {
 	return (settings.actorUpdate ? g_fake->actorRouteMade : 0u) + (settings.gridUpdate ? 1u : 0u);
 }
 
+uint32_t FakeInstallShadowVolatilePack(const ShadowSettings& settings) {
+	++g_fake->volatileShadowInstalls;
+	return settings.volatilePack ? 2u : 0u;
+}
+
+uint32_t FakeInstallRouteVolatilePack(const RouteSettings& settings) {
+	++g_fake->volatileRouteInstalls;
+	return settings.volatilePack ? 2u : 0u;
+}
+
 uint32_t FakeInstallActorUpdateTiming(const ShadowSettings& settings) {
 	++g_fake->actorTimingInstalls;
 	return settings.actorUpdateTiming ? 1u : 0u;
@@ -169,7 +181,7 @@ const Host kHost{&FakeReset,          &FakeLog,          &FakeReadSettings, &Fak
                  &FakeInstall,        &FakeInstallMenu,  &FakeInstallRangeWalk, &FakeInstallRoute,
                  &FakeStartSummaryTimer, &FakeInstallProbes, &FakeInstallStereo, &FakeInstallFixes,
                  &FakeInstallShadowSqrt, &FakeInstallRouteSqrt, &FakeInstallShadowActorUpdate, &FakeInstallRouteActorUpdate,
-                 &FakeInstallActorUpdateTiming};
+                 &FakeInstallActorUpdateTiming, &FakeInstallShadowVolatilePack, &FakeInstallRouteVolatilePack};
 
 // Every TimeInfo and LoadingMenu shadow off.
 ShadowSettings NoShadow() {
@@ -771,6 +783,38 @@ void TestLoadActorUpdate() {
 	Check(gridProbe.actorRouteInstalls == 1 && !gridProbe.sceneRouteSeen.actorUpdate && gridProbe.sceneRouteSeen.gridUpdate &&
 	          gridProbe.Logged("Route: 1 of 2 detours made"),
 	      "beside the SceneUpdate probe the actors' route is skipped, the cells' stays");
+
+	Section("Load with the volatile pack: routed two detours, the shadow wins, neither beside the PackCache probe");
+	Fake vpRoute;
+	vpRoute.iniSettings.shadow = NoShadow();
+	vpRoute.iniSettings.route.volatilePack = true;
+	g_fake = &vpRoute;
+	ResetForTest();
+	Check(Load(Game(), kHost) && vpRoute.volatileRouteInstalls == 1 && vpRoute.Logged("Route: 2 of 2 detours made"), "routed: two of two");
+	Fake vpBoth;
+	vpBoth.iniSettings.shadow = NoShadow();
+	vpBoth.iniSettings.shadow.volatilePack = true;
+	vpBoth.iniSettings.route.volatilePack = true;
+	vpBoth.made = 0;
+	vpBoth.menuMade = 0;
+	g_fake = &vpBoth;
+	ResetForTest();
+	Check(Load(Game(), kHost) && vpBoth.volatileShadowInstalls == 1 && vpBoth.volatileRouteInstalls == 0 && vpBoth.Logged("Shadow: 2 of 2 detours made") &&
+	          vpBoth.Logged("Route: the volatile pack skipped - its shadow takes the same entries and wins") && vpBoth.Logged("Route: 0 of 2 detours made"),
+	      "both asked: the shadow installs, the route is said and counted as not made");
+	Fake vpProbe;
+	vpProbe.iniSettings.shadow = NoShadow();
+	vpProbe.iniSettings.shadow.packCache = true;
+	vpProbe.iniSettings.shadow.volatilePack = true;
+	vpProbe.iniSettings.route.volatilePack = true;
+	vpProbe.made = 0;
+	vpProbe.menuMade = 0;
+	g_fake = &vpProbe;
+	ResetForTest();
+	Check(Load(Game(), kHost) && vpProbe.volatileShadowInstalls == 0 && vpProbe.volatileRouteInstalls == 0 &&
+	          vpProbe.Logged("Shadow: the volatile pack skipped - the PackCache probe takes the same entries") &&
+	          vpProbe.Logged("Route: the volatile pack skipped - the PackCache probe takes the same entries"),
+	      "beside the probe: neither, both said");
 
 	Section("Load with the actor update timing probe: alone it takes the entry, beside the route it does not");
 	Fake timing;
