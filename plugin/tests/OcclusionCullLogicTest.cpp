@@ -413,7 +413,7 @@ void TestSummary() {
 	char line[1200];
 	Check(cull::FormatSummary(s, settings, 1000.0, 777, line, sizeof(line)) > 0, "written");
 	std::string text(line);
-	Check(text.find("Route: occlusion cull - 10 eye passes (1 without eye data, 0 flat)") == 0, "the head");
+	Check(text.find("Route: occlusion cull - 10 eye passes (1 without eye data, 0 flat, 0 into other targets)") == 0, "the head");
 	Check(text.find("per pass 120 draws, 40 skipped (33 %), 10 outside both frustums, 2 untestable (near 2, no bound 0, viewport 0), 5 repeats") !=
 	          std::string::npos,
 	      "per pass, the shares");
@@ -466,7 +466,12 @@ void TestFlat() {
 	s.flatPasses = 3;
 	char line[1200];
 	cull::FormatSummary(s, Settings{}, 1000.0, 0, line, sizeof(line));
-	Check(std::string(line).find("3 eye passes (0 without eye data, 3 flat)") != std::string::npos, "the summary counts the flat passes");
+	s.otherTargetPasses = 7;
+	cull::FormatSummary(s, Settings{}, 1000.0, 0, line, sizeof(line));
+	Check(std::string(line).find("3 eye passes (0 without eye data, 3 flat, 7 into other targets)") != std::string::npos, "the summary counts the flat passes and the other targets'");
+	Check(cull::FlatTargetIsFrame(2568, 1444, 2568, 1444), "the frame's target: the back buffer's size");
+	Check(!cull::FlatTargetIsFrame(1024, 1024, 2568, 1444), "a reflection map is not the frame");
+	Check(!cull::FlatTargetIsFrame(2568, 1444, 0, 0), "no back buffer read: no frame");
 }
 
 void TestListLeaders() {

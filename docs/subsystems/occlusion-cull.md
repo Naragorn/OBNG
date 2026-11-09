@@ -277,6 +277,45 @@ of scene pass depending on the weather and the run, indoors 0.5 ms
 steadily. The GPU figure on Linux follows the submission and says nothing
 here (as the dynamic-resolution runs found). All measured, one run a side.
 
+## The flat game ([Route] OcclusionCullFlat, 2026-11-09)
+
+OBNG is meant for every player one day, so the culler runs without OBVR's
+eye data too: with OcclusionCullFlat=1 a pass whose render target has the
+back buffer's size is the frame's one camera (FlatPorts: the target as the
+port, eye 0 projected alone, RectsFor with one eye); a pass into another
+target - the water's reflection map, the shadow maps, 1024 by 1024 - is
+left alone (FlatTargetIsFrame, counted "into other targets"). Not for
+OBVR's dual pass: two cameras a frame would share one verdict table.
+
+Measured in the harness with OBVR drawing nothing to the headset
+([Render] Enabled=0, Stereo=none - one scene pass a frame, the game drawn
+flat into its window; the hand script needed OBVR's Present hook, which went
+in only for the headset's submit before OBVR fa89e42), scenario
+tools/hand-scripts/obng-cull-flat.txt, runs obng-cull-flat/20261109-172113
+(off), -172519 (on, before the target check), -173055 (on, with it):
+
+| place | draws a pass | skipped | pass ms with the culler | skips unconfirmed |
+|---|---:|---:|---:|---:|
+| Market District | 604 | 32 % | 1.29 | 0.0 % |
+| Talos Plaza | 428 | 46 % | 0.73 | 0.0 % |
+| Imperial Dungeon | 469 | 49 % | 0.57 | 0.0 % |
+| Weynon Priory house | 475 | 57 % | 0.41 | 0.0 % |
+| Gold Road | 1030 | 50 % | 1.49 | 0.1 % |
+
+- The shares skipped are the single pass's (26-50 %); the pass takes about
+  half the single pass's time, as one camera's draws should.
+- Without the target check the reflection passes outdoors were culled
+  with the frame's verdicts and vice versa: 5-10 % of the skips unconfirmed
+  at the market, the plaza and the road, 0 % indoors; with it 0.0-0.1 %.
+  Outdoors every frame has one such other-target pass (638 of each in a
+  window).
+- Every gamescope picture at the marks 0.0 % pure blue, on and off
+  (tools/cull-blue.py --pattern '*-game.png').
+- Not measured: the flat frame time off against on - OBVR's frame capture
+  needs the headset renderer. A test-only mode (verdicts never acted on)
+  would give the pass time without the skips from the culler's own clock;
+  cheap, not built.
+
 ### The trace ([Route] OcclusionCullTrace=N, OcclusionCullTraceDepth)
 
 For such a hunt: every 75th eye pass, N times, the log gets the camera and

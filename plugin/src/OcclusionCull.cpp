@@ -289,10 +289,9 @@ bool BeginPass() {
 	return true;
 }
 
-// The render target's size, for the flat game's port.
-bool TargetSize(UInt32* width, UInt32* height) {
-	IDirect3DSurface9* surface = nullptr;
-	if (FAILED(g_device->GetRenderTarget(0, &surface)) || surface == nullptr) {
+// A surface's size; false when it cannot be read.
+bool SurfaceSize(IDirect3DSurface9* surface, UInt32* width, UInt32* height) {
+	if (surface == nullptr) {
 		return false;
 	}
 	D3DSURFACE_DESC desc{};
@@ -304,6 +303,24 @@ bool TargetSize(UInt32* width, UInt32* height) {
 	*width = desc.Width;
 	*height = desc.Height;
 	return true;
+}
+
+// The render target's size, for the flat game's port.
+bool TargetSize(UInt32* width, UInt32* height) {
+	IDirect3DSurface9* surface = nullptr;
+	if (FAILED(g_device->GetRenderTarget(0, &surface))) {
+		return false;
+	}
+	return SurfaceSize(surface, width, height);
+}
+
+// The back buffer's size: what a flat pass of the frame renders into.
+bool BackBufferSize(UInt32* width, UInt32* height) {
+	IDirect3DSurface9* surface = nullptr;
+	if (FAILED(g_device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &surface))) {
+		return false;
+	}
+	return SurfaceSize(surface, width, height);
 }
 
 IDirect3DQuery9* EnsureQuery(IDirect3DQuery9** slot) {
@@ -550,11 +567,19 @@ UInt32 __fastcall CullFinish(void* self, void* /*edx*/) {
 			std::memcpy(&g_ports[eye], &g_eyes.viewport[eye], sizeof(oc::Viewport));
 		}
 	} else {
-		// The flat game: the one camera's port is the render target itself.
+		// The flat game: the one camera's port is the render target itself -
+		// when that is the frame's (the back buffer's size); a reflection or
+		// shadow map's pass is left alone (FlatTargetIsFrame).
 		UInt32 width = 0;
 		UInt32 height = 0;
-		if (!TargetSize(&width, &height)) {
+		UInt32 backWidth = 0;
+		UInt32 backHeight = 0;
+		if (!TargetSize(&width, &height) || !BackBufferSize(&backWidth, &backHeight)) {
 			++g_stats.passesWithoutEyes;
+			return g_finish(self, nullptr);
+		}
+		if (!cull::FlatTargetIsFrame(width, height, backWidth, backHeight)) {
+			++g_stats.otherTargetPasses;
 			return g_finish(self, nullptr);
 		}
 		g_eyeCount = 1;

@@ -1,9 +1,12 @@
 # The OCCLUSION CULLER in the FLAT game ([Route] OcclusionCullFlat=1): the
 # five places of obng-cull.txt with OBVR rendering nothing to the headset
 # ([Render] Enabled=0 - OBVR registers as a background app, the game draws
-# its one camera into its window as the flat game does) and the single pass
-# off, so the route has no eye data and the culler runs with the render
-# target as its one port. OBVR's hand script still drives the places and the
+# into its window as the flat game does), Stereo=none (one scene pass a
+# frame; with the default dual OBVR still drew both eyes' passes, two
+# cameras a frame, and the culler's verdicts crossed between them: 5-10 %
+# of the skips unconfirmed outdoors in the run of 17:15) and the single
+# pass off, so the route has no eye data and the culler runs with the
+# render target as its one port. OBVR's hand script still drives the places and the
 # head, and the harness takes gamescope pictures of the game window at every
 # mark (<run>/NN-<mark>-game.png) - the check that nothing comes out blue
 # (tools/cull-blue.py <run> --pattern '*-game.png'). OBVR's frame capture
@@ -18,6 +21,7 @@
 ini Hands Enabled=1
 ini Hands ReachOpens=0
 ini Render Enabled=0
+ini Render Stereo=none
 ini Render SinglePassStereo=0
 console-at ready tgm
 # The weather fixed to clear (fw 38EEE, as water-turn-jitter.txt): the A/B of

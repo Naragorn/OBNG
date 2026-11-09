@@ -805,3 +805,18 @@ whatever the first draw does inside the bracket (its shader pipeline open,
 slots 10/11, is the candidate) is state the later records of the list
 rely on; a renderer that leaves records out must keep the list leader.
 What the state is, is unread.
+
+
+### The reflection pass takes the eye pass's finish (2026-11-09)
+
+**Measured** (the occlusion culler's counters, runs obng-cull-flat/20261109-173055
+and obng-cull-texture-turn/20261109-134743): outdoors, where there is water,
+the accumulator's finish 0x007AE070 returns to the eye-pass site 0x007C7D56
+twice a frame - once for the frame's pass and once for a pass into a 1024 by
+1024 target with its own (mirrored) camera, 6-13 draws, every one of them
+outside the eye viewport: the water's reflection render goes through
+ShadowSceneNode::Render like the frame. Indoors (the Imperial Prison) and in
+the Market District without water in view, once a frame. A hook on that site
+that keeps state by frame must tell the two apart (OBNG's culler: the eye
+data's viewports in the single pass, the render target's size against the
+back buffer's in the flat game).

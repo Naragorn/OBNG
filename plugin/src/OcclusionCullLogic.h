@@ -395,6 +395,7 @@ struct Stats {
 	std::uint64_t eyePasses = 0;
 	std::uint64_t passesWithoutEyes = 0;  // the route had no eye data: the pass ran untouched
 	std::uint64_t flatPasses = 0;         // ... or, with OcclusionCullFlat, ran with the one camera
+	std::uint64_t otherTargetPasses = 0;  // flat: a pass into a target not the frame's size (a reflection or shadow map): untouched
 	KindCounts kinds[static_cast<int>(DrawKind::kCount)];
 	std::uint64_t untestableNear = 0;
 	std::uint64_t untestableNoBound = 0;
@@ -510,6 +511,16 @@ inline void Count(Stats* stats, DrawKind kind, Decision decision, TestKind testK
 // the pass's one port is the render target itself; the second port has no
 // area and is never projected. Not for OBVR's dual pass, whose two passes a
 // frame have two cameras but one verdict table.
+// Whether a flat pass draws the frame: its render target has the back
+// buffer's size. The water's reflection and the shadow maps render the
+// scene into smaller targets through the same finish; their cameras are not
+// the frame's, so their verdicts must not meet the frame's (measured
+// 2026-11-09: 5-10 % of the skips unconfirmed outdoors with them in, 0 %
+// indoors where there is no water).
+inline bool FlatTargetIsFrame(std::uint32_t targetWidth, std::uint32_t targetHeight, std::uint32_t backWidth, std::uint32_t backHeight) {
+	return targetWidth == backWidth && targetHeight == backHeight && backWidth != 0 && backHeight != 0;
+}
+
 inline void FlatPorts(std::uint32_t targetWidth, std::uint32_t targetHeight, oc::Viewport out[2]) {
 	out[0] = oc::Viewport{0, 0, targetWidth, targetHeight, 0.0f, 1.0f};
 	out[1] = oc::Viewport{0, 0, 0, 0, 0.0f, 1.0f};
@@ -622,10 +633,11 @@ inline int FormatSummary(const Stats& s, const Settings& settings, double ticksP
 	auto perPass = [&](std::uint64_t n) { return static_cast<double>(n) / passes; };
 	auto ms = [&](std::uint64_t ticks) { return ticksPerMillisecond > 0.0 ? static_cast<double>(ticks) / ticksPerMillisecond / passes : 0.0; };
 	(void)settings;
-	line.Text("Route: occlusion cull - %llu eye passes (%llu without eye data, %llu flat); per pass %.0f draws, %.0f skipped (%u %%), %.0f outside both "
+	line.Text("Route: occlusion cull - %llu eye passes (%llu without eye data, %llu flat, %llu into other targets); per pass %.0f draws, %.0f skipped (%u %%), %.0f outside both "
 	          "frustums, %.0f untestable (near %.0f, no bound %.0f, viewport %.0f), %.0f repeats, %.0f outside eye 0's viewport",
 	          static_cast<unsigned long long>(s.eyePasses),
-	          static_cast<unsigned long long>(s.passesWithoutEyes), static_cast<unsigned long long>(s.flatPasses), perPass(s.Draws()), perPass(s.Skipped()), Percent(s.Skipped(), s.Draws()),
+	          static_cast<unsigned long long>(s.passesWithoutEyes), static_cast<unsigned long long>(s.flatPasses),
+	          static_cast<unsigned long long>(s.otherTargetPasses), perPass(s.Draws()), perPass(s.Skipped()), Percent(s.Skipped(), s.Draws()),
 	          perPass([&] {
 		          std::uint64_t n = 0;
 		          for (const KindCounts& k : s.kinds) {
