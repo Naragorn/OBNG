@@ -912,7 +912,14 @@ UInt32 __fastcall CountObjectUpdate(void* self, void* /*edx*/, UInt32 timeBits, 
 	g_objectUpdateTiming.Add(elapsed);
 	g_objectUpdateSites.Add(site, elapsed);
 	if (site == kApplyAnimDataSite) {
-		g_actorUpdate.Add(static_cast<UInt64>(g_sceneNodes - nodesBefore), static_cast<UInt64>(g_sceneWorldData - worldBefore), elapsed);
+		const LONG64 nodesAfter = g_sceneNodes;
+		const LONG64 worldAfter = g_sceneWorldData;
+		// The summary's reset of the counters can fall inside the call (run
+		// 20261109-145136 had one such call a window, read as 2^64 nodes); a
+		// difference that ran backwards is dropped, not binned.
+		if (nodesAfter >= nodesBefore && worldAfter >= worldBefore) {
+			g_actorUpdate.Add(static_cast<UInt64>(nodesAfter - nodesBefore), static_cast<UInt64>(worldAfter - worldBefore), elapsed);
+		}
 	}
 	return eax;
 }

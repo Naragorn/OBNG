@@ -791,3 +791,53 @@ Linux headless at 75 Hz vsync. Measured:
   (1.5-2 M), no behaviour change, its gain the loop's share of the 20-60
   us per actor (unread: a probe of the nodes per actor and the time per
   node decides it; cheap, 0.1 M).
+
+## The actors' update against their number, the clean run (2026-11-09 14:51, run obng-actors-count/20261109-145136)
+
+The same scenario with the NPCs placed apart (two a line at 150-600 units in
+the four directions) and OBVR's fitted body capsules off ([Hands]
+FittedBodyCapsules=0); OBNG.dll c87a5fb6 (master 8e97433: the probe also
+bins each ApplyAnimData call by the nodes it visits), OBVR.dll 1391cd67,
+Linux headless at 75 Hz vsync, PASS, no crash at 124 actors. Measured:
+
+| step | actors updated a frame | ApplyAnimData ms a frame | engine frames in 10 s | frame ms mean / median / p95 (perf-phases) |
+|---|---:|---:|---:|---:|
+| spot 2 as loaded | 64 | 1.31-1.36 | 745-750 (vsync) | 13.36 / 13.34 / 14.2 |
+| +20 NPCs | 83-87 | 2.30-2.47 | 732, 722 | 13.71 / 13.33 / 14.5 |
+| +20 more | 104-106 | 3.28-3.43 | 645, 651 | 15.25 / 13.84 / 26.5 |
+| +20 more | 123-124 | 4.11-4.30 | 579, 576, 523 | 17.56 / 16.77 / 23.2 |
+
+- **Linear in the count**: each 20 armoured NPCs add 1.0 ms a frame in
+  ApplyAnimData, 50 us a NPC, from 64 to 124 actors without a knee; the
+  frame leaves the vsync at about 85 actors and is at 55-57 Hz with 124
+  (the Walkers' arrivals account for the 3-7 actors above the placed
+  count). OBVR's frame-end callback stays at 1.8 ms throughout, so the
+  run of 14:33 collapsed on the capsules alone.
+- **Three kinds of actor, by their nodes** (the probe's buckets, every
+  window the same within a few percent):
+
+  | nodes a call (NiNode::UpdateDownwardPass visits) | who (derived) | calls a frame | us a call | ns a node |
+  |---:|---|---:|---:|---:|
+  | 27 | one actor: the player's own skeleton (one call a frame) | 1 | 9-11 | 340-400 |
+  | 78 | the road's actors: the Walkers' NPCs and the creatures (plain clothes) | 59-60 | 19-21 | 245-270 |
+  | 303-325 | the placed cast (Blades armour: cuirass, greaves, gauntlets, boots, helmet, sword, shield, each a subtree) | 20 / 40 / 60 | 46-57 | 152-175 |
+
+  UpdateWorldData runs once per node visited plus a few (94 for 78 nodes,
+  325-349 for 303-325): the propagation is the whole call.
+- **A node costs 150-400 ns, not 50** (the grid update's estimate above
+  was the count's lower bound): the compose of parent and local
+  transforms is 20-40 ns of it; the rest is the walk - the virtual
+  UpdateDownwardPass per child, UpdateObjectControllers' list checks,
+  the world bound update, the pointer chasing through nodes allocated
+  over the game's life. The per-node cost falls as the skeleton grows
+  (400 -> 250 -> 160 ns) as the fixed per-call part amortises.
+- **The decision between the two levers (derived)**: an armoured NPC's
+  cost is its 300 nodes, four times a plain NPC's; a street's cost is
+  the sum. The LOD halves the count for the distant half; a rebuild of
+  the propagation attacks the 160-270 ns a node, where the same
+  transforms in the same order in one flat loop over a per-skeleton node
+  array (built once per skeleton, invalidated when the tree changes) is
+  the shape that keeps the results bit for bit and drops the walk. The
+  two are independent and add up; the rebuild is the one that costs
+  nothing in behaviour. The probe's fixed cost per counted node (an
+  interlocked increment, 10-20 ns) sits inside these numbers.
