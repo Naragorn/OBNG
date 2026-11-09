@@ -48,6 +48,20 @@ volatile LONG64 g_rebuilt = 0;      // orders rebuilt after the shape changed
 volatile LONG64 g_fallback = 0;     // to the original: the root is not a plain node
 volatile LONG64 g_routedTicks = 0;  // QPC ticks inside the routed calls
 LARGE_INTEGER g_frequency{};
+// The routed calls by the subtree's size (entries: <=50, <=100, <=200, <=400,
+// more), for the comparison with the probe's node buckets of the original.
+constexpr unsigned kSizeBuckets = 5;
+constexpr std::uint32_t kSizeBounds[kSizeBuckets - 1] = {50, 100, 200, 400};
+volatile LONG64 g_sizeCalls[kSizeBuckets] = {};
+volatile LONG64 g_sizeTicks[kSizeBuckets] = {};
+unsigned SizeBucket(std::uint32_t entries) {
+	for (unsigned i = 0; i < kSizeBuckets - 1; ++i) {
+		if (entries <= kSizeBounds[i]) {
+			return i;
+		}
+	}
+	return kSizeBuckets - 1;
+}
 
 void Original(void* self, UInt32 timeBits, UInt32 flag) { reinterpret_cast<UpdateFn>(g_original)(self, nullptr, timeBits, flag); }
 
@@ -112,6 +126,7 @@ void __fastcall RouteReplacement(void* self, void* /*edx*/, UInt32 timeBits, UIn
 		Original(self, timeBits, flag);
 		return;
 	}
+	const unsigned bucket = SizeBucket(static_cast<std::uint32_t>(order->entries.size()));
 	LARGE_INTEGER start;
 	QueryPerformanceCounter(&start);
 	eng::UpdateSubtree(*order, TimeOf(timeBits), (flag & 0xFF) != 0);
@@ -119,6 +134,8 @@ void __fastcall RouteReplacement(void* self, void* /*edx*/, UInt32 timeBits, UIn
 	QueryPerformanceCounter(&end);
 	InterlockedAdd64(&g_routedTicks, end.QuadPart - start.QuadPart);
 	InterlockedIncrement64(&g_routed);
+	InterlockedAdd64(&g_sizeTicks[bucket], end.QuadPart - start.QuadPart);
+	InterlockedIncrement64(&g_sizeCalls[bucket]);
 }
 
 // ---- The timing of the original ---------------------------------------------------------------
@@ -129,6 +146,10 @@ void __fastcall TimingReplacement(void* self, void* /*edx*/, UInt32 timeBits, UI
 		return;
 	}
 	InterlockedIncrement64(&g_calls);
+	// The size bucket from the order (built and kept as the route would, so
+	// the original's time per class is comparable with the route's).
+	const su::Order* order = OrderFor(reinterpret_cast<UInt32>(self));
+	const unsigned bucket = order == nullptr ? kSizeBuckets - 1 : SizeBucket(static_cast<std::uint32_t>(order->entries.size()));
 	LARGE_INTEGER start;
 	QueryPerformanceCounter(&start);
 	Original(self, timeBits, flag);
@@ -136,6 +157,8 @@ void __fastcall TimingReplacement(void* self, void* /*edx*/, UInt32 timeBits, UI
 	QueryPerformanceCounter(&end);
 	InterlockedAdd64(&g_routedTicks, end.QuadPart - start.QuadPart);
 	InterlockedIncrement64(&g_routed);
+	InterlockedAdd64(&g_sizeTicks[bucket], end.QuadPart - start.QuadPart);
+	InterlockedIncrement64(&g_sizeCalls[bucket]);
 }
 
 // ---- The shadow ------------------------------------------------------------------------------
@@ -384,6 +407,22 @@ void LogActorUpdateSummary() {
 	g_log("%s: actor update - %lld calls from ApplyAnimData, %lld run %s in %.2f ms (%.1f us each), %lld orders built, %lld rebuilt after a "
 	      "shape change, %lld to the original (root not a plain node)",
 	      g_mode == Mode::Route ? "Route" : "Probe", calls, routed, g_mode == Mode::Route ? "flat" : "in the original, timed", ms, routed > 0 ? ms * 1000.0 / static_cast<double>(routed) : 0.0, built, rebuilt, fallback);
+	char line[400];
+	int at = std::snprintf(line, sizeof(line), "%s: actor update by subtree size (entries):", g_mode == Mode::Route ? "Route" : "Probe");
+	for (unsigned i = 0; i < kSizeBuckets && at > 0 && static_cast<std::size_t>(at) < sizeof(line); ++i) {
+		const LONG64 c = InterlockedExchange64(&g_sizeCalls[i], 0);
+		const LONG64 t = InterlockedExchange64(&g_sizeTicks[i], 0);
+		if (c == 0) {
+			continue;
+		}
+		const double us = g_frequency.QuadPart > 0 ? static_cast<double>(t) * 1.0e6 / static_cast<double>(g_frequency.QuadPart) / static_cast<double>(c) : 0.0;
+		if (i == kSizeBuckets - 1) {
+			at += std::snprintf(line + at, sizeof(line) - at, " >%u: %lld calls %.1f us each;", kSizeBounds[i - 1], c, us);
+		} else {
+			at += std::snprintf(line + at, sizeof(line) - at, " <=%u: %lld calls %.1f us each;", kSizeBounds[i], c, us);
+		}
+	}
+	g_log("%s", line);
 }
 
 }  // namespace obng::plugin
