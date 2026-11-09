@@ -20,6 +20,7 @@ enum class Shadowed : int {
 	RangeWalk,
 	FastSqrt,
 	ActorUpdate,
+	GridUpdate,
 	Count,
 };
 

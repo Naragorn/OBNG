@@ -43,10 +43,15 @@ bool Load(const ExtenderInterfaceHead& xse, const Host& host) {
 		made += host.installShadowLoadingMenu(s);
 		made += host.installShadowRangeWalk(s);
 		made += host.installShadowSqrt(s);
-		if (s.actorUpdate && s.sceneUpdate) {
+		// The scene update's shadows (FastSceneUpdate.cpp): the actors' and the
+		// cells'. The actors' entry is the SceneUpdate probe's as well.
+		ShadowSettings scene = s;
+		if (scene.actorUpdate && scene.sceneUpdate) {
 			host.log("Shadow: NiAVObject::Update skipped - the SceneUpdate probe takes the same entry");
-		} else if (s.actorUpdate) {
-			made += host.installShadowActorUpdate(s);
+			scene.actorUpdate = false;
+		}
+		if (scene.actorUpdate || scene.gridUpdate) {
+			made += host.installShadowActorUpdate(scene);
 		}
 		host.log("Shadow: %u of %u detours made", made, s.Asked());
 	}
@@ -69,13 +74,21 @@ bool Load(const ExtenderInterfaceHead& xse, const Host& host) {
 		} else if (r.sqrt) {
 			made += host.installRouteSqrt(r);
 		}
-		if (r.actorUpdate && s.sceneUpdate) {
+		RouteSettings scene = r;
+		if (scene.actorUpdate && s.sceneUpdate) {
 			host.log("Route: NiAVObject::Update skipped - the SceneUpdate probe takes the same entry");
-		} else if (r.actorUpdate && RouteSkippedForShadow(s.actorUpdate, r.actorUpdate)) {
+			scene.actorUpdate = false;
+		} else if (scene.actorUpdate && RouteSkippedForShadow(s.actorUpdate, r.actorUpdate)) {
 			host.log("Route: NiAVObject::Update skipped - the ActorUpdate shadow takes the same entry and wins (a route without a prior "
 			         "clean shadow run makes nothing safer)");
-		} else if (r.actorUpdate) {
-			made += host.installRouteActorUpdate(r);
+			scene.actorUpdate = false;
+		}
+		if (scene.gridUpdate && RouteSkippedForShadow(s.gridUpdate, r.gridUpdate)) {
+			host.log("Route: the cells' selected update skipped - the GridUpdate shadow takes the same entry and wins");
+			scene.gridUpdate = false;
+		}
+		if (scene.actorUpdate || scene.gridUpdate) {
+			made += host.installRouteActorUpdate(scene);
 		}
 		host.log("Route: %u of %u detours made", made, r.Asked());
 	}
@@ -90,7 +103,7 @@ bool Load(const ExtenderInterfaceHead& xse, const Host& host) {
 		host.log("Fix: could not be set up - the game's grass shaders stay");
 	}
 	if (s.actorUpdateTiming) {
-		if (s.sceneUpdate || s.actorUpdate || r.actorUpdate) {
+		if (s.sceneUpdate || s.actorUpdate || r.actorUpdate || s.gridUpdate || r.gridUpdate) {
 			host.log("Probe: NiAVObject::Update timing skipped - the SceneUpdate probe, the ActorUpdate shadow or its route takes the same entry");
 		} else {
 			host.log("Probe: NiAVObject::Update timing - %u of 1 detours made", host.installActorUpdateTiming(s));

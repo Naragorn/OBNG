@@ -411,40 +411,265 @@ void __fastcall ShadowReplacement(void* self, void* /*edx*/, UInt32 timeBits, UI
 	RecordCall(Shadowed::ActorUpdate, true, detail, inputs);
 }
 
+// ---- The cells' selected update ------------------------------------------------------------------
+//
+// NiAVObject's selected update 0x007073A0 (the object's +0x64, then the
+// parent's +0x94), for the call from TESObjectCELL::UpdateSelectedNodes
+// 0x004D4970 (return site 0x004D4A00): 68 calls a frame on the Gold Road,
+// the whole of the grid update's 0.9-1.5 ms. The same three modes as the
+// actors' update: the flat selected run, its gate, the timed original.
+
+constexpr UInt32 kSelectedUpdateAddress = 0x007073A0;
+constexpr UInt8 kSelectedEntryBytes[] = {0xD9, 0x44, 0x24, 0x04, 0x56, 0x8B, 0xF1};  // fld [esp+4]; push esi; mov esi,ecx (read)
+constexpr UInt32 kCellUpdateSite = 0x004D4A00;  // the return into TESObjectCELL::UpdateSelectedNodes (read: CALL at 0x004D49FB)
+using SelectedFn = void(__fastcall*)(void* self, void* edx, UInt32 timeBits);
+
+Mode g_gridMode = Mode::Off;
+void* g_gridOriginal = nullptr;
+SRWLOCK g_gridLock = SRWLOCK_INIT;
+std::unordered_map<su::Handle, su::SelectedOrder> g_gridOrders;
+volatile LONG64 g_gridCalls = 0;
+volatile LONG64 g_gridRouted = 0;
+volatile LONG64 g_gridBuilt = 0;
+volatile LONG64 g_gridRebuilt = 0;
+volatile LONG64 g_gridFallback = 0;
+volatile LONG64 g_gridTicks = 0;
+volatile LONG64 g_gridEntries = 0;
+
+void GridOriginal(void* self, UInt32 timeBits) { reinterpret_cast<SelectedFn>(g_gridOriginal)(self, nullptr, timeBits); }
+
+su::SelectedOrder* GridOrderFor(su::Handle root) {
+	eng::Tree tree;
+	AcquireSRWLockExclusive(&g_gridLock);
+	auto it = g_gridOrders.find(root);
+	if (it != g_gridOrders.end() && su::MatchesSelected(it->second, tree)) {
+		su::SelectedOrder* order = &it->second;
+		ReleaseSRWLockExclusive(&g_gridLock);
+		return order;
+	}
+	if (tree.KindOf(root) != su::Kind::Node) {
+		if (it != g_gridOrders.end()) {
+			g_gridOrders.erase(it);
+		}
+		ReleaseSRWLockExclusive(&g_gridLock);
+		InterlockedIncrement64(&g_gridFallback);
+		return nullptr;
+	}
+	if (it != g_gridOrders.end()) {
+		InterlockedIncrement64(&g_gridRebuilt);
+		it->second = su::BuildSelected(tree, root);
+		su::SelectedOrder* order = &it->second;
+		ReleaseSRWLockExclusive(&g_gridLock);
+		return order;
+	}
+	if (g_gridOrders.size() >= kOrdersKeptAtMost) {
+		g_gridOrders.clear();
+	}
+	InterlockedIncrement64(&g_gridBuilt);
+	auto inserted = g_gridOrders.emplace(root, su::BuildSelected(tree, root));
+	su::SelectedOrder* order = &inserted.first->second;
+	ReleaseSRWLockExclusive(&g_gridLock);
+	return order;
+}
+
+void __fastcall GridRouteReplacement(void* self, void* /*edx*/, UInt32 timeBits) {
+	if (reinterpret_cast<UInt32>(_ReturnAddress()) != kCellUpdateSite) {
+		GridOriginal(self, timeBits);
+		return;
+	}
+	InterlockedIncrement64(&g_gridCalls);
+	const su::Handle root = reinterpret_cast<UInt32>(self);
+	su::SelectedOrder* order = GridOrderFor(root);
+	if (order == nullptr) {
+		GridOriginal(self, timeBits);
+		return;
+	}
+	LARGE_INTEGER start;
+	LARGE_INTEGER end;
+	QueryPerformanceCounter(&start);
+	{
+		eng::Port port;
+		eng::RoundingFromX87 rounding;
+		su::RunSelected(*order, port, TimeOf(timeBits));
+	}
+	eng::UpdateUpwardFrom(root);
+	QueryPerformanceCounter(&end);
+	InterlockedAdd64(&g_gridTicks, end.QuadPart - start.QuadPart);
+	InterlockedAdd64(&g_gridEntries, static_cast<LONG64>(order->entries.size()));
+	InterlockedIncrement64(&g_gridRouted);
+}
+
+void __fastcall GridTimingReplacement(void* self, void* /*edx*/, UInt32 timeBits) {
+	if (reinterpret_cast<UInt32>(_ReturnAddress()) != kCellUpdateSite) {
+		GridOriginal(self, timeBits);
+		return;
+	}
+	InterlockedIncrement64(&g_gridCalls);
+	LARGE_INTEGER start;
+	LARGE_INTEGER end;
+	QueryPerformanceCounter(&start);
+	GridOriginal(self, timeBits);
+	QueryPerformanceCounter(&end);
+	InterlockedAdd64(&g_gridTicks, end.QuadPart - start.QuadPart);
+	InterlockedIncrement64(&g_gridRouted);
+}
+
+// The gate: the flat selected run once, every world against the original
+// compose and every plain geometry's bound against 0x00722AA0 (VerifyPort),
+// then every visited node's bound against the original NiNode::
+// UpdateWorldBound 0x0070A360, children first; the originals' values stay.
+void __fastcall GridShadowReplacement(void* self, void* /*edx*/, UInt32 timeBits) {
+	if (reinterpret_cast<UInt32>(_ReturnAddress()) != kCellUpdateSite) {
+		GridOriginal(self, timeBits);
+		return;
+	}
+	InterlockedIncrement64(&g_gridCalls);
+	const su::Handle root = reinterpret_cast<UInt32>(self);
+	su::SelectedOrder* order = GridOrderFor(root);
+	if (order == nullptr) {
+		RecordSkipped(Shadowed::GridUpdate, "the root is not a plain NiNode");
+		GridOriginal(self, timeBits);
+		return;
+	}
+	const su::SelectedOrder kept = *order;
+	VerifyPort port;
+	{
+		eng::RoundingFromX87 rounding;
+		su::RunSelected(kept, port, TimeOf(timeBits));
+	}
+	unsigned boundsCompared = 0;
+	unsigned boundsDiffer = 0;
+	su::Handle firstBound = 0;
+	su::Bound firstOurs{};
+	su::Bound firstOriginal{};
+	for (std::size_t n = kept.entries.size(); n-- > 0;) {
+		const su::SelectedEntry& e = kept.entries[n];
+		if (e.rigid || e.kind != su::Kind::Node) {
+			continue;
+		}
+		su::Bound ours;
+		std::memcpy(&ours, eng::Pointer(e.object + eng::kWorldBoundOffset), sizeof(ours));
+		port.UpdateWorldBound(e.object);
+		su::Bound original;
+		std::memcpy(&original, eng::Pointer(e.object + eng::kWorldBoundOffset), sizeof(original));
+		++boundsCompared;
+		if (std::memcmp(&ours, &original, sizeof(ours)) != 0) {
+			if (boundsDiffer == 0) {
+				firstBound = e.object;
+				firstOurs = ours;
+				firstOriginal = original;
+			}
+			++boundsDiffer;
+		}
+	}
+	eng::UpdateUpwardFrom(root);
+	InterlockedIncrement64(&g_gridRouted);
+	if (port.worldsDiffer == 0 && port.geometryDiffer == 0 && boundsDiffer == 0) {
+		RecordCall(Shadowed::GridUpdate, false, "", "");
+		return;
+	}
+	char inputs[96];
+	std::snprintf(inputs, sizeof(inputs), "root=%08X entries=%u time=%g", root, static_cast<unsigned>(kept.entries.size()), TimeOf(timeBits));
+	char a[sizeof(su::Transform) * 2 + 1];
+	char b[sizeof(su::Transform) * 2 + 1];
+	char detail[400];
+	if (port.worldsDiffer != 0) {
+		Hex(&port.firstOriginal, sizeof(su::Transform), a);
+		Hex(&port.firstOurs, sizeof(su::Transform), b);
+		std::snprintf(detail, sizeof(detail), " %u of %u worlds differ, %u of %u geometry bounds, %u of %u node bounds; first world: object %08X original %s; rebuild %s",
+		              port.worldsDiffer, port.worldsCompared, port.geometryDiffer, port.geometryCompared, boundsDiffer, boundsCompared, port.firstDiffering, a, b);
+	} else if (port.geometryDiffer != 0) {
+		Hex(&port.firstGeometryOriginal, sizeof(su::Bound), a);
+		Hex(&port.firstGeometryOurs, sizeof(su::Bound), b);
+		std::snprintf(detail, sizeof(detail), " %u of %u geometry bounds differ; first: object %08X original %s flags %04X; rebuild %s flags %04X",
+		              port.geometryDiffer, port.geometryCompared, port.firstGeometry, a, port.firstGeometryFlagsOriginal, b, port.firstGeometryFlagsOurs);
+	} else {
+		Hex(&firstOriginal, sizeof(su::Bound), a);
+		Hex(&firstOurs, sizeof(su::Bound), b);
+		std::snprintf(detail, sizeof(detail), " %u of %u node bounds differ (worlds %u and geometry bounds %u all equal); first: node %08X original %s; rebuild %s",
+		              boundsDiffer, boundsCompared, port.worldsCompared, port.geometryCompared, firstBound, a, b);
+	}
+	RecordCall(Shadowed::GridUpdate, true, detail, inputs);
+}
+
+UInt32 InstallGrid(Mode mode, LogFn log) {
+	static bool s_done = false;
+	if (s_done) {
+		return 0;
+	}
+	s_done = true;
+	g_log = log;
+	QueryPerformanceFrequency(&g_frequency);
+	const void* replacement = mode == Mode::Route ? reinterpret_cast<const void*>(&GridRouteReplacement)
+	                          : mode == Mode::Shadow ? reinterpret_cast<const void*>(&GridShadowReplacement)
+	                                                 : reinterpret_cast<const void*>(&GridTimingReplacement);
+	if (!InstallEntryDetour("NiAVObject::UpdateSelected", kSelectedUpdateAddress, kSelectedEntryBytes, sizeof(kSelectedEntryBytes), replacement,
+	                        &g_gridOriginal, log, mode == Mode::Route ? DetourRole::Route : DetourRole::Shadow)) {
+		return 0;
+	}
+	g_gridMode = mode;
+	if (mode == Mode::Route) {
+		log("Route NiAVObject::UpdateSelected: the call from TESObjectCELL::UpdateSelectedNodes 0x004D4970 runs the flat selected update; every "
+		    "other caller continues in the original");
+	}
+	return 1;
+}
+
+void LogGridSummary() {
+	if ((g_gridMode != Mode::Route && g_gridMode != Mode::Timing) || g_log == nullptr) {
+		return;
+	}
+	const LONG64 calls = InterlockedExchange64(&g_gridCalls, 0);
+	const LONG64 routed = InterlockedExchange64(&g_gridRouted, 0);
+	const LONG64 built = InterlockedExchange64(&g_gridBuilt, 0);
+	const LONG64 rebuilt = InterlockedExchange64(&g_gridRebuilt, 0);
+	const LONG64 fallback = InterlockedExchange64(&g_gridFallback, 0);
+	const LONG64 ticks = InterlockedExchange64(&g_gridTicks, 0);
+	const LONG64 entries = InterlockedExchange64(&g_gridEntries, 0);
+	const double ms = g_frequency.QuadPart > 0 ? static_cast<double>(ticks) * 1000.0 / static_cast<double>(g_frequency.QuadPart) : 0.0;
+	g_log("%s: cells' selected update - %lld calls, %lld run %s in %.2f ms (%.2f us each, %.1f visited entries each), %lld orders built, %lld "
+	      "rebuilt after a shape or flag change, %lld to the original",
+	      g_gridMode == Mode::Route ? "Route" : "Probe", calls, routed, g_gridMode == Mode::Route ? "flat" : "in the original, timed", ms,
+	      routed > 0 ? ms * 1000.0 / static_cast<double>(routed) : 0.0, routed > 0 ? static_cast<double>(entries) / static_cast<double>(routed) : 0.0,
+	      built, rebuilt, fallback);
+}
+
 }  // namespace
 
 UInt32 InstallRouteActorUpdate(const RouteSettings& settings, LogFn log) {
 	static bool s_done = false;
+	const UInt32 grid = settings.gridUpdate ? InstallGrid(Mode::Route, log) : 0;
 	if (s_done || !settings.actorUpdate) {
-		return 0;
+		return grid;
 	}
 	s_done = true;
 	g_log = log;
 	QueryPerformanceFrequency(&g_frequency);
 	if (!InstallEntryDetour(kName, eng::kNiAVObjectUpdateAddress, kUpdateEntryBytes, sizeof(kUpdateEntryBytes),
 	                        reinterpret_cast<const void*>(&RouteReplacement), &g_original, log, DetourRole::Route)) {
-		return 0;
+		return grid;
 	}
 	g_mode = Mode::Route;
 	log("Route %s: the call from ActorAnimData::ApplyAnimData 0x00471F20 runs the flat subtree update (SceneUpdateLogic.h); every other "
 	    "caller continues in the original",
 	    kName);
-	return 1;
+	return 1 + grid;
 }
 
 UInt32 InstallShadowActorUpdate(const ShadowSettings& settings, LogFn log) {
 	static bool s_done = false;
+	const UInt32 grid = settings.gridUpdate ? InstallGrid(Mode::Shadow, log) : 0;
 	if (s_done || !settings.actorUpdate) {
-		return 0;
+		return grid;
 	}
 	s_done = true;
 	g_log = log;
 	if (!InstallEntryDetour(kName, eng::kNiAVObjectUpdateAddress, kUpdateEntryBytes, sizeof(kUpdateEntryBytes),
 	                        reinterpret_cast<const void*>(&ShadowReplacement), &g_original, log, DetourRole::Shadow)) {
-		return 0;
+		return grid;
 	}
 	g_mode = Mode::Shadow;
-	return 1;
+	return 1 + grid;
 }
 
 UInt32 InstallActorUpdateTiming(const ShadowSettings& settings, LogFn log) {
@@ -461,10 +686,12 @@ UInt32 InstallActorUpdateTiming(const ShadowSettings& settings, LogFn log) {
 	}
 	g_mode = Mode::Timing;
 	log("Probe %s: the call from ActorAnimData::ApplyAnimData 0x00471F20 runs the original, timed as the route is", kName);
+	InstallGrid(Mode::Timing, log);
 	return 1;
 }
 
 void LogActorUpdateSummary() {
+	LogGridSummary();
 	if ((g_mode != Mode::Route && g_mode != Mode::Timing) || g_log == nullptr) {
 		return;
 	}

@@ -35,7 +35,7 @@ namespace image = obng::tests::exe_image;
 
 namespace {
 
-constexpr std::uint32_t kObjectSize = 0xC0;
+constexpr std::uint32_t kObjectSize = 0xE0;  // NiNode with the rigid pass's bound at +0xCC
 constexpr std::uint32_t kVtableSize = 0xA0;
 
 alignas(16) std::uint8_t g_leafVtable[kVtableSize];
@@ -60,6 +60,10 @@ void __thiscall LeafDownward(void* self, float /*time*/, std::uint8_t /*controll
 	b.radius = world.scale < 0.6f ? 0.0f : world.scale > 3.6f ? std::nanf("") : world.scale;
 	std::memcpy(eng::Pointer(h + eng::kWorldBoundOffset), &b, sizeof(b));
 }
+
+// The leaf's selected pass (+0x64): the same, whatever its flags - both
+// implementations reach it through the same virtual call.
+void __thiscall LeafSelected(void* self, float time) { LeafDownward(self, time, 0); }
 
 struct Tree {
 	std::vector<std::uint8_t*> blocks;
@@ -306,6 +310,76 @@ int main() {
 		}
 		std::printf("  2000 objects, both flags, %u calls recorded; %u objects differ\n", calls, differ);
 		Check(differ == 0 && calls > 1000, "every call sequence equal to the original's");
+	}
+
+	Section("The original's selected pass 0x0070A190 against RunSelected, bit for bit, random flags, under 0x007F and 0x0C7F");
+	{
+		const std::uint32_t selectedStub = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(&LeafSelected));
+		std::memcpy(g_leafVtable, reinterpret_cast<const void*>(vt), kVtableSize);
+		const std::uint32_t downStub = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(&LeafDownward));
+		std::memcpy(g_leafVtable + eng::kSlotUpdateDownwardPass, &downStub, 4);
+		std::memcpy(g_leafVtable + eng::kSlotUpdateSelectedDownwardPass, &selectedStub, 4);
+		std::memcpy(g_leafVtable + eng::kSlotUpdateRigidDownwardPass, &selectedStub, 4);
+		const std::uint16_t entry = GetControlWord();
+		unsigned objects = 0;
+		unsigned visited = 0;
+		unsigned differ = 0;
+		unsigned stale = 0;
+		auto flag = [](Tree& t, std::uint32_t seed) {
+			std::mt19937 random(seed * 7919u + 13u);
+			std::uniform_int_distribution<int> die(0, 15);
+			for (std::uint8_t* b : t.blocks) {
+				const int f = die(random);
+				std::uint16_t flags = 0;
+				if (f < 11) flags |= kFlagVisit;
+				if (f % 3 != 0) flags |= kFlagTransforms;
+				if (f % 4 == 0) flags |= kFlagControllers;
+				if (f == 7) flags |= kFlagRigid;
+				std::memcpy(b + eng::kFlagsOffset, &flags, 2);
+				Bound rigid{{1.0f + static_cast<float>(f), 2.0f, 3.0f}, 4.0f};  // the rigid pass's model bound at +0xCC
+				std::memcpy(b + 0xCC, &rigid, sizeof(rigid));
+			}
+		};
+		for (const std::uint16_t word : {std::uint16_t{0x007F}, std::uint16_t{0x0C7F}}) {
+			for (std::uint32_t seed = 1; seed <= 150; ++seed) {
+				Tree a;
+				Tree b;
+				BuildTree(a, seed);
+				BuildTree(b, seed);
+				flag(a, seed);
+				flag(b, seed);
+				objects += static_cast<unsigned>(a.blocks.size());
+				SetControlWord(word);
+				reinterpret_cast<void(__thiscall*)(void*, float)>(eng::Slot(a.root, eng::kSlotUpdateSelectedDownwardPass))(eng::Pointer(a.root), 0.25f);
+				SetControlWord(entry);
+				eng::Tree tree;
+				eng::Port port;
+				SelectedOrder order = BuildSelected(tree, b.root);
+				visited += static_cast<unsigned>(order.entries.size());
+				if (!MatchesSelected(order, tree)) {
+					++stale;
+				}
+				SetControlWord(word);
+				{
+					eng::RoundingFromX87 rounding;
+					RunSelected(order, port, 0.25f);
+				}
+				SetControlWord(entry);
+				const Snapshot sa = Take(a);
+				const Snapshot sb = Take(b);
+				for (std::size_t i = 0; i < sa.worlds.size(); ++i) {
+					if (std::memcmp(&sa.worlds[i], &sb.worlds[i], sizeof(Transform)) != 0 || std::memcmp(&sa.bounds[i], &sb.bounds[i], sizeof(Bound)) != 0) {
+						++differ;
+					}
+				}
+			}
+		}
+		std::printf("  300 trees, %u objects, %u visited entries; %u objects differ; %u orders stale on their own tree\n", objects, visited, differ, stale);
+		Check(stale == 0, "every selected order matches its own tree");
+		Check(differ == 0 && visited > 300, "every world transform and bound equals the original's, bit for bit");
+		// The downward section below wants its own leaf vtable back.
+		std::memcpy(g_leafVtable, reinterpret_cast<const void*>(vt), kVtableSize);
+		std::memcpy(g_leafVtable + eng::kSlotUpdateDownwardPass, &downStub, 4);
 	}
 
 	Section("The original's downward pass against Run, bit for bit, under 0x007F and 0x0C7F");

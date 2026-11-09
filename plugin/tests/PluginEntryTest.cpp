@@ -50,6 +50,8 @@ struct Fake {
 	int actorRouteInstalls = 0;
 	uint32_t actorRouteMade = 1;
 	int actorTimingInstalls = 0;
+	ShadowSettings sceneShadowSeen;
+	RouteSettings sceneRouteSeen;
 	std::vector<std::string> calls;  // the side effects in the order Load made them
 	std::vector<std::string> lines;
 
@@ -148,12 +150,14 @@ uint32_t FakeInstallRouteSqrt(const RouteSettings& settings) {
 
 uint32_t FakeInstallShadowActorUpdate(const ShadowSettings& settings) {
 	++g_fake->actorShadowInstalls;
-	return settings.actorUpdate ? g_fake->actorShadowMade : 0u;
+	g_fake->sceneShadowSeen = settings;
+	return (settings.actorUpdate ? g_fake->actorShadowMade : 0u) + (settings.gridUpdate ? 1u : 0u);
 }
 
 uint32_t FakeInstallRouteActorUpdate(const RouteSettings& settings) {
 	++g_fake->actorRouteInstalls;
-	return settings.actorUpdate ? g_fake->actorRouteMade : 0u;
+	g_fake->sceneRouteSeen = settings;
+	return (settings.actorUpdate ? g_fake->actorRouteMade : 0u) + (settings.gridUpdate ? 1u : 0u);
 }
 
 uint32_t FakeInstallActorUpdateTiming(const ShadowSettings& settings) {
@@ -728,6 +732,45 @@ void TestLoadActorUpdate() {
 	          probed.Logged("Route: NiAVObject::Update skipped - the SceneUpdate probe takes the same entry") && probed.Logged("Shadow: 0 of 1 detours made") &&
 	          probed.Logged("Route: 0 of 1 detours made"),
 	      "both skipped, said and counted");
+
+	Section("Load with the cells' selected update: routed beside the actors', shadowed alone, the shadow wins per switch");
+	Fake grid;
+	grid.iniSettings.shadow = NoShadow();
+	grid.iniSettings.route.actorUpdate = true;
+	grid.iniSettings.route.gridUpdate = true;
+	g_fake = &grid;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(grid.actorRouteInstalls == 1 && grid.sceneRouteSeen.actorUpdate && grid.sceneRouteSeen.gridUpdate && grid.Logged("Route: 2 of 2 detours made"),
+	      "one installer call with both switches, two of two");
+	Fake gridShadow;
+	gridShadow.iniSettings.shadow = NoShadow();
+	gridShadow.iniSettings.shadow.gridUpdate = true;
+	gridShadow.iniSettings.route.actorUpdate = true;
+	gridShadow.iniSettings.route.gridUpdate = true;
+	gridShadow.made = 0;
+	gridShadow.menuMade = 0;
+	g_fake = &gridShadow;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(gridShadow.actorShadowInstalls == 1 && gridShadow.sceneShadowSeen.gridUpdate && !gridShadow.sceneShadowSeen.actorUpdate &&
+	          gridShadow.Logged("Shadow: 1 of 1 detours made"),
+	      "the grid's shadow alone: one of one");
+	Check(gridShadow.sceneRouteSeen.actorUpdate && !gridShadow.sceneRouteSeen.gridUpdate &&
+	          gridShadow.Logged("Route: the cells' selected update skipped - the GridUpdate shadow takes the same entry and wins") &&
+	          gridShadow.Logged("Route: 1 of 2 detours made"),
+	      "the route keeps the actors' update and loses the cells' to the shadow: one of two, said");
+	Fake gridProbe;
+	gridProbe.iniSettings.shadow = NoShadow();
+	gridProbe.iniSettings.shadow.sceneUpdate = true;
+	gridProbe.iniSettings.route.actorUpdate = true;
+	gridProbe.iniSettings.route.gridUpdate = true;
+	g_fake = &gridProbe;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(gridProbe.actorRouteInstalls == 1 && !gridProbe.sceneRouteSeen.actorUpdate && gridProbe.sceneRouteSeen.gridUpdate &&
+	          gridProbe.Logged("Route: 1 of 2 detours made"),
+	      "beside the SceneUpdate probe the actors' route is skipped, the cells' stays");
 
 	Section("Load with the actor update timing probe: alone it takes the entry, beside the route it does not");
 	Fake timing;

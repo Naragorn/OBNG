@@ -98,6 +98,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	}
 	s.sqrt = GetPrivateProfileIntA("Shadow", "Sqrt", 0, path) != 0;
 	s.actorUpdate = GetPrivateProfileIntA("Shadow", "ActorUpdate", 0, path) != 0;
+	s.gridUpdate = GetPrivateProfileIntA("Shadow", "GridUpdate", 0, path) != 0;
 	s.fpuControlWord = GetPrivateProfileIntA("Probe", "FpuControlWord", 1, path) != 0;
 	s.havokPlanner = GetPrivateProfileIntA("Probe", "HavokPlanner", 1, path) != 0;
 	s.callCounters = GetPrivateProfileIntA("Probe", "CallCounters", 0, path) != 0;
@@ -123,6 +124,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	r.rangeWalk = GetPrivateProfileIntA("Route", "RangeWalk", 0, path) != 0;
 	r.sqrt = GetPrivateProfileIntA("Route", "Sqrt", 0, path) != 0;
 	r.actorUpdate = GetPrivateProfileIntA("Route", "ActorUpdate", 0, path) != 0;
+	r.gridUpdate = GetPrivateProfileIntA("Route", "GridUpdate", 0, path) != 0;
 	r.stereoDraw = GetPrivateProfileIntA("Route", "StereoDraw", 0, path) != 0;
 	bool eyesKnown = false;
 	r.stereoEyes = obng::plugin::StereoEyesFromIni(GetPrivateProfileIntA("Route", "StereoEyes", 1, path), &eyesKnown);
