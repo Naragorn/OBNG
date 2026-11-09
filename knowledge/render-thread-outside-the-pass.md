@@ -775,7 +775,7 @@ Linux headless at 75 Hz vsync. Measured:
   t=96 s with a std::bad_alloc in OBVR's FitBodyCapsules (OBVR's analysis,
   their docs/mesh-fitted-capsules-spec.md 618d1ac, open bug). The
   ApplyAnimData times of those steps (90-500 us a call) are measured under
-  that load and say nothing about the engine; a repeat runs with [Body]
+  that load and say nothing about the engine; a repeat runs with [Hands]
   FittedBodyCapsules=0 and the NPCs placed apart rather than in one heap
   (`placeatme id 1 distance direction`), 20/40/60.
 - **What this does to the levers (derived)**: a street with 20-25 armoured
