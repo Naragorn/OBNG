@@ -1149,3 +1149,26 @@ controller the sequence manager drives) is unread; a histogram of the
 fired controllers' vtables in the route's summary is the next cheap step
 (one run), and only a controller whose update is provably a no-op in its
 state could be skipped.
+
+### The cells' selected update flat: verified, and no measurable gain (2026-11-09 21:36-21:48, runs -213648 gate, -214026 route, -214407 the timed original)
+
+[Shadow] GridUpdate on the Gold Road profile: 833 884 calls, 0 mismatches
+(every world against 0x0053D7A0, every plain geometry's bound against
+0x00722AA0, every visited node's bound against 0x0070A360). Route against
+the timed original, the same clock, per call in the 10 s windows (Detroit
+was started on the machine during these runs: the times are under load):
+
+| windows | original, us a call | flat run, us a call |
+|---|---:|---:|
+| spot 1 | 12.9, 14.7, 7.9, 14.4 | 11.3, 12.9, 8.2, 14.0 |
+| spots 2-3 | 14.4, 14.4, 19.7, 20.0, 14.3, 15.0 | 18.6, 18.5, 20.3, 19.5, 16.7, 18.3 |
+
+The flat run is within the spread of the original, and not below it: a
+selected pass visits 33-55 entries a call (only the flagged children), so
+there is little walk to remove, and what it costs is the first touch of
+each cold object, which the flat run pays as well - plus its own shape
+and flag check per call (5-23 orders a window rebuilt as controllers flag
+and unflag subtrees). The derived 0.3-0.5 ms did not exist. [Route]
+GridUpdate stays off; the code stays as verified groundwork (the selected
+pass's reading and oracle). The grid update's lever, if any, is fewer
+cells or a lower rate, not a faster walk.
