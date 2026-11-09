@@ -1042,3 +1042,19 @@ cost inside):
   merges run over every child as the original's do. Medium (0.6-1 M), the
   same gate pattern as the actors' update, with the rigid variant (+0x68,
   bit 4) to read first.
+
+### Phase 2 verified and measured (2026-11-09 18:37-18:45, runs -183712 and -183942)
+
+The run now does the nodes' merges and the plain geometries' bounds itself
+(MergeBound, GeometryBound with the skin bound; tests/SceneBoundsOracleTest.cpp
+against the original's bytes, 0 differences under both control words). Gate
+(the shadow verifying every world against 0x0053D7A0, every geometry bound
+against 0x00722AA0 and every node bound against 0x0070A360, all in the game):
+385 614 calls, 0 mismatches. Route, the same clock as before, the road's 64
+actors: 11.3-11.8 us a call against phase 1's 13.3-13.9 and the original's
+21.0-21.5 - 46 % saved, 0.6 ms a frame on the Gold Road (derived). With the
+crowd the per-call figure (19.9-26.4 us) is not comparable to the earlier
+runs: fewer plain actors this time (32 000-35 000 calls a window against
+47 000-56 000), so the armoured share and the average rose; the summary now
+splits the calls by subtree size for the next run. On by default
+(eaa90f72 -> 64ffe841 on Linux and Windows).
