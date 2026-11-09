@@ -631,3 +631,49 @@ machines; the Linux INI put back to 4). Measured:
   came right after a different OBNG.dll had been deployed (454727e6 at
   19:31) and inside a busy half hour of harness runs by four sessions. A
   repeat of iMultiSample=2 is still owed before 2 can be costed.
+
+## The Gold Road on Windows at 90 Hz (runs of 2026-11-09 07:59-09:06, read 2026-11-09)
+
+Nadi ran the profile scenario on Windows this morning, headless (the headset
+not worn, SteamVR reprojecting every frame, so the frame time is pinned to the
+11.11 ms vsync and only the per-frame work and the GPU time carry
+information). OBVR's session left the per-phase table in
+../OBVR/artifacts/hand-script/obng-profile-gold-road-single/windows-2026-11-09-results.md;
+the captures stayed on the Windows disk (OBVR-performance-1-34..38 beside
+Oblivion.exe). Cross-checked here with perf-phases.py on 1-36 (run 081105,
+spots 1 and 2) and 1-38 (run 090057, spot 3), and the render sampler read.
+Measured unless marked:
+
+| phase (Dream Air 90 Hz, 4036x3376 an eye) | pose wait mean | scene pass mean / p95 | GPU before submit mean / p95 |
+|---|---:|---:|---:|
+| spot 1, eight headings | 4.2 ms | 2.2 / 2.9 ms | 2.5 / 3.0 ms |
+| spot 2, eight headings | 1.7 ms | 2.9 / 3.5 ms | 5.2 / 5.8 ms |
+| spot 2, the walk | 1.1 ms | 3.3 / 3.8 ms | 5.0 / 5.5 ms |
+| spot 3, eight headings | 5.9 ms | 3.8 / 5.5 ms | 4.6 / 5.2 ms |
+
+- **The GPU is far under the period on the Gold Road**: 2.5-5.4 ms of
+  11.1. The CPU is the nearer limit at spot 2: 11.1 ms frame minus 1.1-1.7
+  ms of pose wait is 9.4-10 ms of work a frame (derived), 85-90 % of the
+  budget, with the headset not worn.
+- **The sample count was 2, not 0**: both run logs say "back buffer image
+  8072x3376 ... samples=2" (OBVR.log of 081105 and 090057), and the Windows
+  Oblivion.ini holds iMultiSample=2. The results note says iMultiSample=0;
+  the logs win. So these runs do not measure the texture path's single
+  pass on Windows; they measure MSAA 2 on the back-buffer path.
+- **The square root's route was off**: the Windows OBNG.ini has no Sqrt key
+  (default 0; read 2026-11-09), OBNG.dll 4a2f6474 there. The sampler shows
+  the CRT error path at 2.7 % of the out-of-pass and 1.5 % of the in-pass
+  samples at spot 2 (window s2-y0..s2-y45, 8 143 samples) - about 0.3 ms a
+  frame still to gain on Windows by one INI line.
+- The out-of-pass shares at spot 2 are the Linux picture: game code
+  21.7 %, NiMain 14.4 %, Havok 11.1 %, CRT 10.3 %, ntdll 31 % (the waits);
+  in the pass renderer/BS 23 %, D3D9.DLL 23 %, OBNG.dll 12 %, OBVR.dll 7 %.
+- **The heavy stretch of 2026-11-07 (GPU 12-15 ms) is not the Gold Road**:
+  that capture was live play at an unknown place with iMultiSample=4; the
+  evening captures of 2026-11-08 (1-32, 1-33, live, after OBVR 7d8b9397)
+  held 90 Hz with GPU means of 1.9 and 2.7 ms. Which place and what
+  setting made the 7 November frames drop is still open; the Gold Road
+  scenario does not reproduce it.
+- Spot 3's capture (1-38) sampled sparsely (1 032 samples in the 10 s
+  window against 8 143 at spot 2) and 86 % of its out-of-pass samples are
+  the wait: the lightest spot.
