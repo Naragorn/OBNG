@@ -1,0 +1,35 @@
+# Named NPCs facing the camera, for looking at their faces: the Emperor
+# (bare head) 80 units and a Blade 130 units behind the player, their AI
+# stopped at once so they keep facing the way the player faced, then the
+# player turned round to them; the eyes dumped ([Debug] EyeDump) at every mark.
+# Run with: tools/shadow-run.sh --ini <ini> tools/hand-scripts/obng-heads-face.txt
+
+ini Hands Enabled=1
+ini Debug EyeDump=1
+console-at ready cow Tamriel -27 -3
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at ready tgm
+console-at s2 player.setangle z 90
+console-at near player.placeatme 00025200 1 80 1
+console-at near player.placeatme 00023F2A 1 130 3
+console-at near tai
+console-at turned player.setangle z 270
+
+expect HandScript: finished
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 14
+mark s2
+wait 4
+mark near
+wait 3
+mark turned
+wait 3
+mark face-3
+wait 8
+mark face-11
+wait 2
+mark done
+wait 2

@@ -373,3 +373,14 @@ the unlock whatever was written).
 - Open: OBVR's hooks on the same entries (asked), the device reset with
   moved records (managed buffers survive it by the pool's contract;
   untested), the comparison's cost, Windows.
+- **A face in the picture** (2026-11-09 22:52-22:55, tools/hand-scripts/
+  obng-heads-face.txt: Valen Dreth 80 units from the camera, facing it; run
+  obng-heads-face/20261109-225212 with the route, -225343 without; the
+  left eye's dumps at four marks, cropped side by side in
+  artifacts/shadow/obng-heads-face/faces-route-on-above-off-below.png):
+  face, eyes, ears, hair and body look the same with and without the route
+  - a picture impression at 642 px, the head about 50 px, one NPC, not a
+  measurement. With the route 1 961-2 257 packs a window skipped and 71-79
+  packed for a changed source (the face still animates). [Route]
+  VolatilePack=1 was set in the Windows OBNG.ini on Nadi's word for the
+  look in the headset; the shipped default stays 0 until then.
