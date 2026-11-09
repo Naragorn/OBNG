@@ -1,0 +1,80 @@
+# How the actors' update cost scales with their number: the Gold Road's
+# spot 2 (cow Tamriel -27 -3, the Walkers' road), the player standing still
+# looking along the road, then 20, 40 and 80 extra NPCs placed at the
+# player's feet (the opening's cast, 00023F2A 00023F2B 0002349F 00023F2E
+# 00025200 as perf-dungeon-five-reuse-check.txt places them; their AI stays
+# on so they animate and walk) in three steps, 20 s each. OBNG's scene update
+# probe ([Probe] SceneUpdate=1, tools/hand-scripts/obng-measure-scene-update.ini)
+# writes NiAVObject::Update by return site every 10 s: ApplyAnimData
+# 0x00471FBE's calls a frame are the actors updated, its ms the cost; OBVR's
+# profiler capture gives the frame phases per mark (tools/perf-phases.py).
+# Run with: tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-scene-update.ini tools/hand-scripts/obng-actors-count.txt
+
+ini Hands Enabled=1
+ini Debug EyeDump=1
+ini Hands ReachOpens=0
+ini Hands BodyCollision=1
+ini Hands PhysicsRate=0
+ini Hands FittedBodyCapsules=0
+ini Performance Enabled=1
+ini Performance GpuTiming=1
+ini Performance StartAfterSeconds=26
+ini Performance CaptureSeconds=90
+ini Performance MaxRecords=262144
+ini Performance Sampler=1
+console-at ready cow Tamriel -27 -3
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at ready tgm
+console-at s2 player.setangle z 90
+console-at a20 player.placeatme 00023F2A 2 520 0
+console-at a20 player.placeatme 00023F2B 2 520 2
+console-at a20 player.placeatme 0002349F 2 440 3
+console-at a20 player.placeatme 00023F2E 2 440 0
+console-at a20 player.placeatme 00025200 2 640 0
+console-at a20 player.placeatme 00023F2A 2 640 2
+console-at a20 player.placeatme 00023F2B 2 560 3
+console-at a20 player.placeatme 0002349F 2 560 0
+console-at a20 player.placeatme 00023F2E 2 480 0
+console-at a20 player.placeatme 00025200 2 480 2
+console-at a40 player.placeatme 00023F2A 2 520 0
+console-at a40 player.placeatme 00023F2B 2 520 2
+console-at a40 player.placeatme 0002349F 2 720 3
+console-at a40 player.placeatme 00023F2E 2 720 0
+console-at a40 player.placeatme 00025200 2 640 0
+console-at a40 player.placeatme 00023F2A 2 640 2
+console-at a40 player.placeatme 00023F2B 2 560 3
+console-at a40 player.placeatme 0002349F 2 560 0
+console-at a40 player.placeatme 00023F2E 2 760 0
+console-at a40 player.placeatme 00025200 2 760 2
+console-at a60 player.placeatme 00023F2A 2 840 0
+console-at a60 player.placeatme 00023F2B 2 840 2
+console-at a60 player.placeatme 0002349F 2 760 3
+console-at a60 player.placeatme 00023F2E 2 760 0
+console-at a60 player.placeatme 00025200 2 680 0
+console-at a60 player.placeatme 00023F2A 2 680 2
+console-at a60 player.placeatme 00023F2B 2 880 3
+console-at a60 player.placeatme 0002349F 2 880 0
+console-at a60 player.placeatme 00023F2E 2 800 0
+console-at a60 player.placeatme 00025200 2 800 2
+
+expect HandScript: finished
+expect Performance: capture armed, it starts in 26 seconds
+expect Performance: capture 1 started
+expect Performance: export
+reject Performance: export partial
+reject menu Container
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 14
+mark s2
+wait 20
+mark a20
+wait 20
+mark a40
+wait 20
+mark a60
+wait 20
+mark done
+wait 2

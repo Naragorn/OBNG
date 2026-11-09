@@ -333,3 +333,43 @@ the unlock whatever was written).
   as built it skips next to nothing.
 - The actor-count scenario still fails to draw the crowd in about one run
   of four (run -223128: 8 000 skinned draws a window against 160 000).
+
+### Built: the heads moved to the unshared geometry group, their unchanged packs skipped (2026-11-09 22:41-22:50)
+
+- **The engine has the buffers the skip needs** (read in the instructions):
+  NiUnsharedGeometryGroup (vtable 0x00A8AF88, the singleton at 0x00B428A0,
+  alive in the game with its device) allocates one vertex buffer per record
+  and stream (0x0077DE40: CreateVertexBuffer, write only, D3DPOOL_MANAGED,
+  bytes = stride x the record's vertex count) and releases it with the chip
+  (0x0077DEE0). A record changes group with the engine's own unregister
+  0x00782930 (counter down, owner cleared, every stream's chip released
+  through the old group, the index buffer released) and register 0x00782910
+  (counter up, owner set).
+- **The route** (plugin/src/FastVolatilePack.cpp, [Route] VolatilePack; the
+  decisions in src/engine/render/VolatilePackLogic.h): at the packer's
+  entry a volatile record still in the dynamic group is moved to the
+  unshared one; a pack that must run is run as a mutable one with every
+  dirty bit (the record's chip is kept and its own buffer filled); a pack
+  whose positions and normals equal the kept ones, with every buffer last
+  written by this record, takes the packer's static early-out.
+- **Gate** ([Shadow] VolatilePack, run obng-actors-count/20261109-224126):
+  18 records moved, then no buffer written by another record; 114 305
+  packs that the route would skip were run and compared with the record's
+  last pack outside the unwritten colour entry: **0 mismatches**.
+- **Routed** (run obng-actors-count-eyedump/20261109-224408, 60 heads):
+  21 600-22 400 packs a window skipped (99.8 %), 6.4 GB a window not
+  copied. The sampler by phase, 60 NPCs against the empty road: Oblivion
+  Frame Fixes' copy +0.62 samples a frame (+3.7 without the route), the CRT
+  memcpy +0.31 (+1.5), 0x0076F3B0 gone (+0.45); OBNG.dll +1.36 (+0.42
+  without) - the comparison of 84 KB of positions and normals twice a head
+  and frame, about 1 ms at 60 heads, the next thing to cut (once a frame
+  per data, or a writer-side signal). In-pass 12.2 samples a frame against
+  15.2 (with the eye dumps on in this run): about 3-4 ms of the 5.6 gone.
+- **The picture** (eye dumps, run obng-heads-near/20261109-224701: three of
+  the cast 90-170 units ahead, route on): bodies, armour, helmets and the
+  one bare head seen from behind look as expected; no face is in view in
+  the dumps, so the faces are **not checked** - a look in the game decides
+  before the switch becomes a default.
+- Open: OBVR's hooks on the same entries (asked), the device reset with
+  moved records (managed buffers survive it by the pool's contract;
+  untested), the comparison's cost, Windows.

@@ -1,0 +1,34 @@
+# Named NPCs close to the camera, for looking at their heads: three of the
+# opening's cast 90-170 units in front of the player, their AI stopped
+# after they stand, the eyes dumped ([Debug] EyeDump) at every mark.
+# Run with: tools/shadow-run.sh --ini <ini> tools/hand-scripts/obng-heads-near.txt
+
+ini Hands Enabled=1
+ini Debug EyeDump=1
+console-at ready cow Tamriel -27 -3
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at ready tgm
+console-at s2 player.setangle z 90
+console-at near player.placeatme 00023F2A 1 90 0
+console-at near player.placeatme 00023F2B 1 130 0
+console-at near player.placeatme 00025200 1 170 0
+console-at near-placed tai
+
+expect HandScript: finished
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 14
+mark s2
+wait 4
+mark near
+wait 3
+mark near-placed
+wait 4
+mark near-4
+wait 10
+mark near-14
+wait 2
+mark done
+wait 2

@@ -17,6 +17,11 @@ namespace {
 
 namespace vp = obng::engine::render::volatile_pack;
 
+template <class T>
+T At(UInt32 address) {
+	return *reinterpret_cast<volatile const T*>(static_cast<std::uintptr_t>(address));
+}
+
 constexpr UInt32 kPacker = 0x00763130;
 constexpr UInt8 kPackerBytes[] = {0x83, 0xEC, 0x1C, 0x53, 0x56};  // sub esp,1Ch; push ebx; push esi (read)
 constexpr UInt32 kUnlock = 0x00776D80;
@@ -40,13 +45,57 @@ constexpr UInt32 kSelectorColour = 4;
 constexpr UInt32 kColourBytes = 16;
 constexpr UInt32 kMaxStreams = 8;
 
+// The geometry groups (read 2026-11-09, re/functions/0x007829A0.md and the
+// instructions of 0x0077DE40, 0x0077DEE0, 0x00782910, 0x00782930): a record's
+// owner at +0x04 allocates its chips. NiDynamicGeometryGroup (vtable
+// 0x00A8B03C) hands every record of a stride the same ring buffer at offset
+// 0 with DISCARD, so nothing a pack writes survives the next record's.
+// NiUnsharedGeometryGroup (vtable 0x00A8AF88, the singleton at 0x00B428A0)
+// creates one vertex buffer per record and stream (CreateVertexBuffer, write
+// only, D3DPOOL_MANAGED - it survives a device reset) and releases it with
+// the chip. A volatile record is moved from the dynamic group to the
+// unshared one with the engine's own unregister and register
+// (0x00782930: the counter down, the owner cleared, every stream's chip and
+// the index buffer released; 0x00782910: the counter up, the owner set);
+// the next pack, run as a mutable one with every dirty bit, allocates
+// through the new owner and fills the record's own buffers.
+constexpr UInt32 kRecordOwner = 0x04;
+constexpr UInt32 kDynamicGroupVtable = 0x00A8B03C;
+constexpr UInt32 kUnsharedGroupVtable = 0x00A8AF88;
+constexpr UInt32 kUnsharedGroupGlobal = 0x00B428A0;
+constexpr UInt32 kGroupDevice = 0x08;
+constexpr UInt32 kGroupUnregister = 0x00782930;  // __thiscall(group; record), RET 4
+constexpr UInt32 kGroupRegister = 0x00782910;    // __thiscall(group; record), RET 4
+using GroupRecordFn = void(__fastcall*)(void* group, void* edx, UInt32 record);
+volatile LONG64 g_moved = 0;
+
+// Moves the record to the unshared group when it sits in the dynamic one and
+// the unshared singleton is usable; true when the record's owner is the
+// unshared group afterwards.
+bool OwnBuffers(UInt32 record) {
+	const UInt32 owner = At<UInt32>(record + kRecordOwner);
+	if (owner == 0) {
+		return false;
+	}
+	const UInt32 ownerVtable = At<UInt32>(owner);
+	if (ownerVtable == kUnsharedGroupVtable) {
+		return true;
+	}
+	if (ownerVtable != kDynamicGroupVtable) {
+		return false;
+	}
+	const UInt32 unshared = At<UInt32>(kUnsharedGroupGlobal);
+	if (unshared == 0 || At<UInt32>(unshared) != kUnsharedGroupVtable || At<UInt32>(unshared + kGroupDevice) == 0) {
+		return false;
+	}
+	reinterpret_cast<GroupRecordFn>(kGroupUnregister)(reinterpret_cast<void*>(static_cast<std::uintptr_t>(owner)), nullptr, record);
+	reinterpret_cast<GroupRecordFn>(kGroupRegister)(reinterpret_cast<void*>(static_cast<std::uintptr_t>(unshared)), nullptr, record);
+	InterlockedIncrement64(&g_moved);
+	return true;
+}
+
 using PackerFn = UInt32(__fastcall*)(void* self, void* edx, UInt32 record, UInt32 data, UInt32 skin, UInt32 partition, UInt32 decl, UInt32 force);
 using UnlockFn = UInt32(__fastcall*)(void* self, void* edx, UInt32 buffer);
-
-template <class T>
-T At(UInt32 address) {
-	return *reinterpret_cast<volatile const T*>(static_cast<std::uintptr_t>(address));
-}
 
 enum class Mode { Off, Route, Shadow };
 Mode g_mode = Mode::Off;
@@ -153,6 +202,7 @@ UInt32 __fastcall PackerReplacement(void* self, void* /*edx*/, UInt32 record, UI
 		return g_packer(self, nullptr, record, data, skin, partition, decl, force);
 	}
 	in.force = (force & 0xFF) != 0;
+	OwnBuffers(record);
 	const UInt32 streamCount = At<UInt32>(record + kRecordStreamCount);
 	const UInt32 chipArray = At<UInt32>(record + kRecordChips);
 	vp::Handle chips[kMaxStreams] = {};
@@ -280,6 +330,10 @@ void LogVolatilePackSummary() {
 		c[i] = InterlockedExchange64(&g_counts[i], 0);
 	}
 	const LONG64 bytes = InterlockedExchange64(&g_skippedBytes, 0);
+	const LONG64 moved = InterlockedExchange64(&g_moved, 0);
+	const UInt32 unshared = At<UInt32>(kUnsharedGroupGlobal);
+	g_log("%s: volatile pack - %lld records moved to the unshared group (%08X, device %08X)", g_mode == Mode::Route ? "Route" : "Shadow", moved, unshared,
+	      unshared != 0 ? At<UInt32>(unshared + kGroupDevice) : 0);
 	g_log("%s: volatile pack - %lld %s, packed: %lld forced, %lld unallocated, %lld unreadable, %lld first, %lld source changed, %lld buffer written by "
 	      "another; %.1f MB not copied",
 	      g_mode == Mode::Route ? "Route" : "Shadow", c[static_cast<int>(vp::Verdict::Skip)], g_mode == Mode::Route ? "skipped" : "would skip (verified)",
