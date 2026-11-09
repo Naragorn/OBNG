@@ -131,9 +131,32 @@ struct GeometryView {
 // engine's own function, exactly where the original does it.
 struct Port {
 	bool HasControllers(Handle h) const { return Dword(h, kPropertyListOffset) != 0 || Dword(h, kControllerOffset) != 0; }
-	void UpdateObjectControllers(Handle h, float time) {
-		reinterpret_cast<UpdateObjectControllersFn>(kUpdateObjectControllersAddress)(Pointer(h), time, 1);
+	// 0x0047C930 inline (read, the whole function): with the flag, every item
+	// of the property list at +0x9C (an NiTList node: next, prev, item) that
+	// has a controller at its +0x0C gets its vtable +0x50(time) - the next
+	// node read before the call; then every controller of the chain at +0x0C
+	// gets its vtable +0x54(time), the next (+0x34) read after the call. The
+	// same calls in the same order, without the call into the walk for the
+	// lists that hold nothing (250 of an armoured actor's 320 objects).
+	void WalkControllers(Handle h, float time, bool properties) {
+		using TimeFn = void(__thiscall*)(void* self, float time);
+		if (properties) {
+			Handle node = Dword(h, kPropertyListOffset);
+			while (node != 0) {
+				const Handle item = Dword(node, 8);
+				node = Dword(node, 0);
+				if (item != 0 && Dword(item, kControllerOffset) != 0) {
+					reinterpret_cast<TimeFn>(Slot(item, 0x50))(Pointer(item), time);
+				}
+			}
+		}
+		Handle controller = Dword(h, kControllerOffset);
+		while (controller != 0) {
+			reinterpret_cast<TimeFn>(Slot(controller, 0x54))(Pointer(controller), time);
+			controller = Dword(controller, 0x34);
+		}
 	}
+	void UpdateObjectControllers(Handle h, float time) { WalkControllers(h, time, true); }
 	const Transform* ParentWorld(Handle h) const {
 		const Handle parent = Dword(h, kParentOffset);
 		return parent == 0 ? nullptr : reinterpret_cast<const Transform*>(static_cast<std::uintptr_t>(parent + kWorldTransformOffset));
@@ -169,9 +192,7 @@ struct Port {
 	// The selected update's extras (SelectedActionPort).
 	std::uint16_t Flags(Handle h) const { return Word(h, kFlagsOffset); }
 	bool HasControllerChain(Handle h) const { return Dword(h, kControllerOffset) != 0; }
-	void UpdateObjectControllersWith(Handle h, float time, bool properties) {
-		reinterpret_cast<UpdateObjectControllersFn>(kUpdateObjectControllersAddress)(Pointer(h), time, properties ? 1 : 0);
-	}
+	void UpdateObjectControllersWith(Handle h, float time, bool properties) { WalkControllers(h, time, properties); }
 	void UpdateSelectedOriginal(Handle h, float time) {
 		reinterpret_cast<void(__thiscall*)(void*, float)>(Slot(h, kSlotUpdateSelectedDownwardPass))(Pointer(h), time);
 	}

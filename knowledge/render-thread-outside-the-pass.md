@@ -1124,3 +1124,28 @@ by about 10 us a call-set). Per armoured call (300-325 entries), measured:
   0.5 M: the writers to read, the hooks, the gate run); the gain about 25
   us of an armoured actor's 40 and 5 of a plain one's 13 - the largest
   remaining piece of the actors' update by far.
+
+### The controller walks are not idle: an armoured actor fires 320 controller updates a call (2026-11-09 21:27-21:33, runs -212725, -213013)
+
+Correction of the section above. The walk 0x0047C930 was inlined into the
+engine port (WalkControllers: the same calls in the same order, held
+against the original by tests/SceneUpdateOracleTest.cpp, 2 000 objects;
+the gate in the game: 449 252 calls, 0 mismatches) - and the armoured
+call's time did not move (38.7-45 us). Counted then, per call (measured):
+
+| class | controller walks | property list nodes read | updates fired (property +0x50 and chain +0x54) |
+|---|---:|---:|---:|
+| player (<= 50) | 20 | 4 | 18 |
+| plain NPC (<= 100) | 33-35 | 40-41 | 19-20 |
+| <= 200 | 41 | 58 | 20 |
+| armoured NPC (<= 400) | 246-256 | 29-36 | 320-329 |
+
+So the 25 us are not a search that finds nothing: nearly every object of
+an armoured actor carries a controller in its chain at +0x0C and its
+update runs, 320 virtual calls a call at about 75 ns each. A cache of
+"nothing here" would save nothing. What those controllers are (their
+vtables; whether their update does work or returns at once for a
+controller the sequence manager drives) is unread; a histogram of the
+fired controllers' vtables in the route's summary is the next cheap step
+(one run), and only a controller whose update is provably a no-op in its
+state could be skipped.

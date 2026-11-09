@@ -83,8 +83,20 @@ struct TimedPort : eng::Port {
 		}
 		eng::Port::AfterWorldData(h);
 	}
+	// What the walks find, counted: list nodes read, property updates and
+	// chain controllers fired (reusing the tick fields as plain counts).
 	void UpdateObjectControllers(su::Handle h, float time) {
 		++controllerCalls;
+		for (su::Handle node = eng::Dword(h, eng::kPropertyListOffset); node != 0; node = eng::Dword(node, 0)) {
+			++collisionTicks;  // list nodes
+			const su::Handle item = eng::Dword(node, 8);
+			if (item != 0 && eng::Dword(item, eng::kControllerOffset) != 0) {
+				++controllerTicks;  // fired
+			}
+		}
+		for (su::Handle c = eng::Dword(h, eng::kControllerOffset); c != 0; c = eng::Dword(c, 0x34)) {
+			++controllerTicks;
+		}
 		eng::Port::UpdateObjectControllers(h, time);
 	}
 	void GeometryBoundSelf(su::Handle h) {
@@ -491,12 +503,12 @@ void LogActorUpdateSummary() {
 		}
 		if (g_mode == Mode::Route && at > 0 && static_cast<std::size_t>(at) < sizeof(line)) {
 			at += std::snprintf(line + at, sizeof(line) - at,
-			                    " (forward %.1f, of it %.1f geometry bounds %.1f us, %.1f collision objects, %.1f controller walks; bounds and upward %.1f)",
+			                    " (forward %.1f, of it %.1f geometry bounds %.1f us, %.1f collision objects, %.1f controller walks over %.1f list nodes "
+			                    "firing %.1f updates; bounds and upward %.1f)",
 			                    static_cast<double>(forward) * perUs, static_cast<double>(geometryCalls) / static_cast<double>(c),
 			                    static_cast<double>(geometry) * perUs, static_cast<double>(collisionCalls) / static_cast<double>(c),
-			                    static_cast<double>(controllerCalls) / static_cast<double>(c), static_cast<double>(bounds) * perUs);
-			(void)collision;
-			(void)controller;
+			                    static_cast<double>(controllerCalls) / static_cast<double>(c), static_cast<double>(collision) / static_cast<double>(c),
+			                    static_cast<double>(controller) / static_cast<double>(c), static_cast<double>(bounds) * perUs);
 		}
 		if (at > 0 && static_cast<std::size_t>(at) < sizeof(line)) {
 			at += std::snprintf(line + at, sizeof(line) - at, ";");

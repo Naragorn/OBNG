@@ -152,6 +152,65 @@ void BuildTree(Tree& t, std::uint32_t seed) {
 	}
 }
 
+// ---- The controller walk's fakes: what 0x0047C930 calls, recorded --------------------------------
+struct WalkCall {
+	char kind;
+	void* self;
+	float time;
+	bool operator==(const WalkCall& o) const { return kind == o.kind && self == o.self && std::memcmp(&time, &o.time, 4) == 0; }
+};
+std::vector<WalkCall> g_walkCalls;
+void __thiscall PropertyUpdateStub(void* self, float time) { g_walkCalls.push_back({'P', self, time}); }
+void __thiscall ControllerUpdateStub(void* self, float time) { g_walkCalls.push_back({'C', self, time}); }
+std::uint32_t g_walkVtable[0x20];
+
+struct WalkObject {
+	std::vector<std::uint8_t> object = std::vector<std::uint8_t>(kObjectSize);
+	std::vector<std::vector<std::uint32_t>> blocks;  // nodes (3 dwords), items and controllers (16 dwords)
+	std::uint32_t Block(std::size_t dwords) {
+		blocks.emplace_back(dwords);
+		return static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(blocks.back().data()));
+	}
+	Handle Handle_() const { return static_cast<Handle>(reinterpret_cast<std::uintptr_t>(object.data())); }
+};
+
+void BuildWalkObject(WalkObject& w, std::mt19937& random) {
+	std::uniform_int_distribution<int> count(0, 5);
+	std::uniform_int_distribution<int> die(0, 3);
+	const std::uint32_t vt = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(g_walkVtable));
+	auto thing = [&]() {
+		const std::uint32_t t = w.Block(16);
+		std::memcpy(eng::Pointer(t), &vt, 4);
+		return t;
+	};
+	// The property list, built back to front: node {next, prev, item}.
+	std::uint32_t head = 0;
+	for (int i = count(random); i > 0; --i) {
+		const std::uint32_t node = w.Block(3);
+		std::uint32_t item = 0;
+		const int d = die(random);
+		if (d != 0) {  // d == 0: a node without an item
+			item = thing();
+			if (d >= 2) {  // an item with a controller
+				const std::uint32_t c = thing();
+				std::memcpy(eng::Pointer(item + 0x0C), &c, 4);
+			}
+		}
+		const std::uint32_t fields[3] = {head, 0, item};
+		std::memcpy(eng::Pointer(node), fields, sizeof(fields));
+		head = node;
+	}
+	std::memcpy(w.object.data() + eng::kPropertyListOffset, &head, 4);
+	// The controller chain, next at +0x34.
+	std::uint32_t chain = 0;
+	for (int i = count(random) / 2; i > 0; --i) {
+		const std::uint32_t c = thing();
+		std::memcpy(eng::Pointer(c + 0x34), &chain, 4);
+		chain = c;
+	}
+	std::memcpy(w.object.data() + eng::kControllerOffset, &chain, 4);
+}
+
 void SetControlWord(std::uint16_t word) { asm volatile("fldcw %0" : : "m"(word)); }
 std::uint16_t GetControlWord() {
 	std::uint16_t word;
@@ -218,6 +277,35 @@ int main() {
 			}
 		}
 		Check(leafOther, "the leaves with the stub are Other");
+	}
+
+	Section("The controller walk inline against 0x0047C930: the same calls on the same objects in the same order");
+	{
+		const std::uint32_t p = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(&PropertyUpdateStub));
+		const std::uint32_t c = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(&ControllerUpdateStub));
+		g_walkVtable[0x50 / 4] = p;
+		g_walkVtable[0x54 / 4] = c;
+		std::mt19937 random(7);
+		unsigned differ = 0;
+		unsigned calls = 0;
+		for (int n = 0; n < 2000; ++n) {
+			WalkObject w;
+			BuildWalkObject(w, random);
+			for (const bool properties : {true, false}) {
+				g_walkCalls.clear();
+				reinterpret_cast<eng::UpdateObjectControllersFn>(eng::kUpdateObjectControllersAddress)(eng::Pointer(w.Handle_()), 0.375f, properties ? 1 : 0);
+				const std::vector<WalkCall> original = g_walkCalls;
+				g_walkCalls.clear();
+				eng::Port port;
+				port.UpdateObjectControllersWith(w.Handle_(), 0.375f, properties);
+				calls += static_cast<unsigned>(original.size());
+				if (!(original == g_walkCalls)) {
+					++differ;
+				}
+			}
+		}
+		std::printf("  2000 objects, both flags, %u calls recorded; %u objects differ\n", calls, differ);
+		Check(differ == 0 && calls > 1000, "every call sequence equal to the original's");
 	}
 
 	Section("The original's downward pass against Run, bit for bit, under 0x007F and 0x0C7F");
