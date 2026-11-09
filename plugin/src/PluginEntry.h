@@ -74,6 +74,8 @@ struct Host {
 	// each returns how many detours were made (one, or none when off).
 	uint32_t (*installShadowActorUpdate)(const ShadowSettings& settings);
 	uint32_t (*installRouteActorUpdate)(const RouteSettings& settings);
+	// [Probe] ActorUpdateTiming: the original timed at the same entry (FastSceneUpdate.cpp).
+	uint32_t (*installActorUpdateTiming)(const ShadowSettings& settings);
 };
 
 // How many counting detours the settings ask for: five hot functions of the

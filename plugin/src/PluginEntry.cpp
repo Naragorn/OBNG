@@ -89,6 +89,13 @@ bool Load(const ExtenderInterfaceHead& xse, const Host& host) {
 	} else {
 		host.log("Fix: could not be set up - the game's grass shaders stay");
 	}
+	if (s.actorUpdateTiming) {
+		if (s.sceneUpdate || s.actorUpdate || r.actorUpdate) {
+			host.log("Probe: NiAVObject::Update timing skipped - the SceneUpdate probe, the ActorUpdate shadow or its route takes the same entry");
+		} else {
+			host.log("Probe: NiAVObject::Update timing - %u of 1 detours made", host.installActorUpdateTiming(s));
+		}
+	}
 	const uint32_t probesAsked = ProbesAskedFor(s);
 	if (probesAsked == 0 && !s.memoryProbe) {
 		host.log("Probes: off");

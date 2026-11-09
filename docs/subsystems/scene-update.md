@@ -39,5 +39,8 @@ fallbacks.
 ## Evidence and state
 
 re/functions/0x0070A0D0.md (the reading, the oracle: 3240 objects bit for
-bit under both control words), re/ledger.md. Reconstructed 2026-11-09; the
-in-game gate run decides "verified".
+bit under both control words), re/ledger.md. Verified 2026-11-09 (the gate:
+374 191 calls, 0 mismatches) and measured routed against the timed original
+(`[Probe] ActorUpdateTiming`): 13.3 against 21.2 us an actor on the Gold
+Road, 22 against 34 us with 124 actors, 34-39 % saved; off in the shipped
+INI until decided (knowledge/render-thread-outside-the-pass.md).

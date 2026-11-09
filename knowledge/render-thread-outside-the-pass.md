@@ -952,3 +952,51 @@ a shader and could be one skinned draw per material, or the pass could
 instance them - unread, OBVR's and OBNG's render path together) and the
 GPU side is OBVR's resolution and MSAA. On Windows with native D3D9 at 90 Hz
 the draw submission's CPU cost differs and must be measured there.
+
+## Lever built: the actors' skeleton update as a flat run (2026-11-09 16:30-17:13)
+
+The rebuild (src/engine/scene/SceneUpdateLogic.h, SceneUpdate.h; plugin/src/
+FastSceneUpdate.cpp; docs/subsystems/scene-update.md; re/functions/
+0x0070A0D0.md): NiAVObject::Update's body for the call from
+ActorAnimData::ApplyAnimData, the subtree's controllers, world transforms
+(0x0053D7A0's x87 order, bit for bit) and bounds from a flat per-skeleton
+order instead of the recursion. Runs on the actor-count scenario (Gold Road
+spot 2, 20/40/60 placed NPCs), Linux headless:
+
+- **Gate** ([Shadow] ActorUpdate, run -165802): 374 191 calls, 0 mismatches
+  - every world transform against the original compose, every node's bound
+  against the original NiNode::UpdateWorldBound, in the game. Two earlier
+  gate designs and one reading error fell on the way: a second run of the
+  subtree in a frame is not the same frame (the heads step the face
+  animation by the tick, controllers fire once), so the gate verifies each
+  value where it is made; and FCOM's unordered result (C3, C2 and C0: even
+  parity) means a NaN child radius is merged, not skipped, and a NaN node
+  radius merges rather than copies (744 calls on one actor showed it, run
+  -165345; the oracle's leaves carry NaN radii since).
+- **Measured, the same clock around the call** (QueryPerformanceCounter;
+  [Probe] ActorUpdateTiming for the original, run -170740; [Route]
+  ActorUpdate, run -170054; the same scenario, both runs drawing the
+  scene):
+
+  | actors in the update | original, us a call | flat run, us a call | saved |
+  |---:|---:|---:|---:|
+  | 64 (the road's: plain NPCs, creatures, the player) | 21.0-21.5 | 13.3-13.9 | 36 % |
+  | 85 (+20 armoured) | 30.1-31.1 | 18.5-18.8 | 39 % |
+  | 105 (+40) | 33.6-33.8 | 21.3-21.9 | 36 % |
+  | 124 (+60) | 33.2-36.0 | 22.2-23.9 | 34 % |
+
+  Per frame (derived): 1.36 -> 0.87 ms on the Gold Road (0.5 ms saved),
+  4.2 -> 2.8 ms with 124 actors (1.4 ms saved). The frame time cannot show
+  it in this scenario: at 75 Hz vsync on the road, and GPU- and draw-bound
+  with the crowd (scene pass 7-14 ms, GPU 10-17 ms, run-to-run draw
+  variance larger than the saving). The 90 Hz Windows run at a CPU-bound
+  spot is where it would show.
+- **What the route does with a changing tree**: 0-10 orders a window are
+  rebuilt after a shape change (equip, the heads' attachments); no call fell
+  back to the original (every root a plain NiNode).
+- **Scenario caveat**: in two of six runs (14:51, 17:03) the scene stopped
+  being drawn after a spawn step (scene pass 0.5 ms, GPU 4 ms) - the placed
+  NPCs around the player likely displace the view (unread); those runs'
+  frame times are void, the per-call times are not.
+- Off in the shipped OBNG.ini ([Route] ActorUpdate=0) until Nadi decides,
+  as the square root was.

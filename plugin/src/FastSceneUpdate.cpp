@@ -28,7 +28,7 @@ constexpr UInt8 kUpdateEntryBytes[] = {0xD9, 0x44, 0x24, 0x04, 0x56, 0x8B, 0xF1}
 // flag on the stack, callee clean-up (Probes.cpp does the same).
 using UpdateFn = void(__fastcall*)(void* self, void* edx, UInt32 timeBits, UInt32 flag);
 
-enum class Mode { Off, Route, Shadow };
+enum class Mode { Off, Route, Shadow, Timing };
 Mode g_mode = Mode::Off;
 void* g_original = nullptr;  // the trampoline
 LogFn g_log = nullptr;
@@ -115,6 +115,23 @@ void __fastcall RouteReplacement(void* self, void* /*edx*/, UInt32 timeBits, UIn
 	LARGE_INTEGER start;
 	QueryPerformanceCounter(&start);
 	eng::UpdateSubtree(*order, TimeOf(timeBits), (flag & 0xFF) != 0);
+	LARGE_INTEGER end;
+	QueryPerformanceCounter(&end);
+	InterlockedAdd64(&g_routedTicks, end.QuadPart - start.QuadPart);
+	InterlockedIncrement64(&g_routed);
+}
+
+// ---- The timing of the original ---------------------------------------------------------------
+
+void __fastcall TimingReplacement(void* self, void* /*edx*/, UInt32 timeBits, UInt32 flag) {
+	if (reinterpret_cast<UInt32>(_ReturnAddress()) != kApplyAnimDataSite) {
+		Original(self, timeBits, flag);
+		return;
+	}
+	InterlockedIncrement64(&g_calls);
+	LARGE_INTEGER start;
+	QueryPerformanceCounter(&start);
+	Original(self, timeBits, flag);
 	LARGE_INTEGER end;
 	QueryPerformanceCounter(&end);
 	InterlockedAdd64(&g_routedTicks, end.QuadPart - start.QuadPart);
@@ -284,8 +301,25 @@ UInt32 InstallShadowActorUpdate(const ShadowSettings& settings, LogFn log) {
 	return 1;
 }
 
+UInt32 InstallActorUpdateTiming(const ShadowSettings& settings, LogFn log) {
+	static bool s_done = false;
+	if (s_done || !settings.actorUpdateTiming) {
+		return 0;
+	}
+	s_done = true;
+	g_log = log;
+	QueryPerformanceFrequency(&g_frequency);
+	if (!InstallEntryDetour(kName, eng::kNiAVObjectUpdateAddress, kUpdateEntryBytes, sizeof(kUpdateEntryBytes),
+	                        reinterpret_cast<const void*>(&TimingReplacement), &g_original, log, DetourRole::Shadow)) {
+		return 0;
+	}
+	g_mode = Mode::Timing;
+	log("Probe %s: the call from ActorAnimData::ApplyAnimData 0x00471F20 runs the original, timed as the route is", kName);
+	return 1;
+}
+
 void LogActorUpdateSummary() {
-	if (g_mode != Mode::Route || g_log == nullptr) {
+	if ((g_mode != Mode::Route && g_mode != Mode::Timing) || g_log == nullptr) {
 		return;
 	}
 	const LONG64 calls = InterlockedExchange64(&g_calls, 0);
@@ -295,9 +329,9 @@ void LogActorUpdateSummary() {
 	const LONG64 fallback = InterlockedExchange64(&g_fallback, 0);
 	const LONG64 ticks = InterlockedExchange64(&g_routedTicks, 0);
 	const double ms = g_frequency.QuadPart > 0 ? static_cast<double>(ticks) * 1000.0 / static_cast<double>(g_frequency.QuadPart) : 0.0;
-	g_log("Route: actor update - %lld calls from ApplyAnimData, %lld run flat in %.2f ms (%.1f us each), %lld orders built, %lld rebuilt after a "
+	g_log("%s: actor update - %lld calls from ApplyAnimData, %lld run %s in %.2f ms (%.1f us each), %lld orders built, %lld rebuilt after a "
 	      "shape change, %lld to the original (root not a plain node)",
-	      calls, routed, ms, routed > 0 ? ms * 1000.0 / static_cast<double>(routed) : 0.0, built, rebuilt, fallback);
+	      g_mode == Mode::Route ? "Route" : "Probe", calls, routed, g_mode == Mode::Route ? "flat" : "in the original, timed", ms, routed > 0 ? ms * 1000.0 / static_cast<double>(routed) : 0.0, built, rebuilt, fallback);
 }
 
 }  // namespace obng::plugin

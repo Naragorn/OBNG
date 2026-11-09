@@ -107,6 +107,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	s.viewConstants = GetPrivateProfileIntA("Probe", "ViewConstants", 0, path) != 0;
 	s.drawEntries = GetPrivateProfileIntA("Probe", "DrawEntries", 0, path) != 0;
 	s.sceneUpdate = GetPrivateProfileIntA("Probe", "SceneUpdate", 0, path) != 0;
+	s.actorUpdateTiming = GetPrivateProfileIntA("Probe", "ActorUpdateTiming", 0, path) != 0;
 	if (s.viewConstants && !s.constantUploads) {
 		s.constantUploads = true;  // the view probe keys the uploads probe's verdicts
 	}
@@ -250,6 +251,10 @@ uint32_t InstallRouteActorUpdateSideEffect(const obng::plugin::RouteSettings& se
 	return obng::plugin::InstallRouteActorUpdate(settings, &Log);
 }
 
+uint32_t InstallActorUpdateTimingSideEffect(const obng::plugin::ShadowSettings& settings) {
+	return obng::plugin::InstallActorUpdateTiming(settings, &Log);
+}
+
 const obng::plugin::Host kHost{&ResetLog,
                                &Log,
                                &ReadSettings,
@@ -265,7 +270,8 @@ const obng::plugin::Host kHost{&ResetLog,
                                &InstallShadowSqrtSideEffect,
                                &InstallRouteSqrtSideEffect,
                                &InstallShadowActorUpdateSideEffect,
-                               &InstallRouteActorUpdateSideEffect};
+                               &InstallRouteActorUpdateSideEffect,
+                               &InstallActorUpdateTimingSideEffect};
 
 }  // namespace
 

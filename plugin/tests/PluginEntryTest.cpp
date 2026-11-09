@@ -49,6 +49,7 @@ struct Fake {
 	uint32_t actorShadowMade = 1;
 	int actorRouteInstalls = 0;
 	uint32_t actorRouteMade = 1;
+	int actorTimingInstalls = 0;
 	std::vector<std::string> calls;  // the side effects in the order Load made them
 	std::vector<std::string> lines;
 
@@ -155,10 +156,16 @@ uint32_t FakeInstallRouteActorUpdate(const RouteSettings& settings) {
 	return settings.actorUpdate ? g_fake->actorRouteMade : 0u;
 }
 
+uint32_t FakeInstallActorUpdateTiming(const ShadowSettings& settings) {
+	++g_fake->actorTimingInstalls;
+	return settings.actorUpdateTiming ? 1u : 0u;
+}
+
 const Host kHost{&FakeReset,          &FakeLog,          &FakeReadSettings, &FakeInitRecorder,
                  &FakeInstall,        &FakeInstallMenu,  &FakeInstallRangeWalk, &FakeInstallRoute,
                  &FakeStartSummaryTimer, &FakeInstallProbes, &FakeInstallStereo, &FakeInstallFixes,
-                 &FakeInstallShadowSqrt, &FakeInstallRouteSqrt, &FakeInstallShadowActorUpdate, &FakeInstallRouteActorUpdate};
+                 &FakeInstallShadowSqrt, &FakeInstallRouteSqrt, &FakeInstallShadowActorUpdate, &FakeInstallRouteActorUpdate,
+                 &FakeInstallActorUpdateTiming};
 
 // Every TimeInfo and LoadingMenu shadow off.
 ShadowSettings NoShadow() {
@@ -721,6 +728,25 @@ void TestLoadActorUpdate() {
 	          probed.Logged("Route: NiAVObject::Update skipped - the SceneUpdate probe takes the same entry") && probed.Logged("Shadow: 0 of 1 detours made") &&
 	          probed.Logged("Route: 0 of 1 detours made"),
 	      "both skipped, said and counted");
+
+	Section("Load with the actor update timing probe: alone it takes the entry, beside the route it does not");
+	Fake timing;
+	timing.iniSettings.shadow = NoShadow();
+	timing.iniSettings.shadow.actorUpdateTiming = true;
+	g_fake = &timing;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(timing.actorTimingInstalls == 1 && timing.Logged("Probe: NiAVObject::Update timing - 1 of 1 detours made"), "installed and said");
+	Fake timingBesideRoute;
+	timingBesideRoute.iniSettings.shadow = NoShadow();
+	timingBesideRoute.iniSettings.shadow.actorUpdateTiming = true;
+	timingBesideRoute.iniSettings.route.actorUpdate = true;
+	g_fake = &timingBesideRoute;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(timingBesideRoute.actorTimingInstalls == 0 && timingBesideRoute.actorRouteInstalls == 1 &&
+	          timingBesideRoute.Logged("Probe: NiAVObject::Update timing skipped"),
+	      "the route keeps the entry, the timing is skipped and said");
 }
 
 int main() {

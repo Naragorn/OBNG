@@ -37,6 +37,9 @@ namespace obng::plugin {
 
 UInt32 InstallRouteActorUpdate(const RouteSettings& settings, LogFn log);
 UInt32 InstallShadowActorUpdate(const ShadowSettings& settings, LogFn log);
+// [Probe] ActorUpdateTiming=1: the original runs, timed per call with the
+// same clock and summary line as the route, for the comparison.
+UInt32 InstallActorUpdateTiming(const ShadowSettings& settings, LogFn log);
 
 // The route's summary line (calls, routed, orders built and rebuilt, the
 // time in the routed calls), when the route is on; nothing otherwise.
