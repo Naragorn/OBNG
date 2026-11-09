@@ -841,3 +841,78 @@ Linux headless at 75 Hz vsync, PASS, no crash at 124 actors. Measured:
   two are independent and add up; the rebuild is the one that costs
   nothing in behaviour. The probe's fixed cost per counted node (an
   interlocked increment, 10-20 ns) sits inside these numbers.
+
+## One actor's update split into its steps (2026-11-09 15:17, run obng-actors-count/20261109-151745)
+
+OBNG.dll 5cbd3b6e (master a29afc1): inside each ApplyAnimData call the
+probe times UpdateWorldData 0x0070C120, UpdateObjectControllers 0x0047C930,
+NiBound::Merge 0x0072A6B0 and NiGeometry::UpdateWorldBound 0x00722AA0 on
+the render thread; the call's time minus the steps' is the walk. The
+probe's own cost per timed step is 41 TSC ticks (two TSC reads, median of
+1000 at install; about 12 ns at this machine's TSC rate, derived) inside
+each step's time, plus the detour's jump, trampoline and flag test (about
+5-10 ns, derived) in the walk. OBVR.dll 7a81030d, [Hands]
+FittedBodyCapsules=0, the same scenario as 14:51. Per call, measured (the
+windows agree within a few percent; the probe's share in brackets,
+derived):
+
+| actor | nodes | call | UpdateWorldData | controller walks | NiBound::Merge | NiGeometry::UpdateWorldBound | walk |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| player (1 a frame) | 27 | 10.6-11.9 us (of it probe about 1.5) | 28 calls 4.9-5.5 us | 28 calls 1.7-2.0 us | 55 calls 1.3-1.4 us | 1 call 1.4-1.5 us | 1.3-1.8 us |
+| plain NPC or creature (the road's 50-60) | 78 | 22.1-23.7 us (probe about 4) | 93 calls 8.5-9.4 us | 93 calls 1.4-1.8 us | 127 calls 3.5-3.7 us | 15 calls 6.2-6.6 us | 2.0-2.2 us |
+| armoured NPC (the placed cast) | 303-325 | 51.7-59.5 us (probe about 12-20) | 325-349 calls 14.4-18.4 us | 319-343 calls 9.6-19.9 us | 254-331 calls 6.0-6.4 us | 22-24 calls 6.3-8.0 us | 10.9-13.0 us |
+
+- **UpdateWorldData is the largest step but not the whole**: 40 % of a
+  plain NPC's call, 30 % of an armoured one's; about 50 ns a node after
+  the probe's 12 (derived): the parent-times-local compose with its
+  scale and rotation cases (re/export 0x70c120.c: a 0x34-byte frame, the
+  branches on the parent's presence), not 20.
+- **The controller check costs what it finds nothing in**: 1.4-2.0 us for
+  93 nodes of a plain NPC (15-20 ns a node: the two pointer tests of
+  0x0047C930), but 9.6-19.9 us for 320-340 nodes of an armoured one
+  (30-60 ns a node), falling from 19.9 to 9.6 us over the run as the
+  placed NPCs settled (their idle and look controllers quiet down;
+  derived). The skeleton's own controllers are detached for the call
+  (ApplyAnimData's two SetController(0)); what remains is the armour
+  parts' and the weapons' property and controller lists.
+- **NiGeometry::UpdateWorldBound is the expensive step per call**: 400 ns
+  each for a plain NPC's 15 geometries and 300 ns for the armoured's 22 -
+  the skinned bound through 0x0072BB30 (per bone NiBound::Update under the
+  bone's world transform, then merges). 28 % of a plain NPC's call: as
+  large as its share of the controller checks, merges and walk together.
+- **NiBound::Merge is cheap now**: 127 calls in 3.5 us, 27 ns each with
+  the probe inside (the square root route on; before it, every merge paid
+  the CRT's INEXACT path).
+- **The walk** (recursion, the two virtual calls a node, the bound copy
+  into the parent, the probe's detour overhead): 9 % of a plain NPC's
+  call, 20 % of an armoured one's; after the probe's share (about 970
+  detour passes at 5-10 ns for the armoured: 5-10 us) perhaps 3-6 us of
+  the armoured call, about 1 us of the plain one.
+- **What a rebuild of the propagation gets (derived)**: every step is a
+  per-node function reached through a vtable or a list; a flat per-skeleton
+  array (node, parent index, local transform pointer, flags: has
+  controllers, is geometry, is skinned) built once per skeleton and
+  invalidated when the tree changes lets one loop do the compose (the
+  same operations in the same order: bit for bit), skip the controller
+  check where the flag says there is none, merge the bounds in a second
+  pass, and run the skinned bounds as one vectorisable loop over the
+  bones. Against the measured split: the controller checks and the walk
+  go nearly whole (30-40 % of an armoured call, 15 % of a plain one), the
+  compose and the skinned bound keep their arithmetic and lose their call
+  overhead (a quarter to a third of theirs, guessed). About 40-50 % of
+  the call, so 0.5-0.7 ms a frame on the Gold Road and 2 ms a frame in
+  the 120-actor scene (derived). Medium to large (1.5-2 M): the array's
+  invalidation (who edits a skeleton's tree: OBVR's hands and dismember,
+  the engine's equip and ragdoll) is the risk, the shadow gate the
+  acceptance.
+- **Caveat, unexplained**: this run's frame left the vsync far harder
+  than 14:51's with the same actor counts and the same per-actor time
+  (frame 20.7 / 24.3 / 29.7 ms mean at the three steps against 13.7 /
+  15.3 / 17.6; 454-503 frames in 10 s at 75 actors against 722-732);
+  OBVR's frame-end callback was small (0.6-1.0 ms). Two things changed:
+  OBVR.dll 7a81030d (1391cd67 before) and the probe's two new detours on
+  NiBound::Merge and NiGeometry::UpdateWorldBound, which every merge and
+  bound update of the frame pass through, in and out of the actor calls.
+  A run with the same DLL and [Probe] SceneUpdate=0 separates the two
+  (cheap, one harness run); until then the frame times of this run are
+  not evidence about the engine, only the per-actor split is.
