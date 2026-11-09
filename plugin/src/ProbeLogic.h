@@ -165,8 +165,11 @@ inline int FormatStepTiming(const char* name, const StepTiming& t, double ticksP
 // with their calls and ticks, every other caller summed in `others`.
 // A step split by its return site, as the probes see it: the first N
 // distinct sites keep a slot (first come, first kept), the rest add to
-// others. Eight for the pass steps (eighteen calls a frame), thirty-two for
-// NiAVObject::Update 0x00707370, which the exe calls from 145 sites.
+// others. Eight for the pass steps (eighteen calls a frame); 160 for
+// NiAVObject::Update 0x00707370, which the exe calls from 145 sites: every
+// site keeps its slot for the run, so the slots claimed while a cell loads
+// cannot push the play-time callers into others (run 20261109-144026 did
+// that with 32 slots: 67 of 70 calls a frame landed in others).
 template <unsigned N>
 struct SiteTable {
 	static constexpr unsigned kSites = N;
@@ -195,7 +198,7 @@ struct SiteTable {
 	}
 };
 using StepSites = SiteTable<8>;
-using ObjectUpdateSites = SiteTable<32>;
+using ObjectUpdateSites = SiteTable<160>;
 
 // " name by return site: 0x... N calls X ms, ...[, +N others X ms];" with the
 // calibration (the raw ticks without one); nothing but " name by return

@@ -921,7 +921,7 @@ void LogSceneUpdate() {
 	s.controllerWalks = static_cast<std::uint64_t>(InterlockedExchange64(&g_sceneWalks, 0));
 	s.controllerWalksIdle = static_cast<std::uint64_t>(InterlockedExchange64(&g_sceneWalksIdle, 0));
 	s.worldData = static_cast<std::uint64_t>(InterlockedExchange64(&g_sceneWorldData, 0));
-	char line[1600];
+	char line[6400];  // 160 sites at about 34 characters each
 	probe::FormatSceneUpdate(s, ticksPerMs, line, sizeof(line));
 	g_log("%s", line);
 	const int at = std::snprintf(line, sizeof(line), "Probe: scene update -");
