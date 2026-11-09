@@ -600,7 +600,7 @@ void Reference(const Tree& tree, Port& port, Handle object, float time, bool con
 // interleaves it with the children's subtrees, which changes no value
 // (derived: a merge reads only the node's and that child's bound).
 template <ActionPort Port>
-void Run(const Order& order, Port& port, float time, bool controllers) {
+void RunForward(const Order& order, Port& port, float time, bool controllers) {
 	for (const Entry& e : order.entries) {
 		if (e.kind == Kind::Other) {
 			port.UpdateDownwardOriginal(e.object, time, controllers);
@@ -616,8 +616,12 @@ void Run(const Order& order, Port& port, float time, bool controllers) {
 			port.UpdateWorldBound(e.object);
 		}
 	}
-	// The nodes' bounds, children first, merged here (MergeBound: 0x0072A6B0's
-	// arithmetic) on a copy of the node's bound that is written once.
+}
+
+// The nodes' bounds, children first, merged here (MergeBound: 0x0072A6B0's
+// arithmetic) on a copy of the node's bound that is written once.
+template <ActionPort Port>
+void RunBounds(const Order& order, Port& port) {
 	for (std::size_t n = order.entries.size(); n-- > 0;) {
 		const Entry& e = order.entries[n];
 		if (e.kind != Kind::Node) {
@@ -640,6 +644,12 @@ void Run(const Order& order, Port& port, float time, bool controllers) {
 		}
 		port.WriteBound(e.object, own);
 	}
+}
+
+template <ActionPort Port>
+void Run(const Order& order, Port& port, float time, bool controllers) {
+	RunForward(order, port, time, controllers);
+	RunBounds(order, port);
 }
 
 }  // namespace obng::engine::scene::scene_update

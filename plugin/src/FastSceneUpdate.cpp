@@ -54,6 +54,28 @@ constexpr unsigned kSizeBuckets = 5;
 constexpr std::uint32_t kSizeBounds[kSizeBuckets - 1] = {50, 100, 200, 400};
 volatile LONG64 g_sizeCalls[kSizeBuckets] = {};
 volatile LONG64 g_sizeTicks[kSizeBuckets] = {};
+// The route's split per bucket: the forward pass (worlds, controllers, the
+// geometry bounds), of it the geometry bounds, and the bound pass.
+volatile LONG64 g_sizeForwardTicks[kSizeBuckets] = {};
+volatile LONG64 g_sizeGeometryTicks[kSizeBuckets] = {};
+volatile LONG64 g_sizeGeometryCalls[kSizeBuckets] = {};
+volatile LONG64 g_sizeBoundsTicks[kSizeBuckets] = {};
+
+// The engine port with the geometry bounds timed (QueryPerformanceCounter
+// around each, about 20 ns a read; 15-25 geometries an actor).
+struct TimedPort : eng::Port {
+	LONGLONG geometryTicks = 0;
+	LONGLONG geometryCalls = 0;
+	void GeometryBoundSelf(su::Handle h) {
+		LARGE_INTEGER a;
+		LARGE_INTEGER b;
+		QueryPerformanceCounter(&a);
+		eng::Port::GeometryBoundSelf(h);
+		QueryPerformanceCounter(&b);
+		geometryTicks += b.QuadPart - a.QuadPart;
+		++geometryCalls;
+	}
+};
 unsigned SizeBucket(std::uint32_t entries) {
 	for (unsigned i = 0; i < kSizeBuckets - 1; ++i) {
 		if (entries <= kSizeBounds[i]) {
@@ -128,14 +150,26 @@ void __fastcall RouteReplacement(void* self, void* /*edx*/, UInt32 timeBits, UIn
 	}
 	const unsigned bucket = SizeBucket(static_cast<std::uint32_t>(order->entries.size()));
 	LARGE_INTEGER start;
-	QueryPerformanceCounter(&start);
-	eng::UpdateSubtree(*order, TimeOf(timeBits), (flag & 0xFF) != 0);
+	LARGE_INTEGER middle;
 	LARGE_INTEGER end;
+	TimedPort port;
+	QueryPerformanceCounter(&start);
+	{
+		eng::RoundingFromX87 rounding;
+		su::RunForward(*order, port, TimeOf(timeBits), (flag & 0xFF) != 0);
+		QueryPerformanceCounter(&middle);
+		su::RunBounds(*order, port);
+	}
+	eng::UpdateUpwardFrom(order->root);
 	QueryPerformanceCounter(&end);
 	InterlockedAdd64(&g_routedTicks, end.QuadPart - start.QuadPart);
 	InterlockedIncrement64(&g_routed);
 	InterlockedAdd64(&g_sizeTicks[bucket], end.QuadPart - start.QuadPart);
 	InterlockedIncrement64(&g_sizeCalls[bucket]);
+	InterlockedAdd64(&g_sizeForwardTicks[bucket], middle.QuadPart - start.QuadPart);
+	InterlockedAdd64(&g_sizeGeometryTicks[bucket], port.geometryTicks);
+	InterlockedAdd64(&g_sizeGeometryCalls[bucket], port.geometryCalls);
+	InterlockedAdd64(&g_sizeBoundsTicks[bucket], end.QuadPart - middle.QuadPart);
 }
 
 // ---- The timing of the original ---------------------------------------------------------------
@@ -407,7 +441,7 @@ void LogActorUpdateSummary() {
 	g_log("%s: actor update - %lld calls from ApplyAnimData, %lld run %s in %.2f ms (%.1f us each), %lld orders built, %lld rebuilt after a "
 	      "shape change, %lld to the original (root not a plain node)",
 	      g_mode == Mode::Route ? "Route" : "Probe", calls, routed, g_mode == Mode::Route ? "flat" : "in the original, timed", ms, routed > 0 ? ms * 1000.0 / static_cast<double>(routed) : 0.0, built, rebuilt, fallback);
-	char line[400];
+	char line[900];
 	int at = std::snprintf(line, sizeof(line), "%s: actor update by subtree size (entries):", g_mode == Mode::Route ? "Route" : "Probe");
 	for (unsigned i = 0; i < kSizeBuckets && at > 0 && static_cast<std::size_t>(at) < sizeof(line); ++i) {
 		const LONG64 c = InterlockedExchange64(&g_sizeCalls[i], 0);
@@ -415,11 +449,24 @@ void LogActorUpdateSummary() {
 		if (c == 0) {
 			continue;
 		}
-		const double us = g_frequency.QuadPart > 0 ? static_cast<double>(t) * 1.0e6 / static_cast<double>(g_frequency.QuadPart) / static_cast<double>(c) : 0.0;
+		const double perUs = g_frequency.QuadPart > 0 ? 1.0e6 / static_cast<double>(g_frequency.QuadPart) / static_cast<double>(c) : 0.0;
+		const double us = static_cast<double>(t) * perUs;
+		const LONG64 forward = InterlockedExchange64(&g_sizeForwardTicks[i], 0);
+		const LONG64 geometry = InterlockedExchange64(&g_sizeGeometryTicks[i], 0);
+		const LONG64 geometryCalls = InterlockedExchange64(&g_sizeGeometryCalls[i], 0);
+		const LONG64 bounds = InterlockedExchange64(&g_sizeBoundsTicks[i], 0);
 		if (i == kSizeBuckets - 1) {
-			at += std::snprintf(line + at, sizeof(line) - at, " >%u: %lld calls %.1f us each;", kSizeBounds[i - 1], c, us);
+			at += std::snprintf(line + at, sizeof(line) - at, " >%u: %lld calls %.1f us each", kSizeBounds[i - 1], c, us);
 		} else {
-			at += std::snprintf(line + at, sizeof(line) - at, " <=%u: %lld calls %.1f us each;", kSizeBounds[i], c, us);
+			at += std::snprintf(line + at, sizeof(line) - at, " <=%u: %lld calls %.1f us each", kSizeBounds[i], c, us);
+		}
+		if (g_mode == Mode::Route && at > 0 && static_cast<std::size_t>(at) < sizeof(line)) {
+			at += std::snprintf(line + at, sizeof(line) - at, " (forward %.1f, of it %.1f geometry bounds %.1f us, bounds and upward %.1f)",
+			                    static_cast<double>(forward) * perUs, static_cast<double>(geometryCalls) / static_cast<double>(c),
+			                    static_cast<double>(geometry) * perUs, static_cast<double>(bounds) * perUs);
+		}
+		if (at > 0 && static_cast<std::size_t>(at) < sizeof(line)) {
+			at += std::snprintf(line + at, sizeof(line) - at, ";");
 		}
 	}
 	g_log("%s", line);
