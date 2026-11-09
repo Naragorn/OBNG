@@ -11,6 +11,7 @@
 #include <intrin.h>
 
 #include <cstdio>
+#include <cstring>
 #include <unordered_map>
 
 #include "OcclusionProbe.h"
@@ -362,6 +363,7 @@ struct PackContext {
 	UInt32 stream = 0;  // its stream index
 	UInt32 decl = 0;    // the packer's declaration argument
 	UInt32 skin = 0;    // the packer's skin instance argument
+	std::uint64_t sourceHash = 0;  // the data's vertex and normal arrays at the packer's entry (volatile data only)
 	bool volatileData = false;  // the data's consistency nibble at the packer's entry was 0x8000
 };
 range_walk_game::ThreadSlots<PackContext> g_packContexts;
@@ -386,6 +388,11 @@ FaceMorphFn g_faceMorph = nullptr;
 std::uint64_t g_packStamp = 0;                             // under g_packLock
 std::unordered_map<UInt32, std::uint64_t>* g_dataStamped = nullptr;   // geometry data -> the stamp of its last morph
 std::unordered_map<std::uint64_t, std::uint64_t>* g_keyPacked = nullptr;  // (data, decl, stream) -> the stamp of its last pack
+// Which bytes of the 88-byte vertex differ between a key's consecutive packs:
+// the last staging block per key kept (volatile packs of 309 320 bytes only).
+std::unordered_map<std::uint64_t, unsigned char*>* g_keyBytes = nullptr;
+std::uint64_t g_offsetDiffers[88] = {};
+std::uint64_t g_verticesCompared = 0, g_verticesDiffer = 0;
 std::uint64_t g_cleanSame = 0, g_cleanChanged = 0, g_dirtySame = 0, g_dirtyChanged = 0, g_morphCalls = 0;
 
 UInt32 __fastcall ProbeFaceMorph(void* self, void* /*edx*/, UInt32 changed) {
@@ -415,6 +422,19 @@ UInt32 __fastcall ProbePacker(void* self, void* /*edx*/, UInt32 record, UInt32 g
 		if (record != 0 && geometry != 0) {
 			const auto consistency = *reinterpret_cast<volatile UInt16*>(static_cast<std::uintptr_t>(geometry) + kGeometryConsistencyOffset);
 			context.volatileData = (consistency & 0xF000u) == 0x8000u;
+			context.sourceHash = 0;
+			if (context.volatileData && g_dataStamped != nullptr) {
+				// NiGeometryData (xOBSE): the vertex count at +0x08, the vertex array at +0x1C, the normals at +0x20.
+				const UInt32 count = ReadAt<UInt16>(geometry + 0x08);
+				const UInt32 vertices = ReadAt<UInt32>(geometry + 0x1C);
+				const UInt32 normals = ReadAt<UInt32>(geometry + 0x20);
+				if (vertices != 0 && !IsBadReadPtr(reinterpret_cast<const void*>(static_cast<std::uintptr_t>(vertices)), count * 12)) {
+					context.sourceHash = probe::HashBytes(reinterpret_cast<const unsigned char*>(static_cast<std::uintptr_t>(vertices)), count * 12);
+				}
+				if (normals != 0 && !IsBadReadPtr(reinterpret_cast<const void*>(static_cast<std::uintptr_t>(normals)), count * 12)) {
+					context.sourceHash ^= probe::HashBytes(reinterpret_cast<const unsigned char*>(static_cast<std::uintptr_t>(normals)), count * 12) * 31u;
+				}
+			}
 			AcquireSRWLockExclusive(&g_packLock);
 			probe::CountConsistency(consistency, g_packStats);
 			ReleaseSRWLockExclusive(&g_packLock);
@@ -492,15 +512,38 @@ UInt32 __fastcall ProbeUnlock(void* self, void* /*edx*/, UInt32 d3dBuffer) {
 	probe::CountVerdictByConsistency(verdict, context->volatileData, g_packStats);
 	if (context->volatileData && g_dataStamped != nullptr) {
 		const std::uint64_t key = (static_cast<std::uint64_t>(context->geometry) << 32) ^ (static_cast<std::uint64_t>(context->decl) << 4) ^ context->stream;
+		// Third test (2026-11-09): "clean" is "the source arrays hash as at this key's last pack".
 		const auto packed = g_keyPacked->find(key);
-		const auto stamped = g_dataStamped->find(context->geometry);
-		const bool clean = packed != g_keyPacked->end() && (stamped == g_dataStamped->end() || stamped->second < packed->second);
+		const bool clean = packed != g_keyPacked->end() && packed->second == context->sourceHash && context->sourceHash != 0;
 		if (verdict == probe::PackVerdict::Same) {
 			++(clean ? g_cleanSame : g_dirtySame);
 		} else if (verdict == probe::PackVerdict::Changed) {
 			++(clean ? g_cleanChanged : g_dirtyChanged);
 		}
-		(*g_keyPacked)[key] = ++g_packStamp;
+		(*g_keyPacked)[key] = context->sourceHash;
+		if (bytes == 309320 && staging != nullptr && g_keyBytes != nullptr) {
+			unsigned char*& kept = (*g_keyBytes)[key];
+			if (kept == nullptr) {
+				kept = static_cast<unsigned char*>(HeapAlloc(GetProcessHeap(), 0, bytes));
+			} else if (verdict == probe::PackVerdict::Changed) {
+				for (UInt32 v = 0; v < bytes / 88; ++v) {
+					bool any = false;
+					for (UInt32 o = 0; o < 88; ++o) {
+						if (kept[v * 88 + o] != staging[v * 88 + o]) {
+							++g_offsetDiffers[o];
+							any = true;
+						}
+					}
+					++g_verticesCompared;
+					if (any) {
+						++g_verticesDiffer;
+					}
+				}
+			}
+			if (kept != nullptr) {
+				std::memcpy(kept, staging, bytes);
+			}
+		}
 	}
 	probe::CountLockFlags(flags, g_packStats);
 	g_packStats.hashTicks += hashTicks;
@@ -523,6 +566,7 @@ UInt32 InstallPackCache(LogFn log) {
 	                           reinterpret_cast<const void*>(&ProbePackStream), reinterpret_cast<void**>(&g_packStream), log) ? 1 : 0;
 	g_dataStamped = new std::unordered_map<UInt32, std::uint64_t>();
 	g_keyPacked = new std::unordered_map<std::uint64_t, std::uint64_t>();
+	g_keyBytes = new std::unordered_map<std::uint64_t, unsigned char*>();
 	if (!InstallEntryDetour("geometry modify bracket 0x00728AB0 (pack cache: the change signal)", kFaceMorph, kFaceMorphBytes, sizeof(kFaceMorphBytes),
 	                        reinterpret_cast<const void*>(&ProbeFaceMorph), reinterpret_cast<void**>(&g_faceMorph), log)) {
 		delete g_dataStamped;
@@ -550,9 +594,22 @@ void LogPackCache() {
 		const std::uint64_t cs = g_cleanSame, cc = g_cleanChanged, ds = g_dirtySame, dc = g_dirtyChanged, mc = g_morphCalls;
 		g_cleanSame = g_cleanChanged = g_dirtySame = g_dirtyChanged = g_morphCalls = 0;
 		ReleaseSRWLockExclusive(&g_packLock);
-		g_log("Probe: pack cache change signal (modify bracket 0x00728AB0, %llu calls) - volatile packs not morphed since their last pack: %llu same, %llu "
-		      "CHANGED; morphed since: %llu same, %llu changed",
+		g_log("Probe: pack cache change signal (modify bracket 0x00728AB0, %llu calls) - volatile packs with the source arrays as at their last pack: %llu same, %llu "
+		      "CHANGED; with changed source arrays: %llu same, %llu changed",
 		      mc, cs, cc, ds, dc);
+		char offsets[900];
+		int at = 0;
+		AcquireSRWLockExclusive(&g_packLock);
+		at += std::snprintf(offsets, sizeof(offsets), "Probe: pack cache changed packs by vertex byte - %llu of %llu vertices differ; per offset:",
+		                    g_verticesDiffer, g_verticesCompared);
+		for (unsigned o = 0; o < 88 && at < 850; o += 4) {
+			at += std::snprintf(offsets + at, sizeof(offsets) - at, " %u:%llu", o,
+			                    g_offsetDiffers[o] + g_offsetDiffers[o + 1] + g_offsetDiffers[o + 2] + g_offsetDiffers[o + 3]);
+			g_offsetDiffers[o] = g_offsetDiffers[o + 1] = g_offsetDiffers[o + 2] = g_offsetDiffers[o + 3] = 0;
+		}
+		g_verticesDiffer = g_verticesCompared = 0;
+		ReleaseSRWLockExclusive(&g_packLock);
+		g_log("%s", offsets);
 	}
 	{
 		const probe::ClockPair now = ReadClocks();

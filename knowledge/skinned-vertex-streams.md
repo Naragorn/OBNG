@@ -267,3 +267,32 @@ the unlock whatever was written).
   unchanged source is the packer's own doing (a skinned blend on the CPU
   for this 5-bone mesh, or stale staging bytes), one that changes with the
   source has a writer still to find.
+
+### The changed packs are 16 bytes of the vertex the source does not explain (2026-11-09 22:11-22:20, runs -221154, -221500)
+
+- **Source against packed bytes** (run -221154: the data's vertex and normal
+  arrays hashed at the packer's entry, compared with the unlock's verdict,
+  per 10 s window at 20 / 40 / 60 NPCs): with the source as at the key's
+  last pack, 4 900-6 900 packs the same and **700-7 300 changed**; with a
+  changed source 80-260 packs, every one changed. So the head's vertices
+  really change in about one pack a frame (the morph), and thousands of
+  packs change with an unchanged source.
+- **Which bytes** (run -221500: the last staging block kept per key, the
+  changed packs compared byte by byte, per 88-byte vertex): 27 % of the
+  vertices differ, and nearly all of it at **offsets 40..55** (25-32
+  million byte differences a window in each of the four dwords there)
+  against 0.1-0.2 million at offsets 0..11 (the position: the real morphs);
+  nothing anywhere else - not the normal, not the rest.
+- Derived, to be read: a 16-byte element at +40 that one of the two
+  declarations does not write (or writes from another array), so the
+  staging block's leftovers from the previous pack - another NPC's head,
+  the same topology with another face - stay in it; OBVR's spec noted
+  "staging garbage in the gaps" for this path. If the declaration that
+  leaves them does not read them either, 98 % of a crowd's volatile packs
+  write nothing new that is used.
+- **What this makes of lever L3**: a pack is redundant when the source
+  arrays did not change; that is knowable for the price of hashing 84 KB
+  (about a tenth of the pack) until a writer-side signal is read. Open
+  before a build: the two declarations' entries (which element is +40, who
+  reads it), and that the chip's buffer keeps its bytes while its pack is
+  skipped (the probe saw one buffer per key and the slice never moving).
