@@ -28,6 +28,9 @@ constexpr UInt32 kRouteOcclusionCullDetours = 3;
 // The CRT square root's dispatch is one: _CIsqrt's entry 0x00982C30
 // (FastSqrt.cpp, FastSqrtLogic.h).
 constexpr UInt32 kRouteSqrtDetours = 1;
+// The actors' skeleton update is one: NiAVObject::Update's entry 0x00707370
+// (FastSceneUpdate.cpp, src/engine/scene/SceneUpdateLogic.h).
+constexpr UInt32 kRouteActorUpdateDetours = 1;
 
 // [Route] StereoEyes: 1 is the 1:1 gate (the rebuild's port calls are the
 // original's), 2 the double draw (StereoDraw.h). Anything else is unknown
@@ -93,13 +96,16 @@ struct RouteSettings {
 	UInt32 occlusionCullMargin = 2;     // [Route] OcclusionCullMargin: pixels the test rectangles grow on every side (0..64)
 	float occlusionCullMaxMove = 100.0f;  // [Route] OcclusionCullMaxMove: the camera moved further since the verdict: drawn
 	float occlusionCullMaxTurn = 10.0f;   // [Route] OcclusionCullMaxTurn: the camera turned further (degrees): drawn
+	bool occlusionCullFlat = false;       // [Route] OcclusionCullFlat: without the route's eye data the culler runs with the one camera of the flat game (the render target as the port); not for OBVR's dual pass
 	UInt32 occlusionCullTrace = 0;        // [Route] OcclusionCullTrace: eye passes to log in detail (camera, surfaces, control rectangles, first tests); 0 off
 	float occlusionCullTraceDepth = -1.0f;  // [Route] OcclusionCullTraceDepth: >= 0 puts a traced test's second query at this depth instead of the bound's far one
+	bool actorUpdate = false;  // [Route] ActorUpdate: the call from ApplyAnimData 0x00471F20 runs the flat subtree update - the same transforms and bounds bit for bit without the recursion's virtual calls (FastSceneUpdate.cpp); off until measured
 	bool sqrt = false;  // [Route] Sqrt: _CIsqrt 0x00982C30 runs the generated dispatch - FSQRT without the CRT's exception path for the common case (FastSqrt.cpp); off until measured
 
 	UInt32 Asked() const {
 		return (rangeWalk ? kRouteRangeWalkDetours : 0u) + (stereoDraw ? kRouteStereoDrawDetours : 0u) +
-		       (stereoDraw && occlusionCull ? kRouteOcclusionCullDetours : 0u) + (sqrt ? kRouteSqrtDetours : 0u);
+		       (stereoDraw && occlusionCull ? kRouteOcclusionCullDetours : 0u) + (sqrt ? kRouteSqrtDetours : 0u) +
+		       (actorUpdate ? kRouteActorUpdateDetours : 0u);
 	}
 };
 

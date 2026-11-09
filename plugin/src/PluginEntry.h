@@ -70,6 +70,10 @@ struct Host {
 	// many detours were made (one, or none when its switch is off).
 	uint32_t (*installShadowSqrt)(const ShadowSettings& settings);
 	uint32_t (*installRouteSqrt)(const RouteSettings& settings);
+	// The actors' skeleton update's shadow and route (FastSceneUpdate.cpp);
+	// each returns how many detours were made (one, or none when off).
+	uint32_t (*installShadowActorUpdate)(const ShadowSettings& settings);
+	uint32_t (*installRouteActorUpdate)(const RouteSettings& settings);
 };
 
 // How many counting detours the settings ask for: five hot functions of the

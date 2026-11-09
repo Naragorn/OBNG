@@ -45,6 +45,10 @@ struct Fake {
 	uint32_t sqrtShadowMade = 1;  // made when asked; the real installer makes none when the switch is off
 	int sqrtRouteInstalls = 0;
 	uint32_t sqrtRouteMade = 1;
+	int actorShadowInstalls = 0;
+	uint32_t actorShadowMade = 1;
+	int actorRouteInstalls = 0;
+	uint32_t actorRouteMade = 1;
 	std::vector<std::string> calls;  // the side effects in the order Load made them
 	std::vector<std::string> lines;
 
@@ -141,10 +145,20 @@ uint32_t FakeInstallRouteSqrt(const RouteSettings& settings) {
 	return settings.sqrt ? g_fake->sqrtRouteMade : 0u;
 }
 
+uint32_t FakeInstallShadowActorUpdate(const ShadowSettings& settings) {
+	++g_fake->actorShadowInstalls;
+	return settings.actorUpdate ? g_fake->actorShadowMade : 0u;
+}
+
+uint32_t FakeInstallRouteActorUpdate(const RouteSettings& settings) {
+	++g_fake->actorRouteInstalls;
+	return settings.actorUpdate ? g_fake->actorRouteMade : 0u;
+}
+
 const Host kHost{&FakeReset,          &FakeLog,          &FakeReadSettings, &FakeInitRecorder,
                  &FakeInstall,        &FakeInstallMenu,  &FakeInstallRangeWalk, &FakeInstallRoute,
                  &FakeStartSummaryTimer, &FakeInstallProbes, &FakeInstallStereo, &FakeInstallFixes,
-                 &FakeInstallShadowSqrt, &FakeInstallRouteSqrt};
+                 &FakeInstallShadowSqrt, &FakeInstallRouteSqrt, &FakeInstallShadowActorUpdate, &FakeInstallRouteActorUpdate};
 
 // Every TimeInfo and LoadingMenu shadow off.
 ShadowSettings NoShadow() {
@@ -657,7 +671,60 @@ void TestLoadSqrt() {
 	Check(beside.sqrtRouteInstalls == 1 && beside.stereoInstalls == 1 && beside.Logged("Route: 5 of 5 detours made"), "both routes counted");
 }
 
+void TestLoadActorUpdate() {
+	Section("Load with the actor update shadowed: one detour");
+	Fake fake;
+	fake.iniSettings.shadow = NoShadow();
+	fake.iniSettings.shadow.actorUpdate = true;
+	fake.made = 0;
+	fake.menuMade = 0;
+	g_fake = &fake;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(fake.actorShadowInstalls == 1 && fake.actorRouteInstalls == 0 && fake.Logged("Shadow: 1 of 1 detours made"), "the shadow installer, one of one");
+
+	Section("Load with the actor update routed: one detour");
+	Fake routed;
+	routed.iniSettings.shadow = NoShadow();
+	routed.iniSettings.route.actorUpdate = true;
+	g_fake = &routed;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(routed.actorRouteInstalls == 1 && routed.actorShadowInstalls == 0 && routed.Logged("Route: 1 of 1 detours made"), "the route installer, one of one");
+
+	Section("Load with the actor update both shadowed and routed: the shadow wins");
+	Fake both;
+	both.iniSettings.shadow = NoShadow();
+	both.iniSettings.shadow.actorUpdate = true;
+	both.iniSettings.route.actorUpdate = true;
+	both.made = 0;
+	both.menuMade = 0;
+	g_fake = &both;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(both.actorShadowInstalls == 1 && both.actorRouteInstalls == 0 && both.Logged("Route: NiAVObject::Update skipped - the ActorUpdate shadow takes the same entry") &&
+	          both.Logged("Route: 0 of 1 detours made"),
+	      "the shadow is installed, the route is said and counted as not made");
+
+	Section("Load with the actor update beside the SceneUpdate probe: neither takes the entry");
+	Fake probed;
+	probed.iniSettings.shadow = NoShadow();
+	probed.iniSettings.shadow.sceneUpdate = true;
+	probed.iniSettings.shadow.actorUpdate = true;
+	probed.iniSettings.route.actorUpdate = true;
+	probed.made = 0;
+	probed.menuMade = 0;
+	g_fake = &probed;
+	ResetForTest();
+	Check(Load(Game(), kHost), "loads");
+	Check(probed.actorShadowInstalls == 0 && probed.actorRouteInstalls == 0 && probed.Logged("Shadow: NiAVObject::Update skipped - the SceneUpdate probe takes the same entry") &&
+	          probed.Logged("Route: NiAVObject::Update skipped - the SceneUpdate probe takes the same entry") && probed.Logged("Shadow: 0 of 1 detours made") &&
+	          probed.Logged("Route: 0 of 1 detours made"),
+	      "both skipped, said and counted");
+}
+
 int main() {
+	TestLoadActorUpdate();
 	TestLoadSqrt();
 	TestLoadFixes();
 	TestQuery();

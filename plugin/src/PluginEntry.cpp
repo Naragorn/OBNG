@@ -43,6 +43,11 @@ bool Load(const ExtenderInterfaceHead& xse, const Host& host) {
 		made += host.installShadowLoadingMenu(s);
 		made += host.installShadowRangeWalk(s);
 		made += host.installShadowSqrt(s);
+		if (s.actorUpdate && s.sceneUpdate) {
+			host.log("Shadow: NiAVObject::Update skipped - the SceneUpdate probe takes the same entry");
+		} else if (s.actorUpdate) {
+			made += host.installShadowActorUpdate(s);
+		}
 		host.log("Shadow: %u of %u detours made", made, s.Asked());
 	}
 	if (r.Asked() == 0) {
@@ -63,6 +68,14 @@ bool Load(const ExtenderInterfaceHead& xse, const Host& host) {
 			         "shadow run makes nothing safer)");
 		} else if (r.sqrt) {
 			made += host.installRouteSqrt(r);
+		}
+		if (r.actorUpdate && s.sceneUpdate) {
+			host.log("Route: NiAVObject::Update skipped - the SceneUpdate probe takes the same entry");
+		} else if (r.actorUpdate && RouteSkippedForShadow(s.actorUpdate, r.actorUpdate)) {
+			host.log("Route: NiAVObject::Update skipped - the ActorUpdate shadow takes the same entry and wins (a route without a prior "
+			         "clean shadow run makes nothing safer)");
+		} else if (r.actorUpdate) {
+			made += host.installRouteActorUpdate(r);
 		}
 		host.log("Route: %u of %u detours made", made, r.Asked());
 	}
