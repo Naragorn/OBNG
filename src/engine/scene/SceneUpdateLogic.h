@@ -32,10 +32,13 @@
 // 64-bit clean: objects cross the ports as std::uint32_t handles; offsets and
 // sizes are the ports' business (SceneUpdate.h). Nothing here depends on the
 // pointer size.
+#include <xmmintrin.h>
+
 #include <cmath>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <utility>
 #include <vector>
 
@@ -126,6 +129,167 @@ inline void UpdateWorld(const Transform* parentWorld, const Transform& local, Tr
 	Compose(*parentWorld, local, world);
 }
 
+// ---- The bounds' arithmetic, in the original's order (phase 2) ----------------------------------
+//
+// Read 2026-11-09 in the instructions of NiBound::Merge 0x0072A6B0, the bound
+// transform 0x0072A820, the transform inverse 0x00718A80 (with the matrix
+// transpose 0x00710400), the skin bound 0x0072BB30 and NiGeometry::
+// UpdateWorldBound 0x00722AA0 (re/functions/0x0070A0D0.md). As above: every
+// product, sum and quotient rounds to a float; the square root is the CRT's
+// _CIsqrt (one FSQRT at precision 24 under the caller's rounding: a
+// correctly rounded float root, which std::sqrt on a float is as well, under
+// the MXCSR's rounding that RoundingFromX87 copies).
+
+// 0x0072A820: the bound carried by a transform - centre = T.pos + T.scale *
+// (T.rot * centre), component by component as 0x0053D7A0's position part;
+// radius = radius * T.scale (read).
+inline void TransformBound(const Bound& bound, const Transform& by, Bound& out) {
+	float v[3];
+	TransformPoint(by.rot, bound.center, v);
+	const float scaled[3] = {v[0] * by.scale, v[1] * by.scale, v[2] * by.scale};
+	out.center[0] = by.pos[0] + scaled[0];
+	out.center[1] = by.pos[1] + scaled[1];
+	out.center[2] = by.pos[2] + scaled[2];
+	out.radius = bound.radius * by.scale;
+}
+
+// 0x00718A80: the inverse of a transform - the rotation transposed
+// (0x00710400), the scale 1/s, the position -(rot^T * pos) * (1/s): the
+// negation first, then the transposed rotation applied, then each
+// component times the inverse scale (read).
+inline void InverseTransform(const Transform& t, Transform& out) {
+	for (int r = 0; r < 3; ++r) {
+		for (int c = 0; c < 3; ++c) {
+			out.rot[r * 3 + c] = t.rot[c * 3 + r];
+		}
+	}
+	out.scale = 1.0f / t.scale;
+	const float negated[3] = {-t.pos[0], -t.pos[1], -t.pos[2]};
+	float v[3];
+	TransformPoint(out.rot, negated, v);
+	out.pos[0] = v[0] * out.scale;
+	out.pos[1] = v[1] * out.scale;
+	out.pos[2] = v[2] * out.scale;
+}
+
+// The square root as the CRT's _CIsqrt 0x00982C30 computes it (read,
+// re/functions/0x00982C30.md): one FSQRT under (word & 0x0300) | 0x007F -
+// the caller's precision control kept, the rounding control cleared to
+// nearest. So under the game's 0x0C7F (every other operation rounded toward
+// zero) the root alone is rounded to nearest. SSE's sqrtss follows the
+// MXCSR's rounding, which RoundingFromX87 sets to the caller's; this takes
+// that root and moves it to the nearest float where the mode was not
+// nearest: the exact root lies between the directed result and its
+// neighbour on the other side, and the midpoint's square (exact in a double:
+// 25 significant bits squared) decides, ties to even. NaN, zero and
+// infinity are the same in every mode.
+inline float SqrtAsCrt(float x) {
+	const float r = std::sqrt(x);
+	const unsigned rounding = (_mm_getcsr() >> 13) & 3u;  // 0 nearest, 1 down, 2 up, 3 toward zero
+	if (rounding == 0 || !(x > 0.0f) || std::isinf(x)) {
+		return r;
+	}
+	const bool below = rounding != 2;  // down and toward zero leave r <= the exact root
+	const float other = std::nextafter(r, below ? INFINITY : -INFINITY);
+	const double midpoint = (static_cast<double>(r) + static_cast<double>(other)) * 0.5;
+	const double square = midpoint * midpoint;
+	const double exact = static_cast<double>(x);
+	if (square == exact) {  // a tie: the even significand
+		std::uint32_t bits;
+		std::memcpy(&bits, &r, 4);
+		return (bits & 1u) == 0u ? r : other;
+	}
+	if (below) {
+		return square < exact ? other : r;
+	}
+	return square > exact ? other : r;
+}
+
+// 0x0072A6B0 NiBound::Merge(const NiBound& other), on `self` (read, with the
+// FCOM parity decisions spelt out):
+//   d = self.centre - other.centre; distSq = (d0*d0 + d1*d1) + d2*d2;
+//   rdiff = other.radius - self.radius; rdiffSq = rdiff*rdiff.
+//   rdiff < 0 or NaN (0x0072A724 taken): other may lie inside self - when
+//     distSq <= rdiffSq or either is NaN, nothing changes; else the root path.
+//   rdiff >= 0: self may lie inside other - when distSq < rdiffSq or equal,
+//     self becomes other; else (greater or NaN) the root path.
+//   The root path: dist = sqrt(distSq); when dist <= 1e-6f or NaN, only the
+//     radius changes; else t = (dist - rdiff) / (dist + dist) and the centre
+//     is other.centre + d*t, component by component. The radius is
+//     ((dist + other.radius) + self.radius) * 0.5 either way (a double 0.5 at
+//     0x00A2FAA0: exact, so the float product is the same).
+inline void MergeBound(Bound& self, const Bound& other) {
+	const float d[3] = {self.center[0] - other.center[0], self.center[1] - other.center[1], self.center[2] - other.center[2]};
+	const float distSq = (d[0] * d[0] + d[1] * d[1]) + d[2] * d[2];
+	const float rdiff = other.radius - self.radius;
+	const float rdiffSq = rdiff * rdiff;
+	if (rdiff < 0.0f || std::isnan(rdiff)) {
+		if (!(distSq > rdiffSq)) {  // less, equal or unordered: other inside self (0x0072A7F2..0x0072A810)
+			return;
+		}
+	} else {
+		if (distSq < rdiffSq || distSq == rdiffSq) {  // self inside other (0x0072A72F..0x0072A74C)
+			self = other;
+			return;
+		}
+	}
+	const float dist = SqrtAsCrt(distSq);
+	if (dist > 1.0e-6f) {  // 0x0072A764..0x0072A771: 1e-6 compared with dist, the radius-only path for less-or-equal and NaN
+		const float t = (dist - rdiff) / (dist + dist);
+		const float scaled[3] = {d[0] * t, d[1] * t, t * d[2]};
+		self.center[0] = other.center[0] + scaled[0];
+		self.center[1] = scaled[1] + other.center[1];
+		self.center[2] = other.center[2] + scaled[2];
+	}
+	self.radius = ((dist + other.radius) + self.radius) * 0.5f;
+}
+
+// 0x0072BB30: a skinned geometry's bound in the skin's own space - every
+// bone's bind bound carried by the bone's world transform, merged in bone
+// order from the first, then carried into the skin's space by the
+// skin-to-root transform composed onto the inverse of the root parent's
+// world (read). The bones and the per-bone bounds come through the port.
+template <class Skin>
+concept SkinPort = requires(const Skin& s, std::uint32_t i) {
+	{ s.BoneCount() } -> std::same_as<std::uint32_t>;
+	{ s.BoneBound(i) } -> std::same_as<Bound>;        // the bind bound of bone i ([skin data +0x44] + i*0x4C + 0x34: the records sit behind a pointer)
+	{ s.BoneWorld(i) } -> std::same_as<Transform>;    // the bone node's world (+0x64)
+	{ s.RootParentWorld() } -> std::same_as<Transform>;  // the skin's root parent's world (+0x10 -> +0x64)
+	{ s.SkinToRoot() } -> std::same_as<Transform>;    // skin data +0x0C
+};
+
+template <SkinPort Skin>
+inline Bound SkinBound(const Skin& skin) {
+	Bound acc;
+	TransformBound(skin.BoneBound(0), skin.BoneWorld(0), acc);
+	const std::uint32_t count = skin.BoneCount();
+	for (std::uint32_t i = 1; i < count; ++i) {
+		Bound bone;
+		TransformBound(skin.BoneBound(i), skin.BoneWorld(i), bone);
+		MergeBound(acc, bone);
+	}
+	Transform inverse;
+	InverseTransform(skin.RootParentWorld(), inverse);
+	Transform toSkin;
+	Compose(skin.SkinToRoot(), inverse, toSkin);
+	Bound out;
+	TransformBound(acc, toSkin, out);
+	return out;
+}
+
+// 0x00722AA0 NiGeometry::UpdateWorldBound's flag step (read): with bit 7 of
+// the flags set, the new bound is compared with the old one field by field
+// (0x0072A0A0: radius, then the centre; a NaN compares unequal) and the bit
+// is cleared when they differ; with the bit clear nothing happens.
+inline std::uint16_t GeometryBoundFlags(std::uint16_t flags, const Bound& before, const Bound& after) {
+	if ((flags & 0x0080) == 0) {
+		return flags;
+	}
+	const bool same = after.radius == before.radius && after.center[0] == before.center[0] && after.center[1] == before.center[1] &&
+	                  after.center[2] == before.center[2];
+	return same ? static_cast<std::uint16_t>(flags | 0x0080) : static_cast<std::uint16_t>(flags & 0xFF7F);
+}
+
 // ---- The bound merge's decision ---------------------------------------------------------
 //
 // Read in 0x0070A0D0 (0x0070A12F..0x0070A16E) and the same in NiNode::
@@ -171,8 +335,12 @@ inline constexpr std::uint32_t kNiNodeUpdateDownwardPass = 0x0070A0D0;
 inline constexpr std::uint32_t kNiAVObjectUpdateDownwardPass = 0x00707580;
 inline constexpr std::uint32_t kNiAVObjectUpdateWorldData = 0x0070C120;
 inline constexpr std::uint32_t kNiNodeUpdateWorldBound = 0x0070A360;
+inline constexpr std::uint32_t kNiGeometryUpdateWorldBound = 0x00722AA0;
 
-enum class Kind : std::uint8_t { Node, Geometry, Other };
+// GeometryPlain: a geometry whose bound is NiGeometry's own (0x00722AA0) -
+// the run computes it (GeometryBound below); Geometry: a geometry with
+// another bound update (the BS variant 0x00864610) - the run calls it.
+enum class Kind : std::uint8_t { Node, GeometryPlain, Geometry, Other };
 
 struct VtableSlots {
 	std::uint32_t updateDownwardPass;  // +0x60
@@ -188,9 +356,30 @@ inline Kind Classify(const VtableSlots& s) {
 		return Kind::Node;
 	}
 	if (s.updateDownwardPass == kNiAVObjectUpdateDownwardPass) {
-		return Kind::Geometry;
+		return s.updateWorldBound == kNiGeometryUpdateWorldBound ? Kind::GeometryPlain : Kind::Geometry;
 	}
 	return Kind::Other;
+}
+
+// The whole of 0x00722AA0 NiGeometry::UpdateWorldBound (read): the bound in
+// the object's space - the skin's (SkinBound) when the geometry has a skin
+// instance, the model data's otherwise - carried by the world transform
+// into the world bound; then the flag step on bit 7 against the old bound.
+template <class Geometry>
+concept GeometryPort = requires(const Geometry& g) {
+	{ g.HasSkin() } -> std::same_as<bool>;
+	{ g.ModelBound() } -> std::same_as<Bound>;  // [+0xB4] + 0x0C
+	{ g.World() } -> std::same_as<Transform>;   // +0x64
+	{ g.WorldBound() } -> std::same_as<Bound>;  // +0x20, before
+	{ g.Flags() } -> std::same_as<std::uint16_t>;  // +0x18
+};
+
+template <GeometryPort Geometry, SkinPort Skin>
+inline void GeometryBound(const Geometry& geometry, const Skin& skin, Bound& boundOut, std::uint16_t& flagsOut) {
+	const Bound before = geometry.WorldBound();
+	const Bound local = geometry.HasSkin() ? SkinBound(skin) : geometry.ModelBound();
+	TransformBound(local, geometry.World(), boundOut);
+	flagsOut = GeometryBoundFlags(geometry.Flags(), before, boundOut);
 }
 
 // ---- The flat order ------------------------------------------------------------------------
@@ -331,7 +520,11 @@ bool Matches(const Order& order, const Tree& tree) {
 //   float BoundRadius(Handle)                +0x2C
 //   void SetBoundRadius(Handle, float)       +0x2C
 //   void CopyBound(Handle to, Handle from)   16 bytes +0x20
-//   void MergeBound(Handle to, Handle from)  NiBound::Merge 0x0072A6B0 on to's bound with from's
+//   void MergeBound(Handle to, Handle from)  NiBound::Merge 0x0072A6B0 on to's bound with from's (the Reference's; Run merges itself)
+//   Bound ReadBound(Handle)                  +0x20
+//   void WriteBound(Handle, const Bound&)    +0x20
+//   void GeometryBoundSelf(Handle)           the run's own 0x00722AA0 (GeometryBound over the object's memory: the
+//                                            bound at +0x20 and the flags word at +0x18 written)
 template <class Port>
 concept ActionPort = requires(Port& p, Handle h, float f, bool b) {
 	{ p.HasControllers(h) } -> std::same_as<bool>;
@@ -346,6 +539,9 @@ concept ActionPort = requires(Port& p, Handle h, float f, bool b) {
 	{ p.SetBoundRadius(h, f) };
 	{ p.CopyBound(h, h) };
 	{ p.MergeBound(h, h) };
+	{ p.ReadBound(h) } -> std::same_as<Bound>;
+	{ p.WriteBound(h, std::declval<const Bound&>()) };
+	{ p.GeometryBoundSelf(h) };
 };
 
 // One object's world data: 0x0070C120 as the port sees it.
@@ -370,7 +566,7 @@ void Reference(const Tree& tree, Port& port, Handle object, float time, bool con
 		port.UpdateObjectControllers(object, time);
 	}
 	WorldData(port, object);
-	if (kind == Kind::Geometry) {
+	if (kind == Kind::Geometry || kind == Kind::GeometryPlain) {
 		port.UpdateWorldBound(object);
 		return;
 	}
@@ -414,29 +610,35 @@ void Run(const Order& order, Port& port, float time, bool controllers) {
 			port.UpdateObjectControllers(e.object, time);
 		}
 		WorldData(port, e.object);
-		if (e.kind == Kind::Geometry) {
+		if (e.kind == Kind::GeometryPlain) {
+			port.GeometryBoundSelf(e.object);
+		} else if (e.kind == Kind::Geometry) {
 			port.UpdateWorldBound(e.object);
 		}
 	}
+	// The nodes' bounds, children first, merged here (MergeBound: 0x0072A6B0's
+	// arithmetic) on a copy of the node's bound that is written once.
 	for (std::size_t n = order.entries.size(); n-- > 0;) {
 		const Entry& e = order.entries[n];
 		if (e.kind != Kind::Node) {
 			continue;
 		}
-		port.SetBoundRadius(e.object, 0.0f);
+		Bound own = port.ReadBound(e.object);
+		own.radius = 0.0f;
 		for (std::uint32_t c = 0; c < e.childCount; ++c) {
-			const Handle child = order.entries[order.children[e.childrenBegin + c]].object;
-			switch (MergeStepFor(port.BoundRadius(e.object), port.BoundRadius(child))) {
+			const Bound child = port.ReadBound(order.entries[order.children[e.childrenBegin + c]].object);
+			switch (MergeStepFor(own.radius, child.radius)) {
 				case MergeStep::Skip:
 					break;
 				case MergeStep::Copy:
-					port.CopyBound(e.object, child);
+					own = child;
 					break;
 				case MergeStep::Merge:
-					port.MergeBound(e.object, child);
+					MergeBound(own, child);
 					break;
 			}
 		}
+		port.WriteBound(e.object, own);
 	}
 }
 

@@ -51,6 +51,18 @@ inline constexpr std::uint32_t kPropertyListOffset = 0x9C;      // NiTListBase h
 inline constexpr std::uint32_t kCollisionObjectOffset = 0xA8;   // (read 0x0070C151)
 inline constexpr std::uint32_t kChildrenOffset = 0xB0;          // NiNode's NiTArray data (read 0x0070A110)
 inline constexpr std::uint32_t kChildSlotsOffset = 0xB6;        // its first free entry, u16 (read 0x0070A0FC)
+inline constexpr std::uint32_t kFlagsOffset = 0x18;             // u16 (read 0x00722AFA: bit 7 the bound-unchanged flag)
+inline constexpr std::uint32_t kModelDataOffset = 0xB4;         // NiGeometry's data (read 0x00722AE5); its bound at +0x0C
+inline constexpr std::uint32_t kModelBoundOffset = 0x0C;
+inline constexpr std::uint32_t kSkinInstanceOffset = 0xB8;      // NiGeometry's skin instance (read 0x00722AB7)
+inline constexpr std::uint32_t kSkinDataOffset = 0x08;          // in the instance (read 0x0072BB3F)
+inline constexpr std::uint32_t kSkinRootParentOffset = 0x10;    // (read 0x0072BB9C)
+inline constexpr std::uint32_t kSkinBonesOffset = 0x14;         // the bone node pointers (read 0x0072BB3C)
+inline constexpr std::uint32_t kSkinToRootOffset = 0x0C;        // in the skin data (read 0x0072BBBC)
+inline constexpr std::uint32_t kSkinBoneCountOffset = 0x40;     // (read 0x0072BB5B)
+inline constexpr std::uint32_t kSkinBoneDataOffset = 0x44;      // a pointer to the per-bone records (read 0x0072BB44)
+inline constexpr std::uint32_t kSkinBoneRecordSize = 0x4C;      // (read 0x0072BB95)
+inline constexpr std::uint32_t kSkinBoneBoundOffset = 0x34;     // in the record (read 0x0072BB4B)
 
 // ---- The calls ----------------------------------------------------------------------------------
 using UpdateDownwardFn = void(__thiscall*)(void* self, float time, std::uint8_t controllers);
@@ -78,6 +90,38 @@ struct Tree {
 	}
 	std::uint32_t SlotCount(Handle h) const { return Word(h, kChildSlotsOffset); }
 	Handle ChildAt(Handle h, std::uint32_t i) const { return Dword(Dword(h, kChildrenOffset), 4 * i); }
+};
+
+inline Transform TransformAt(Handle h, std::uint32_t offset) {
+	Transform t;
+	std::memcpy(&t, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(h + offset)), sizeof(t));
+	return t;
+}
+inline Bound BoundAt(Handle h, std::uint32_t offset) {
+	Bound b;
+	std::memcpy(&b, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(h + offset)), sizeof(b));
+	return b;
+}
+
+// A skin instance as SkinBound reads it (SceneUpdateLogic.h SkinPort).
+struct SkinView {
+	Handle instance;
+	Handle Data() const { return Dword(instance, kSkinDataOffset); }
+	std::uint32_t BoneCount() const { return Dword(Data(), kSkinBoneCountOffset); }
+	Bound BoneBound(std::uint32_t i) const { return BoundAt(Dword(Data(), kSkinBoneDataOffset) + i * kSkinBoneRecordSize, kSkinBoneBoundOffset); }
+	Transform BoneWorld(std::uint32_t i) const { return TransformAt(Dword(Dword(instance, kSkinBonesOffset), 4 * i), kWorldTransformOffset); }
+	Transform RootParentWorld() const { return TransformAt(Dword(instance, kSkinRootParentOffset), kWorldTransformOffset); }
+	Transform SkinToRoot() const { return TransformAt(Data(), kSkinToRootOffset); }
+};
+
+// A geometry as GeometryBound reads it (SceneUpdateLogic.h GeometryPort).
+struct GeometryView {
+	Handle object;
+	bool HasSkin() const { return Dword(object, kSkinInstanceOffset) != 0; }
+	Bound ModelBound() const { return BoundAt(Dword(object, kModelDataOffset), kModelBoundOffset); }
+	Transform World() const { return TransformAt(object, kWorldTransformOffset); }
+	Bound WorldBound() const { return BoundAt(object, kWorldBoundOffset); }
+	std::uint16_t Flags() const { return Word(object, kFlagsOffset); }
 };
 
 // The action port: every action on the object's memory or through the
@@ -116,6 +160,17 @@ struct Port {
 	void CopyBound(Handle to, Handle from) { std::memcpy(Pointer(to + kWorldBoundOffset), Pointer(from + kWorldBoundOffset), sizeof(Bound)); }
 	void MergeBound(Handle to, Handle from) {
 		reinterpret_cast<BoundMergeFn>(kBoundMergeAddress)(Pointer(to + kWorldBoundOffset), Pointer(from + kWorldBoundOffset));
+	}
+	Bound ReadBound(Handle h) const { return BoundAt(h, kWorldBoundOffset); }
+	void WriteBound(Handle h, const Bound& b) { std::memcpy(Pointer(h + kWorldBoundOffset), &b, sizeof(b)); }
+	void GeometryBoundSelf(Handle h) {
+		const GeometryView geometry{h};
+		const SkinView skin{Dword(h, kSkinInstanceOffset)};
+		Bound bound;
+		std::uint16_t flags;
+		GeometryBound(geometry, skin, bound, flags);
+		WriteBound(h, bound);
+		std::memcpy(Pointer(h + kFlagsOffset), &flags, 2);
 	}
 };
 

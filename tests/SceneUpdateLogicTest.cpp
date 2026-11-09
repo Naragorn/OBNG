@@ -8,6 +8,8 @@
 #include "Check.h"
 #include "engine/scene/SceneUpdateLogic.h"
 
+#include <xmmintrin.h>
+
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -110,7 +112,8 @@ void TestMergeStep() {
 void TestClassify() {
 	Section("The kinds from the three vtable slots");
 	Check(Classify({kNiNodeUpdateDownwardPass, kNiAVObjectUpdateWorldData, kNiNodeUpdateWorldBound}) == Kind::Node, "NiNode's three: Node");
-	Check(Classify({kNiAVObjectUpdateDownwardPass, kNiAVObjectUpdateWorldData, 0x00722AA0}) == Kind::Geometry, "NiGeometry: Geometry");
+	Check(Classify({kNiAVObjectUpdateDownwardPass, kNiAVObjectUpdateWorldData, kNiGeometryUpdateWorldBound}) == Kind::GeometryPlain,
+	      "NiGeometry's own bound: GeometryPlain (the run computes it)");
 	Check(Classify({kNiAVObjectUpdateDownwardPass, kNiAVObjectUpdateWorldData, 0x00864610}) == Kind::Geometry, "the BS geometry variant's bound: Geometry (its own +0x78 is called)");
 	Check(Classify({0x0055D4C0, kNiAVObjectUpdateWorldData, kNiNodeUpdateWorldBound}) == Kind::Other, "BSFaceGenNiNode's downward pass: Other");
 	Check(Classify({kNiNodeUpdateDownwardPass, 0x007416C0, kNiNodeUpdateWorldBound}) == Kind::Other, "a node with its own UpdateWorldData: Other");
@@ -128,7 +131,27 @@ struct FakeObject {
 	Transform local{{1, 0, 0, 0, 1, 0, 0, 0, 1}, {0, 0, 0}, 1.0f};
 	Transform world{};
 	Bound bound{};
+	Bound modelBound{{0, 0, 0}, 1.5f};  // a geometry's model bound
+	std::uint16_t flags = 0;
 	Handle parent = 0;
+};
+
+// A geometry of the fake tree as GeometryBound reads it (no skins here: the
+// bounds oracle covers SkinBound against the original).
+struct FakeGeometryView {
+	const FakeObject* o;
+	bool HasSkin() const { return false; }
+	Bound ModelBound() const { return o->modelBound; }
+	Transform World() const { return o->world; }
+	Bound WorldBound() const { return o->bound; }
+	std::uint16_t Flags() const { return o->flags; }
+};
+struct NoSkin {
+	std::uint32_t BoneCount() const { return 0; }
+	Bound BoneBound(std::uint32_t) const { return Bound{}; }
+	Transform BoneWorld(std::uint32_t) const { return Transform{}; }
+	Transform RootParentWorld() const { return Transform{}; }
+	Transform SkinToRoot() const { return Transform{}; }
 };
 
 struct FakeTree {
@@ -164,10 +187,23 @@ struct FakePort {
 			calls.push_back("collision " + std::to_string(h));
 		}
 	}
+	// The original's geometry bound, as the Reference calls it: 0x00722AA0's
+	// arithmetic (the logic's GeometryBound, which the bounds oracle holds
+	// against the original) - so a GeometryPlain leaf ends the same whether
+	// the Reference calls or the Run computes.
 	void UpdateWorldBound(Handle h) {
 		FakeObject& o = tree->objects.at(h);
-		o.bound = Bound{{o.world.pos[0], o.world.pos[1], o.world.pos[2]}, o.world.scale * 1.5f};
+		Bound bound;
+		std::uint16_t flags;
+		GeometryBound(FakeGeometryView{&o}, NoSkin{}, bound, flags);
+		o.bound = bound;
+		o.flags = flags;
 		calls.push_back("geometry bound " + std::to_string(h));
+	}
+	Bound ReadBound(Handle h) const { return tree->objects.at(h).bound; }
+	void WriteBound(Handle h, const Bound& b) { tree->objects.at(h).bound = b; }
+	void GeometryBoundSelf(Handle h) {
+		UpdateWorldBound(h);  // the same arithmetic; the call is recorded under the same name
 	}
 	void UpdateDownwardOriginal(Handle h, float time, bool controllers) {
 		// What the original would leave: a world and a bound; the subtree is its own.
@@ -180,13 +216,9 @@ struct FakePort {
 	void SetBoundRadius(Handle h, float r) { tree->objects.at(h).bound.radius = r; }
 	void CopyBound(Handle to, Handle from) { tree->objects.at(to).bound = tree->objects.at(from).bound; }
 	void MergeBound(Handle to, Handle from) {
-		// A deterministic stand-in for NiBound::Merge (the real one is the engine's).
-		Bound& a = tree->objects.at(to).bound;
-		const Bound& b = tree->objects.at(from).bound;
-		a.center[0] = (a.center[0] + b.center[0]) * 0.5f;
-		a.center[1] = (a.center[1] + b.center[1]) * 0.5f;
-		a.center[2] = (a.center[2] + b.center[2]) * 0.5f;
-		a.radius = a.radius > b.radius ? a.radius + 0.5f * b.radius : b.radius + 0.5f * a.radius;
+		// The original's NiBound::Merge as the Reference calls it: the logic's
+		// MergeBound (held against the original by the bounds oracle).
+		obng::engine::scene::scene_update::MergeBound(tree->objects.at(to).bound, tree->objects.at(from).bound);
 	}
 };
 
@@ -194,7 +226,7 @@ FakeTree SmallTree() {
 	// 1 (node): [2 (geometry), 0, 3 (other), 4 (node): [5 (geometry)]]
 	FakeTree t;
 	t.objects[1] = FakeObject{Kind::Node, {2, 0, 3, 4}};
-	t.objects[2] = FakeObject{Kind::Geometry, {}};
+	t.objects[2] = FakeObject{Kind::GeometryPlain, {}};
 	t.objects[3] = FakeObject{Kind::Other, {}};
 	t.objects[4] = FakeObject{Kind::Node, {5}};
 	t.objects[5] = FakeObject{Kind::Geometry, {}};
@@ -216,7 +248,7 @@ void TestBuildAndMatches() {
 	Check(order.entries[0].object == 1 && order.entries[1].object == 2 && order.entries[2].object == 3 && order.entries[3].object == 4 &&
 	          order.entries[4].object == 5,
 	      "the order 1, 2, 3, 4, 5");
-	Check(order.entries[0].kind == Kind::Node && order.entries[1].kind == Kind::Geometry && order.entries[2].kind == Kind::Other &&
+	Check(order.entries[0].kind == Kind::Node && order.entries[1].kind == Kind::GeometryPlain && order.entries[2].kind == Kind::Other &&
 	          order.entries[3].kind == Kind::Node && order.entries[4].kind == Kind::Geometry,
 	      "the kinds");
 	Check(order.entries[0].parent == kNoParent && order.entries[1].parent == 0 && order.entries[2].parent == 0 && order.entries[3].parent == 0 &&
@@ -303,8 +335,10 @@ FakeTree RandomTree(unsigned& nextHandle, Handle* rootOut) {
 			}
 			const Handle child = nextHandle++;
 			const int k = kindDie(g_random);
-			t.objects[child] = FakeObject{k < 5 ? Kind::Node : k < 8 ? Kind::Geometry : Kind::Other, {}};
+			t.objects[child] = FakeObject{k < 5 ? Kind::Node : k < 7 ? Kind::GeometryPlain : k < 8 ? Kind::Geometry : Kind::Other, {}};
 			t.objects[child].parent = h;
+			t.objects[child].modelBound = Bound{{value(g_random), value(g_random), value(g_random)}, scaleDie(g_random)};
+			t.objects[child].flags = coin(g_random) == 1 ? 0x0080 : 0;
 			t.objects[h].slots.push_back(child);
 			open.push_back({child, depth + 1});
 		}
@@ -340,7 +374,7 @@ void TestRunAgainstReference() {
 			}
 			for (const auto& [h, o] : a.objects) {
 				const FakeObject& p = b.objects.at(h);
-				if (!SameBits(o.world, p.world) || !SameBits(o.bound, p.bound)) {
+				if (!SameBits(o.world, p.world) || !SameBits(o.bound, p.bound) || o.flags != p.flags) {
 					sameState = false;
 				}
 			}
@@ -360,11 +394,122 @@ void TestRunAgainstReference() {
 	std::printf("  %u trees, %u objects\n", trees, objects);
 }
 
+void SetRounding(unsigned mode) { _mm_setcsr((_mm_getcsr() & ~0x6000u) | (mode << 13)); }
+
+void TestSqrtAsCrt() {
+	Section("The square root as the CRT's: to nearest under every rounding mode");
+	const unsigned saved = _mm_getcsr();
+	const float inputs[] = {2.0f, 3.0f, 5.0f, 10.0f, 0.1f, 123456.789f, 1.0e-20f, 3.0e30f, 7.0f, 0.3f};
+	bool allSame = true;
+	for (float x : inputs) {
+		SetRounding(0);
+		const float nearest = std::sqrt(x);
+		for (unsigned mode : {1u, 2u, 3u}) {
+			SetRounding(mode);
+			const float r = SqrtAsCrt(x);
+			if (!SameBits(r, nearest)) {
+				allSame = false;
+			}
+		}
+	}
+	_mm_setcsr(saved);
+	Check(allSame, "down, up and toward zero give the nearest root for every input tried");
+	SetRounding(3);
+	const bool directed = !SameBits(std::sqrt(2.0f), SqrtAsCrt(2.0f)) || SameBits(std::sqrt(2.0f), 1.41421354f);
+	_mm_setcsr(saved);
+	Check(directed, "toward zero, sqrtss itself differs from the nearest root for sqrt(2) (the correction has work to do)");
+	SetRounding(3);
+	const float exact = SqrtAsCrt(16.0f);
+	const float zero = SqrtAsCrt(0.0f);
+	const float nan = SqrtAsCrt(std::nanf(""));
+	const float inf = SqrtAsCrt(INFINITY);
+	_mm_setcsr(saved);
+	Check(SameBits(exact, 4.0f) && SameBits(zero, 0.0f) && std::isnan(nan) && std::isinf(inf), "exact roots, zero, NaN and infinity pass through");
+}
+
+void TestMergeBound() {
+	Section("NiBound::Merge's branches (0x0072A6B0)");
+	Bound self{{0, 0, 0}, 10.0f};
+	Bound inside{{1, 0, 0}, 2.0f};
+	Bound a = self;
+	MergeBound(a, inside);
+	Check(SameBits(a, self), "other inside self: unchanged");
+	Bound around{{1, 0, 0}, 20.0f};
+	a = self;
+	MergeBound(a, around);
+	Check(SameBits(a, around), "self inside other: self becomes other");
+	Bound concentric{{0, 0, 0}, 30.0f};
+	a = Bound{{0, 0, 0}, 10.0f};
+	MergeBound(a, concentric);
+	Check(SameBits(a, concentric), "concentric and larger: self becomes other (inside)");
+	Bound apart{{30, 0, 0}, 10.0f};
+	a = self;
+	MergeBound(a, apart);
+	// dist 30, rdiff 0: t = 30/60 = 0.5; centre = other + d*t = 30 + (-30)*0.5 = 15; radius = (30 + 10 + 10) * 0.5 = 25
+	Check(SameBits(a.center[0], 15.0f) && SameBits(a.center[1], 0.0f) && SameBits(a.radius, 25.0f), "two equal spheres apart: the sphere around both");
+	Bound farSmall{{100, 0, 0}, 1.0f};
+	a = self;
+	MergeBound(a, farSmall);
+	// dist 100, rdiff -9: t = 109/200 = 0.545; centre = 100 + (-100)*0.545 = 45.5; radius = (100 + 1 + 10)/2 = 55.5
+	Check(SameBits(a.center[0], 45.5f) && SameBits(a.radius, 55.5f), "a small sphere far away: the enclosing sphere");
+	Bound nanOther{{std::nanf(""), 0, 0}, 1.0f};
+	a = self;
+	MergeBound(a, nanOther);
+	Check(SameBits(a, self), "a NaN centre with rdiff < 0: distSq unordered, nothing changes");
+	Bound nanLarger{{std::nanf(""), 0, 0}, 20.0f};
+	a = self;
+	MergeBound(a, nanLarger);
+	Check(std::isnan(a.radius), "a NaN centre with rdiff >= 0: the root path with a NaN root, the radius NaN");
+}
+
+void TestTransformAndInverse() {
+	Section("The bound transform 0x0072A820 and the transform inverse 0x00718A80");
+	Transform t{{0, -1, 0, 1, 0, 0, 0, 0, 1}, {10, 20, 30}, 2.0f};
+	Bound b{{1, 2, 3}, 4.0f};
+	Bound out;
+	TransformBound(b, t, out);
+	// rot*(1,2,3) = (-2, 1, 3); times 2 = (-4, 2, 6); plus pos = (6, 22, 36); radius 8
+	Check(SameBits(out.center[0], 6.0f) && SameBits(out.center[1], 22.0f) && SameBits(out.center[2], 36.0f) && SameBits(out.radius, 8.0f),
+	      "centre carried, radius scaled");
+	Transform inv;
+	InverseTransform(t, inv);
+	Check(SameBits(inv.scale, 0.5f) && SameBits(inv.rot[1], 1.0f) && SameBits(inv.rot[3], -1.0f), "scale 1/2, rotation transposed");
+	// inverse pos = -(rot^T * pos) / 2: rot^T*(10,20,30) = (20, -10, 30) -> (-10, 5, -15)
+	Check(SameBits(inv.pos[0], -10.0f) && SameBits(inv.pos[1], 5.0f) && SameBits(inv.pos[2], -15.0f), "position inverted");
+	Transform roundTrip;
+	Compose(t, inv, roundTrip);
+	Check(SameBits(roundTrip.scale, 1.0f) && SameBits(roundTrip.pos[0], 0.0f) && SameBits(roundTrip.pos[1], 0.0f) && SameBits(roundTrip.pos[2], 0.0f),
+	      "t composed with its inverse: scale 1, position 0 (exact for these values)");
+}
+
+void TestGeometryBoundFlags() {
+	Section("NiGeometry::UpdateWorldBound's flag step: bit 7 cleared when the bound changed, kept when equal, untouched when clear");
+	const Bound a{{1, 2, 3}, 4.0f};
+	const Bound b{{1, 2, 3}, 4.5f};
+	Check(GeometryBoundFlags(0x0080, a, a) == 0x0080, "set and equal: kept");
+	Check(GeometryBoundFlags(0x0081, a, b) == 0x0001, "set and different: cleared, the other bits kept");
+	Check(GeometryBoundFlags(0x0001, a, b) == 0x0001, "clear: nothing happens");
+	const Bound nan{{std::nanf(""), 2, 3}, 4.0f};
+	Check(GeometryBoundFlags(0x0080, nan, nan) == 0x0000, "a NaN compares unequal to itself: cleared");
+	FakeObject o;
+	o.world = Transform{{1, 0, 0, 0, 1, 0, 0, 0, 1}, {5, 6, 7}, 2.0f};
+	o.modelBound = Bound{{1, 0, 0}, 3.0f};
+	o.bound = Bound{{7, 6, 7}, 6.0f};  // what the same inputs gave last time
+	o.flags = 0x0080;
+	Bound bound;
+	std::uint16_t flags;
+	GeometryBound(FakeGeometryView{&o}, NoSkin{}, bound, flags);
+	Check(SameBits(bound.center[0], 7.0f) && SameBits(bound.radius, 6.0f) && flags == 0x0080, "the model bound carried by the world; unchanged: the bit stays");
+	o.world.pos[0] = 6.0f;
+	GeometryBound(FakeGeometryView{&o}, NoSkin{}, bound, flags);
+	Check(SameBits(bound.center[0], 8.0f) && flags == 0x0000, "moved: the bit is cleared");
+}
+
 void TestRunLeavesBoundCentreWhenNoChild() {
 	Section("A node without a contributing child: radius 0, the centre as it was (the original writes only +0x2C)");
 	FakeTree t;
 	t.objects[1] = FakeObject{Kind::Node, {2}};
-	t.objects[2] = FakeObject{Kind::Geometry, {}};
+	t.objects[2] = FakeObject{Kind::GeometryPlain, {}};
 	t.objects[2].parent = 1;
 	t.objects[1].bound = Bound{{7, 8, 9}, 3.0f};
 	t.objects[2].world.scale = 0.0f;  // the geometry's bound radius becomes 0: skipped
@@ -386,5 +531,9 @@ int main() {
 	TestBuildAndMatches();
 	TestRunAgainstReference();
 	TestRunLeavesBoundCentreWhenNoChild();
+	TestSqrtAsCrt();
+	TestMergeBound();
+	TestTransformAndInverse();
+	TestGeometryBoundFlags();
 	return Failures();
 }

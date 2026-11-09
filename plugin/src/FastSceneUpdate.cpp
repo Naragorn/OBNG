@@ -163,6 +163,49 @@ struct VerifyPort : eng::Port {
 	su::Handle firstDiffering = 0;
 	su::Transform firstOurs{};
 	su::Transform firstOriginal{};
+	unsigned geometryCompared = 0;
+	unsigned geometryDiffer = 0;
+	su::Handle firstGeometry = 0;
+	su::Bound firstGeometryOurs{};
+	su::Bound firstGeometryOriginal{};
+	std::uint16_t firstGeometryFlagsOurs = 0;
+	std::uint16_t firstGeometryFlagsOriginal = 0;
+
+	// A plain geometry's bound: the original NiGeometry::UpdateWorldBound
+	// 0x00722AA0 first (pure in the object's state: worlds, model or skin,
+	// the old bound and the flags), its result kept aside, the state put
+	// back, the rebuild's GeometryBound, compared, and the original's written.
+	void GeometryBoundSelf(su::Handle h) {
+		su::Bound before;
+		std::uint16_t flagsBefore;
+		std::memcpy(&before, eng::Pointer(h + eng::kWorldBoundOffset), sizeof(before));
+		std::memcpy(&flagsBefore, eng::Pointer(h + eng::kFlagsOffset), 2);
+		UpdateWorldBound(h);
+		su::Bound original;
+		std::uint16_t flagsOriginal;
+		std::memcpy(&original, eng::Pointer(h + eng::kWorldBoundOffset), sizeof(original));
+		std::memcpy(&flagsOriginal, eng::Pointer(h + eng::kFlagsOffset), 2);
+		std::memcpy(eng::Pointer(h + eng::kWorldBoundOffset), &before, sizeof(before));
+		std::memcpy(eng::Pointer(h + eng::kFlagsOffset), &flagsBefore, 2);
+		eng::Port::GeometryBoundSelf(h);
+		su::Bound ours;
+		std::uint16_t flagsOurs;
+		std::memcpy(&ours, eng::Pointer(h + eng::kWorldBoundOffset), sizeof(ours));
+		std::memcpy(&flagsOurs, eng::Pointer(h + eng::kFlagsOffset), 2);
+		++geometryCompared;
+		if (std::memcmp(&ours, &original, sizeof(ours)) != 0 || flagsOurs != flagsOriginal) {
+			if (geometryDiffer == 0) {
+				firstGeometry = h;
+				firstGeometryOurs = ours;
+				firstGeometryOriginal = original;
+				firstGeometryFlagsOurs = flagsOurs;
+				firstGeometryFlagsOriginal = flagsOriginal;
+			}
+			++geometryDiffer;
+		}
+		std::memcpy(eng::Pointer(h + eng::kWorldBoundOffset), &original, sizeof(original));
+		std::memcpy(eng::Pointer(h + eng::kFlagsOffset), &flagsOriginal, 2);
+	}
 
 	void WriteWorld(su::Handle h, const su::Transform& ours) {
 		su::Transform original;
@@ -241,7 +284,7 @@ void __fastcall ShadowReplacement(void* self, void* /*edx*/, UInt32 timeBits, UI
 	}
 	eng::UpdateUpwardFrom(root);
 	InterlockedIncrement64(&g_routed);
-	if (port.worldsDiffer == 0 && boundsDiffer == 0) {
+	if (port.worldsDiffer == 0 && boundsDiffer == 0 && port.geometryDiffer == 0) {
 		RecordCall(Shadowed::ActorUpdate, false, "", "");
 		return;
 	}
@@ -254,8 +297,17 @@ void __fastcall ShadowReplacement(void* self, void* /*edx*/, UInt32 timeBits, UI
 	if (port.worldsDiffer != 0) {
 		Hex(&port.firstOriginal, sizeof(su::Transform), a);
 		Hex(&port.firstOurs, sizeof(su::Transform), b);
-		std::snprintf(detail, sizeof(detail), " %u of %u worlds differ, %u of %u bounds; first world: object %08X original %s; rebuild %s",
-		              port.worldsDiffer, port.worldsCompared, boundsDiffer, boundsCompared, port.firstDiffering, a, b);
+		std::snprintf(detail, sizeof(detail), " %u of %u worlds differ, %u of %u bounds, %u of %u geometry bounds; first world: object %08X original %s; rebuild %s",
+		              port.worldsDiffer, port.worldsCompared, boundsDiffer, boundsCompared, port.geometryDiffer, port.geometryCompared, port.firstDiffering,
+		              a, b);
+	} else if (port.geometryDiffer != 0) {
+		Hex(&port.firstGeometryOriginal, sizeof(su::Bound), a);
+		Hex(&port.firstGeometryOurs, sizeof(su::Bound), b);
+		std::snprintf(detail, sizeof(detail),
+		              " %u of %u geometry bounds differ (worlds all equal, %u; node bounds %u of %u); first geometry: object %08X original %s flags %04X; "
+		              "rebuild %s flags %04X",
+		              port.geometryDiffer, port.geometryCompared, port.worldsCompared, boundsDiffer, boundsCompared, port.firstGeometry, a,
+		              port.firstGeometryFlagsOriginal, b, port.firstGeometryFlagsOurs);
 	} else {
 		Hex(&firstBoundOriginal, sizeof(su::Bound), a);
 		Hex(&firstBoundOurs, sizeof(su::Bound), b);

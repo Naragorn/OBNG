@@ -1000,3 +1000,45 @@ spot 2, 20/40/60 placed NPCs), Linux headless:
   frame times are void, the per-call times are not.
 - Off in the shipped OBNG.ini ([Route] ActorUpdate=0) until Nadi decides,
   as the square root was.
+
+## The grid update split (2026-11-09 18:31, run obng-profile-gold-road-single/20261109-183144)
+
+[Probe] SceneUpdate with the grid split (OBNG.dll 176897c7): inside
+GridCellArray::Update 0x004823D0 the top-level selected downward passes
+0x0070A190 and upward passes 0x00709EC0 timed, the steps counted. Read
+first (re/export 0x4823d0.c, 0x4d4970.c): the grid update runs
+TESObjectCELL::UpdateSelectedNodes 0x004D4970 per cell (the interior and
+the checkerboard half of the border), which runs the selected update
+0x007073A0 on up to three grandchildren of the cell node (children 2, 3, 4
+of the cell node, each one's child 3), skipping a hidden one (flags bit 0);
+0x007073A0 is the node's +0x64 (the selected downward pass) and then the
+parent's +0x94 (the upward pass). The selected pass visits only the
+children flagged with bit 1, runs the controllers for bit 3 and the world
+data for bit 2, and merges every child's bound (visited or not). Per grid
+update, the 10 s windows at the three spots (measured, the probe's own
+cost inside):
+
+| grid update | selected passes | visited nodes | world data | controller walks | merges | upward passes | the rest |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1.10-1.26 ms (spot 1) | 68, 1.03-1.19 ms | 1320-1640 | 2600-3200 | 2600-3200 | 3960-4170 | 68, 0.06 ms | 0.01 ms |
+| 1.47-1.87 ms (spot 2) | 68, 1.17-1.52 ms | 1090-1440 | 2170-2850 | 2160-2840 | 4210-4430 | 68, 0.15-0.28 ms | 0.04-0.13 ms |
+| 1.14-1.54 ms (spot 3) | 68, 0.89-1.17 ms | 700-900 | 1400-1800 | 1400-1770 | 3860-3940 | 68, 0.23-0.28 ms | 0.03-0.10 ms |
+
+- **The grid update is the selected pass**: 68 passes a frame (17 cells,
+  four roots each), 0.9-1.5 ms, the upward passes 0.06-0.28 ms, nothing
+  else. About 400 ns per world data (two per visited node: the node and
+  its flagged leaves), 2-3 merges per visited node: the statics of 17 cells
+  are cold memory, far slower per object than an actor's skeleton (150-400
+  ns a node, warm).
+- **The earlier attribution was wrong**: the 5 000-9 000 node visits a frame
+  counted on 2026-11-08 were the actors' full passes, not the grid's; the
+  grid visits 700-1 600 nodes a frame (corrected here).
+- **What a flat run would get (derived)**: the walk's share - the virtual
+  call per child, the recursion, the per-child flag and bound reads done
+  through the port - about a quarter to a third, 0.3-0.5 ms a frame; the
+  cold first touches stay. The order must follow the flags: which children
+  are visited changes with the controllers, so a flat order per root is a
+  list of candidates validated against the flags each frame, and the
+  merges run over every child as the original's do. Medium (0.6-1 M), the
+  same gate pattern as the actors' update, with the rigid variant (+0x68,
+  bit 4) to read first.
