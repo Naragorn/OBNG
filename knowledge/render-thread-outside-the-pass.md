@@ -916,3 +916,39 @@ derived):
   A run with the same DLL and [Probe] SceneUpdate=0 separates the two
   (cheap, one harness run); until then the frame times of this run are
   not evidence about the engine, only the per-actor split is.
+
+### The frame drop resolved: the slow runs drew the NPCs, the fast one did not (2026-11-09 15:32, control run obng-actors-count/20261109-153251)
+
+The control run with the same OBNG.dll 5cbd3b6e and [Probe] SceneUpdate=0
+(no scene update detours at all) was as slow as 15:17: frame 13.4 / 22.9 /
+25.8 / 34.1 ms mean at the four steps, scene_pass 4.0 / 7.7 / 9.8 / 12.4 ms,
+the GPU before submit 7.1 / 10.5 / 12.5 / 15.5 ms, OBVR's frame-end
+callback 0.8-0.9 ms. So the probe is acquitted, and so is OBVR's callback.
+OBNG's own draw counters per 10 s window (the Route's stereo draw summary)
+tell the difference between the runs (measured):
+
+| run | OBVR.dll | whole draws a frame before / after the spawns | skinned draws a frame before / after |
+|---|---|---:|---:|
+| 14:51 (-145136), frame 13.7-17.6 ms | 1391cd67 | 360 / 95-110 | 9 / 15-20 |
+| 15:17 (-151745) and 15:32 (-153251), frame 20.7-34.1 ms | 7a81030d | 370 / 560-600 | 9 / 125-320 |
+
+In the fast run the placed NPCs were never drawn and two thirds of the
+world's draws went away with them: the view or the camera must have
+changed with the spawn (which way is unread; the headless screenshots are
+black). The slow runs drew the 20 / 40 / 60 armoured NPCs: 230 more
+skinned draws a frame (each a bone palette and two eyes) and 200 more
+whole draws, 8 ms more scene pass on the CPU and 8 ms more GPU at the
+Beyond's resolution under DXVK. The frame times of 14:51 are therefore no
+measure of a crowd's cost; the ApplyAnimData numbers of all runs stand,
+since the skeleton update runs whether the actor is drawn or not.
+
+What this says about a crowd (derived, Linux/DXVK): 60 armoured NPCs in
+view cost the frame about 20 ms - 3 ms of skeleton update, 8 ms of draw
+submission, 8 ms of GPU - and the draw path, not the update, is the larger
+CPU part once the actors are in view. The update's rebuild (above) is
+worth its 40-50 % of 3-4 ms in such a scene; the draws want their own
+lever (fewer draws per armoured NPC: the armour parts share a skeleton and
+a shader and could be one skinned draw per material, or the pass could
+instance them - unread, OBVR's and OBNG's render path together) and the
+GPU side is OBVR's resolution and MSAA. On Windows with native D3D9 at 90 Hz
+the draw submission's CPU cost differs and must be measured there.
