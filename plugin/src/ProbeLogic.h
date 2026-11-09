@@ -680,6 +680,56 @@ inline int FormatActorUpdate(const ActorUpdateStats& s, double ticksPerMilliseco
 	return at;
 }
 
+// ---- The grid update's split --------------------------------------------------------------------
+//
+// GridCellArray::Update 0x004823D0 runs TESObjectCELL::UpdateSelectedNodes
+// 0x004D4970 per cell, which runs NiAVObject's selected update 0x007073A0 on
+// up to three of the cell node's grandchildren: the selected downward pass
+// 0x0070A190 (only the children flagged for it are visited, every child's
+// bound is merged) and then the parent's upward pass 0x00709EC0 (the
+// parent's bound from all its children, then its parent's). The probe times
+// the top-level selected and upward passes inside the grid update and counts
+// the steps that fall in it, so the grid update's millisecond splits into
+// what the selected walks, what the upward merges and what the rest cost.
+struct GridSplitStats {
+	std::uint64_t gridUpdates = 0;
+	std::uint64_t gridTicks = 0;        // GridCellArray::Update, inclusive
+	std::uint64_t selectedCalls = 0;    // top-level 0x0070A190 calls inside the grid update
+	std::uint64_t selectedTicks = 0;    // their inclusive time
+	std::uint64_t nodesSelected = 0;    // every 0x0070A190 call inside the grid update (the visited nodes)
+	std::uint64_t upwardCalls = 0;      // top-level 0x00709EC0 calls inside the grid update
+	std::uint64_t upwardTicks = 0;
+	std::uint64_t worldData = 0;        // 0x0070C120 calls inside the grid update
+	std::uint64_t controllerWalks = 0;  // 0x0047C930 calls inside the grid update
+	std::uint64_t merges = 0;           // NiBound::Merge 0x0072A6B0 calls inside the grid update
+};
+
+// "Probe: grid update split - per grid update X ms: N selected passes Y ms
+// over S nodes, M upward passes Z ms, W world data, K controller walks, G
+// merges, the rest R ms"; the raw ticks without a calibration.
+inline int FormatGridSplit(const GridSplitStats& s, double ticksPerMillisecond, char* out, std::size_t capacity) {
+	const double frames = s.gridUpdates == 0 ? 1.0 : static_cast<double>(s.gridUpdates);
+	auto per = [&](std::uint64_t n) { return static_cast<double>(n) / frames; };
+	if (ticksPerMillisecond <= 0.0) {
+		return std::snprintf(out, capacity,
+		                     "Probe: grid update split - %llu grid updates, %llu ticks: %llu selected passes %llu ticks over %llu nodes, %llu upward "
+		                     "passes %llu ticks, %llu world data, %llu controller walks, %llu merges",
+		                     static_cast<unsigned long long>(s.gridUpdates), static_cast<unsigned long long>(s.gridTicks),
+		                     static_cast<unsigned long long>(s.selectedCalls), static_cast<unsigned long long>(s.selectedTicks),
+		                     static_cast<unsigned long long>(s.nodesSelected), static_cast<unsigned long long>(s.upwardCalls),
+		                     static_cast<unsigned long long>(s.upwardTicks), static_cast<unsigned long long>(s.worldData),
+		                     static_cast<unsigned long long>(s.controllerWalks), static_cast<unsigned long long>(s.merges));
+	}
+	auto ms = [&](std::uint64_t ticks) { return static_cast<double>(ticks) / ticksPerMillisecond / frames; };
+	const std::uint64_t inside = s.selectedTicks + s.upwardTicks;
+	const double rest = ms(s.gridTicks > inside ? s.gridTicks - inside : 0);
+	return std::snprintf(out, capacity,
+	                     "Probe: grid update split - per grid update %.3f ms: %.1f selected passes %.3f ms over %.0f nodes, %.1f upward passes %.3f ms, "
+	                     "%.0f world data, %.0f controller walks, %.0f merges, the rest %.3f ms",
+	                     ms(s.gridTicks), per(s.selectedCalls), ms(s.selectedTicks), per(s.nodesSelected), per(s.upwardCalls), ms(s.upwardTicks),
+	                     per(s.worldData), per(s.controllerWalks), per(s.merges), rest);
+}
+
 // ---- The constant uploads' redundancy probe -----------------------------------------
 //
 // Does a vertex constant upload write what its register range already holds?

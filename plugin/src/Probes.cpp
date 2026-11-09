@@ -800,6 +800,8 @@ constexpr UInt32 kBoundMerge = 0x0072A6B0;
 constexpr UInt8 kBoundMergeBytes[] = {0x83, 0xEC, 0x20, 0x56, 0x8B, 0xF1};  // sub esp,20h; push esi; mov esi,ecx
 constexpr UInt32 kGeometryBound = 0x00722AA0;
 constexpr UInt8 kGeometryBoundBytes[] = {0x83, 0xEC, 0x20, 0x56, 0x8B, 0xF1};  // sub esp,20h; push esi; mov esi,ecx
+constexpr UInt32 kUpwardPass = 0x00709EC0;
+constexpr UInt8 kUpwardPassBytes[] = {0x8B, 0x01, 0x8B, 0x50, 0x78, 0x56, 0x8B, 0x71, 0x1C};  // mov eax,[ecx]; mov edx,[eax+78h]; push esi; mov esi,[ecx+1Ch]
 constexpr UInt32 kObjectUpdate = 0x00707370;
 constexpr UInt8 kObjectUpdateBytes[] = {0xD9, 0x44, 0x24, 0x04, 0x56, 0x8B, 0xF1};  // fld [esp+4]; push esi; mov esi,ecx
 // NiObjectNET's controllers (+0x0C) and NiAVObject's property list (+0x9C,
@@ -824,6 +826,60 @@ TimeFlagFn g_objectUpdate = nullptr;
 using OneArgFn = UInt32(__fastcall*)(void* self, void* edx, const void* arg);  // RET 4
 OneArgFn g_boundMerge = nullptr;
 NoArgFn g_geometryBound = nullptr;
+NoArgFn g_upwardPass = nullptr;
+
+// Inside GridCellArray::Update (CountGridUpdate) the grid's own steps are
+// counted and the top-level selected and upward passes timed, on that
+// thread only - the same flag and thread-id scheme as the actor call's.
+volatile LONG g_gridActive = 0;
+DWORD g_gridThread = 0;
+int g_selectedDepth = 0;
+int g_upwardDepth = 0;
+UInt64 g_gridSelectedCalls = 0;
+UInt64 g_gridSelectedTicks = 0;
+UInt64 g_gridNodesSelected = 0;
+UInt64 g_gridUpwardCalls = 0;
+UInt64 g_gridUpwardTicks = 0;
+UInt64 g_gridWorldData = 0;
+UInt64 g_gridControllerWalks = 0;
+UInt64 g_gridMerges = 0;
+
+inline bool InGridUpdate() {
+	return g_gridActive != 0 && __readfsdword(0x24) == g_gridThread;
+}
+
+struct AtomicGridSplit {
+	volatile LONG64 gridUpdates = 0, gridTicks = 0, selectedCalls = 0, selectedTicks = 0, nodesSelected = 0, upwardCalls = 0, upwardTicks = 0,
+	                worldData = 0, controllerWalks = 0, merges = 0;
+	void Add(const probe::GridSplitStats& s) {
+		InterlockedAdd64(&gridUpdates, static_cast<LONG64>(s.gridUpdates));
+		InterlockedAdd64(&gridTicks, static_cast<LONG64>(s.gridTicks));
+		InterlockedAdd64(&selectedCalls, static_cast<LONG64>(s.selectedCalls));
+		InterlockedAdd64(&selectedTicks, static_cast<LONG64>(s.selectedTicks));
+		InterlockedAdd64(&nodesSelected, static_cast<LONG64>(s.nodesSelected));
+		InterlockedAdd64(&upwardCalls, static_cast<LONG64>(s.upwardCalls));
+		InterlockedAdd64(&upwardTicks, static_cast<LONG64>(s.upwardTicks));
+		InterlockedAdd64(&worldData, static_cast<LONG64>(s.worldData));
+		InterlockedAdd64(&controllerWalks, static_cast<LONG64>(s.controllerWalks));
+		InterlockedAdd64(&merges, static_cast<LONG64>(s.merges));
+	}
+	probe::GridSplitStats TakeSnapshot() {
+		probe::GridSplitStats o;
+		const auto take = [](volatile LONG64* v) { return static_cast<std::uint64_t>(InterlockedExchange64(v, 0)); };
+		o.gridUpdates = take(&gridUpdates);
+		o.gridTicks = take(&gridTicks);
+		o.selectedCalls = take(&selectedCalls);
+		o.selectedTicks = take(&selectedTicks);
+		o.nodesSelected = take(&nodesSelected);
+		o.upwardCalls = take(&upwardCalls);
+		o.upwardTicks = take(&upwardTicks);
+		o.worldData = take(&worldData);
+		o.controllerWalks = take(&controllerWalks);
+		o.merges = take(&merges);
+		return o;
+	}
+};
+AtomicGridSplit g_gridSplit;
 
 // Inside one ApplyAnimData call (CountObjectUpdate below) the tree's steps
 // are timed as well, on that thread only: the flag and the thread id are set
@@ -916,9 +972,44 @@ volatile LONG64 g_sceneWalksIdle = 0;
 volatile LONG64 g_sceneWorldData = 0;
 
 UInt32 __fastcall CountGridUpdate(void* self, void* /*edx*/, UInt32 timeBits) {
+	g_gridSelectedCalls = g_gridSelectedTicks = g_gridNodesSelected = g_gridUpwardCalls = g_gridUpwardTicks = 0;
+	g_gridWorldData = g_gridControllerWalks = g_gridMerges = 0;
+	g_selectedDepth = g_upwardDepth = 0;
+	g_gridThread = __readfsdword(0x24);
+	g_gridActive = 1;
 	const unsigned __int64 start = __rdtsc();
 	const UInt32 eax = g_gridUpdate(self, nullptr, timeBits);
-	g_gridTiming.Add(__rdtsc() - start);
+	const unsigned __int64 elapsed = __rdtsc() - start;
+	g_gridActive = 0;
+	g_gridTiming.Add(elapsed);
+	probe::GridSplitStats s;
+	s.gridUpdates = 1;
+	s.gridTicks = elapsed;
+	s.selectedCalls = g_gridSelectedCalls;
+	s.selectedTicks = g_gridSelectedTicks;
+	s.nodesSelected = g_gridNodesSelected;
+	s.upwardCalls = g_gridUpwardCalls;
+	s.upwardTicks = g_gridUpwardTicks;
+	s.worldData = g_gridWorldData;
+	s.controllerWalks = g_gridControllerWalks;
+	s.merges = g_gridMerges;
+	g_gridSplit.Add(s);
+	return eax;
+}
+UInt32 __fastcall CountUpwardPass(void* self, void* /*edx*/) {
+	if (!InGridUpdate()) {
+		return g_upwardPass(self, nullptr);
+	}
+	if (g_upwardDepth++ != 0) {
+		const UInt32 eax = g_upwardPass(self, nullptr);
+		--g_upwardDepth;
+		return eax;
+	}
+	++g_gridUpwardCalls;
+	const unsigned __int64 start = __rdtsc();
+	const UInt32 eax = g_upwardPass(self, nullptr);
+	g_gridUpwardTicks += __rdtsc() - start;
+	--g_upwardDepth;
 	return eax;
 }
 UInt32 __fastcall CountCellUpdate(void* self, void* /*edx*/, UInt32 timeBits) {
@@ -931,7 +1022,21 @@ UInt32 __fastcall CountNodeDownward(void* self, void* /*edx*/, UInt32 timeBits, 
 }
 UInt32 __fastcall CountNodeSelected(void* self, void* /*edx*/, UInt32 timeBits) {
 	InterlockedIncrement64(&g_sceneSelected);
-	return g_nodeSelected(self, nullptr, timeBits);
+	if (!InGridUpdate()) {
+		return g_nodeSelected(self, nullptr, timeBits);
+	}
+	++g_gridNodesSelected;
+	if (g_selectedDepth++ != 0) {
+		const UInt32 eax = g_nodeSelected(self, nullptr, timeBits);
+		--g_selectedDepth;
+		return eax;
+	}
+	++g_gridSelectedCalls;
+	const unsigned __int64 start = __rdtsc();
+	const UInt32 eax = g_nodeSelected(self, nullptr, timeBits);
+	g_gridSelectedTicks += __rdtsc() - start;
+	--g_selectedDepth;
+	return eax;
 }
 UInt32 __fastcall CountLeafDownward(void* self, void* /*edx*/, UInt32 timeBits, UInt32 flag) {
 	InterlockedIncrement64(&g_sceneLeaves);
@@ -945,6 +1050,9 @@ UInt32 __fastcall CountControllerWalk(void* self, void* /*edx*/, UInt32 timeBits
 	if (!properties && !controllers) {
 		InterlockedIncrement64(&g_sceneWalksIdle);
 	}
+	if (InGridUpdate()) {
+		++g_gridControllerWalks;
+	}
 	if (!InActorUpdate()) {
 		return g_controllerWalk(self, nullptr, timeBits, flag);
 	}
@@ -955,6 +1063,9 @@ UInt32 __fastcall CountControllerWalk(void* self, void* /*edx*/, UInt32 timeBits
 }
 UInt32 __fastcall CountWorldData(void* self, void* /*edx*/) {
 	InterlockedIncrement64(&g_sceneWorldData);
+	if (InGridUpdate()) {
+		++g_gridWorldData;
+	}
 	if (!InActorUpdate()) {
 		return g_worldData(self, nullptr);
 	}
@@ -964,6 +1075,9 @@ UInt32 __fastcall CountWorldData(void* self, void* /*edx*/) {
 	return eax;
 }
 UInt32 __fastcall CountBoundMerge(void* self, void* /*edx*/, const void* other) {
+	if (InGridUpdate()) {
+		++g_gridMerges;
+	}
 	if (!InActorUpdate()) {
 		return g_boundMerge(self, nullptr, other);
 	}
@@ -1055,6 +1169,8 @@ UInt32 InstallSceneUpdateProbe(LogFn log) {
 	made += InstallEntryDetour("NiGeometry::UpdateWorldBound 0x00722AA0 (scene update)", kGeometryBound, kGeometryBoundBytes,
 	                           sizeof(kGeometryBoundBytes), reinterpret_cast<const void*>(&CountGeometryBound),
 	                           reinterpret_cast<void**>(&g_geometryBound), log) ? 1 : 0;
+	made += InstallEntryDetour("NiNode::UpdateUpwardPass 0x00709EC0 (scene update)", kUpwardPass, kUpwardPassBytes, sizeof(kUpwardPassBytes),
+	                           reinterpret_cast<const void*>(&CountUpwardPass), reinterpret_cast<void**>(&g_upwardPass), log) ? 1 : 0;
 	// The probe's own cost per timed step, for reading the walk: the median
 	// of a thousand empty timings.
 	{
@@ -1107,6 +1223,8 @@ void LogSceneUpdate() {
 	probe::FormatStepSites("NiAVObject::Update", g_objectUpdateSites.TakeSnapshot(), ticksPerMs, line + at, sizeof(line) - at);
 	g_log("%s", line);
 	probe::FormatActorUpdate(g_actorUpdate.TakeSnapshot(), ticksPerMs, line, sizeof(line));
+	g_log("%s", line);
+	probe::FormatGridSplit(g_gridSplit.TakeSnapshot(), ticksPerMs, line, sizeof(line));
 	g_log("%s", line);
 }
 

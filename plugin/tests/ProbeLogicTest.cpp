@@ -400,6 +400,34 @@ void TestObjectUpdateSites() {
 	Check(std::string(line) == " NiAVObject::Update by return site: none;", "no call: none");
 }
 
+void TestGridSplit() {
+	Section("The grid update's split line: per grid update, the passes' times and the rest");
+	GridSplitStats s;
+	s.gridUpdates = 100;
+	s.gridTicks = 300000;  // 1.0 ms each at 3000 ticks per ms
+	s.selectedCalls = 5100;
+	s.selectedTicks = 90000;  // 0.3 ms
+	s.nodesSelected = 70000;
+	s.upwardCalls = 5100;
+	s.upwardTicks = 150000;  // 0.5 ms
+	s.worldData = 20000;
+	s.controllerWalks = 65000;
+	s.merges = 400000;
+	char line[400];
+	FormatGridSplit(s, 3000.0, line, sizeof(line));
+	Check(std::string(line) == "Probe: grid update split - per grid update 1.000 ms: 51.0 selected passes 0.300 ms over 700 nodes, 51.0 upward passes "
+	                           "0.500 ms, 200 world data, 650 controller walks, 4000 merges, the rest 0.200 ms",
+	      "calibrated: the two passes' shares and the rest");
+	FormatGridSplit(s, 0.0, line, sizeof(line));
+	Check(std::strstr(line, "100 grid updates, 300000 ticks: 5100 selected passes 90000 ticks") != nullptr, "uncalibrated: the raw ticks");
+	GridSplitStats over = s;
+	over.upwardTicks = 400000;  // the passes longer than the whole (the TSC's jitter): the rest is 0
+	FormatGridSplit(over, 3000.0, line, sizeof(line));
+	Check(std::strstr(line, "the rest 0.000 ms") != nullptr, "passes beyond the whole: the rest is 0, not negative");
+	FormatGridSplit(GridSplitStats{}, 3000.0, line, sizeof(line));
+	Check(std::strstr(line, "per grid update 0.000 ms: 0.0 selected passes") != nullptr, "nothing counted: no division by zero");
+}
+
 void TestActorUpdate() {
 	Section("ApplyAnimData by nodes a call: the buckets' bounds are inclusive");
 	Check(ActorUpdateStats::BucketOf(0) == 0 && ActorUpdateStats::BucketOf(50) == 0 && ActorUpdateStats::BucketOf(51) == 1 &&
@@ -464,6 +492,7 @@ int main() {
 	TestSceneUpdate();
 	TestObjectUpdateSites();
 	TestActorUpdate();
+	TestGridSplit();
 	TestUploads();
 	TestPackCache();
 	TestStepTiming();
