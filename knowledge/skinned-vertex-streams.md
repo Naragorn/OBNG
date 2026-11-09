@@ -232,3 +232,26 @@ frames (the ring's DISCARD renames the bytes every pack: the route must
 own those chips); (b) the size of a pack - 0.3 MB for one head is more
 than its vertices should need (unread: whether the whole chip is copied at
 the unlock whatever was written).
+
+### What a volatile pack is, and a change signal that does not hold (2026-11-09 21:57-22:05, runs -215701, -220046)
+
+- **The pack's size is the mesh's** (run -215701, the probe's description
+  of the first volatile packs): every one is a geometry data of 3 515
+  vertices with a skin of 5 bones, stream 0, 309 320 bytes locked - 88 bytes
+  a vertex, the whole chip; packed under two declarations (0x12004188 and
+  0x120007E0 in that run). The unlock copies exactly the locked bytes (read,
+  re/functions/0x00776D80.md). So nothing is over-copied: the block is one
+  mesh per named NPC, the same vertex count for every one of the cast (the
+  head is the candidate; the name is unread).
+- **BSFaceGenNiNode's gated morph 0x0055D1B0 is not the change signal**
+  (run -220046: the probe stamped every child geometry's data when
+  0x0055D1B0 ran and compared with the packs' verdicts): with 60 NPCs,
+  3 500-4 600 morph calls a window against 12 000-14 000 volatile packs, and
+  of the packs whose data was *not* stamped since their last pack, 5 400-
+  6 500 were the same and **700-6 900 changed**. Either the volatile data is
+  not a direct child's of the head node, or another writer changes it (the
+  gate of 0x0055D1B0 lets only near or important actors through; the
+  animation step vfunc_DC / vfunc_8C runs for all), or the changes are not
+  the source's (the two declarations sharing one staging block: a pack under
+  one layout leaves the other's bytes behind). Unread; the signal needs the
+  writers of that data's vertex array found by reading, not by guess.

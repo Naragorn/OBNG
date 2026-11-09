@@ -11,6 +11,7 @@
 #include <intrin.h>
 
 #include <cstdio>
+#include <unordered_map>
 
 #include "OcclusionProbe.h"
 #include "GrassProbe.h"
@@ -360,6 +361,7 @@ struct PackContext {
 	UInt32 chip = 0;    // PackStream's chip while it runs on this thread, else 0
 	UInt32 stream = 0;  // its stream index
 	UInt32 decl = 0;    // the packer's declaration argument
+	UInt32 skin = 0;    // the packer's skin instance argument
 	bool volatileData = false;  // the data's consistency nibble at the packer's entry was 0x8000
 };
 range_walk_game::ThreadSlots<PackContext> g_packContexts;
@@ -367,6 +369,38 @@ SRWLOCK g_packLock = SRWLOCK_INIT;
 probe::PackCache* g_packCache = nullptr;  // 65 536 slots, made at install
 probe::PackStats g_packStats;
 probe::ClockPair g_packClock;  // the clocks at the last pack summary
+
+// The change signal under test: BSFaceGenNiNode's gated morph application
+// 0x0055D1B0 (re/functions/0x0055D4C0.md step 9: called only when the face
+// animation reported a change). Every geometry data under the head node is
+// stamped when it runs; a volatile pack is "clean" when its data was not
+// stamped since that key's last pack. If the signal is sound, a clean pack
+// never carries changed bytes.
+constexpr UInt32 kFaceMorph = 0x0055D1B0;
+constexpr UInt8 kFaceMorphBytes[] = {0x83, 0xEC, 0x4C, 0x53, 0x55, 0x56, 0x8B, 0xF1};  // sub esp,4Ch; push ebx; push ebp; push esi; mov esi,ecx
+using FaceMorphFn = UInt32(__fastcall*)(void* self, void* edx, UInt32 changed);
+FaceMorphFn g_faceMorph = nullptr;
+std::uint64_t g_packStamp = 0;                             // under g_packLock
+std::unordered_map<UInt32, std::uint64_t>* g_dataStamped = nullptr;   // geometry data -> the stamp of its last morph
+std::unordered_map<std::uint64_t, std::uint64_t>* g_keyPacked = nullptr;  // (data, decl, stream) -> the stamp of its last pack
+std::uint64_t g_cleanSame = 0, g_cleanChanged = 0, g_dirtySame = 0, g_dirtyChanged = 0, g_morphCalls = 0;
+
+UInt32 __fastcall ProbeFaceMorph(void* self, void* /*edx*/, UInt32 changed) {
+	const std::uintptr_t node = reinterpret_cast<std::uintptr_t>(self);
+	const UInt32 slots = ReadAt<UInt16>(node + 0xB6);
+	const UInt32 children = ReadAt<UInt32>(node + 0xB0);
+	AcquireSRWLockExclusive(&g_packLock);
+	++g_morphCalls;
+	const std::uint64_t stamp = ++g_packStamp;
+	for (UInt32 i = 0; i < slots && children != 0; ++i) {
+		const UInt32 child = ReadAt<UInt32>(children + 4 * i);
+		if (child != 0) {
+			(*g_dataStamped)[ReadAt<UInt32>(child + 0xB4)] = stamp;  // a geometry's data; for a node child a value no pack will ask for
+		}
+	}
+	ReleaseSRWLockExclusive(&g_packLock);
+	return g_faceMorph(self, nullptr, changed);
+}
 
 UInt32 __fastcall ProbePacker(void* self, void* /*edx*/, UInt32 record, UInt32 geometry, UInt32 skin, UInt32 partition, UInt32 decl,
                               UInt32 force) {
@@ -376,6 +410,7 @@ UInt32 __fastcall ProbePacker(void* self, void* /*edx*/, UInt32 record, UInt32 g
 		context.geometry = geometry;
 		context.partition = partition;
 		context.decl = decl;
+		context.skin = skin;
 		// The original tests the record and the geometry for null before it
 		// reads either (JE 0x007633BD at 0x0076313F and 0x0076314B, read):
 		// read the consistency word only where it would.
@@ -435,10 +470,41 @@ UInt32 __fastcall ProbeUnlock(void* self, void* /*edx*/, UInt32 d3dBuffer) {
 		slice = probe::PackSlice{ReadAt<UInt32>(chip + kChipBufferOffset), ReadAt<UInt32>(chip + kChipOffsetOffset), ReadAt<UInt32>(chip + kChipSizeOffset)};
 		flags = ReadAt<UInt32>(chip + kChipFlagsOffset);
 	}
+	// The first volatile packs described once: what is packed, how large.
+	static volatile LONG s_described = 0;
+	if (context->volatileData && InterlockedIncrement(&s_described) <= 40) {
+		const UInt32 data = context->geometry;
+		const UInt32 vertices = data != 0 ? ReadAt<UInt16>(data + 0x08) : 0;
+		UInt32 bones = 0;
+		UInt32 partitionVertices = 0;
+		if (context->skin != 0) {
+			const UInt32 skinData = ReadAt<UInt32>(context->skin + 0x08);
+			bones = skinData != 0 ? ReadAt<UInt32>(skinData + 0x40) : 0;
+		}
+		if (context->partition != 0) {
+			partitionVertices = ReadAt<UInt16>(context->partition + 0x08);  // unverified offset: logged raw for reading
+		}
+		g_log("Probe: volatile pack - data %08X (vtable %08X) vertices %u, skin %08X bones %u, partition %08X word+8 %u, stream %u, decl %08X: %u bytes "
+		      "locked (%.1f a vertex), chip size %u",
+		      data, data != 0 ? ReadAt<UInt32>(data) : 0, vertices, context->skin, bones, context->partition, partitionVertices, context->stream,
+		      context->decl, bytes, vertices != 0 ? static_cast<double>(bytes) / vertices : 0.0, slice.size);
+	}
 	AcquireSRWLockExclusive(&g_packLock);
 	const probe::PackVerdict verdict =
 	    g_packCache->Add(probe::PackKey{context->geometry, context->partition, context->stream, context->decl}, hash, bytes, g_packStats, slice);
 	probe::CountVerdictByConsistency(verdict, context->volatileData, g_packStats);
+	if (context->volatileData && g_dataStamped != nullptr) {
+		const std::uint64_t key = (static_cast<std::uint64_t>(context->geometry) << 32) ^ (static_cast<std::uint64_t>(context->decl) << 4) ^ context->stream;
+		const auto packed = g_keyPacked->find(key);
+		const auto stamped = g_dataStamped->find(context->geometry);
+		const bool clean = packed != g_keyPacked->end() && (stamped == g_dataStamped->end() || stamped->second < packed->second);
+		if (verdict == probe::PackVerdict::Same) {
+			++(clean ? g_cleanSame : g_dirtySame);
+		} else if (verdict == probe::PackVerdict::Changed) {
+			++(clean ? g_cleanChanged : g_dirtyChanged);
+		}
+		(*g_keyPacked)[key] = ++g_packStamp;
+	}
 	probe::CountLockFlags(flags, g_packStats);
 	g_packStats.hashTicks += hashTicks;
 	ReleaseSRWLockExclusive(&g_packLock);
@@ -458,6 +524,13 @@ UInt32 InstallPackCache(LogFn log) {
 	                           reinterpret_cast<const void*>(&ProbeUnlock), reinterpret_cast<void**>(&g_unlock), log) ? 1 : 0;
 	made += InstallEntryDetour("PackStream 0x0076FE20 (pack cache)", kPackStream, kPackStreamBytes, sizeof(kPackStreamBytes),
 	                           reinterpret_cast<const void*>(&ProbePackStream), reinterpret_cast<void**>(&g_packStream), log) ? 1 : 0;
+	g_dataStamped = new std::unordered_map<UInt32, std::uint64_t>();
+	g_keyPacked = new std::unordered_map<std::uint64_t, std::uint64_t>();
+	if (!InstallEntryDetour("BSFaceGenNiNode morph 0x0055D1B0 (pack cache: the change signal)", kFaceMorph, kFaceMorphBytes, sizeof(kFaceMorphBytes),
+	                        reinterpret_cast<const void*>(&ProbeFaceMorph), reinterpret_cast<void**>(&g_faceMorph), log)) {
+		delete g_dataStamped;
+		g_dataStamped = nullptr;
+	}
 	g_packCacheOn = made == 3;
 	g_packClock = ReadClocks();
 	if (made != 3) {
@@ -475,6 +548,15 @@ void LogPackCache() {
 	char line[600];
 	probe::FormatPackStats(stats, keys, line, sizeof(line));
 	g_log("%s", line);
+	if (g_dataStamped != nullptr) {
+		AcquireSRWLockExclusive(&g_packLock);
+		const std::uint64_t cs = g_cleanSame, cc = g_cleanChanged, ds = g_dirtySame, dc = g_dirtyChanged, mc = g_morphCalls;
+		g_cleanSame = g_cleanChanged = g_dirtySame = g_dirtyChanged = g_morphCalls = 0;
+		ReleaseSRWLockExclusive(&g_packLock);
+		g_log("Probe: pack cache change signal (face morph 0x0055D1B0, %llu calls) - volatile packs not morphed since their last pack: %llu same, %llu "
+		      "CHANGED; morphed since: %llu same, %llu changed",
+		      mc, cs, cc, ds, dc);
+	}
 	{
 		const probe::ClockPair now = ReadClocks();
 		const double ticksPerMs = probe::TicksPerMillisecond(g_packClock, now, ClockFrequency());
