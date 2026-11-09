@@ -1058,3 +1058,32 @@ runs: fewer plain actors this time (32 000-35 000 calls a window against
 47 000-56 000), so the armoured share and the average rose; the summary now
 splits the calls by subtree size for the next run. On by default
 (eaa90f72 -> 64ffe841 on Linux and Windows).
+
+### Phase 2 by actor class (2026-11-09 18:44-18:52, runs -184423 route, -184652 the timed original)
+
+The summaries split the calls by the subtree's entry count (OBNG.dll
+e5d7bd63); the same clock, the same scenario, both drawing. Per call, the
+10 s windows (measured; one window of the original's run, the spawn
+window, is an outlier and left out):
+
+| class (entries) | who | original, us | flat run (phase 2), us | saved |
+|---|---|---:|---:|---:|
+| <= 50 (27) | the player | 8.1-8.8 | 6.6-7.3 | about 20 % |
+| <= 100 (78) | the road's NPCs and creatures | 17.8-20.6 | 10.6-13.2 | 40-45 % |
+| <= 400 (303-325) | the armoured cast | 44.0-54.5 | 37.5-41.0 | 15-25 % |
+
+- **Plain actors gain the most**: the phase-1 figure for them (13.3-13.9)
+  improved to 10.6-13.2 with the merges and the geometry bounds done in
+  the run.
+- **Armoured actors gain less than their node count promised**: 37.5-41
+  against 44-54, where phase 1's crowd averages suggested about 35 for the
+  class (derived from mixed averages, not measured by class). Where the
+  armoured call's time sits in the flat run is not split yet; the
+  candidates are the skin bounds (22 skinned parts, each bone's bind bound
+  carried and merged through the view's indirections) and MergeBound's
+  branches against the original's 27 ns a merge. A split probe inside the
+  route (the two passes and the geometry bounds timed per class) is the
+  next cheap step (0.1 M) before any tuning.
+- Per frame on the Gold Road (64 actors, mostly plain): about 1.3 ms ->
+  0.75 ms (derived), 0.55 ms saved; with 60 armoured in a crowd about 2.4
+  ms -> 1.0-1.1 ms saved on them in all.
