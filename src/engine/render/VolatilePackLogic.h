@@ -40,6 +40,17 @@ inline constexpr std::uint16_t kStatic = 0x4000;
 inline bool IsVolatile(std::uint16_t word) { return (word & kConsistencyMask) == kVolatile; }
 // The word with the nibble replaced by static, the dirty bits kept.
 inline std::uint16_t AsStatic(std::uint16_t word) { return static_cast<std::uint16_t>((word & ~kConsistencyMask) | kStatic); }
+// The word for a pack that must run: mutable (nibble 0) with every dirty bit
+// set. A volatile pack replaces every stream's chip and takes its bytes from
+// the dynamic ring, one vertex buffer that every volatile geometry of that
+// stride writes at offset 0 with DISCARD (measured 2026-11-09 22:28: 20 993
+// of 21 043 packs found their buffer written by another record since) - so
+// nothing a volatile pack writes survives the next one. A mutable pack keeps
+// the record's chip while it is valid (read, 0x0076FE20 step 4) and packs
+// what the dirty bits name: all of it.
+inline std::uint16_t AsMutableAllDirty() { return 0x0FFF; }
+// The nibble back to volatile after the call, the dirty bits as the packer left them.
+inline std::uint16_t BackToVolatile(std::uint16_t word) { return static_cast<std::uint16_t>((word & ~kConsistencyMask) | kVolatile); }
 
 // ---- The record's allocation, as 0x00777F10 answers it (read) --------------------------------
 // True when the record has streams and every stream's chip and the chip's

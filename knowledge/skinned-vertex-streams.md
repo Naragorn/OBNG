@@ -296,3 +296,40 @@ the unlock whatever was written).
   before a build: the two declarations' entries (which element is +40, who
   reads it), and that the chip's buffer keeps its bytes while its pack is
   skipped (the probe saw one buffer per key and the slice never moving).
+
+### The declarations, the gap named, and why a skip alone cannot work (2026-11-09 22:21-22:40, runs -222143, -222808, -223128, -223414)
+
+- **Both declarations of the head have one layout** (run -222143, stride
+  88): position +0 (selector 0), blend weights +12 (1), blend indices +24
+  (2), normal +28 (3), **colour +40 (4, 16 bytes)**, texture coordinates +56
+  (5), two extra-data entries +64 and +76 (negative selectors). The data has
+  no colour array (+0x24 null) and PackEntry writes an entry only from a
+  non-null source, so the colour entry is never written: the 16 bytes that
+  differ between packs are the staging block's leftovers. Gate on that:
+  29 377 changed packs with unchanged positions and normals, **0 with a
+  difference outside bytes 40..55**. A head's pack is redundant whenever
+  its positions and normals did not change - 98 % of a crowd's.
+- **But a volatile pack's bytes do not survive the next one** (the route's
+  gate, [Shadow] VolatilePack, runs -222808 and -223414: every unlock of a
+  dynamic buffer names its writer): of 21 000-23 000 volatile packer calls
+  a window, 20 993-22 920 found their record's vertex buffer written by
+  another record since their own last pack. All heads of one stride share
+  the dynamic ring's one vertex buffer, each pack takes offset 0 with
+  DISCARD and is drawn before the next one overwrites it. (The earlier
+  "one buffer per key" of the pack-cache probe was the keys' count, not
+  proof of separate buffers.) Presenting the data to the packer as mutable
+  instead of volatile does not change it: the record's chips still come
+  from the dynamic group (run -223414, the same counts).
+- So the skip needs buffers of its own: either the head's record moved to
+  a static group (where that is decided is unread), or the route gives each
+  such record a private vertex buffer and lets the engine's own mutable
+  pack fill it (the chip's buffer pointer swapped; the device's Reset must
+  release them - the occlusion culler's reset handling is the pattern).
+  Medium, with the risk in the lifetime of those buffers; the gain is the
+  5-6 ms of a 60-head crowd (1-2 ms with 10-20 named NPCs in view) on
+  Linux, unmeasured on Windows.
+- The gate's comparison itself held where it applied: 471 and 952
+  would-skip packs verified, 0 mismatches. [Route] VolatilePack stays off:
+  as built it skips next to nothing.
+- The actor-count scenario still fails to draw the crowd in about one run
+  of four (run -223128: 8 000 skinned draws a window against 160 000).

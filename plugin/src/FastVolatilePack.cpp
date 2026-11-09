@@ -197,7 +197,7 @@ UInt32 __fastcall PackerReplacement(void* self, void* /*edx*/, UInt32 record, UI
 		volatile UInt16* word = reinterpret_cast<volatile UInt16*>(static_cast<std::uintptr_t>(data + kDataConsistency));
 		*word = vp::AsStatic(in.consistencyWord);
 		const UInt32 eax = g_packer(self, nullptr, record, data, skin, partition, decl, force);
-		*word = static_cast<UInt16>((*word & ~vp::kConsistencyMask) | vp::kVolatile);
+		*word = vp::BackToVolatile(*word);
 		InterlockedAdd64(&g_skippedBytes, static_cast<LONG64>(vertices) * 88);
 		return eax;
 	}
@@ -212,7 +212,12 @@ UInt32 __fastcall PackerReplacement(void* self, void* /*edx*/, UInt32 record, UI
 	g_verifyMismatch = false;
 	ReleaseSRWLockExclusive(&g_lock);
 
+	// The pack runs as a mutable one with every dirty bit (VolatilePackLogic.h
+	// AsMutableAllDirty): the record keeps its own chips and buffers.
+	volatile UInt16* packWord = reinterpret_cast<volatile UInt16*>(static_cast<std::uintptr_t>(data + kDataConsistency));
+	*packWord = vp::AsMutableAllDirty();
 	const UInt32 eax = g_packer(self, nullptr, record, data, skin, partition, decl, force);
+	*packWord = vp::BackToVolatile(*packWord);
 
 	AcquireSRWLockExclusive(&g_lock);
 	const bool verified = g_packVerify;

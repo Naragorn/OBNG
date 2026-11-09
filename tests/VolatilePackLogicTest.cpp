@@ -13,6 +13,9 @@ void TestConsistency() {
 	Section("The consistency word: the nibble decides, the dirty bits stay");
 	Check(IsVolatile(0x8000) && IsVolatile(0x8FFF) && !IsVolatile(0x4000) && !IsVolatile(0x0000) && !IsVolatile(0xC000), "0x8 is volatile, nothing else");
 	Check(AsStatic(0x8ABC) == 0x4ABC && AsStatic(0x8000) == 0x4000, "the nibble replaced, the low twelve bits kept");
+	Check(AsMutableAllDirty() == 0x0FFF && !IsVolatile(AsMutableAllDirty()) && (AsMutableAllDirty() & kConsistencyMask) != kStatic,
+	      "a pack that must run: mutable, every dirty bit");
+	Check(BackToVolatile(0x0000) == 0x8000 && BackToVolatile(0x4ABC) == 0x8ABC && BackToVolatile(0x0FFF) == 0x8FFF, "the nibble back, the dirty bits as left");
 }
 
 void TestAllocated() {
