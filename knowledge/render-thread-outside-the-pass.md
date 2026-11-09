@@ -743,3 +743,51 @@ frame landed in others. Per grid update (one a frame), the 10 s windows
 - The probe's own cost sits inside the numbers (the detours on the
   tree's functions, see the caveat above); the ratio between the sites is
   what this run establishes.
+
+## The actors' update against their number (2026-11-09 14:33, run obng-actors-count/20261109-143325)
+
+tools/hand-scripts/obng-actors-count.txt: the Gold Road's spot 2, the
+player still, then the opening's five cast NPCs (00023F2A 00023F2B 0002349F
+00023F2E 00025200, armoured Blades and the Emperor) placed at the player's
+feet with `player.placeatme`, 20 at t=46 s, 20 more at t=66 s, 40 more at
+t=86 s, their AI on. OBNG.dll db25d956, OBVR.dll 1391cd67, Walkers on,
+Linux headless at 75 Hz vsync. Measured:
+
+| step | actors updated (ApplyAnimData calls a frame) | ApplyAnimData ms a frame | frames in 10 s | frame ms mean / p95 (perf-phases) | OBVR frame_end_callback mean |
+|---|---:|---:|---:|---:|---:|
+| spot 2 as loaded (the Walkers' road this time) | 61 | 1.22-1.30 (20-21 us each) | 700-750 (vsync) | 13.35 / 14.3 | 0.9 ms |
+| +20 NPCs | 85-86 | 2.59-2.83 (30-33 us each) | 638 and 616 (62-64 Hz) | 15.96 / 27.1 (13.7 % over 20 ms) | 1.5 ms |
+| +20 more | 105 | 9.8-25 | 168, 43 | 83 / 265 | 16.1 ms |
+| +40 more | 109-124 | 34-64 | 15, 12 | 659 / 902 | - (crash) |
+
+- **The clean step is the first**: 24 more actors in the update (20
+  placed, the rest the Walkers' arrivals) cost 1.4-1.5 ms a frame in
+  ApplyAnimData alone, about 60 us per added NPC against 20-21 us for the
+  average actor already there (derived: the armoured cast carries more
+  nodes than the Walkers' and the road's creatures, or the cache no longer
+  holds the skeletons; which of the two is unread). The frame left the
+  vsync: 62-64 Hz steady, 2.5-3 ms more a frame in all, of which
+  ApplyAnimData 1.45 ms, OBVR's frame-end callback 0.6 ms, the rest
+  (Havok, AI, the controllers, the draws) 0.5-1 ms (derived from the
+  frame counts and the phases).
+- **The second and third steps are void for the engine's cost**: the
+  frame-end callback grew to 16 ms mean / 73 ms p95 and the game ended at
+  t=96 s with a std::bad_alloc in OBVR's FitBodyCapsules (OBVR's analysis,
+  their docs/mesh-fitted-capsules-spec.md 618d1ac, open bug). The
+  ApplyAnimData times of those steps (90-500 us a call) are measured under
+  that load and say nothing about the engine; a repeat runs with [Body]
+  FittedBodyCapsules=0 and the NPCs placed apart rather than in one heap
+  (`placeatme id 1 distance direction`), 20/40/60.
+- **What this does to the levers (derived)**: a street with 20-25 armoured
+  NPCs in the update costs 1.2-1.5 ms a frame in the skeleton propagation
+  alone, three times the Gold Road's whole ApplyAnimData share. Two
+  levers, both scaling with the actor count: (a) the actor update LOD -
+  distant actors propagated every second frame, 0.5-0.8 ms in such a
+  street, medium (0.8-1.2 M), changes behaviour at distance; (b) a rebuild
+  of the propagation itself (NiNode::UpdateDownwardPass 0x0070A0D0 with
+  NiAVObject::UpdateWorldData 0x0070C120 and the bound merge) as OBNG's
+  tight loop - the same transforms in the same order, so bit for bit the
+  same world matrices, gated by a shadow run - medium to large
+  (1.5-2 M), no behaviour change, its gain the loop's share of the 20-60
+  us per actor (unread: a probe of the nodes per actor and the time per
+  node decides it; cheap, 0.1 M).
