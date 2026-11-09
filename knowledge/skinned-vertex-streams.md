@@ -255,3 +255,15 @@ the unlock whatever was written).
   the source's (the two declarations sharing one staging block: a pack under
   one layout leaves the other's bytes behind). Unread; the signal needs the
   writers of that data's vertex array found by reading, not by guess.
+- **The modify bracket 0x00728AB0 is not the signal either** (run -220731:
+  the probe stamped the bracket's object and the one at its +0x34 on every
+  opening, 18 000-22 000 a window): unstamped packs 5 000-6 700 same and
+  1 100-6 600 changed, the same picture as with the morph. In both runs
+  the unchanged packs stay near 6 000 a window (24 a frame) whatever the
+  NPC count, and the changed ones grow with it (20 -> 60 NPCs: 1 100 ->
+  6 500). Neither guess names the writer. What settles it without another
+  guess: hash the source arrays (the data's vertex and normal pointers) at
+  the packer's entry beside the packed bytes - a pack that changes with an
+  unchanged source is the packer's own doing (a skinned blend on the CPU
+  for this 5-bone mesh, or stale staging bytes), one that changes with the
+  source has a writer still to find.

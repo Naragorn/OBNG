@@ -376,8 +376,11 @@ probe::ClockPair g_packClock;  // the clocks at the last pack summary
 // stamped when it runs; a volatile pack is "clean" when its data was not
 // stamped since that key's last pack. If the signal is sound, a clean pack
 // never carries changed bytes.
-constexpr UInt32 kFaceMorph = 0x0055D1B0;
-constexpr UInt8 kFaceMorphBytes[] = {0x83, 0xEC, 0x4C, 0x53, 0x55, 0x56, 0x8B, 0xF1};  // sub esp,4Ch; push ebx; push ebp; push esi; mov esi,ecx
+// Second candidate (2026-11-09): the modify bracket's opening 0x00728AB0
+// (thiscall(byte), RET 4; its twelve callers are the FaceGen and geometry
+// writers), stamping the object and the one at its +0x34.
+constexpr UInt32 kFaceMorph = 0x00728AB0;
+constexpr UInt8 kFaceMorphBytes[] = {0x57, 0x8B, 0xF9, 0x80, 0x7F, 0x3C, 0x00};  // push edi; mov edi,ecx; cmp byte [edi+3Ch],0
 using FaceMorphFn = UInt32(__fastcall*)(void* self, void* edx, UInt32 changed);
 FaceMorphFn g_faceMorph = nullptr;
 std::uint64_t g_packStamp = 0;                             // under g_packLock
@@ -386,18 +389,12 @@ std::unordered_map<std::uint64_t, std::uint64_t>* g_keyPacked = nullptr;  // (da
 std::uint64_t g_cleanSame = 0, g_cleanChanged = 0, g_dirtySame = 0, g_dirtyChanged = 0, g_morphCalls = 0;
 
 UInt32 __fastcall ProbeFaceMorph(void* self, void* /*edx*/, UInt32 changed) {
-	const std::uintptr_t node = reinterpret_cast<std::uintptr_t>(self);
-	const UInt32 slots = ReadAt<UInt16>(node + 0xB6);
-	const UInt32 children = ReadAt<UInt32>(node + 0xB0);
+	const std::uintptr_t object = reinterpret_cast<std::uintptr_t>(self);
 	AcquireSRWLockExclusive(&g_packLock);
 	++g_morphCalls;
 	const std::uint64_t stamp = ++g_packStamp;
-	for (UInt32 i = 0; i < slots && children != 0; ++i) {
-		const UInt32 child = ReadAt<UInt32>(children + 4 * i);
-		if (child != 0) {
-			(*g_dataStamped)[ReadAt<UInt32>(child + 0xB4)] = stamp;  // a geometry's data; for a node child a value no pack will ask for
-		}
-	}
+	(*g_dataStamped)[static_cast<UInt32>(object)] = stamp;
+	(*g_dataStamped)[ReadAt<UInt32>(object + 0x34)] = stamp;
 	ReleaseSRWLockExclusive(&g_packLock);
 	return g_faceMorph(self, nullptr, changed);
 }
@@ -526,7 +523,7 @@ UInt32 InstallPackCache(LogFn log) {
 	                           reinterpret_cast<const void*>(&ProbePackStream), reinterpret_cast<void**>(&g_packStream), log) ? 1 : 0;
 	g_dataStamped = new std::unordered_map<UInt32, std::uint64_t>();
 	g_keyPacked = new std::unordered_map<std::uint64_t, std::uint64_t>();
-	if (!InstallEntryDetour("BSFaceGenNiNode morph 0x0055D1B0 (pack cache: the change signal)", kFaceMorph, kFaceMorphBytes, sizeof(kFaceMorphBytes),
+	if (!InstallEntryDetour("geometry modify bracket 0x00728AB0 (pack cache: the change signal)", kFaceMorph, kFaceMorphBytes, sizeof(kFaceMorphBytes),
 	                        reinterpret_cast<const void*>(&ProbeFaceMorph), reinterpret_cast<void**>(&g_faceMorph), log)) {
 		delete g_dataStamped;
 		g_dataStamped = nullptr;
@@ -553,7 +550,7 @@ void LogPackCache() {
 		const std::uint64_t cs = g_cleanSame, cc = g_cleanChanged, ds = g_dirtySame, dc = g_dirtyChanged, mc = g_morphCalls;
 		g_cleanSame = g_cleanChanged = g_dirtySame = g_dirtyChanged = g_morphCalls = 0;
 		ReleaseSRWLockExclusive(&g_packLock);
-		g_log("Probe: pack cache change signal (face morph 0x0055D1B0, %llu calls) - volatile packs not morphed since their last pack: %llu same, %llu "
+		g_log("Probe: pack cache change signal (modify bracket 0x00728AB0, %llu calls) - volatile packs not morphed since their last pack: %llu same, %llu "
 		      "CHANGED; morphed since: %llu same, %llu changed",
 		      mc, cs, cc, ds, dc);
 	}
