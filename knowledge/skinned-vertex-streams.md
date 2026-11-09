@@ -195,3 +195,40 @@ CPU is unverified (see the end). These figures are for five people (measured):
   skin on the GPU and the CPU copy only re-packs streams, or whether the
   CPU also transforms the vertices, is **unverified**. Settle that first by
   reading the skinned draw path from 0x00767B40.
+
+## A crowd's pass is the volatile packing (2026-11-09 21:50, runs obng-actors-count/20261109-183942 and -215051)
+
+Measured on the actor-count scenario (Gold Road spot 2, then 20 / 40 / 60 of
+the opening's cast placed in view; Linux, DXVK, single pass, Oblivion Frame
+Fixes' fast copy on):
+
+- **OBVR's render sampler cut by the marks** (tools/re/sampler-phases.py,
+  run -183942): the in-pass samples go from 3.6 to 15.2 a frame (about ms)
+  between the empty road and 60 placed NPCs. Of the 11.6 gained: Oblivion
+  Frame Fixes' stream copy +3.7, the CRT memcpy 0x009812C0 +1.5 (the
+  unlock's staging copy and the copier), 0x0076F3B0 +0.45, D3D9 (DXVK)
+  +1.3, OBNG.dll +0.4, OBVR.dll +0.3; everything else of the engine's draw
+  walk together under 2. Half of a crowd's pass is copying vertex bytes.
+- **The pack-cache probe** ([Probe] PackCache, run -215051; the probe's
+  hashing slows the run, the counts stand): no volatile pack at all on the
+  road with its 64 actors (the Walkers' bodies and the creatures are
+  static data: 1 180 early-outs a frame); with the cast placed, **one
+  volatile pack per placed NPC and frame** - 61 packs a frame at 60 NPCs,
+  each a 0.3 MB staging block, 18 MB a frame, every one reserved at the
+  ring's offset 0 and locked with DISCARD (the slice the same every time).
+  40-90 % of the packs carry the bytes of that key's previous pack (90 %
+  right after a spawn, 40-45 % with all 60 moving and talking).
+- So the opening's cast carries one volatile geometry each that the road's
+  actors do not (the FaceGen head is the candidate: unread), and each costs
+  a 0.3 MB pack plus the staging copy every frame, about 90 us an NPC
+  (derived: 5.6 ms of copy samples over 61 packs).
+
+What follows for the lever (docs/subsystems/stream-packing.md, L3): its
+ceiling was 0.4 ms on the Walkers scene and is 2-5 ms a frame in a crowd of
+named NPCs. Two separate gains: (a) skipping the pack whose source did not
+change - needs the change signal (who writes a volatile geometry's vertex
+arrays: the head's morph, unread) and a buffer that survives between
+frames (the ring's DISCARD renames the bytes every pack: the route must
+own those chips); (b) the size of a pack - 0.3 MB for one head is more
+than its vertices should need (unread: whether the whole chip is copied at
+the unlock whatever was written).
