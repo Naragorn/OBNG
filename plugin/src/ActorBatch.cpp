@@ -152,9 +152,9 @@ void __fastcall Part2(void* self, void* /*edx*/, UInt32 a, UInt32 b) {
 // generated thunk a function (cmp byte [g_inController],0; je +7; lock inc
 // dword [counter]; jmp [original]) - no knowledge of the arguments needed.
 // The names are Havok's own profiling labels in the functions (read).
-constexpr unsigned kCounted = 4;
-constexpr UInt32 kCountedAddress[kCounted] = {0x0093F250, 0x00908DE0, 0x00902160, 0x008AD070};
-constexpr const char* kCountedName[kCounted] = {"Gsk 0x0093F250", "BvTree 0x00908DE0", "CvxList 0x00902160", "0x008AD070"};
+constexpr unsigned kCounted = 3;
+constexpr UInt32 kCountedAddress[kCounted] = {0x00908DE0, 0x00902160, 0x008AD070};
+constexpr const char* kCountedName[kCounted] = {"BvTree 0x00908DE0", "CvxList 0x00902160", "0x008AD070"};
 void* g_countedOriginal[kCounted] = {};
 volatile LONG g_counted[kCounted] = {};
 
@@ -182,6 +182,112 @@ void* BuildCountingThunk(unsigned index) {
 	*at++ = 0x25;
 	dword(reinterpret_cast<UInt32>(&g_countedOriginal[index]));
 	return code;
+}
+
+// The Gsk agent 0x0093F250 looked into while a controller's update runs: it
+// is cdecl with the two bodies first (read 0x0093F2AD: [ebp+0xC] and
+// [ebp+8]; a body's shape at +0, its parent at +0xC as 0x0093F2B3-BB and
+// Havok's hkCdBody have it). For each call the two bodies' roots (the parent
+// chain's end: the collidable) are described: a histogram of the dwords at
+// +0x10..+0x2C of the root (where the broad phase handle and the filter
+// info lie; which offset is which is what this is to show), the shape type
+// (the shape's virtual +8, as the agent itself asks it at 0x0093F2D0), and
+// the first roots dumped raw.
+using GskFn = void(__cdecl*)(UInt32 a, UInt32 b, UInt32 c, UInt32 d, UInt32 e);
+void* g_gskOriginal = nullptr;
+volatile LONG g_gskCalls = 0;
+struct ValueCounts {
+	static constexpr unsigned kSlots = 48;
+	UInt32 value[kSlots];
+	UInt32 count[kSlots];
+	UInt32 used;
+	UInt32 other;
+	void Add(UInt32 v) {
+		for (unsigned i = 0; i < used; ++i) {
+			if (value[i] == v) {
+				++count[i];
+				return;
+			}
+		}
+		if (used < kSlots) {
+			value[used] = v;
+			count[used++] = 1;
+		} else {
+			++other;
+		}
+	}
+};
+constexpr unsigned kRootOffsets = 8;  // +0x10, +0x14, ... +0x2C
+ValueCounts g_rootValues[2][kRootOffsets];  // the loop's thread writes; the summary reads at the end of a window (a probe: torn reads accepted)
+ValueCounts g_shapeTypes[2];
+ValueCounts g_depths[2];
+constexpr unsigned kRootDumps = 24;
+UInt32 g_rootDump[kRootDumps][2][12];
+volatile LONG g_rootDumped = 0;
+
+UInt32 RootOf(UInt32 body, UInt32* depth) {
+	*depth = 0;
+	for (unsigned i = 0; i < 8; ++i) {
+		const UInt32 parent = *reinterpret_cast<const UInt32*>(body + 0x0C);
+		if (parent == 0) {
+			break;
+		}
+		body = parent;
+		++*depth;
+	}
+	return body;
+}
+
+void __cdecl GskReplacement(UInt32 a, UInt32 b, UInt32 c, UInt32 d, UInt32 e) {
+	if (g_inController && GetCurrentThreadId() == g_loopThread && a != 0 && b != 0) {
+		InterlockedIncrement(&g_gskCalls);
+		const UInt32 bodies[2] = {a, b};
+		UInt32 roots[2];
+		for (unsigned k = 0; k < 2; ++k) {
+			UInt32 depth;
+			roots[k] = RootOf(bodies[k], &depth);
+			g_depths[k].Add(depth);
+			for (unsigned o = 0; o < kRootOffsets; ++o) {
+				g_rootValues[k][o].Add(*reinterpret_cast<const UInt32*>(roots[k] + 0x10 + 4 * o));
+			}
+			const UInt32 shape = *reinterpret_cast<const UInt32*>(bodies[k]);
+			if (shape != 0) {
+				g_shapeTypes[k].Add(reinterpret_cast<UInt32(__fastcall*)(void*, void*)>(*reinterpret_cast<const UInt32*>(*reinterpret_cast<const UInt32*>(shape) + 8))(reinterpret_cast<void*>(shape), nullptr));
+			}
+		}
+		const LONG slot = g_rootDumped;
+		if (slot < static_cast<LONG>(kRootDumps) && (g_gskCalls % 997) == 1) {
+			for (unsigned k = 0; k < 2; ++k) {
+				std::memcpy(g_rootDump[slot][k], reinterpret_cast<const void*>(roots[k]), sizeof(g_rootDump[slot][k]));
+			}
+			InterlockedIncrement(&g_rootDumped);
+		}
+	}
+	reinterpret_cast<GskFn>(g_gskOriginal)(a, b, c, d, e);
+}
+
+void LogValueCounts(const char* what, ValueCounts& counts) {
+	char line[1300];
+	int at = std::snprintf(line, sizeof(line), "Probe: gsk %s:", what);
+	// The largest first, twelve of them.
+	for (unsigned n = 0; n < 12 && at > 0 && static_cast<std::size_t>(at) < sizeof(line) - 40; ++n) {
+		unsigned best = counts.used;
+		for (unsigned i = 0; i < counts.used; ++i) {
+			if (counts.count[i] != 0 && (best == counts.used || counts.count[i] > counts.count[best])) {
+				best = i;
+			}
+		}
+		if (best == counts.used) {
+			break;
+		}
+		at += std::snprintf(line + at, sizeof(line) - at, " %08X x%u", counts.value[best], counts.count[best]);
+		counts.count[best] = 0;
+	}
+	if (at > 0 && static_cast<std::size_t>(at) < sizeof(line) - 40) {
+		std::snprintf(line + at, sizeof(line) - at, " (%u distinct kept, %u calls beyond them)", counts.used, counts.other);
+	}
+	g_log("%s", line);
+	counts = ValueCounts{};
 }
 
 // What the update left, per call inside the loop: whether it counted the
@@ -380,6 +486,9 @@ UInt32 InstallRouteActorBatch(const RouteSettings& settings, LogFn log) {
 			InstallEntryDetour(kPartName[i], kPartAddress[i], kControllerBytes, sizeof(kControllerBytes), replacements[i], &g_partOriginal[i], log,
 			                   DetourRole::Shadow);
 		}
+		static const UInt8 kGskBytes[] = {0x55, 0x8B, 0xEC, 0x83, 0xE4, 0xF0};
+		InstallEntryDetour("Gsk agent", 0x0093F250, kGskBytes, sizeof(kGskBytes), reinterpret_cast<const void*>(&GskReplacement), &g_gskOriginal, log,
+		                   DetourRole::Shadow);
 		for (unsigned i = 0; i < kCounted; ++i) {
 			if (void* thunk = BuildCountingThunk(i)) {
 				InstallEntryDetour(kCountedName[i], kCountedAddress[i], kControllerBytes, sizeof(kControllerBytes), thunk, &g_countedOriginal[i], log,
@@ -411,6 +520,26 @@ void LogActorBatchSummary() {
 				                    taken[i].end - taken[i].middle, taken[i].deferred);
 			}
 			g_log("%s", line);
+			static const char* const kWho[2] = {"A", "B"};
+			for (unsigned k = 0; k < 2; ++k) {
+				char what[48];
+				std::snprintf(what, sizeof(what), "%s shape type", kWho[k]);
+				LogValueCounts(what, g_shapeTypes[k]);
+				std::snprintf(what, sizeof(what), "%s parent depth", kWho[k]);
+				LogValueCounts(what, g_depths[k]);
+				for (unsigned o = 0; o < kRootOffsets; ++o) {
+					std::snprintf(what, sizeof(what), "%s root +0x%02X", kWho[k], 0x10 + 4 * o);
+					LogValueCounts(what, g_rootValues[k][o]);
+				}
+			}
+			static LONG s_dumpsLogged = 0;
+			for (; s_dumpsLogged < g_rootDumped && s_dumpsLogged < static_cast<LONG>(kRootDumps); ++s_dumpsLogged) {
+				for (unsigned k = 0; k < 2; ++k) {
+					const UInt32* w = g_rootDump[s_dumpsLogged][k];
+					g_log("Probe: gsk root %s raw: %08X %08X %08X %08X | %08X %08X %08X %08X | %08X %08X %08X %08X", kWho[k], w[0], w[1], w[2], w[3], w[4], w[5],
+					      w[6], w[7], w[8], w[9], w[10], w[11]);
+				}
+			}
 		}
 	}
 	const LONG64 loops = InterlockedExchange64(&g_loops, 0);
@@ -452,6 +581,9 @@ void LogActorBatchSummary() {
 			for (unsigned i = 0; i < kCounted && at > 0 && static_cast<std::size_t>(at) < sizeof(line); ++i) {
 				at += std::snprintf(line + at, sizeof(line) - at, " %s %.1f calls;", kCountedName[i],
 				                    static_cast<double>(InterlockedExchange(&g_counted[i], 0)) * perCall);
+			}
+			if (at > 0 && static_cast<std::size_t>(at) < sizeof(line)) {
+				at += std::snprintf(line + at, sizeof(line) - at, " Gsk 0x0093F250 %.1f calls;", static_cast<double>(InterlockedExchange(&g_gskCalls, 0)) * perCall);
 			}
 			const LONG64 moving = InterlockedExchange64(&g_moving, 0);
 			const LONG64 noProxy = InterlockedExchange64(&g_noProxy, 0);

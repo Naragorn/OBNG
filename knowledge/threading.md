@@ -235,6 +235,33 @@ an update for a manifold of two contacts, where the road has none; the
 static world (BvTree) stays at one call. The scenario's NPCs are not a
 standing crowd: two are placed on each spot and they have their packages,
 so two thirds of them count as moving. Which bodies the 25 tests are
-against (the neighbours' bone bodies, their proxies' shapes) is not read
-yet. A standing actor whose integrate the engine skips still pays the
+against: see the next section - the sentence "against the neighbours" above
+is wrong for four fifths of them. A standing actor whose integrate the engine skips still pays the
 support check, about 10 us in the crowd.
+
+### What the Gsk tests are against (measured 2026-11-10, run 20261110-110357)
+
+The Gsk agent 0x0093F250 is cdecl with the two bodies first; a body's
+parent chain ends in the collidable, whose layout the raw dumps show
+(measured, 24 dumps): +0x00 shape, +0x04 shape key, +0x08 motion, +0x0C
+parent, +0x10 owner offset (-20), +0x14 broad phase id, +0x18 type byte (1
+entity, 2 phantom) with the owner offset and the quality, +0x1C the filter
+info (low byte the layer, high word the group). Body A is always the
+character's own phantom: type 2, layer 0x14, shape type 9, no parent.
+
+Body B over the whole run (12.6 M tests): type 1 (an entity) 86 %, type 2
+(another character's phantom) 14 %; the tested shape is type 6 at parent
+depth 1 in 80 % (the agent's own special case at 0x0093F2D3, a triangle of
+a container shape - derived from Havok's shape types, unverified) and type
+9 at depth 0 in 19 %. Every entity among each window's most frequent
+filter values is 0x00010011: layer 0x11, group 1 - the ground the placed
+NPCs stand on.
+
+So about 19 of the 24 tests an update are the character's shape against
+triangles of the ground under it, in the two casts of an update (the
+support check and the integrate), and about 4 are against other
+characters. The crowd is not what makes the update dear; standing on that
+ground is (the five actors of the road window have 0.1 tests an update -
+where they stand has not been looked at). The earlier reading "25 tests
+against the neighbours" is withdrawn, and with it the idea of filtering
+them out: these are the contacts the character stands on.
