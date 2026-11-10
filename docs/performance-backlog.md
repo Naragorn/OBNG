@@ -82,6 +82,41 @@ places - it doubles there, and it is the draw path (constants and their
 D3D9 calls, the stream packing, OBNG's and OBVR's own share in it), with
 the GPU over its budget in the same frames.
 
+### Anvil with Better Cities, the Windows mod list on Linux (measured 2026-11-10)
+
+Run obng-profile-anvil-bc/20261110-121028: the Beyond at 75 Hz (its 90 Hz
+mode could not be selected from SteamVR on Linux), an eye of 4036x3376,
+every route of today on, the Windows installation's mod list linked in for
+the run (tools/run-with-windows-mods.py: 11 403 files, 32 plugins, the load
+order by file time as on Windows; Data/OBSE and Data/menus stay Linux's).
+From the land gate's marker towards the harbour gate (tools/hand-scripts/
+obng-profile-anvil-bc.txt; the walks with the collision off). The run
+passes; the cell after the move is 0000ABE8, AnvilExterior07 (read from
+Oblivion.esm). The harness' screenshots are black in this mode, so the
+picture was not looked at.
+
+| per frame | Anvil, Linux | Gold Road, Linux, same size | capture 31, Dream Air | capture 30, Dream Air |
+|---|---|---|---|---|
+| render thread busy, median / p90 / p95 | 8.4 / 10.5 / 11.5 ms | 5.1 / 6.8 / 7.3 | 9.9 / 19.5 / 23.3 | 7.2 / 9.3 / 10.0 |
+| scene pass, median / p90 / p95 | 5.1 / 6.6 / 7.0 ms | 3.4 / 4.0 / 4.3 | 6.0 / 12.2 / 15.4 | 3.9 / 4.8 / 5.2 |
+| busy over 10.5 ms (a 90 Hz frame's CPU budget) | 10.0 % | 0.8 % | 41.6 % | 3.0 % |
+| compositor's GPU total, median / p90 | 12.0 / 14.0 ms | 8.9 / 10.4 | 6.7 / 14.2 | 6.6 / 9.2 |
+| shown twice or more | 4.1 % (of 13.33 ms) | 0.8 % | 29.4 % (of 11.11 ms) | 6.8 % |
+
+- The Linux GPU figure is about twice the Windows one for the same size
+  (Gold Road 8.9 against 3.7-5.2 ms), so it says nothing about the Dream
+  Air's GPU; only the CPU side carries over.
+- The CPU side on Windows is 20-30 % above Linux on the Gold Road (busy
+  6.0-6.7 against 5.1 ms; derived from two different days' runs). With
+  that factor Anvil's median would be 10-11 ms on Windows - at the 90 Hz
+  budget, which is what capture 31 shows (9.9 ms). Capture 31's tail (p90
+  19.5 ms, the scene pass 12.2) is not in this walk: its place is heavier
+  than the gate-to-gate line, or holds something this run lacks.
+- The scene pass of the frames over 13.3 ms here, by where the samples
+  fall: Oblivion.exe 51 % (spread, none above 2.7 %), D3D9 19 %, OBNG.dll
+  8.4 %, ntdll 6 %, OBVR.dll 4 %, kernel32 3.4 %, OblivionFrameFixes 2.1 %,
+  FoliageAA 1.9 % - the shape of capture 31's.
+
 ## Put back
 
 
