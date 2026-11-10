@@ -250,6 +250,23 @@ calls inside the pass 21 961 -> 10 582 a frame, the scene pass's median
 3.84 -> 3.66 ms and its p90 6.33 -> 5.55 (one pair of runs, both with the
 lock probe on; the walks differ a little between runs).
 
+### The allocator, measured at its own methods (2026-11-10, run obng-profile-anvil-bc/20261110-160830)
+
+[Probe] HeapCalls on MemoryHeap's Allocate 0x00401AA0 and Free 0x00401D40
+(every wrapper and 79 direct callers reach them; the earlier count at
+0x00401F00 saw a part): the render thread makes 200-400 allocations and as
+many releases a frame in play, 0.06-0.14 ms for the allocations (290-350 ns
+each) and 0.007-0.012 ms for the releases, none inside the eye pass. In the
+frames over 30 ms the heap is 0.1-6.6 % of the frame: the 4 048 ms load
+into Anvil has 148 ms in it over 852 500 calls (3.6 %), a 426 ms frame
+6.2 ms (1.4 %), the 100 ms frames 2.2-2.4 ms. The loader's threads made
+6.65 M allocations in 662 ms during that load, and the heap's lock
+0x00B32B80 was found held by another thread 54 203 times in that window
+(50 times in a window of play). So on this install a faster heap is worth
+at most 0.1 ms a frame in play and a few percent of a load; the 17 % of
+capture 31's long frames (Windows, 2026-11-07) is not seen here and would
+need a Windows capture with this probe to stand.
+
 ## Put back
 
 
@@ -264,7 +281,7 @@ lock probe on; the walks differ a little between runs).
 | A cull at the scene node (`[Route] OcclusionCullNodes`) | C | built 2026-11-10: the scene pass's median 3.33 -> 3.07 ms in Anvil in one pair, the tail unclear | built; a second pair, a long run and the headset look are open | off | docs/subsystems/occlusion-cull.md |
 | The render path's critical sections | C | counted: 4 600 enters a frame inside the pass and 5 000 outside, never contended, 0.1 ms each side; each lock is its own case | small to medium a lock | not started | this file |
 | Instancing of draws that share a mesh | C | at most a third of the drawn unskinned draws in Anvil, 21 % in groups of four or more | large | not started | this file |
-| The engine's allocator replaced | C | 0.1-0.2 ms a frame in play, 17 % of the long frames of capture 31 | medium | not started | this file |
+| The engine's allocator replaced | C | measured: at most 0.1 ms a frame in play and 1.4-6.6 % of the long frames on Linux; 17 % of capture 31's long frames on Windows unconfirmed | medium, and the riskiest item here (errors show late) | put back; a Windows run with [Probe] HeapCalls would reopen it | this file |
 | OBNG's own code in the scene pass: the eye switch, the culler's BoundRect / Collect / Find, the draw route | A | 15 % of the pass in Anvil, about 0.5 ms a frame; half of it looks reachable (not measured) | small to medium, our own code, the link map names the functions | not started | this file |
 | The skeleton route's Matches on every call | A | 0.9 % of the samples outside the pass | small | not started | this file |
 | The rest of the process manager's update outside the actor updates | ? | 1.5 ms with 117 actors, not looked into | small to look | not started | knowledge/threading.md |

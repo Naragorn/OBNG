@@ -378,3 +378,21 @@ the walk ends elsewhere, and say nothing.
 
 State: reconstructed and run; not accepted - the second pair, a long run
 and the look in the headset are open.
+
+### The second pair (2026-11-10, runs obng-profile-anvil-bc/20261110-160041 off, -160434 on)
+
+| | pair 1 off | pair 1 on | pair 2 off | pair 2 on |
+|---|---|---|---|---|
+| scene pass, median | 3.33 ms | 3.07 | 3.80 | 2.88 |
+| render thread busy, median / p90 | 6.19 / 8.28 | 5.84 / 8.73 | 6.89 / 9.16 | 6.11 / 8.72 |
+| frames with busy over 12.5 ms | 142 | 142 | 200 | 258 |
+| ... over 30 ms | 15 | 14 | 13 | 80 |
+
+The median is better in both pairs (the scene pass by 0.26 and 0.92 ms; two
+runs of the same side differ by 0.5 ms themselves, so the size is not
+settled). The frames over 30 ms are the same in pair 1; pair 2's on run has
+80, of which 74 lie in one stretch of 15 s (25-40 s into the capture, the
+scene pass 17 ms in them, the walk's window at 3.0 ms a pass against 0.9-
+1.3 elsewhere). What that stretch was is not known - the change, or
+something beside the run; the other three runs have no such stretch. Open
+until more runs or a long one show it again or not.

@@ -11,12 +11,14 @@
 namespace obng::plugin {
 namespace {
 
-constexpr UInt32 kAllocAddress = 0x00401F00;
-constexpr UInt32 kFreeAddress = 0x00401F20;
-constexpr UInt8 kAllocBytes[] = {0x8B, 0x44, 0x24, 0x04, 0x6A, 0x01};  // mov eax,[esp+4]; push 1 (read)
-constexpr UInt8 kFreeBytes[] = {0x8B, 0x44, 0x24, 0x04, 0x85, 0xC0};   // mov eax,[esp+4]; test eax,eax (read)
-using AllocFn = void*(__cdecl*)(UInt32 size);
-using FreeFn = void(__cdecl*)(void* pointer);
+// MemoryHeap's own two methods, which every wrapper and 79 direct callers reach (read): Allocate
+// 0x00401AA0 __thiscall(size, flag) RET 8, Free 0x00401D40 __thiscall(pointer) RET 4.
+constexpr UInt32 kAllocAddress = 0x00401AA0;
+constexpr UInt32 kFreeAddress = 0x00401D40;
+constexpr UInt8 kAllocBytes[] = {0x56, 0x8B, 0xF1, 0x83, 0x7E, 0x0C, 0x00};  // push esi; mov esi,ecx; cmp [esi+0Ch],0 (read)
+constexpr UInt8 kFreeBytes[] = {0x56, 0x57, 0x8B, 0x7C, 0x24, 0x0C};         // push esi; push edi; mov edi,[esp+0Ch] (read)
+using AllocFn = void*(__fastcall*)(void* heap, void* edx, UInt32 size, UInt32 flag);
+using FreeFn = void(__fastcall*)(void* heap, void* edx, void* pointer);
 
 void* g_allocOriginal = nullptr;
 void* g_freeOriginal = nullptr;
@@ -37,40 +39,92 @@ struct Side {
 };
 Side g_side[2];  // outside the eye pass, inside it
 unsigned __int64 g_otherThreads = 0;
+// The other threads' calls (the loader's, mostly), interlocked.
+volatile LONG64 g_otherAllocs = 0;
+volatile LONG64 g_otherFrees = 0;
+volatile LONG64 g_otherTicks = 0;
+// The render thread's frames by length, each with the heap's time in it: a
+// frame ends when the culler's eye pass count moves.
+constexpr double kLongFrameMs = 30.0;
+UInt32 g_framePasses = 0;
+unsigned __int64 g_frameStart = 0;
+unsigned __int64 g_frameHeapTicks = 0;
+unsigned __int64 g_frameHeapCalls = 0;
+double g_ticksPerMs = 0.0;  // from the last summary
+unsigned __int64 g_longFrames = 0;
+unsigned __int64 g_longTicks = 0;
+unsigned __int64 g_longHeapTicks = 0;
+unsigned __int64 g_longHeapCalls = 0;
+unsigned __int64 g_longest = 0;
+unsigned __int64 g_longestHeap = 0;
+
+void FrameEdge(unsigned __int64 now) {
+	const UInt32 passes = OcclusionCullEyePasses();
+	if (passes == g_framePasses) {
+		return;
+	}
+	if (g_frameStart != 0 && g_ticksPerMs > 0.0) {
+		const unsigned __int64 length = now - g_frameStart;
+		if (static_cast<double>(length) > kLongFrameMs * g_ticksPerMs) {
+			++g_longFrames;
+			g_longTicks += length;
+			g_longHeapTicks += g_frameHeapTicks;
+			g_longHeapCalls += g_frameHeapCalls;
+			if (length > g_longest) {
+				g_longest = length;
+				g_longestHeap = g_frameHeapTicks;
+			}
+		}
+	}
+	g_framePasses = passes;
+	g_frameStart = now;
+	g_frameHeapTicks = 0;
+	g_frameHeapCalls = 0;
+}
 unsigned __int64 g_lastTsc = 0;
 LARGE_INTEGER g_lastQpc{};
 UInt32 g_lastPasses = 0;
 
 unsigned SizeClass(UInt32 size) { return size <= 16 ? 0 : size <= 64 ? 1 : size <= 256 ? 2 : size <= 1024 ? 3 : size <= 16384 ? 4 : 5; }
 
-void* __cdecl AllocReplacement(UInt32 size) {
+void* __fastcall AllocReplacement(void* heap, void* /*edx*/, UInt32 size, UInt32 flag) {
 	if (g_thread == 0 && OcclusionCullInEyePass()) {
 		g_thread = GetCurrentThreadId();  // the render thread is the one that allocates inside an eye pass
 	}
-	if (GetCurrentThreadId() != g_thread) {
-		++g_otherThreads;
-		return reinterpret_cast<AllocFn>(g_allocOriginal)(size);
-	}
 	const unsigned __int64 t0 = __rdtsc();
-	void* result = reinterpret_cast<AllocFn>(g_allocOriginal)(size);
+	void* result = reinterpret_cast<AllocFn>(g_allocOriginal)(heap, nullptr, size, flag);
+	const unsigned __int64 t1 = __rdtsc();
+	if (GetCurrentThreadId() != g_thread) {
+		InterlockedIncrement64(&g_otherAllocs);
+		InterlockedAdd64(&g_otherTicks, static_cast<LONG64>(t1 - t0));
+		return result;
+	}
+	FrameEdge(t0);
 	Side& side = g_side[OcclusionCullInEyePass() ? 1 : 0];
-	side.allocTicks += __rdtsc() - t0;
+	side.allocTicks += t1 - t0;
 	++side.allocs;
 	side.bytes += size;
 	++side.bySize[SizeClass(size)];
+	g_frameHeapTicks += t1 - t0;
+	++g_frameHeapCalls;
 	return result;
 }
 
-void __cdecl FreeReplacement(void* pointer) {
+void __fastcall FreeReplacement(void* heap, void* /*edx*/, void* pointer) {
+	const unsigned __int64 t0 = __rdtsc();
+	reinterpret_cast<FreeFn>(g_freeOriginal)(heap, nullptr, pointer);
+	const unsigned __int64 t1 = __rdtsc();
 	if (GetCurrentThreadId() != g_thread) {
-		reinterpret_cast<FreeFn>(g_freeOriginal)(pointer);
+		InterlockedIncrement64(&g_otherFrees);
+		InterlockedAdd64(&g_otherTicks, static_cast<LONG64>(t1 - t0));
 		return;
 	}
-	const unsigned __int64 t0 = __rdtsc();
-	reinterpret_cast<FreeFn>(g_freeOriginal)(pointer);
+	FrameEdge(t0);
 	Side& side = g_side[OcclusionCullInEyePass() ? 1 : 0];
-	side.freeTicks += __rdtsc() - t0;
+	side.freeTicks += t1 - t0;
 	++side.frees;
+	g_frameHeapTicks += t1 - t0;
+	++g_frameHeapCalls;
 }
 
 }  // namespace
@@ -90,7 +144,7 @@ void InstallHeapProbe(const ShadowSettings& settings, LogFn log) {
 	g_lastTsc = __rdtsc();
 	QueryPerformanceCounter(&g_lastQpc);
 	g_installed = true;
-	log("Probe: heap calls - the allocator's entries 0x00401F00 and 0x00401F20 counted and timed on the render thread (the one that allocates inside an eye pass; needs [Route] OcclusionCull)");
+	log("Probe: heap calls - MemoryHeap's Allocate 0x00401AA0 and Free 0x00401D40 counted and timed on the render thread (the one that allocates inside an eye pass; needs [Route] OcclusionCull)");
 }
 
 void LogHeapProbeSummary() {
@@ -104,6 +158,7 @@ void LogHeapProbeSummary() {
 	QueryPerformanceFrequency(&frequency);
 	const double seconds = frequency.QuadPart > 0 ? static_cast<double>(qpc.QuadPart - g_lastQpc.QuadPart) / static_cast<double>(frequency.QuadPart) : 0.0;
 	const double ticksPerMs = seconds > 0.0 ? static_cast<double>(tsc - g_lastTsc) / (seconds * 1000.0) : 0.0;
+	g_ticksPerMs = ticksPerMs;
 	const UInt32 passes = OcclusionCullEyePasses();
 	const UInt32 frames = passes - g_lastPasses;
 	g_lastTsc = tsc;
@@ -112,10 +167,26 @@ void LogHeapProbeSummary() {
 	Side side[2] = {g_side[0], g_side[1]};
 	g_side[0] = Side{};
 	g_side[1] = Side{};
-	const unsigned __int64 others = g_otherThreads;
-	g_otherThreads = 0;
+	const unsigned __int64 others = 0;
 	if (frames == 0 || ticksPerMs <= 0.0) {
 		return;
+	}
+	{
+		const LONG64 otherAllocs = InterlockedExchange64(&g_otherAllocs, 0);
+		const LONG64 otherFrees = InterlockedExchange64(&g_otherFrees, 0);
+		const LONG64 otherTicks = InterlockedExchange64(&g_otherTicks, 0);
+		g_log("Probe: heap calls - %u frames; other threads: %lld allocations, %lld releases, %.1f ms in them; the render thread's frames over "
+		      "%.0f ms: %llu, %.0f ms in all with %.1f ms (%.1f %%) in the heap over %llu calls; the longest %.0f ms with %.1f ms in the heap",
+		      frames, otherAllocs, otherFrees, static_cast<double>(otherTicks) / ticksPerMs, kLongFrameMs, g_longFrames,
+		      static_cast<double>(g_longTicks) / ticksPerMs, static_cast<double>(g_longHeapTicks) / ticksPerMs,
+		      g_longTicks > 0 ? 100.0 * static_cast<double>(g_longHeapTicks) / static_cast<double>(g_longTicks) : 0.0, g_longHeapCalls,
+		      static_cast<double>(g_longest) / ticksPerMs, static_cast<double>(g_longestHeap) / ticksPerMs);
+		g_longFrames = 0;
+		g_longTicks = 0;
+		g_longHeapTicks = 0;
+		g_longHeapCalls = 0;
+		g_longest = 0;
+		g_longestHeap = 0;
 	}
 	const double per = 1.0 / static_cast<double>(frames);
 	static const char* const kWhere[2] = {"outside the eye pass", "inside it"};
