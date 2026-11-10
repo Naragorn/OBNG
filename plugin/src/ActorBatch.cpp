@@ -1,12 +1,14 @@
 #include "ActorBatch.h"
 
 #include "FastSceneUpdate.h"
+#include "Memory.h"
 #include "ShadowTimeInfo.h"
 #include "engine/scene/ActorBatchLogic.h"
 
 #include <windows.h>
 
 #include <cstdio>
+#include <cstring>
 #include <unordered_map>
 #include <vector>
 
@@ -92,13 +94,133 @@ volatile LONG64 g_controllerTicksInLoop = 0;
 volatile LONG64 g_controllerCallsOutside = 0;
 volatile LONG64 g_controllerTicksOutside = 0;
 
-void __fastcall ControllerReplacement(void* self, void* /*edx*/, UInt32 argument) {
+// Its parts, timed while a controller's update runs inside the loop: the
+// support probes 0x00891780 (RET), the integrate wrapper 0x008902B0 (RET 4;
+// it calls the proxy's integrate 0x008AD7D0), 0x00894C70 (RET 4) before
+// them and 0x008939B0 (RET) after them (read: the calls in 0x00896000 and
+// each function's return). All four begin as the update does.
+constexpr unsigned kParts = 5;
+constexpr UInt32 kPartAddress[kParts] = {0x00891780, 0x008902B0, 0x00894C70, 0x008939B0, 0x008AE890};
+constexpr const char* kPartName[kParts] = {"support probes 0x00891780", "integrate 0x008902B0", "0x00894C70", "0x008939B0", "support check 0x008AE890"};  // the last: RET 8 (read 0x008AE91F), it calls 0x008AE100
+void* g_partOriginal[kParts] = {};
+volatile LONG64 g_partCalls[kParts] = {};
+volatile LONG64 g_partTicks[kParts] = {};
+volatile bool g_inController = false;  // written by the loop's thread only
+using Part0Fn = void(__fastcall*)(void* self, void* edx);
+using Part1Fn = void(__fastcall*)(void* self, void* edx, UInt32 argument);
+
+template <unsigned Index>
+void __fastcall Part0(void* self, void* /*edx*/) {
 	LARGE_INTEGER start;
 	LARGE_INTEGER end;
 	QueryPerformanceCounter(&start);
+	reinterpret_cast<Part0Fn>(g_partOriginal[Index])(self, nullptr);
+	QueryPerformanceCounter(&end);
+	if (g_inController && GetCurrentThreadId() == g_loopThread) {
+		InterlockedIncrement64(&g_partCalls[Index]);
+		InterlockedAdd64(&g_partTicks[Index], end.QuadPart - start.QuadPart);
+	}
+}
+template <unsigned Index>
+void __fastcall Part1(void* self, void* /*edx*/, UInt32 argument) {
+	LARGE_INTEGER start;
+	LARGE_INTEGER end;
+	QueryPerformanceCounter(&start);
+	reinterpret_cast<Part1Fn>(g_partOriginal[Index])(self, nullptr, argument);
+	QueryPerformanceCounter(&end);
+	if (g_inController && GetCurrentThreadId() == g_loopThread) {
+		InterlockedIncrement64(&g_partCalls[Index]);
+		InterlockedAdd64(&g_partTicks[Index], end.QuadPart - start.QuadPart);
+	}
+}
+
+using Part2Fn = void(__fastcall*)(void* self, void* edx, UInt32 a, UInt32 b);
+template <unsigned Index>
+void __fastcall Part2(void* self, void* /*edx*/, UInt32 a, UInt32 b) {
+	LARGE_INTEGER start;
+	LARGE_INTEGER end;
+	QueryPerformanceCounter(&start);
+	reinterpret_cast<Part2Fn>(g_partOriginal[Index])(self, nullptr, a, b);
+	QueryPerformanceCounter(&end);
+	if (g_inController && GetCurrentThreadId() == g_loopThread) {
+		InterlockedIncrement64(&g_partCalls[Index]);
+		InterlockedAdd64(&g_partTicks[Index], end.QuadPart - start.QuadPart);
+	}
+}
+
+// Havok's collision agents counted while a controller's update runs: a
+// generated thunk a function (cmp byte [g_inController],0; je +7; lock inc
+// dword [counter]; jmp [original]) - no knowledge of the arguments needed.
+// The names are Havok's own profiling labels in the functions (read).
+constexpr unsigned kCounted = 4;
+constexpr UInt32 kCountedAddress[kCounted] = {0x0093F250, 0x00908DE0, 0x00902160, 0x008AD070};
+constexpr const char* kCountedName[kCounted] = {"Gsk 0x0093F250", "BvTree 0x00908DE0", "CvxList 0x00902160", "0x008AD070"};
+void* g_countedOriginal[kCounted] = {};
+volatile LONG g_counted[kCounted] = {};
+
+void* BuildCountingThunk(unsigned index) {
+	auto* code = static_cast<UInt8*>(AllocExecutable(32));
+	if (code == nullptr) {
+		return nullptr;
+	}
+	UInt8* at = code;
+	auto dword = [&at](UInt32 value) {
+		std::memcpy(at, &value, 4);
+		at += 4;
+	};
+	*at++ = 0x80;
+	*at++ = 0x3D;
+	dword(reinterpret_cast<UInt32>(&g_inController));
+	*at++ = 0x00;
+	*at++ = 0x74;
+	*at++ = 0x07;
+	*at++ = 0xF0;
+	*at++ = 0xFF;
+	*at++ = 0x05;
+	dword(reinterpret_cast<UInt32>(&g_counted[index]));
+	*at++ = 0xFF;
+	*at++ = 0x25;
+	dword(reinterpret_cast<UInt32>(&g_countedOriginal[index]));
+	return code;
+}
+
+// What the update left, per call inside the loop: whether it counted the
+// actor as moving (bit 3 of the flags at +0x1F4, read 0x00896000: set when
+// the displacement or the velocity is not zero within 0.01 / 0.001), the
+// proxy's manifold size ([[self+8]+0x74] is the array, its size at +4, read
+// 0x00896ACD and 0x008ABDB0) and the cached manifold's size (+0x3C0).
+constexpr unsigned kManifoldBuckets = 5;  // 0, 1-5, 6-10, 11-20, more
+volatile LONG64 g_moving = 0;
+volatile LONG64 g_manifold[kManifoldBuckets] = {};
+volatile LONG64 g_manifoldSum = 0;
+volatile LONG64 g_cachedSum = 0;
+volatile LONG64 g_noProxy = 0;
+
+void __fastcall ControllerReplacement(void* self, void* /*edx*/, UInt32 argument) {
+	const bool inLoop = g_batching != 0 && GetCurrentThreadId() == g_loopThread;
+	LARGE_INTEGER start;
+	LARGE_INTEGER end;
+	if (inLoop) {
+		g_inController = true;
+	}
+	QueryPerformanceCounter(&start);
 	reinterpret_cast<ControllerFn>(g_controllerOriginal)(self, nullptr, argument);
 	QueryPerformanceCounter(&end);
-	if (g_batching != 0 && GetCurrentThreadId() == g_loopThread) {
+	if (inLoop) {
+		g_inController = false;
+		const UInt32 controller = reinterpret_cast<UInt32>(self);
+		if ((*reinterpret_cast<const UInt32*>(controller + 0x1F4) & 8u) != 0) {
+			InterlockedIncrement64(&g_moving);
+		}
+		const UInt32 proxy = *reinterpret_cast<const UInt32*>(controller + 8);
+		if (proxy == 0) {
+			InterlockedIncrement64(&g_noProxy);
+		} else {
+			const UInt32 size = *reinterpret_cast<const UInt32*>(proxy + 0x78);
+			InterlockedIncrement64(&g_manifold[size == 0 ? 0 : size <= 5 ? 1 : size <= 10 ? 2 : size <= 20 ? 3 : 4]);
+			InterlockedAdd64(&g_manifoldSum, size);
+			InterlockedAdd64(&g_cachedSum, *reinterpret_cast<const UInt32*>(controller + 0x3C0));
+		}
 		InterlockedIncrement64(&g_controllerCallsInLoop);
 		InterlockedAdd64(&g_controllerTicksInLoop, end.QuadPart - start.QuadPart);
 	} else {
@@ -251,6 +373,19 @@ UInt32 InstallRouteActorBatch(const RouteSettings& settings, LogFn log) {
 	if (g_keepTicks) {
 		InstallEntryDetour(kControllerName, kControllerAddress, kControllerBytes, sizeof(kControllerBytes), reinterpret_cast<const void*>(&ControllerReplacement),
 		                   &g_controllerOriginal, log, DetourRole::Shadow);
+		const void* const replacements[kParts] = {reinterpret_cast<const void*>(&Part0<0>), reinterpret_cast<const void*>(&Part1<1>),
+		                                          reinterpret_cast<const void*>(&Part1<2>), reinterpret_cast<const void*>(&Part0<3>),
+		                                          reinterpret_cast<const void*>(&Part2<4>)};
+		for (unsigned i = 0; i < kParts; ++i) {
+			InstallEntryDetour(kPartName[i], kPartAddress[i], kControllerBytes, sizeof(kControllerBytes), replacements[i], &g_partOriginal[i], log,
+			                   DetourRole::Shadow);
+		}
+		for (unsigned i = 0; i < kCounted; ++i) {
+			if (void* thunk = BuildCountingThunk(i)) {
+				InstallEntryDetour(kCountedName[i], kCountedAddress[i], kControllerBytes, sizeof(kControllerBytes), thunk, &g_countedOriginal[i], log,
+				                   DetourRole::Shadow);
+			}
+		}
 	}
 	log("Route %s: inside the frame's loop over the high actors ApplyAnimData's update is noted and run after the loop (down passes, then the "
 	    "upward passes in order); the player, a root new this frame and every other caller run in place",
@@ -304,6 +439,39 @@ void LogActorBatchSummary() {
 		      static_cast<double>(inCalls) / static_cast<double>(loops), static_cast<double>(inTicks) * toMs / static_cast<double>(loops),
 		      inCalls > 0 ? static_cast<double>(inTicks) * toMs * 1000.0 / static_cast<double>(inCalls) : 0.0,
 		      static_cast<double>(outCalls) / static_cast<double>(loops), static_cast<double>(outTicks) * toMs / static_cast<double>(loops));
+		if (inCalls > 0) {
+			const double perCall = 1.0 / static_cast<double>(inCalls);
+			char line[1400];
+			int at = std::snprintf(line, sizeof(line), "Probe: character controller parts, per update inside the loop:");
+			for (unsigned i = 0; i < kParts && at > 0 && static_cast<std::size_t>(at) < sizeof(line); ++i) {
+				const LONG64 calls = InterlockedExchange64(&g_partCalls[i], 0);
+				const LONG64 ticks = InterlockedExchange64(&g_partTicks[i], 0);
+				at += std::snprintf(line + at, sizeof(line) - at, " %s %.2f calls %.1f us;", kPartName[i], static_cast<double>(calls) * perCall,
+				                    static_cast<double>(ticks) * toMs * 1000.0 * perCall);
+			}
+			for (unsigned i = 0; i < kCounted && at > 0 && static_cast<std::size_t>(at) < sizeof(line); ++i) {
+				at += std::snprintf(line + at, sizeof(line) - at, " %s %.1f calls;", kCountedName[i],
+				                    static_cast<double>(InterlockedExchange(&g_counted[i], 0)) * perCall);
+			}
+			const LONG64 moving = InterlockedExchange64(&g_moving, 0);
+			const LONG64 noProxy = InterlockedExchange64(&g_noProxy, 0);
+			const LONG64 manifoldSum = InterlockedExchange64(&g_manifoldSum, 0);
+			const LONG64 cachedSum = InterlockedExchange64(&g_cachedSum, 0);
+			LONG64 m[kManifoldBuckets];
+			for (unsigned i = 0; i < kManifoldBuckets; ++i) {
+				m[i] = InterlockedExchange64(&g_manifold[i], 0);
+			}
+			if (at > 0 && static_cast<std::size_t>(at) < sizeof(line)) {
+				std::snprintf(line + at, sizeof(line) - at,
+				              " counted as moving %.1f %%, no proxy %.1f %%; manifold size mean %.1f (cached %.1f): 0: %.1f %%, 1-5: %.1f %%, 6-10: %.1f %%, "
+				              "11-20: %.1f %%, more: %.1f %%",
+				              100.0 * static_cast<double>(moving) * perCall, 100.0 * static_cast<double>(noProxy) * perCall,
+				              static_cast<double>(manifoldSum) * perCall, static_cast<double>(cachedSum) * perCall, 100.0 * static_cast<double>(m[0]) * perCall,
+				              100.0 * static_cast<double>(m[1]) * perCall, 100.0 * static_cast<double>(m[2]) * perCall,
+				              100.0 * static_cast<double>(m[3]) * perCall, 100.0 * static_cast<double>(m[4]) * perCall);
+			}
+			g_log("%s", line);
+		}
 	}
 	const double perMs = g_frequency.QuadPart > 0 && loops > 0 ? 1000.0 / static_cast<double>(g_frequency.QuadPart) / static_cast<double>(loops) : 0.0;
 	const double perLoop = loops > 0 ? 1.0 / static_cast<double>(loops) : 0.0;

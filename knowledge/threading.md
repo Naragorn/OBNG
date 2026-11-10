@@ -201,3 +201,40 @@ the largest single item of the actors' frame. What it does per call
 (linear casts of the actor's shape against the world, the state machine's
 update, the contact handling) has been outlined, not read
 (re/export 0x00896000, 0x00896000-0x00897035).
+
+### The character controller's parts (measured 2026-11-10, run 20261110-105549)
+
+Read in 0x00896000 (the decompiled text, the calls checked in the
+disassembly): per update the support probes 0x00891780, the proxy's support
+check 0x008AE890 (-> 0x008AE100), the state machine's update (virtual
++0x18 of the object behind +0x1EC), then the integrate wrapper 0x008902B0
+(-> the proxy's integrate 0x008AD7D0, labels "updateCharacter",
+"InitialCast", "CastMove", "UpdateManifold") - which the engine itself
+leaves out when the actor counts as not moving (the displacement asked for
+and the velocity zero within 0.01 / 0.001; bit 3 of the flags at +0x1F4 is
+"moving") and the proxy's manifold ([[this+8]+0x74], entries of 0x30
+bytes) equals the copy kept at +0x3BC/+0x3C0 (at most five entries)
+within 0.001: then the velocity is zeroed and the integrate skipped
+(0x00896AC9-0x00896BC2). The support check runs regardless.
+
+Per update inside the loop:
+
+| | 5 actors (the road) | 80 | 134 |
+|---|---|---|---|
+| the update | 12.0 us | 21.1 | 23.1-24.2 |
+| support check 0x008AE890 (every update) | 2.7 us | 9.1 | 9.6-9.9 |
+| integrate 0x008902B0, averaged over all updates | 4.1 us | 10.4 | 11.8-12.6 |
+| share of updates that integrate | 100 % | 81 % | 69-74 % |
+| counted as moving | 39 % | 79 % | 67-73 % |
+| Gsk agent 0x0093F250 calls | 0.1 | 21.1 | 24.8-25.9 |
+| BvTree agent 0x00908DE0 calls | 1.2 | 1.3 | 1.1 |
+| manifold size, mean | 1.2 | 1.7 | 1.8-1.9 |
+
+What the crowd adds is convex tests against the neighbours: 25 Gsk calls
+an update for a manifold of two contacts, where the road has none; the
+static world (BvTree) stays at one call. The scenario's NPCs are not a
+standing crowd: two are placed on each spot and they have their packages,
+so two thirds of them count as moving. Which bodies the 25 tests are
+against (the neighbours' bone bodies, their proxies' shapes) is not read
+yet. A standing actor whose integrate the engine skips still pays the
+support check, about 10 us in the crowd.
