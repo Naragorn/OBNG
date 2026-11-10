@@ -31,6 +31,9 @@ constexpr UInt32 kRouteSqrtDetours = 1;
 // The actors' skeleton update is one: NiAVObject::Update's entry 0x00707370
 // (FastSceneUpdate.cpp, src/engine/scene/SceneUpdateLogic.h).
 constexpr UInt32 kRouteActorUpdateDetours = 1;
+// The actors' batch is two: the loop over the high actors 0x00677EC0 and
+// ActorAnimData::ApplyAnimData 0x00471F20 (ActorBatch.cpp).
+constexpr UInt32 kRouteActorBatchDetours = 2;
 
 // [Route] StereoEyes: 1 is the 1:1 gate (the rebuild's port calls are the
 // original's), 2 the double draw (StereoDraw.h). Anything else is unknown
@@ -101,13 +104,14 @@ struct RouteSettings {
 	float occlusionCullTraceDepth = -1.0f;  // [Route] OcclusionCullTraceDepth: >= 0 puts a traced test's second query at this depth instead of the bound's far one
 	bool volatilePack = false;  // [Route] VolatilePack: a volatile geometry (a named NPC's head) with unchanged positions and normals is not packed again (FastVolatilePack.cpp); off until measured
 	bool gridUpdate = false;   // [Route] GridUpdate: the cells' selected update (0x007073A0 called by TESObjectCELL::UpdateSelectedNodes 0x004D4970) runs the flat selected run (FastSceneUpdate.cpp); off until measured
+	bool actorBatch = false;   // [Route] ActorBatch: inside the frame's loop over the high actors 0x00677EC0 ApplyAnimData's update is noted and run after the loop (ActorBatch.cpp); needs ActorUpdate; off until measured
 	bool actorUpdate = false;  // [Route] ActorUpdate: the call from ApplyAnimData 0x00471F20 runs the flat subtree update - the same transforms and bounds bit for bit without the recursion's virtual calls (FastSceneUpdate.cpp); off until measured
 	bool sqrt = false;  // [Route] Sqrt: _CIsqrt 0x00982C30 runs the generated dispatch - FSQRT without the CRT's exception path for the common case (FastSqrt.cpp); off until measured
 
 	UInt32 Asked() const {
 		return (rangeWalk ? kRouteRangeWalkDetours : 0u) + (stereoDraw ? kRouteStereoDrawDetours : 0u) +
 		       (stereoDraw && occlusionCull ? kRouteOcclusionCullDetours : 0u) + (sqrt ? kRouteSqrtDetours : 0u) +
-		       (actorUpdate ? kRouteActorUpdateDetours : 0u) + (gridUpdate ? 1u : 0u) + (volatilePack ? 2u : 0u);
+		       (actorUpdate ? kRouteActorUpdateDetours : 0u) + (gridUpdate ? 1u : 0u) + (volatilePack ? 2u : 0u) + (actorBatch ? kRouteActorBatchDetours : 0u);
 	}
 };
 

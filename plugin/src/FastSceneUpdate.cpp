@@ -40,6 +40,7 @@ LogFn g_log = nullptr;
 SRWLOCK g_lock = SRWLOCK_INIT;
 std::unordered_map<su::Handle, su::Order> g_orders;
 constexpr std::size_t kOrdersKeptAtMost = 2048;  // beyond this every order is dropped and rebuilt as needed
+bool g_ordersHeld = false;  // a batch holds order pointers across several lookups: nothing is dropped meanwhile (ActorBatch.cpp)
 
 // Counters for the summary (interlocked: the summary thread reads them).
 volatile LONG64 g_calls = 0;        // calls from ApplyAnimData
@@ -147,7 +148,7 @@ su::Order* OrderFor(su::Handle root) {
 		ReleaseSRWLockExclusive(&g_lock);
 		return order;
 	}
-	if (g_orders.size() >= kOrdersKeptAtMost) {
+	if (g_orders.size() >= kOrdersKeptAtMost && !g_ordersHeld) {
 		g_orders.clear();
 	}
 	InterlockedIncrement64(&g_built);
@@ -164,6 +165,49 @@ float TimeOf(UInt32 bits) {
 }
 
 // ---- The route -----------------------------------------------------------------------------
+
+// The routed subtree without the parent's upward pass: the forward pass and
+// the bounds under the engine's rounding, accounted.
+void RoutedDown(su::Order* order, UInt32 timeBits, UInt32 flag) {
+	const unsigned bucket = SizeBucket(static_cast<std::uint32_t>(order->entries.size()));
+	LARGE_INTEGER start;
+	LARGE_INTEGER middle;
+	LARGE_INTEGER end;
+	TimedPort port;
+	QueryPerformanceCounter(&start);
+	{
+		eng::RoundingFromX87 rounding;
+		su::RunForward(*order, port, TimeOf(timeBits), (flag & 0xFF) != 0);
+		QueryPerformanceCounter(&middle);
+		su::RunBounds(*order, port);
+	}
+	QueryPerformanceCounter(&end);
+	InterlockedAdd64(&g_routedTicks, end.QuadPart - start.QuadPart);
+	InterlockedIncrement64(&g_routed);
+	InterlockedAdd64(&g_sizeTicks[bucket], end.QuadPart - start.QuadPart);
+	InterlockedIncrement64(&g_sizeCalls[bucket]);
+	InterlockedAdd64(&g_sizeForwardTicks[bucket], middle.QuadPart - start.QuadPart);
+	InterlockedAdd64(&g_sizeGeometryTicks[bucket], port.geometryTicks);
+	InterlockedAdd64(&g_sizeGeometryCalls[bucket], port.geometryCalls);
+	InterlockedAdd64(&g_sizeBoundsTicks[bucket], end.QuadPart - middle.QuadPart);
+	InterlockedAdd64(&g_sizeCollisionTicks[bucket], port.collisionTicks);
+	InterlockedAdd64(&g_sizeCollisionCalls[bucket], port.collisionCalls);
+	InterlockedAdd64(&g_sizeControllerTicks[bucket], port.controllerTicks);
+	InterlockedAdd64(&g_sizeControllerCalls[bucket], port.controllerCalls);
+}
+
+// The parent's upward pass, accounted to the same sums.
+void RoutedUp(const su::Order* order) {
+	const unsigned bucket = SizeBucket(static_cast<std::uint32_t>(order->entries.size()));
+	LARGE_INTEGER start;
+	LARGE_INTEGER end;
+	QueryPerformanceCounter(&start);
+	eng::UpdateUpwardFrom(order->root);
+	QueryPerformanceCounter(&end);
+	InterlockedAdd64(&g_routedTicks, end.QuadPart - start.QuadPart);
+	InterlockedAdd64(&g_sizeTicks[bucket], end.QuadPart - start.QuadPart);
+	InterlockedAdd64(&g_sizeBoundsTicks[bucket], end.QuadPart - start.QuadPart);
+}
 
 void __fastcall RouteReplacement(void* self, void* /*edx*/, UInt32 timeBits, UInt32 flag) {
 	if (reinterpret_cast<UInt32>(_ReturnAddress()) != kApplyAnimDataSite) {
@@ -182,32 +226,8 @@ void __fastcall RouteReplacement(void* self, void* /*edx*/, UInt32 timeBits, UIn
 		Original(self, timeBits, flag);
 		return;
 	}
-	const unsigned bucket = SizeBucket(static_cast<std::uint32_t>(order->entries.size()));
-	LARGE_INTEGER start;
-	LARGE_INTEGER middle;
-	LARGE_INTEGER end;
-	TimedPort port;
-	QueryPerformanceCounter(&start);
-	{
-		eng::RoundingFromX87 rounding;
-		su::RunForward(*order, port, TimeOf(timeBits), (flag & 0xFF) != 0);
-		QueryPerformanceCounter(&middle);
-		su::RunBounds(*order, port);
-	}
-	eng::UpdateUpwardFrom(order->root);
-	QueryPerformanceCounter(&end);
-	InterlockedAdd64(&g_routedTicks, end.QuadPart - start.QuadPart);
-	InterlockedIncrement64(&g_routed);
-	InterlockedAdd64(&g_sizeTicks[bucket], end.QuadPart - start.QuadPart);
-	InterlockedIncrement64(&g_sizeCalls[bucket]);
-	InterlockedAdd64(&g_sizeForwardTicks[bucket], middle.QuadPart - start.QuadPart);
-	InterlockedAdd64(&g_sizeGeometryTicks[bucket], port.geometryTicks);
-	InterlockedAdd64(&g_sizeGeometryCalls[bucket], port.geometryCalls);
-	InterlockedAdd64(&g_sizeBoundsTicks[bucket], end.QuadPart - middle.QuadPart);
-	InterlockedAdd64(&g_sizeCollisionTicks[bucket], port.collisionTicks);
-	InterlockedAdd64(&g_sizeCollisionCalls[bucket], port.collisionCalls);
-	InterlockedAdd64(&g_sizeControllerTicks[bucket], port.controllerTicks);
-	InterlockedAdd64(&g_sizeControllerCalls[bucket], port.controllerCalls);
+	RoutedDown(order, timeBits, flag);
+	RoutedUp(order);
 }
 
 // ---- The timing of the original ---------------------------------------------------------------
@@ -636,6 +656,27 @@ void LogGridSummary() {
 }
 
 }  // namespace
+
+bool ActorUpdateRouted() { return g_mode == Mode::Route; }
+
+void HoldActorOrders(bool held) {
+	AcquireSRWLockExclusive(&g_lock);
+	g_ordersHeld = held;
+	ReleaseSRWLockExclusive(&g_lock);
+}
+
+const void* PrepareActorSubtree(UInt32 root) {
+	InterlockedIncrement64(&g_calls);
+	return OrderFor(root);
+}
+
+void RunActorSubtreeDown(const void* order, UInt32 timeBits) {
+	RoutedDown(const_cast<su::Order*>(static_cast<const su::Order*>(order)), timeBits, 1);
+}
+
+void RunActorSubtreeUp(const void* order) { RoutedUp(static_cast<const su::Order*>(order)); }
+
+void RunActorUpdateOriginal(UInt32 root, UInt32 timeBits) { Original(reinterpret_cast<void*>(root), timeBits, 1); }
 
 UInt32 InstallRouteActorUpdate(const RouteSettings& settings, LogFn log) {
 	static bool s_done = false;

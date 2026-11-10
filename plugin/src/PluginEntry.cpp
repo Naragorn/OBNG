@@ -95,6 +95,11 @@ bool Load(const ExtenderInterfaceHead& xse, const Host& host) {
 		if (scene.actorUpdate || scene.gridUpdate) {
 			made += host.installRouteActorUpdate(scene);
 		}
+		if (r.actorBatch && !scene.actorUpdate) {
+			host.log("Route: the actors' batch skipped - it runs through the actors' route (ActorUpdate), which is off or was skipped");
+		} else if (r.actorBatch) {
+			made += host.installRouteActorBatch(r);
+		}
 		if (r.volatilePack && s.packCache) {
 			host.log("Route: the volatile pack skipped - the PackCache probe takes the same entries");
 		} else if (r.volatilePack && RouteSkippedForShadow(s.volatilePack, r.volatilePack)) {

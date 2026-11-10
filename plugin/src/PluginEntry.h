@@ -79,6 +79,8 @@ struct Host {
 	// The volatile pack's shadow and route (FastVolatilePack.cpp): two detours each.
 	uint32_t (*installShadowVolatilePack)(const ShadowSettings& settings);
 	uint32_t (*installRouteVolatilePack)(const RouteSettings& settings);
+	// The actors' batch (ActorBatch.cpp): two detours; after the actors' route, which it runs through.
+	uint32_t (*installRouteActorBatch)(const RouteSettings& settings);
 };
 
 // How many counting detours the settings ask for: five hot functions of the

@@ -11,6 +11,7 @@
 #include "FastSceneUpdate.h"
 #include "FastSqrt.h"
 #include "FastVolatilePack.h"
+#include "ActorBatch.h"
 #include "RouteRangeWalk.h"
 #include "RouteStereoDraw.h"
 #include "ShadowRangeWalk.h"
@@ -128,6 +129,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	r.actorUpdate = GetPrivateProfileIntA("Route", "ActorUpdate", 0, path) != 0;
 	r.gridUpdate = GetPrivateProfileIntA("Route", "GridUpdate", 0, path) != 0;
 	r.volatilePack = GetPrivateProfileIntA("Route", "VolatilePack", 0, path) != 0;
+	r.actorBatch = GetPrivateProfileIntA("Route", "ActorBatch", 0, path) != 0;
 	r.stereoDraw = GetPrivateProfileIntA("Route", "StereoDraw", 0, path) != 0;
 	bool eyesKnown = false;
 	r.stereoEyes = obng::plugin::StereoEyesFromIni(GetPrivateProfileIntA("Route", "StereoEyes", 1, path), &eyesKnown);
@@ -268,6 +270,10 @@ uint32_t InstallRouteVolatilePackSideEffect(const obng::plugin::RouteSettings& s
 	return obng::plugin::InstallRouteVolatilePack(settings, &Log);
 }
 
+uint32_t InstallRouteActorBatchSideEffect(const obng::plugin::RouteSettings& settings) {
+	return obng::plugin::InstallRouteActorBatch(settings, &Log);
+}
+
 const obng::plugin::Host kHost{&ResetLog,
                                &Log,
                                &ReadSettings,
@@ -286,7 +292,8 @@ const obng::plugin::Host kHost{&ResetLog,
                                &InstallRouteActorUpdateSideEffect,
                                &InstallActorUpdateTimingSideEffect,
                                &InstallShadowVolatilePackSideEffect,
-                               &InstallRouteVolatilePackSideEffect};
+                               &InstallRouteVolatilePackSideEffect,
+                               &InstallRouteActorBatchSideEffect};
 
 }  // namespace
 

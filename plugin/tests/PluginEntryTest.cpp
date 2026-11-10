@@ -52,6 +52,7 @@ struct Fake {
 	int actorTimingInstalls = 0;
 	int volatileShadowInstalls = 0;
 	int volatileRouteInstalls = 0;
+	int actorBatchInstalls = 0;
 	ShadowSettings sceneShadowSeen;
 	RouteSettings sceneRouteSeen;
 	std::vector<std::string> calls;  // the side effects in the order Load made them
@@ -177,11 +178,17 @@ uint32_t FakeInstallActorUpdateTiming(const ShadowSettings& settings) {
 	return settings.actorUpdateTiming ? 1u : 0u;
 }
 
+uint32_t FakeInstallRouteActorBatch(const RouteSettings& settings) {
+	++g_fake->actorBatchInstalls;
+	return settings.actorBatch ? 2u : 0u;
+}
+
 const Host kHost{&FakeReset,          &FakeLog,          &FakeReadSettings, &FakeInitRecorder,
                  &FakeInstall,        &FakeInstallMenu,  &FakeInstallRangeWalk, &FakeInstallRoute,
                  &FakeStartSummaryTimer, &FakeInstallProbes, &FakeInstallStereo, &FakeInstallFixes,
                  &FakeInstallShadowSqrt, &FakeInstallRouteSqrt, &FakeInstallShadowActorUpdate, &FakeInstallRouteActorUpdate,
-                 &FakeInstallActorUpdateTiming, &FakeInstallShadowVolatilePack, &FakeInstallRouteVolatilePack};
+                 &FakeInstallActorUpdateTiming, &FakeInstallShadowVolatilePack, &FakeInstallRouteVolatilePack,
+                 &FakeInstallRouteActorBatch};
 
 // Every TimeInfo and LoadingMenu shadow off.
 ShadowSettings NoShadow() {
@@ -783,6 +790,43 @@ void TestLoadActorUpdate() {
 	Check(gridProbe.actorRouteInstalls == 1 && !gridProbe.sceneRouteSeen.actorUpdate && gridProbe.sceneRouteSeen.gridUpdate &&
 	          gridProbe.Logged("Route: 1 of 2 detours made"),
 	      "beside the SceneUpdate probe the actors' route is skipped, the cells' stays");
+
+	Section("Load with the actors' batch: after the actors' route, skipped without it");
+	Fake batch;
+	batch.iniSettings.shadow = NoShadow();
+	batch.iniSettings.route.actorUpdate = true;
+	batch.iniSettings.route.actorBatch = true;
+	g_fake = &batch;
+	ResetForTest();
+	Check(Load(Game(), kHost) && batch.actorRouteInstalls == 1 && batch.actorBatchInstalls == 1 && batch.Logged("Route: 3 of 3 detours made"),
+	      "with the route: one and two detours");
+	Fake batchAlone;
+	batchAlone.iniSettings.shadow = NoShadow();
+	batchAlone.iniSettings.route.actorBatch = true;
+	g_fake = &batchAlone;
+	ResetForTest();
+	Check(Load(Game(), kHost) && batchAlone.actorBatchInstalls == 0 &&
+	          batchAlone.Logged("Route: the actors' batch skipped - it runs through the actors' route (ActorUpdate), which is off or was skipped") &&
+	          batchAlone.Logged("Route: 0 of 2 detours made"),
+	      "without ActorUpdate: said and counted as not made");
+	Fake batchShadow;
+	batchShadow.iniSettings.shadow = NoShadow();
+	batchShadow.iniSettings.shadow.actorUpdate = true;
+	batchShadow.iniSettings.route.actorUpdate = true;
+	batchShadow.iniSettings.route.actorBatch = true;
+	batchShadow.made = 0;
+	batchShadow.menuMade = 0;
+	g_fake = &batchShadow;
+	ResetForTest();
+	Check(Load(Game(), kHost) && batchShadow.actorBatchInstalls == 0 &&
+	          batchShadow.Logged("Route: the actors' batch skipped - it runs through the actors' route (ActorUpdate), which is off or was skipped"),
+	      "the route skipped for its shadow: the batch goes with it");
+	Fake batchOff;
+	batchOff.iniSettings.shadow = NoShadow();
+	batchOff.iniSettings.route.actorUpdate = true;
+	g_fake = &batchOff;
+	ResetForTest();
+	Check(Load(Game(), kHost) && batchOff.actorBatchInstalls == 0 && batchOff.Logged("Route: 1 of 1 detours made"), "not asked: not installed");
 
 	Section("Load with the volatile pack: routed two detours, the shadow wins, neither beside the PackCache probe");
 	Fake vpRoute;

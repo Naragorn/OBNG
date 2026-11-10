@@ -7,6 +7,7 @@
 #include "OcclusionCull.h"
 #include "FastSceneUpdate.h"
 #include "FastVolatilePack.h"
+#include "ActorBatch.h"
 #include "RouteStereoDraw.h"
 #include "ShadowRangeWalk.h"
 
@@ -115,6 +116,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogStereoDrawSummary();
 	LogActorUpdateSummary();
 	LogVolatilePackSummary();
+	LogActorBatchSummary();
 	LogOcclusionCullSummary();
 	if (planner != nullptr && g_settings.havokPlanner && sample.frames != 0) {
 		const float stepSeconds = *reinterpret_cast<volatile float*>(0x00BA790C);

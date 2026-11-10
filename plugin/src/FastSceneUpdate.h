@@ -41,6 +41,22 @@ UInt32 InstallShadowActorUpdate(const ShadowSettings& settings, LogFn log);
 // same clock and summary line as the route, for the comparison.
 UInt32 InstallActorUpdateTiming(const ShadowSettings& settings, LogFn log);
 
+// For the actors' batch (ActorBatch.cpp), which runs ApplyAnimData's update
+// itself and in steps. All of it needs the route installed
+// (ActorUpdateRouted). Prepare, on one thread: the root's order, current
+// against the tree, or nullptr when the flat run has nothing to say about
+// this root (then RunActorUpdateOriginal does the whole update, upward pass
+// included). Down: the flat run of that order with the controllers' flag
+// set, without the parent's upward pass. Up: that upward pass. Between
+// HoldActorOrders(true) and (false) no order is dropped, so the pointers
+// Prepare returned stay good.
+bool ActorUpdateRouted();
+void HoldActorOrders(bool held);
+const void* PrepareActorSubtree(UInt32 root);
+void RunActorSubtreeDown(const void* order, UInt32 timeBits);
+void RunActorSubtreeUp(const void* order);
+void RunActorUpdateOriginal(UInt32 root, UInt32 timeBits);
+
 // The route's summary line (calls, routed, orders built and rebuilt, the
 // time in the routed calls), when the route is on; nothing otherwise.
 void LogActorUpdateSummary();

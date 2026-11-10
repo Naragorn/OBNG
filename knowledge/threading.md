@@ -135,3 +135,34 @@ controller walk 0x0047C930 (+0.6).
 - Everything else (the actors' AI and animation beside the scene pass) has
   no existing mechanism; it would be OBNG's own, with the scene graph's
   readers and writers to prove apart - large.
+
+## The actors' frame, timed (measured 2026-11-10)
+
+Step timers on the actors' pipeline ([Probe] ActorUpdateTiming, the
+original skeleton update, run obng-actors-count/20261110-095916, ms a
+frame, 5 -> 60 -> 80 -> 100 -> 117 actor updates a frame):
+
+| step | 5 | 60 | 80 | 100 | 117 |
+|---|---|---|---|---|---|
+| ProcessManager::Update 0x00678510 | 0.14 | 3.0-3.5 | 4.8-5.1 | 8.2 | 9.2-10.0 |
+| of it actor updates 0x00603CA0 | 0.08-0.14 | 2.5-2.9 | 4.1-4.3 | 6.8-6.9 | 7.6-8.4 |
+| of them ApplyAnimData 0x00471F20 (original update) | 0.04-0.07 | 1.2-1.3 | 2.1-2.2 | 3.5-3.6 | 3.8-4.3 |
+| of them 0x00471C00 | 0.03-0.04 | 0.33-0.39 | 0.37-0.44 | 0.60-0.66 | 0.74-0.78 |
+| of them the animation step 0x00603500 | 0.01 | 0.01-0.02 | 0.14-0.16 | 0.46-0.47 | 0.49-0.59 |
+| UpdateHighProcesses 0x00673C10 | 0.09-0.13 | 0.10-0.12 | 0.11-0.13 | 0.21-0.23 | 0.17-0.19 |
+
+The process manager's update is the crowd's cost outside the scene pass:
+0.14 ms on the empty road, 9-10 ms with 117 actors. The actor updates come
+from the loop over the high actors 0x00677EC0 (the manager's fourth call),
+not from 0x00673C10. ApplyAnimData is half of an actor's update with the
+original skeleton update and about a third with the route (22-24 us an
+actor); the other half - AI, movement, 0x00471C00 - is 40-47 us an actor
+and has not been looked into. 1.5 ms of the manager's update is outside
+the actor updates.
+
+With the actors' batch (docs/subsystems/actor-batch.md, run 20261110-
+101048, the route on): 97 skeleton updates a loop are 2.15 ms of down
+passes and 0.34 ms of upward passes and bookkeeping; the loop without them
+4.4-4.6 ms. The down passes are what threads could share: at four threads
+1.6 ms less at best with 97 actors, 0.3 ms with 34 (derived; the collision
+objects' share, about 3 us an actor, stays on one thread).
