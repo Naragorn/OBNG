@@ -89,7 +89,56 @@ constexpr std::uint32_t kMaxDraws = 4096;
 // (the view's rotation keeps the radius), its eight corners projected, the
 // extent rounded outward and widened by one pixel, clipped to the viewport;
 // the depth is the smallest of the corners'.
-inline RectKind BoundRect(const Bound& bound, const float origin[3], const float view[16], const float proj[16], const Viewport& port,
+// floor and ceil for the pixel coordinates below without the C library's
+// call (which is most of BoundRect's time on a 32-bit target without
+// SSE4.1: 340 of 400 ns a call, measured 2026-11-10): the truncation to an
+// integer, corrected by one where it went the wrong way. Exact for every
+// finite value below 2^31 in size (a zero's sign aside); anything else goes
+// to the library.
+inline float FloorOf(float x) {
+	if (!(x > -2147483000.0f && x < 2147483000.0f)) {
+		return std::floor(x);
+	}
+	const float t = static_cast<float>(static_cast<std::int32_t>(x));
+	return t > x ? t - 1.0f : t;
+}
+inline float CeilOf(float x) {
+	if (!(x > -2147483000.0f && x < 2147483000.0f)) {
+		return std::ceil(x);
+	}
+	const float t = static_cast<float>(static_cast<std::int32_t>(x));
+	return t < x ? t + 1.0f : t;
+}
+
+// From the corners' extremes in normalised device coordinates to the
+// rectangle: BoundRect's second half, shared by its two paths.
+inline RectKind RectFromExtremes(float minX, float maxX, float minY, float maxY, float minZ, float maxZ, const Viewport& port, ScreenRect* out) {
+	if (!std::isfinite(minX) || !std::isfinite(maxX) || !std::isfinite(minY) || !std::isfinite(maxY) || !std::isfinite(minZ)) {
+		return RectKind::kNoBound;
+	}
+	if (minZ > 1.0f) {
+		return RectKind::kOutsideFrustum;
+	}
+	const float portLeft = static_cast<float>(port.x);
+	const float portTop = static_cast<float>(port.y);
+	const float portRight = portLeft + static_cast<float>(port.width);
+	const float portBottom = portTop + static_cast<float>(port.height);
+	const auto clamp = [](float value, float low, float high) { return value < low ? low : (value > high ? high : value); };
+	// x grows to the right, y (the camera's up) to the port's top.
+	const float left = clamp(FloorOf(portLeft + (minX * 0.5f + 0.5f) * static_cast<float>(port.width)) - 1.0f, portLeft, portRight);
+	const float right = clamp(CeilOf(portLeft + (maxX * 0.5f + 0.5f) * static_cast<float>(port.width)) + 1.0f, portLeft, portRight);
+	const float top = clamp(FloorOf(portTop + (0.5f - maxY * 0.5f) * static_cast<float>(port.height)) - 1.0f, portTop, portBottom);
+	const float bottom = clamp(CeilOf(portTop + (0.5f - minY * 0.5f) * static_cast<float>(port.height)) + 1.0f, portTop, portBottom);
+	if (!(left < right) || !(top < bottom)) {
+		return RectKind::kOutsideFrustum;
+	}
+	*out = ScreenRect{left, top, right, bottom, minZ, maxZ > 1.0f ? 1.0f : maxZ};
+	return RectKind::kTestable;
+}
+
+
+// BoundRect for any projection: every corner divided by its own w.
+inline RectKind BoundRectGeneral(const Bound& bound, const float origin[3], const float view[16], const float proj[16], const Viewport& port,
                           ScreenRect* out) {
 	if (!std::isfinite(bound.radius) || !(bound.radius > 0.0f) || !std::isfinite(bound.centre[0]) || !std::isfinite(bound.centre[1]) ||
 	    !std::isfinite(bound.centre[2])) {
@@ -136,27 +185,76 @@ inline RectKind BoundRect(const Bound& bound, const float origin[3], const float
 		minZ = ndcZ < minZ ? ndcZ : minZ;
 		maxZ = ndcZ > maxZ ? ndcZ : maxZ;
 	}
-	if (!std::isfinite(minX) || !std::isfinite(maxX) || !std::isfinite(minY) || !std::isfinite(maxY) || !std::isfinite(minZ)) {
+	return RectFromExtremes(minX, maxX, minY, maxY, minZ, maxZ, port, out);
+}
+
+// BoundRect for the projection every eye pass has: one whose w does not
+// depend on x and y (proj[3] == proj[7] == 0). The eight corners then have
+// two w between them, one per z, and a division by one positive w keeps
+// the order of the numerators, so the smallest quotient of four corners is
+// the smallest numerator's quotient: twelve divisions instead of twenty-
+// four, the same extremes (a zero's sign aside). Anything that is not
+// finite on the way goes to the general path, which decides it as before.
+inline RectKind BoundRect(const Bound& bound, const float origin[3], const float view[16], const float proj[16], const Viewport& port,
+                          ScreenRect* out) {
+	if (proj[3] != 0.0f || proj[7] != 0.0f) {
+		return BoundRectGeneral(bound, origin, view, proj, port, out);
+	}
+	if (!std::isfinite(bound.radius) || !(bound.radius > 0.0f) || !std::isfinite(bound.centre[0]) || !std::isfinite(bound.centre[1]) ||
+	    !std::isfinite(bound.centre[2])) {
 		return RectKind::kNoBound;
 	}
-	if (minZ > 1.0f) {
-		return RectKind::kOutsideFrustum;
+	if (port.width == 0 || port.height == 0 || port.minZ != 0.0f || port.maxZ != 1.0f) {
+		return RectKind::kViewport;
 	}
-	const float portLeft = static_cast<float>(port.x);
-	const float portTop = static_cast<float>(port.y);
-	const float portRight = portLeft + static_cast<float>(port.width);
-	const float portBottom = portTop + static_cast<float>(port.height);
-	const auto clamp = [](float value, float low, float high) { return value < low ? low : (value > high ? high : value); };
-	// x grows to the right, y (the camera's up) to the port's top.
-	const float left = clamp(std::floor(portLeft + (minX * 0.5f + 0.5f) * static_cast<float>(port.width)) - 1.0f, portLeft, portRight);
-	const float right = clamp(std::ceil(portLeft + (maxX * 0.5f + 0.5f) * static_cast<float>(port.width)) + 1.0f, portLeft, portRight);
-	const float top = clamp(std::floor(portTop + (0.5f - maxY * 0.5f) * static_cast<float>(port.height)) - 1.0f, portTop, portBottom);
-	const float bottom = clamp(std::ceil(portTop + (0.5f - minY * 0.5f) * static_cast<float>(port.height)) + 1.0f, portTop, portBottom);
-	if (!(left < right) || !(top < bottom)) {
-		return RectKind::kOutsideFrustum;
+	const float rel[3] = {bound.centre[0] - origin[0], bound.centre[1] - origin[1], bound.centre[2] - origin[2]};
+	float centre[3];
+	for (int column = 0; column < 3; ++column) {
+		centre[column] = rel[0] * view[column] + rel[1] * view[4 + column] + rel[2] * view[8 + column] + view[12 + column];
 	}
-	*out = ScreenRect{left, top, right, bottom, minZ, maxZ > 1.0f ? 1.0f : maxZ};
-	return RectKind::kTestable;
+	float ext[2][6];  // per z: min and max of x, y, z in normalised device coordinates
+	for (int side = 0; side < 2; ++side) {
+		const float z = centre[2] + (side != 0 ? bound.radius : -bound.radius);
+		float lowX = 0.0f, highX = 0.0f, lowY = 0.0f, highY = 0.0f, lowZ = 0.0f, highZ = 0.0f;
+		float clipW = 0.0f;
+		for (int corner = 0; corner < 4; ++corner) {
+			const float x = centre[0] + ((corner & 1) != 0 ? bound.radius : -bound.radius);
+			const float y = centre[1] + ((corner & 2) != 0 ? bound.radius : -bound.radius);
+			const float clipX = x * proj[0] + y * proj[4] + z * proj[8] + proj[12];
+			const float clipY = x * proj[1] + y * proj[5] + z * proj[9] + proj[13];
+			const float clipZ = x * proj[2] + y * proj[6] + z * proj[10] + proj[14];
+			clipW = x * proj[3] + y * proj[7] + z * proj[11] + proj[15];
+			if (!(clipW > 0.0f) || !(clipZ >= 0.0f)) {
+				return RectKind::kCrossesNear;
+			}
+			if (corner == 0) {
+				lowX = highX = clipX;
+				lowY = highY = clipY;
+				lowZ = highZ = clipZ;
+				continue;
+			}
+			lowX = clipX < lowX ? clipX : lowX;
+			highX = clipX > highX ? clipX : highX;
+			lowY = clipY < lowY ? clipY : lowY;
+			highY = clipY > highY ? clipY : highY;
+			lowZ = clipZ < lowZ ? clipZ : lowZ;
+			highZ = clipZ > highZ ? clipZ : highZ;
+		}
+		ext[side][0] = lowX / clipW;
+		ext[side][1] = highX / clipW;
+		ext[side][2] = lowY / clipW;
+		ext[side][3] = highY / clipW;
+		ext[side][4] = lowZ / clipW;
+		ext[side][5] = highZ / clipW;
+		for (int i = 0; i < 6; ++i) {
+			if (!std::isfinite(ext[side][i])) {
+				return BoundRectGeneral(bound, origin, view, proj, port, out);
+			}
+		}
+	}
+	const auto low = [&ext](int i) { return ext[1][i] < ext[0][i] ? ext[1][i] : ext[0][i]; };
+	const auto high = [&ext](int i) { return ext[1][i] > ext[0][i] ? ext[1][i] : ext[0][i]; };
+	return RectFromExtremes(low(0), high(1), low(2), high(3), low(4), high(5), port, out);
 }
 
 // The rectangle as a triangle strip of four pre-transformed vertices

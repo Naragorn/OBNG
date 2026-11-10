@@ -543,7 +543,94 @@ void TestNameTable() {
 
 }  // namespace
 
+void TestFloorCeil() {
+	Section("FloorOf and CeilOf: the library's values");
+	const float edges[] = {0.0f, -0.0f, 0.5f, -0.5f, 1.0f, -1.0f, 1.5f, -1.5f, 2567.999f, 4035.0001f, -3.0f, 8388607.5f, -8388607.5f, 16777216.0f,
+	                       2147483000.0f, -2147483000.0f, 3.0e9f, -3.0e9f, 1.0e30f, std::numeric_limits<float>::infinity(),
+	                       -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::denorm_min(), -std::numeric_limits<float>::denorm_min()};
+	bool same = true;
+	for (float x : edges) {
+		same = same && oc::FloorOf(x) == std::floor(x) && oc::CeilOf(x) == std::ceil(x);
+	}
+	Check(same, "the edges: zeros, halves, whole numbers, the range's ends, beyond it, the infinities, the smallest values");
+	Check(std::isnan(oc::FloorOf(std::numeric_limits<float>::quiet_NaN())) && std::isnan(oc::CeilOf(std::numeric_limits<float>::quiet_NaN())), "not a number stays one");
+	std::uint32_t state = 99u;
+	int equal = 0;
+	const int cases = 400000;
+	for (int n = 0; n < cases; ++n) {
+		state = state * 1664525u + 1013904223u;
+		const float unit = static_cast<float>(state >> 8) / 16777216.0f - 0.5f;
+		const float x = unit * ((n & 3) == 0 ? 4.0f : (n & 3) == 1 ? 20000.0f : (n & 3) == 2 ? 3.0e7f : 6.0e9f);
+		equal += (oc::FloorOf(x) == std::floor(x) && oc::CeilOf(x) == std::ceil(x)) ? 1 : 0;
+	}
+	Check(equal == cases, "400 000 random values across four magnitudes");
+}
+
+// The fast path against the general one over random bounds, cameras and
+// projections of the eye passes' kind: the same kind and the same rectangle.
+void TestBoundRectPaths() {
+	Section("BoundRect: the two-w path gives what the general path gives");
+	std::uint32_t state = 12345u;
+	const auto next = [&state]() {
+		state = state * 1664525u + 1013904223u;
+		return static_cast<float>(state >> 8) / 16777216.0f;  // [0, 1)
+	};
+	const oc::Viewport ports[2] = {{0, 0, 2568, 2568, 0.0f, 1.0f}, {4036, 0, 4036, 3376, 0.0f, 1.0f}};
+	int kinds = 0;
+	int rects = 0;
+	int testable = 0;
+	int near = 0;
+	int outside = 0;
+	const int cases = 200000;
+	for (int n = 0; n < cases; ++n) {
+		// A camera looking along a random direction (an orthonormal view from two angles), a random origin.
+		const float yaw = next() * 6.2831853f;
+		const float pitch = (next() - 0.5f) * 2.0f;
+		const float cy = std::cos(yaw), sy = std::sin(yaw), cp = std::cos(pitch), sp = std::sin(pitch);
+		const float view[16] = {cy, -sy * sp, sy * cp, 0.0f, sy, cy * sp, -cy * cp, 0.0f, 0.0f, cp, sp, 0.0f, (next() - 0.5f) * 50.0f, (next() - 0.5f) * 50.0f, (next() - 0.5f) * 50.0f, 1.0f};
+		// An off-centre perspective (D3D's row vectors): w = z, as every eye pass has it.
+		const float nearZ = 5.0f + next() * 10.0f;
+		const float farZ = 3000.0f + next() * 300000.0f;
+		const float proj[16] = {0.6f + next(), 0.0f, 0.0f, 0.0f, 0.0f, 0.6f + next(), 0.0f, 0.0f, (next() - 0.5f) * 0.4f, (next() - 0.5f) * 0.4f, farZ / (farZ - nearZ), 1.0f, 0.0f, 0.0f, -nearZ * farZ / (farZ - nearZ), 0.0f};
+		const float origin[3] = {(next() - 0.5f) * 400000.0f, (next() - 0.5f) * 400000.0f, (next() - 0.5f) * 2000.0f};
+		const float reach = next() < 0.5f ? 600.0f : 20000.0f;
+		oc::Bound bound{};
+		bound.centre[0] = origin[0] + (next() - 0.5f) * reach;
+		bound.centre[1] = origin[1] + (next() - 0.5f) * reach;
+		bound.centre[2] = origin[2] + (next() - 0.5f) * reach;
+		bound.radius = 1.0f + next() * (next() < 0.5f ? 60.0f : 1500.0f);
+		const oc::Viewport& port = ports[n & 1];
+		oc::ScreenRect a{};
+		oc::ScreenRect b{};
+		const RectKind ka = oc::BoundRectGeneral(bound, origin, view, proj, port, &a);
+		const RectKind kb = oc::BoundRect(bound, origin, view, proj, port, &b);
+		kinds += ka == kb ? 1 : 0;
+		testable += ka == RectKind::kTestable ? 1 : 0;
+		near += ka == RectKind::kCrossesNear ? 1 : 0;
+		outside += ka == RectKind::kOutsideFrustum ? 1 : 0;
+		if (ka == RectKind::kTestable && kb == RectKind::kTestable) {
+			rects += (a.left == b.left && a.top == b.top && a.right == b.right && a.bottom == b.bottom && a.depth == b.depth && a.farDepth == b.farDepth) ? 1 : 0;
+		}
+	}
+	Check(kinds == cases, "the same kind in every case");
+	Check(rects == testable, "the same rectangle and depths in every testable case");
+	Check(testable > 20000 && near > 20000 && outside > 2000, "the cases cover testable, near-crossing and outside bounds");
+	// A projection whose w depends on x goes to the general path.
+	const float skew[16] = {1.0f, 0.0f, 0.0f, 0.1f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, -5.0f, 0.0f};
+	const float id[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+	const float zero[3] = {0.0f, 0.0f, 0.0f};
+	oc::Bound far{};
+	far.centre[2] = 100.0f;
+	far.radius = 10.0f;
+	oc::ScreenRect c{};
+	oc::ScreenRect d{};
+	Check(oc::BoundRect(far, zero, id, skew, ports[0], &c) == oc::BoundRectGeneral(far, zero, id, skew, ports[0], &d) && c.left == d.left && c.right == d.right,
+	      "a w that depends on x: the general path's answer");
+}
+
 int main() {
+	TestFloorCeil();
+	TestBoundRectPaths();
 	TestRect();
 	TestNoRect();
 	TestOrthographic();

@@ -152,6 +152,18 @@ pass OBNG.dll is 5.3 % of the samples: the skeleton route's RoutedDown
 3.6 %, its Matches (the order checked against the tree on every call)
 0.9 %, SkinBound 0.7 %.
 
+### The culler's bound projection (2026-11-10, class A)
+
+BoundRect (OcclusionProbeLogic.h) with its floor and ceil inline instead of
+the C library's and with twelve divisions instead of twenty-four when the
+projection's w does not depend on x and y: the same kinds and rectangles as
+before in 200 000 random cases (plugin/tests/OcclusionProbeLogicTest.cpp).
+A native 32-bit build: 406 -> 42 ns a call, nearly all of it the library's
+floor and ceil. In the game (Anvil, run 20261110-124108 against -122516):
+the culler's decide step 196 -> 173 ns a draw, BoundRect 2.2 -> 1.3 % of
+the scene pass's samples, OBNG.dll 15.1 -> 13.3 % of them - about 0.03 ms
+a frame; Wine's floor is not the slow one.
+
 ## Put back
 
 
