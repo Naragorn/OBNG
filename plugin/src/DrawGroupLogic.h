@@ -122,4 +122,94 @@ struct Totals {
 	}
 };
 
+// Which scene nodes are worth a test of their own: a node below which every
+// draw asked about in its last pass was hidden (two or more), or that was
+// left out itself not long ago (its draws are then no longer asked about,
+// so the first rule alone would forget it). The culler notes each newly
+// asked draw at its ancestors (Note), asks at the cull walk (Candidate) and
+// says when it left a node out (LeftOut). Passes are numbered by the
+// culler's frame counter; a note older than maxAge passes says nothing.
+class NodeBook {
+public:
+	static constexpr std::uint32_t kSlots = 4096;  // a power of two
+	static constexpr std::uint32_t kProbe = 16;
+	static constexpr std::uint32_t kStale = 64;    // passes after which a slot may be taken over
+
+	void Note(std::uint32_t node, std::uint32_t pass, bool hidden) {
+		Slot* s = Claim(node, pass);
+		if (s == nullptr) {
+			return;
+		}
+		if (s->pass != pass) {
+			s->pass = pass;
+			s->all = 0;
+			s->hidden = 0;
+		}
+		s->all += s->all < 0xFFFFu ? 1u : 0u;
+		s->hidden += hidden && s->hidden < 0xFFFFu ? 1u : 0u;
+	}
+
+	void LeftOut(std::uint32_t node, std::uint32_t pass) {
+		if (Slot* s = Claim(node, pass)) {
+			s->leftOutPass = pass;
+			s->everLeftOut = true;
+		}
+	}
+
+	bool Candidate(std::uint32_t node, std::uint32_t pass, std::uint32_t maxAge) const {
+		const Slot* s = Find(node);
+		if (s == nullptr) {
+			return false;
+		}
+		if (s->everLeftOut && pass - s->leftOutPass <= maxAge) {
+			return true;
+		}
+		return s->pass != pass && pass - s->pass <= maxAge && s->all >= 2 && s->hidden == s->all;
+	}
+
+private:
+	struct Slot {
+		std::uint32_t node = 0;
+		std::uint32_t pass = 0;
+		std::uint32_t leftOutPass = 0;
+		std::uint16_t all = 0;
+		std::uint16_t hidden = 0;
+		bool everLeftOut = false;
+		bool used = false;
+	};
+	static std::uint32_t Home(std::uint32_t node) { return (node * 2654435761u) >> 20; }
+	const Slot* Find(std::uint32_t node) const {
+		for (std::uint32_t i = 0; i < kProbe; ++i) {
+			const Slot& s = slots_[(Home(node) + i) & (kSlots - 1)];
+			if (s.used && s.node == node) {
+				return &s;
+			}
+		}
+		return nullptr;
+	}
+	// The node's slot, a free one, or one not touched for kStale passes; null when the probe run is all in use.
+	Slot* Claim(std::uint32_t node, std::uint32_t pass) {
+		Slot* spare = nullptr;
+		for (std::uint32_t i = 0; i < kProbe; ++i) {
+			Slot& s = slots_[(Home(node) + i) & (kSlots - 1)];
+			if (s.used && s.node == node) {
+				return &s;
+			}
+			if (spare == nullptr && (!s.used || (pass - s.pass > kStale && pass - s.leftOutPass > kStale))) {
+				spare = &s;
+			}
+		}
+		if (spare != nullptr) {
+			*spare = Slot{};
+			spare->node = node;
+			spare->used = true;
+			// A fresh slot has seen no pass: its pass must not read as "this one" or "a recent one".
+			spare->pass = pass - kStale - 1;
+			spare->leftOutPass = pass - kStale - 1;
+		}
+		return spare;
+	}
+	Slot slots_[kSlots];
+};
+
 }  // namespace obng::plugin::draw_groups

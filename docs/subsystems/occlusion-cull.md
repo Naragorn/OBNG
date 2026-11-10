@@ -330,3 +330,51 @@ rectangles, depth and pixel count, plus a second query of the same
 rectangles at the bound's far depth (or at OcclusionCullTraceDepth). INI:
 tools/hand-scripts/obng-measure-cull-trace.ini. Off by default, costs
 nothing then.
+
+## Nodes left out at the cull walk (2026-11-10, class C, `[Route] OcclusionCullNodes`)
+
+Why: in Anvil 58 % of an eye pass's asks are hidden and 60-72 % of those
+sit below a node all of whose draws are hidden (docs/performance-backlog.md,
+"Three counts in Anvil"); the engine still walks to each of them, collects
+it, and the culler decides and tests each.
+
+What: two more detours. The eye pass's driver ShadowSceneNode::OnVisible
+0x007C78D0 (re/functions/0x007C78D0.md: the cull walk, then the finish) -
+the pass now begins at its entry (BeginEyePass, what the finish's detour
+did before), so the walk's decisions have the frame's eyes, batch and
+results. NiCullingProcess::Cull 0x0070DFB0, the visit of one object: in the
+eye pass's walk a plain node or fade node (its +0x7C is 0x0070AB40 or
+0x004A0920) that is a candidate is asked about like a draw - its world
+bound projected, the verdict table keyed by the node, one test a frame -
+and, hidden, not visited. That is what the engine does with a node outside
+the frustum, so nothing that hangs on a node's visit is skipped that the
+engine does not skip itself (derived from the read of 0x0070DFB0).
+
+Candidates (DrawGroupLogic.h NodeBook, tested): every newly asked draw is
+noted at its three nearest ancestors; a node whose draws of its last pass
+(within the culler's age) were all hidden, two or more, is asked; a node
+left out stays a candidate while it is being left out. So a node costs a
+test only when it is likely to pay.
+
+Measured (Anvil with the Windows mod list, one pair of runs,
+obng-profile-anvil-bc/20261110-151142 off and -151529 on, both with
+ConstantArrange): 31-58 nodes a pass left out of 40-68 asked; the asks
+594 -> 444 a pass, the tests 462 -> 338, the culler's own time 0.29 ->
+0.24 ms; the scene pass's median 3.33 -> 3.07 ms, the render thread's busy
+median 6.19 -> 5.84 ms, its p90 8.28 -> 8.73 and p95 8.97 -> 9.52 (the
+tail the wrong way in this pair - a second pair has to say whether that is
+the runs or the change); unconfirmed skips 0.09 -> 0.10 %; the view never
+differed between the walk and the finish; no crash.
+
+The picture (tools/hand-scripts/obng-anvil-bc-eyedump.txt: the AI off, the
+weather and the hour fixed; tools/eye-compare.py; runs obng-anvil-bc-
+eyedump/20261110-153110 off and -153614 on): at the two fixed spots, 18
+views and both eyes, 30 of 36 pictures differ in under 0.7 % of their
+pixels and the other six in 2.3-4.3 %; the largest, looked at, is the
+gate's guard standing a step away with his shadow, the rest of the mask
+black (a picture impression for the one looked at, the numbers measured).
+No pure blue in any dumped frame. The marks after a walk differ because
+the walk ends elsewhere, and say nothing.
+
+State: reconstructed and run; not accepted - the second pair, a long run
+and the look in the headset are open.

@@ -185,6 +185,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	r.occlusionCullMaxTurn = static_cast<float>(std::strtod(cullTurn, nullptr));
 	r.occlusionCullFlat = GetPrivateProfileIntA("Route", "OcclusionCullFlat", 0, path) != 0;
 	r.occlusionCullStats = GetPrivateProfileIntA("Route", "OcclusionCullStats", 0, path) != 0;
+	r.occlusionCullNodes = GetPrivateProfileIntA("Route", "OcclusionCullNodes", 0, path) != 0;
 	r.occlusionCullTrace = static_cast<UInt32>(GetPrivateProfileIntA("Route", "OcclusionCullTrace", 0, path));
 	char traceDepth[32] = {};
 	GetPrivateProfileStringA("Route", "OcclusionCullTraceDepth", "-1", traceDepth, sizeof(traceDepth), path);

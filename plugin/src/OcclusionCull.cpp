@@ -133,6 +133,39 @@ bool g_notePass = false;
 std::vector<draw_groups::DrawNote> g_notes;
 draw_groups::Totals g_groupTotals;
 volatile LONG g_inEyePass = 0;
+// [Route] OcclusionCullNodes: scene nodes left out at the cull walk. The eye
+// pass's driver ShadowSceneNode::OnVisible 0x007C78D0 (slot +0x7C; it runs
+// the cull walk and then the accumulator's finish, re/functions/
+// 0x007C78D0.md) is detoured so that the pass begins before the walk, and
+// NiCullingProcess::Cull 0x0070DFB0 (the visit of one object: the frustum
+// test, then the object's +0x7C) so that a plain node or fade node whose
+// bound is hidden is not visited - what the engine itself does with a node
+// outside the frustum. Only candidate nodes are asked (DrawGroupLogic.h
+// NodeBook); an asked node is tested like a draw, by its world bound.
+constexpr UInt32 kDriver = 0x007C78D0;
+constexpr UInt8 kDriverBytes[] = {0x6A, 0xFF, 0x68, 0x5B, 0xE8, 0x9C, 0x00};  // push -1; push 009CE85Bh (read)
+constexpr UInt32 kCullVisit = 0x0070DFB0;
+constexpr UInt8 kCullVisitBytes[] = {0x51, 0x55, 0x8B, 0xE9, 0x8B, 0x85, 0x8C, 0x00, 0x00, 0x00};  // push ecx; push ebp; mov ebp,ecx; mov eax,[ebp+8Ch] (read)
+constexpr UInt32 kSlotOnVisible = 0x7C;
+constexpr UInt32 kNiNodeOnVisible = 0x0070AB40;     // NiNode's body of slot +0x7C (read, re/functions/0x007C78D0.md C2)
+constexpr UInt32 kBSFadeNodeOnVisible = 0x004A0920;  // BSFadeNode's (knowledge/culling-and-draw-setup.md)
+using DriverFn = UInt32(__fastcall*)(void* self, void* edx, UInt32 process);
+using CullVisitFn = void(__fastcall*)(void* self, void* edx, UInt32 object);
+DriverFn g_driver = nullptr;
+CullVisitFn g_cullVisit = nullptr;
+bool g_nodeCull = false;
+bool g_passBegun = false;   // the eye pass was begun at the driver's entry
+bool g_walk = false;        // inside the eye pass's cull walk
+unsigned g_driverDepth = 0;
+unsigned __int64 g_beginTicks = 0;
+draw_groups::NodeBook g_nodeBook;
+unsigned __int64 g_nodesAsked = 0;
+unsigned __int64 g_nodesLeftOut = 0;
+unsigned __int64 g_nodeVisits = 0;
+unsigned __int64 g_walkTicks = 0;
+unsigned __int64 g_passesWithWalk = 0;
+unsigned __int64 g_viewChangedAfterWalk = 0;
+float g_walkView[16] = {};
 volatile LONG g_eyePassCount = 0;
 bool g_refusedLogged = false;
 volatile LONG g_summaryRequested = 0;
@@ -163,6 +196,19 @@ void FlushSummaryIfRequested() {
 	cull::FormatSummary(g_stats, g_settings, ticksPerMillisecond, now.qpc, line, sizeof(line));
 	g_log("%s", line);
 	g_stats.Reset();
+	if (g_nodeCull && g_passesWithWalk > 0) {
+		const double per = 1.0 / static_cast<double>(g_passesWithWalk);
+		g_log("Route: occlusion cull nodes - %llu passes begun at the driver; per pass %.0f objects visited in the walk, %.1f candidate nodes asked, "
+		      "%.1f left out; the driver (walk and finish) %.3f ms a pass; the view differed between the walk and the finish in %llu passes",
+		      g_passesWithWalk, static_cast<double>(g_nodeVisits) * per, static_cast<double>(g_nodesAsked) * per, static_cast<double>(g_nodesLeftOut) * per,
+		      ticksPerMillisecond > 0.0 ? static_cast<double>(g_walkTicks) / ticksPerMillisecond * per : 0.0, g_viewChangedAfterWalk);
+		g_passesWithWalk = 0;
+		g_nodeVisits = 0;
+		g_nodesAsked = 0;
+		g_nodesLeftOut = 0;
+		g_walkTicks = 0;
+		g_viewChangedAfterWalk = 0;
+	}
 	if (g_groupStats && g_groupTotals.passes > 0) {
 		const draw_groups::Totals& t = g_groupTotals;
 		const double per = 1.0 / static_cast<double>(t.passes);
@@ -394,7 +440,7 @@ void NoteCamera() {
 // once: a later pass of it counts as a repeat (countRepeat), Do_RenderShape
 // under a DrawRenderPass that decided already counts as nothing - the record
 // was the draw.
-cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind, bool countRepeat) {
+cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind, bool countRepeat, bool node = false) {
 	const unsigned __int64 t0 = __rdtsc();
 	if (cull::Verdict* seen = g_table.Find(geometry); seen != nullptr && seen->seenFrame == g_frame) {
 		if (countRepeat) {
@@ -429,8 +475,21 @@ cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind, bool countRepeat
 	const cull::TestKind testKind =
 	    cull::RectsFor(bound, origin, view0, view1, proj, g_ports, static_cast<float>(g_settings.margin), &rects, kinds, g_eyeCount);
 	const cull::Decided decided = cull::Decide(g_table, geometry, g_frame, testKind, g_settings, g_cameras, &g_stats);
-	cull::Count(&g_stats, kind, decided.decision, testKind, decided.newThisFrame, kinds);
-	if (g_notePass && decided.newThisFrame) {
+	if (!node) {
+		cull::Count(&g_stats, kind, decided.decision, testKind, decided.newThisFrame, kinds);
+	}
+	if (g_nodeCull && !node && decided.newThisFrame) {
+		// The draw noted at its three nearest ancestors, for the walk's candidates.
+		UInt32 ancestor = geometry;
+		for (unsigned level = 0; level < 3; ++level) {
+			ancestor = ReadAt<UInt32>(ancestor + kObjectParentOffset);
+			if (ancestor == 0) {
+				break;
+			}
+			g_nodeBook.Note(ancestor, g_frame, decided.decision == cull::Decision::kSkip);
+		}
+	}
+	if (g_notePass && decided.newThisFrame && !node) {
 		draw_groups::DrawNote note;
 		note.data = ReadAt<UInt32>(geometry + kGeometryModelDataOffset);
 		note.shader = ReadAt<UInt32>(geometry + kGeometryShaderOffset);
@@ -582,29 +641,19 @@ void Collect() {
 	g_stats.collectTicks += __rdtsc() - t0;
 }
 
-UInt32 __fastcall CullFinish(void* self, void* /*edx*/) {
-	const UInt32 site = static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(_ReturnAddress()));
-	if (!g_on) {
-		return g_finish(self, nullptr);  // the second detour was refused: the finish stays the game's
-	}
-	FlushSummaryIfRequested();
-	if (g_active) {
-		// A pass inside the eye pass (its draws go to another target).
-		++g_inner;
-		const UInt32 inner = g_finish(self, nullptr);
-		--g_inner;
-		return inner;
-	}
-	if (site != kEyePassSite) {
-		return g_finish(self, nullptr);
-	}
+// Everything the eye pass needs before its first decision: the eyes and
+// their ports, the device, the frame's number, the results that came in,
+// the frame's batch. False: this is no pass the culler acts in. Called at
+// the driver's entry with the node cull on (the walk's decisions need it),
+// otherwise at the finish.
+bool BeginEyePass() {
 	const bool eyesGiven = StereoEyeData(&g_eyes);
 	if (!eyesGiven && !g_flat) {
 		++g_stats.passesWithoutEyes;
-		return g_finish(self, nullptr);
+		return false;
 	}
 	if (!BeginPass()) {
-		return g_finish(self, nullptr);
+		return false;
 	}
 	if (eyesGiven) {
 		g_eyeCount = 2;
@@ -621,11 +670,11 @@ UInt32 __fastcall CullFinish(void* self, void* /*edx*/) {
 		UInt32 backHeight = 0;
 		if (!TargetSize(&width, &height) || !BackBufferSize(&backWidth, &backHeight)) {
 			++g_stats.passesWithoutEyes;
-			return g_finish(self, nullptr);
+			return false;
 		}
 		if (!cull::FlatTargetIsFrame(width, height, backWidth, backHeight)) {
 			++g_stats.otherTargetPasses;
-			return g_finish(self, nullptr);
+			return false;
 		}
 		g_eyeCount = 1;
 		cull::FlatPorts(width, height, g_ports);
@@ -651,6 +700,41 @@ UInt32 __fastcall CullFinish(void* self, void* /*edx*/) {
 	}
 	g_cameraSet = false;
 	g_lists.Reset();
+	g_beginTicks = __rdtsc() - t0;
+	return true;
+}
+
+UInt32 __fastcall CullFinish(void* self, void* /*edx*/) {
+	const UInt32 site = static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(_ReturnAddress()));
+	if (!g_on) {
+		return g_finish(self, nullptr);  // the second detour was refused: the finish stays the game's
+	}
+	FlushSummaryIfRequested();
+	if (g_active || g_driverDepth > 1) {
+		// A pass inside the eye pass (its draws go to another target), or the
+		// finish of a driver that runs inside the eye pass's walk.
+		++g_inner;
+		const UInt32 inner = g_finish(self, nullptr);
+		--g_inner;
+		return inner;
+	}
+	if (site != kEyePassSite) {
+		return g_finish(self, nullptr);
+	}
+	if (!g_passBegun && !BeginEyePass()) {
+		return g_finish(self, nullptr);
+	}
+	if (g_passBegun) {
+		// The view the walk decided with must be the view the draws decide with.
+		float now[16];
+		std::memcpy(now, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(g_renderer + kRendererViewOffset)), sizeof(now));
+		if (std::memcmp(now, g_walkView, sizeof(now)) != 0) {
+			++g_viewChangedAfterWalk;
+		}
+	}
+	g_passBegun = false;
+	g_walk = false;
+	const unsigned __int64 t0 = __rdtsc();
 	g_notePass = g_groupStats && (g_frame % 8) == 0;
 	g_active = true;
 	InterlockedExchange(&g_inEyePass, 1);
@@ -667,7 +751,7 @@ UInt32 __fastcall CullFinish(void* self, void* /*edx*/) {
 		NoteCamera();  // no draw asked: the ring still gets this frame's camera
 	}
 	EndTests();
-	g_stats.passTicks += __rdtsc() - t0;
+	g_stats.passTicks += __rdtsc() - t0 + g_beginTicks;
 	return eax;
 }
 
@@ -710,6 +794,59 @@ UInt32 __fastcall CullRenderShape(void* self, void* /*edx*/, UInt32 geometry) {
 		return g_renderShape(self, nullptr, geometry);
 	}
 	return 0;  // Do_RenderShape returns nothing its callers read (re/functions/0x007693E0.md)
+}
+
+// The eye pass's driver: with the node cull on the pass begins here, before
+// the cull walk, so that the walk can ask about nodes. A driver inside
+// another (depth above one) is left alone.
+UInt32 __fastcall CullDriver(void* self, void* /*edx*/, UInt32 process) {
+	if (!g_on || !g_nodeCull || g_driverDepth != 0 || g_active) {
+		++g_driverDepth;
+		const UInt32 inner = g_driver(self, nullptr, process);
+		--g_driverDepth;
+		return inner;
+	}
+	++g_driverDepth;
+	g_passBegun = BeginEyePass();
+	g_walk = g_passBegun;
+	if (g_passBegun) {
+		++g_passesWithWalk;
+		std::memcpy(g_walkView, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(g_renderer + kRendererViewOffset)), sizeof(g_walkView));
+	}
+	const unsigned __int64 t0 = __rdtsc();
+	const UInt32 eax = g_driver(self, nullptr, process);
+	g_walkTicks += __rdtsc() - t0;
+	g_walk = false;
+	if (g_passBegun) {
+		// The driver returned without its finish at the eye pass's site: the
+		// pass that was begun is closed with what it has.
+		g_passBegun = false;
+		if (!g_cameraSet) {
+			NoteCamera();
+		}
+		EndTests();
+	}
+	--g_driverDepth;
+	return eax;
+}
+
+// One object's visit in a cull walk. In the eye pass's walk a candidate node
+// (a plain node or a fade node, by its +0x7C) is asked about like a draw;
+// hidden, it is not visited.
+void __fastcall CullVisit(void* self, void* /*edx*/, UInt32 object) {
+	if (g_walk && g_driverDepth == 1 && object != 0) {
+		++g_nodeVisits;
+		const UInt32 onVisible = ReadAt<UInt32>(ReadAt<UInt32>(object) + kSlotOnVisible);
+		if ((onVisible == kNiNodeOnVisible || onVisible == kBSFadeNodeOnVisible) && g_nodeBook.Candidate(object, g_frame, g_settings.maxAge)) {
+			++g_nodesAsked;
+			if (DecideDraw(object, cull::DrawKind::kShape, false, true) == cull::Decision::kSkip) {
+				++g_nodesLeftOut;
+				g_nodeBook.LeftOut(object, g_frame);
+				return;
+			}
+		}
+	}
+	g_cullVisit(self, nullptr, object);
 }
 
 }  // namespace
@@ -768,6 +905,17 @@ UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {
 		            : 0;
 	}
 	g_on = made == kRouteOcclusionCullDetours;
+	if (g_on && settings.occlusionCullNodes) {
+		const bool driver = InstallEntryDetour("ShadowSceneNode::OnVisible 0x007C78D0 (occlusion cull: the pass begins before the walk)", kDriver, kDriverBytes,
+		                                       sizeof(kDriverBytes), reinterpret_cast<const void*>(&CullDriver), reinterpret_cast<void**>(&g_driver), log,
+		                                       DetourRole::Route);
+		const bool visit = driver && InstallEntryDetour("NiCullingProcess::Cull 0x0070DFB0 (occlusion cull: nodes)", kCullVisit, kCullVisitBytes,
+		                                                sizeof(kCullVisitBytes), reinterpret_cast<const void*>(&CullVisit),
+		                                                reinterpret_cast<void**>(&g_cullVisit), log, DetourRole::Route);
+		g_nodeCull = driver && visit;
+		log(g_nodeCull ? "Route: occlusion cull - nodes: a candidate node whose bound is hidden is left out at the cull walk"
+		               : "Route: occlusion cull - nodes: not installed (an entry is not the game's own); the draws are culled as before");
+	}
 	g_summaryClock = ReadClocks();
 	log("Route: occlusion cull %s - a hidden verdict holds %u frame%s, rectangles grown %u px, camera gate %.0f units / %.0f degrees, trace %u passes, "
 	    "%s",

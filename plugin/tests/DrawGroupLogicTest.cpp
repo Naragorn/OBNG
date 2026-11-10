@@ -68,9 +68,56 @@ void TestTotals() {
 	Check(t.passes == 2 && t.draws == 20 && t.drawn == 12 && t.hidden == 8 && t.largest == 7 && t.hiddenBelow[1] == 4 && t.nodes[0] == 10, "summed");
 }
 
+void TestNodeBook() {
+	Section("NodeBook: a node is a candidate when its last pass's draws were all hidden, two or more");
+	static NodeBook book;
+	Check(!book.Candidate(500, 100, 2), "an unknown node is none");
+	book.Note(500, 100, true);
+	Check(!book.Candidate(500, 100, 2), "not within the pass that notes it");
+	Check(!book.Candidate(500, 101, 2), "one hidden draw is not enough");
+	book.Note(500, 101, true);
+	book.Note(500, 101, true);
+	Check(book.Candidate(500, 102, 2) && book.Candidate(500, 103, 2), "two hidden draws: a candidate in the next pass and the one after");
+	Check(!book.Candidate(500, 104, 2), "older than the age: no longer");
+	book.Note(500, 104, true);
+	book.Note(500, 104, false);
+	Check(!book.Candidate(500, 105, 2), "one visible draw among them: none");
+	book.Note(500, 105, true);
+	book.Note(500, 105, true);
+	book.Note(500, 105, true);
+	Check(book.Candidate(500, 106, 2), "a new pass starts the count again: three hidden");
+	Section("NodeBook: a node left out stays a candidate while it is being left out");
+	book.LeftOut(500, 106);
+	Check(book.Candidate(500, 107, 2) && book.Candidate(500, 108, 2), "left out in 106: asked in 107 and 108 without any note");
+	book.LeftOut(500, 108);
+	Check(book.Candidate(500, 110, 2) && !book.Candidate(500, 111, 2), "each leaving out renews it; beyond the age it ends");
+	static NodeBook fresh;
+	fresh.LeftOut(7, 1000);
+	Check(fresh.Candidate(7, 1001, 2) && !fresh.Candidate(8, 1001, 2), "a node first heard of by being left out; its neighbour is none");
+	Section("NodeBook: a full probe run drops the note, a stale slot is taken over");
+	static NodeBook full;
+	// Nodes that share a home: multiples of 2^32 / kSlots collide after the multiply only by luck, so fill by search.
+	std::uint32_t placed = 0;
+	std::uint32_t last = 0;
+	const std::uint32_t home = (9u * 2654435761u) >> 20;
+	for (std::uint32_t n = 10; placed < NodeBook::kProbe + 4 && n < 4000000u; ++n) {
+		if (((n * 2654435761u) >> 20) == home) {
+			full.Note(n, 50, true);
+			full.Note(n, 50, true);
+			++placed;
+			last = n;
+		}
+	}
+	Check(placed == NodeBook::kProbe + 4 && !full.Candidate(last, 51, 2), "the notes beyond the probe run are dropped: that node is none");
+	full.Note(last, 50 + NodeBook::kStale + 1, true);
+	full.Note(last, 50 + NodeBook::kStale + 1, true);
+	Check(full.Candidate(last, 50 + NodeBook::kStale + 2, 2), "after the stale time the run's slots are free for it");
+}
+
 }  // namespace
 
 int main() {
+	TestNodeBook();
 	TestMeshes();
 	TestHiddenNodes();
 	TestTotals();
