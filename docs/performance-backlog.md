@@ -217,6 +217,39 @@ the accumulator's registration are about 12 % of the pass (0.4 ms a
 frame); a third of the asks sit below the 35 hidden nodes, so 0.15 ms,
 plus 377 culler decisions at 173 ns (0.07 ms): 0.2-0.25 ms a frame.
 
+### The locks and interlocked calls counted, and the constant map's arranging (2026-11-10)
+
+[Probe] LockCalls (the EXE's import slots, LockProbe.cpp), Anvil, run
+obng-profile-anvil-bc/20261110-132036, one town window of 1 374 frames, a
+frame:
+
+- Critical sections: about 4 600 enters inside the eye pass and 5 000
+  outside, over 45 sections; none was ever held by another thread when
+  asked for, except the MemoryHeap's 0x00B32B80 (4 times in the window).
+  The largest: 0x00B3FCA0 2 395 outside the pass from the one site
+  0x00715629 and one thread; a heap-allocated one (0x18ADC560 in this run)
+  2 181 inside the pass from 0x0077ACCC, two threads; 0x00B3F600 1 788 +
+  456 from 0x006FF9DE, four threads; 0x00B33F00 601 + 1 296. At the 20 ns
+  a pair the sampler's ntdll share implies, 0.1 ms inside the pass and
+  0.1 ms outside.
+- Interlocked increments and decrements through the import slots: 21 961
+  inside the pass, 6 830 outside. Two sites in one function, 0x009A9825
+  and 0x009A97FA, are 12 750 of them; the next are 0x0075FB28 1 600,
+  0x00405784 620, 0x007F6CB4 590. The sampler's "kernel32 3.6 % of the
+  pass" is these calls, not locks.
+
+0x009A97B0 is the constant map's entry arranging (slot +0x48 of the three
+map vtables): it walks the entries with a counted reference each and swaps
+an entry of kind 1 that lies behind another kind. Rebuilt as a test
+(src/engine/render/ConstantMapArrangeLogic.h, class A): arranged maps
+return without the walk. **Verified** in the game (run 20261110-132658,
+[Shadow] ConstantArrange): 8 575 300 calls, 7 625 100 taken as arranged
+with 0 mismatches, the other 950 200 all changed by the original. Routed
+(run 20261110-133045): 7.58 M of 8.50 M calls left out, the interlocked
+calls inside the pass 21 961 -> 10 582 a frame, the scene pass's median
+3.84 -> 3.66 ms and its p90 6.33 -> 5.55 (one pair of runs, both with the
+lock probe on; the walks differ a little between runs).
+
 ## Put back
 
 
@@ -229,7 +262,7 @@ plus 377 culler decisions at 173 ns (0.07 ms): 0.2-0.25 ms a frame.
 | Volatile pack: the compare once a frame instead of once a pack | A | the compare is about 1.0 sample a frame in a crowd | small; needs a safe frame signal | put back | knowledge/skinned-vertex-streams.md |
 | The cells' selected update (`[Route] GridUpdate`) | A | none measured against the original | built and verified | off | docs/subsystems/scene-update.md |
 | A cull at the scene node: a node whose draws are all hidden left out before the engine collects them (its bound tested as a geometry's is) | C | a third of an eye pass's asks in Anvil sit below 35 such nodes; the time behind them (the cull walk, the accumulation, the culler's own decisions) not measured, 0.2-0.4 ms a frame estimated | medium | not started | this file |
-| The render path's critical sections (OSR's "Renderer+0x180" among them) | C | kernel32 and ntdll are 6 % of the scene pass in Anvil, 0.2 ms a frame if all of it is locks; not counted | small to count, small to medium to act | not started | this file |
+| The render path's critical sections | C | counted: 4 600 enters a frame inside the pass and 5 000 outside, never contended, 0.1 ms each side; each lock is its own case | small to medium a lock | not started | this file |
 | Instancing of draws that share a mesh | C | at most a third of the drawn unskinned draws in Anvil, 21 % in groups of four or more | large | not started | this file |
 | The engine's allocator replaced | C | 0.1-0.2 ms a frame in play, 17 % of the long frames of capture 31 | medium | not started | this file |
 | OBNG's own code in the scene pass: the eye switch, the culler's BoundRect / Collect / Find, the draw route | A | 15 % of the pass in Anvil, about 0.5 ms a frame; half of it looks reachable (not measured) | small to medium, our own code, the link map names the functions | not started | this file |

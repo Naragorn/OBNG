@@ -105,6 +105,7 @@ struct RouteSettings {
 	float occlusionCullTraceDepth = -1.0f;  // [Route] OcclusionCullTraceDepth: >= 0 puts a traced test's second query at this depth instead of the bound's far one
 	bool volatilePack = false;  // [Route] VolatilePack: a volatile geometry (a named NPC's head) with unchanged positions and normals is not packed again (FastVolatilePack.cpp); off until measured
 	bool gridUpdate = false;   // [Route] GridUpdate: the cells' selected update (0x007073A0 called by TESObjectCELL::UpdateSelectedNodes 0x004D4970) runs the flat selected run (FastSceneUpdate.cpp); off until measured
+	bool constantArrange = false;  // [Route] ConstantArrange: the constant map's entry arranging 0x009A97B0 left out when nothing is to swap (FastConstantArrange.cpp); off until its gate is clean
 	bool actorBatch = false;   // [Route] ActorBatch: inside the frame's loop over the high actors 0x00677EC0 ApplyAnimData's update is noted and run after the loop (ActorBatch.cpp); needs ActorUpdate; off until measured
 	bool actorBatchTicks = false;  // [Route] ActorBatchTicks: the batched loops' clock readings logged, for cutting a sampler capture by them
 	bool actorUpdate = false;  // [Route] ActorUpdate: the call from ApplyAnimData 0x00471F20 runs the flat subtree update - the same transforms and bounds bit for bit without the recursion's virtual calls (FastSceneUpdate.cpp); off until measured

@@ -9,6 +9,8 @@
 #include "FastVolatilePack.h"
 #include "ActorBatch.h"
 #include "HeapProbe.h"
+#include "LockProbe.h"
+#include "FastConstantArrange.h"
 #include "RouteStereoDraw.h"
 #include "ShadowRangeWalk.h"
 
@@ -119,6 +121,8 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogVolatilePackSummary();
 	LogActorBatchSummary();
 	LogHeapProbeSummary();
+	LogLockProbeSummary();
+	LogConstantArrangeSummary();
 	LogOcclusionCullSummary();
 	if (planner != nullptr && g_settings.havokPlanner && sample.frames != 0) {
 		const float stepSeconds = *reinterpret_cast<volatile float*>(0x00BA790C);

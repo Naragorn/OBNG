@@ -13,6 +13,8 @@
 #include "FastVolatilePack.h"
 #include "ActorBatch.h"
 #include "HeapProbe.h"
+#include "LockProbe.h"
+#include "FastConstantArrange.h"
 #include "RouteRangeWalk.h"
 #include "RouteStereoDraw.h"
 #include "ShadowRangeWalk.h"
@@ -77,6 +79,10 @@ bool IniPath(char* path, size_t length, const char* name) {
 	return true;
 }
 
+// The route settings as last read, for the installers that are not among the host's (the constant map's
+// arranging, which wants the shadow's and the route's switch together).
+obng::plugin::RouteSettings g_routeAsRead;
+
 bool ReadSettings(obng::plugin::Settings* settings) {
 	char path[MAX_PATH] = {};
 	if (!IniPath(path, sizeof(path), kTestIniFile) || GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) {
@@ -122,6 +128,8 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	s.grass = GetPrivateProfileIntA("Probe", "Grass", 0, path) != 0;
 	s.memoryProbe = GetPrivateProfileIntA("Probe", "Memory", 1, path) != 0;
 	s.heapCalls = GetPrivateProfileIntA("Probe", "HeapCalls", 0, path) != 0;
+	s.lockCalls = GetPrivateProfileIntA("Probe", "LockCalls", 0, path) != 0;
+	s.constantArrange = GetPrivateProfileIntA("Shadow", "ConstantArrange", 0, path) != 0;
 	s.mismatchLines = GetPrivateProfileIntA("Log", "MismatchLines", 20, path);
 	s.summaryEverySeconds = GetPrivateProfileIntA("Log", "SummaryEverySeconds", 10, path);
 	s.summaryTimer = GetPrivateProfileIntA("Log", "SummaryTimer", 0, path) != 0;
@@ -132,6 +140,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	r.gridUpdate = GetPrivateProfileIntA("Route", "GridUpdate", 0, path) != 0;
 	r.volatilePack = GetPrivateProfileIntA("Route", "VolatilePack", 0, path) != 0;
 	r.actorBatch = GetPrivateProfileIntA("Route", "ActorBatch", 0, path) != 0;
+	r.constantArrange = GetPrivateProfileIntA("Route", "ConstantArrange", 0, path) != 0;
 	r.actorBatchTicks = GetPrivateProfileIntA("Route", "ActorBatchTicks", 0, path) != 0;
 	r.stereoDraw = GetPrivateProfileIntA("Route", "StereoDraw", 0, path) != 0;
 	bool eyesKnown = false;
@@ -189,6 +198,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	    "OcclusionCullMaxTurn=%.0f OcclusionCullTrace=%u",
 	    r.occlusionCull ? 1 : 0, r.occlusionCullFlat ? 1 : 0, r.occlusionCullMaxAge, r.occlusionCullMargin, static_cast<double>(r.occlusionCullMaxMove),
 	    static_cast<double>(r.occlusionCullMaxTurn), r.occlusionCullTrace);
+	g_routeAsRead = r;
 	obng::plugin::FixSettings& f = settings->fix;
 	f.grassFade = GetPrivateProfileIntA("Fix", "GrassFade", 1, path) != 0;
 	char fadeReach[32] = {};
@@ -210,6 +220,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 
 void InitRecorderSideEffect(const obng::plugin::ShadowSettings& settings) {
 	obng::plugin::InitRecorder(settings, &Log);
+	obng::plugin::InstallConstantArrange(settings, g_routeAsRead, &Log);
 }
 
 uint32_t InstallShadowSideEffect(const obng::plugin::ShadowSettings& settings) {
@@ -239,7 +250,8 @@ bool StartSummaryTimerSideEffect(const obng::plugin::ShadowSettings&) {
 }
 
 uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
-	obng::plugin::InstallHeapProbe(settings, &Log);  // its two detours are not among the counted ones
+	obng::plugin::InstallHeapProbe(settings, &Log);
+	obng::plugin::InstallLockProbe(settings, &Log);  // its two detours are not among the counted ones
 	return obng::plugin::InstallProbes(settings, &Log);
 }
 

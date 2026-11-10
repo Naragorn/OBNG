@@ -79,6 +79,8 @@ struct ShadowSettings {
 	UInt32 occlusionEvery = 31;    // [Probe] OcclusionEvery
 	bool grass = false;            // per world pass the grass patches under the Grass node, hidden and drawn, by distance, with the camera's heading (GrassProbe.cpp; needs [Route] StereoDraw=1); cheap, may stay on in play
 	bool unroutedDraws = false;    // count every device draw by where it falls and keep the sites outside the stereo route (UnroutedDrawProbe.cpp; needs [Route] StereoDraw=1); off in play
+	bool constantArrange = false;  // [Shadow] ConstantArrange: the constant map's entry arranging 0x009A97B0 checked against the original (FastConstantArrange.cpp)
+	bool lockCalls = false;      // [Probe] LockCalls: the EXE's critical section and interlocked calls counted through its import slots (LockProbe.cpp); a measurement
 	bool heapCalls = false;      // [Probe] HeapCalls: the engine allocator's calls counted and timed on the render thread (HeapProbe.cpp); a measurement
 	bool memoryProbe = true;     // commit, working set and address space in the summary
 	UInt32 mismatchLines = 20;   // mismatches written in full per function
