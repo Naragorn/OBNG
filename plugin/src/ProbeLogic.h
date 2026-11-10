@@ -730,6 +730,34 @@ inline int FormatGridSplit(const GridSplitStats& s, double ticksPerMillisecond, 
 	                     per(s.worldData), per(s.controllerWalks), per(s.merges), rest);
 }
 
+// ---- Timed steps of a frame, by name ----------------------------------------------------------
+//
+// " name N calls X.XXX ms a frame (Y.Y us each);" per step, the frame count
+// given by the caller (the calls of the step that runs once a frame); the
+// raw ticks without a clock frequency. Returns the characters written.
+struct TimedStep {
+	const char* name = "";
+	std::uint64_t calls = 0;
+	std::uint64_t ticks = 0;
+};
+
+inline int FormatTimedSteps(const TimedStep* steps, unsigned count, std::uint64_t frames, double ticksPerMillisecond, char* out, std::size_t capacity) {
+	int at = std::snprintf(out, capacity, "%llu frames:", static_cast<unsigned long long>(frames));
+	const double perFrame = frames == 0 ? 1.0 : static_cast<double>(frames);
+	for (unsigned i = 0; i < count && at >= 0 && static_cast<std::size_t>(at) < capacity; ++i) {
+		const TimedStep& s = steps[i];
+		if (ticksPerMillisecond > 0.0) {
+			const double ms = static_cast<double>(s.ticks) / ticksPerMillisecond;
+			at += std::snprintf(out + at, capacity - at, " %s %.1f calls %.3f ms a frame (%.1f us each);", s.name, static_cast<double>(s.calls) / perFrame,
+			                    ms / perFrame, s.calls == 0 ? 0.0 : ms * 1000.0 / static_cast<double>(s.calls));
+		} else {
+			at += std::snprintf(out + at, capacity - at, " %s %llu calls %llu ticks;", s.name, static_cast<unsigned long long>(s.calls),
+			                    static_cast<unsigned long long>(s.ticks));
+		}
+	}
+	return at;
+}
+
 // ---- The constant uploads' redundancy probe -----------------------------------------
 //
 // Does a vertex constant upload write what its register range already holds?

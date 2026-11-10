@@ -400,6 +400,23 @@ void TestObjectUpdateSites() {
 	Check(std::string(line) == " NiAVObject::Update by return site: none;", "no call: none");
 }
 
+void TestTimedSteps() {
+	Section("Timed steps by name: calls and ms a frame, us a call; ticks without a clock; no division by zero");
+	const TimedStep steps[] = {{"actors", 100, 3000000}, {"anim", 6000, 1500000}, {"idle", 0, 0}};
+	char line[400];
+	FormatTimedSteps(steps, 3, 100, 1000000.0, line, sizeof(line));
+	Check(std::string(line) == "100 frames: actors 1.0 calls 0.030 ms a frame (30.0 us each); anim 60.0 calls 0.015 ms a frame (0.2 us each); idle 0.0 calls "
+	                           "0.000 ms a frame (0.0 us each);",
+	      "calibrated");
+	FormatTimedSteps(steps, 2, 100, 0.0, line, sizeof(line));
+	Check(std::string(line) == "100 frames: actors 100 calls 3000000 ticks; anim 6000 calls 1500000 ticks;", "no clock: raw ticks");
+	FormatTimedSteps(steps, 1, 0, 1000000.0, line, sizeof(line));
+	Check(std::strstr(line, "0 frames: actors 100.0 calls 3.000 ms a frame") != nullptr, "no frame counted: per frame is the total");
+	char small[10];
+	FormatTimedSteps(steps, 3, 100, 1000000.0, small, sizeof(small));
+	Check(std::strlen(small) < sizeof(small), "a small buffer is never overrun");
+}
+
 void TestGridSplit() {
 	Section("The grid update's split line: per grid update, the passes' times and the rest");
 	GridSplitStats s;
@@ -493,6 +510,7 @@ int main() {
 	TestObjectUpdateSites();
 	TestActorUpdate();
 	TestGridSplit();
+	TestTimedSteps();
 	TestUploads();
 	TestPackCache();
 	TestStepTiming();

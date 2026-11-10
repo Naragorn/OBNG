@@ -9,6 +9,7 @@
 #include <cstring>
 #include <unordered_map>
 
+#include "ProbeLogic.h"
 #include "ShadowRecorder.h"
 #include "engine/scene/SceneUpdate.h"
 #include "engine/scene/SceneUpdateLogic.h"
@@ -672,6 +673,118 @@ UInt32 InstallShadowActorUpdate(const ShadowSettings& settings, LogFn log) {
 	return 1 + grid;
 }
 
+// ---- The actors' pipeline timed (with [Probe] ActorUpdateTiming) -------------------------------
+//
+// Inclusive time of the steps one actor goes through each frame (read:
+// re/functions/0x0040D800.md row 19 and 23, knowledge/render-thread-outside-
+// the-pass.md): the process manager's update 0x00678510 (once a frame: the
+// frame count), its high-process walk 0x00673C10, each actor's update
+// 0x00603CA0 with its animation step 0x00603500 and ApplyAnimData
+// 0x00471F20 (0x00471C00 before it on one path), and the process time step
+// 0x0067ACA0. The steps nest; what an actor's update costs outside the
+// animation and the propagation is the difference.
+enum StepId { kStepManager, kStepHigh, kStepActor, kStepAnim, kStepApply, kStepPrepare, kStepTime, kStepCount };
+const char* const kStepNames[kStepCount] = {"ProcessManager::Update 0x00678510", "UpdateHighProcesses 0x00673C10", "actor update 0x00603CA0",
+                                            "actor animation 0x00603500", "ApplyAnimData 0x00471F20", "0x00471C00", "process time step 0x0067ACA0"};
+volatile LONG64 g_stepCalls[kStepCount] = {};
+volatile LONG64 g_stepTicks[kStepCount] = {};
+void* g_stepOriginal[kStepCount] = {};
+bool g_stepsOn = false;
+
+struct StepTimer {
+	StepId id;
+	LARGE_INTEGER start;
+	explicit StepTimer(StepId which) : id(which) { QueryPerformanceCounter(&start); }
+	~StepTimer() {
+		LARGE_INTEGER end;
+		QueryPerformanceCounter(&end);
+		InterlockedAdd64(&g_stepTicks[id], end.QuadPart - start.QuadPart);
+		InterlockedIncrement64(&g_stepCalls[id]);
+	}
+};
+using Step0Fn = UInt32(__fastcall*)(void*, void*);
+using Step1Fn = UInt32(__fastcall*)(void*, void*, UInt32);
+using Step2Fn = UInt32(__fastcall*)(void*, void*, UInt32, UInt32);
+UInt32 __fastcall StepManager(void* self, void* /*edx*/) {
+	StepTimer t(kStepManager);
+	return reinterpret_cast<Step0Fn>(g_stepOriginal[kStepManager])(self, nullptr);
+}
+UInt32 __fastcall StepHigh(void* self, void* /*edx*/, UInt32 a, UInt32 b) {
+	StepTimer t(kStepHigh);
+	return reinterpret_cast<Step2Fn>(g_stepOriginal[kStepHigh])(self, nullptr, a, b);
+}
+UInt32 __fastcall StepActor(void* self, void* /*edx*/, UInt32 a) {
+	StepTimer t(kStepActor);
+	return reinterpret_cast<Step1Fn>(g_stepOriginal[kStepActor])(self, nullptr, a);
+}
+UInt32 __fastcall StepAnim(void* self, void* /*edx*/, UInt32 a) {
+	StepTimer t(kStepAnim);
+	return reinterpret_cast<Step1Fn>(g_stepOriginal[kStepAnim])(self, nullptr, a);
+}
+UInt32 __fastcall StepApply(void* self, void* /*edx*/) {
+	StepTimer t(kStepApply);
+	return reinterpret_cast<Step0Fn>(g_stepOriginal[kStepApply])(self, nullptr);
+}
+UInt32 __fastcall StepPrepare(void* self, void* /*edx*/, UInt32 a) {
+	StepTimer t(kStepPrepare);
+	return reinterpret_cast<Step1Fn>(g_stepOriginal[kStepPrepare])(self, nullptr, a);
+}
+UInt32 __fastcall StepTime(void* self, void* /*edx*/, UInt32 a) {
+	StepTimer t(kStepTime);
+	return reinterpret_cast<Step1Fn>(g_stepOriginal[kStepTime])(self, nullptr, a);
+}
+
+void InstallActorSteps(LogFn log) {
+	struct Entry {
+		StepId id;
+		UInt32 address;
+		const UInt8* bytes;
+		UInt32 length;
+		const void* replacement;
+	};
+	static const UInt8 kManagerBytes[] = {0x83, 0xEC, 0x08, 0x56, 0x8B, 0xF1};              // sub esp,8; push esi; mov esi,ecx
+	static const UInt8 kHighBytes[] = {0x83, 0xEC, 0x0C, 0x53, 0x55, 0x56};                 // sub esp,0Ch; push ebx; push ebp; push esi
+	static const UInt8 kActorBytes[] = {0x6A, 0xFF, 0x68, 0x60, 0x2C, 0x9C, 0x00};          // push -1; push 009C2C60h
+	static const UInt8 kAnimBytes[] = {0x83, 0xEC, 0x4C, 0x53, 0x55, 0x56, 0x8B, 0xF1};     // sub esp,4Ch; push ebx; push ebp; push esi; mov esi,ecx
+	static const UInt8 kApplyBytes[] = {0x6A, 0xFF, 0x68, 0xE0, 0x0D, 0x9D, 0x00};          // push -1; push 009D0DE0h
+	static const UInt8 kPrepareBytes[] = {0x6A, 0xFF, 0x68, 0x58, 0xEC, 0x9A, 0x00};        // push -1; push 009AEC58h
+	static const UInt8 kTimeBytes[] = {0x83, 0xEC, 0x10, 0x53, 0x55, 0x56, 0x8B, 0xE9};     // sub esp,10h; push ebx; push ebp; push esi; mov ebp,ecx
+	const Entry entries[] = {
+	    {kStepManager, 0x00678510, kManagerBytes, sizeof(kManagerBytes), reinterpret_cast<const void*>(&StepManager)},
+	    {kStepHigh, 0x00673C10, kHighBytes, sizeof(kHighBytes), reinterpret_cast<const void*>(&StepHigh)},
+	    {kStepActor, 0x00603CA0, kActorBytes, sizeof(kActorBytes), reinterpret_cast<const void*>(&StepActor)},
+	    {kStepAnim, 0x00603500, kAnimBytes, sizeof(kAnimBytes), reinterpret_cast<const void*>(&StepAnim)},
+	    {kStepApply, 0x00471F20, kApplyBytes, sizeof(kApplyBytes), reinterpret_cast<const void*>(&StepApply)},
+	    {kStepPrepare, 0x00471C00, kPrepareBytes, sizeof(kPrepareBytes), reinterpret_cast<const void*>(&StepPrepare)},
+	    {kStepTime, 0x0067ACA0, kTimeBytes, sizeof(kTimeBytes), reinterpret_cast<const void*>(&StepTime)},
+	};
+	unsigned made = 0;
+	for (const Entry& e : entries) {
+		if (InstallEntryDetour(kStepNames[e.id], e.address, e.bytes, e.length, e.replacement, &g_stepOriginal[e.id], log, DetourRole::Shadow)) {
+			++made;
+		}
+	}
+	g_stepsOn = made != 0;
+	log("Probe: actor steps - %u of %u timers made", made, static_cast<unsigned>(kStepCount));
+}
+
+void LogActorSteps() {
+	if (!g_stepsOn || g_log == nullptr) {
+		return;
+	}
+	probe::TimedStep steps[kStepCount];
+	for (int i = 0; i < kStepCount; ++i) {
+		steps[i].name = kStepNames[i];
+		steps[i].calls = static_cast<std::uint64_t>(InterlockedExchange64(&g_stepCalls[i], 0));
+		steps[i].ticks = static_cast<std::uint64_t>(InterlockedExchange64(&g_stepTicks[i], 0));
+	}
+	char line[900];
+	const int at = std::snprintf(line, sizeof(line), "Probe: actor steps - ");
+	probe::FormatTimedSteps(steps, kStepCount, steps[kStepManager].calls,
+	                        g_frequency.QuadPart > 0 ? static_cast<double>(g_frequency.QuadPart) / 1000.0 : 0.0, line + at, sizeof(line) - at);
+	g_log("%s", line);
+}
+
 UInt32 InstallActorUpdateTiming(const ShadowSettings& settings, LogFn log) {
 	static bool s_done = false;
 	if (s_done || !settings.actorUpdateTiming) {
@@ -687,11 +800,13 @@ UInt32 InstallActorUpdateTiming(const ShadowSettings& settings, LogFn log) {
 	g_mode = Mode::Timing;
 	log("Probe %s: the call from ActorAnimData::ApplyAnimData 0x00471F20 runs the original, timed as the route is", kName);
 	InstallGrid(Mode::Timing, log);
+	InstallActorSteps(log);
 	return 1;
 }
 
 void LogActorUpdateSummary() {
 	LogGridSummary();
+	LogActorSteps();
 	if ((g_mode != Mode::Route && g_mode != Mode::Timing) || g_log == nullptr) {
 		return;
 	}
