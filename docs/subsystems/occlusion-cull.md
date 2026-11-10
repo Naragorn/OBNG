@@ -396,3 +396,20 @@ scene pass 17 ms in them, the walk's window at 3.0 ms a pass against 0.9-
 1.3 elsewhere). What that stretch was is not known - the change, or
 something beside the run; the other three runs have no such stretch. Open
 until more runs or a long one show it again or not.
+
+### Two more on runs and one off (2026-11-10, runs obng-profile-anvil-bc/20261110-165228 on, -165621 off, -170016 on)
+
+The scene pass's median over all seven runs: on 3.07, 2.88, 2.98, 3.16 ms;
+off 3.33, 3.80, 3.58 ms - 3.02 against 3.57 in the mean, 0.55 ms (15 %)
+less with the nodes. Frames with the render thread busy over 30 ms: on 14,
+80, 10, 9; off 15, 13, 11. The stretch of slow frames of the second on run
+did not come back in two more; a run without the node cull and with other
+settings showed a longer one (below), so it is not the node cull's.
+
+These runs did not fix the game's weather and hour, which the save rolls
+anew each run; two runs with identical DLLs and INIs differed by 2.4 ms a
+frame outside the scene pass (docs/performance-backlog.md). The scene
+pass's median moved less (the on runs lie within 0.28 ms, the off runs
+within 0.47), but the pairs are weaker than they looked. With the weather
+and hour fixed (the scenario since 17:08) a run with the nodes has the
+scene pass at 2.68-2.71 ms; the off side at fixed weather is not run yet.

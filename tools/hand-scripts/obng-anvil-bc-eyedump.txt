@@ -2,6 +2,8 @@
 # (four frames each), the headset's own frame size, the AI off so that two runs show the same town.
 # Compare a run with [Route] OcclusionCullNodes=1 against one without (tools/cull-blue.py, tools/eye-compare.py).
 ini Render SinglePassStereo=1
+# OBVR 188111d1 and later: no self-check panel at the main menu (the Linux install has no OBVR_Controls.ini; the panel would hold the script).
+ini SelfCheck ShowPanel=0
 ini Debug EyeDump=1
 ini Debug EyeDumpFrames=4
 expect Single-pass stereo: OBNG took the eyes ok (0)

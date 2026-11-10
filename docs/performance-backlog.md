@@ -267,6 +267,36 @@ at most 0.1 ms a frame in play and a few percent of a load; the 17 % of
 capture 31's long frames (Windows, 2026-11-07) is not seen here and would
 need a Windows capture with this probe to stand.
 
+### The weather confounds the runs; the GPU side in Anvil (measured 2026-11-10)
+
+- **The save rolls the weather and the hour anew each run.** Two Anvil runs
+  with the same DLLs and INIs (20261110-165228 and -170016) differ by 2.4 ms
+  a frame in the render thread's time outside the scene pass and 2 ms in the
+  compositor's GPU figure; one run (-170427) held 17-34 ms a frame for 90 s
+  with the GPU figure at 12-27 ms, and the node cull's second on run had 15
+  such seconds. What weather or hour those were is not recorded; a forced
+  thunderstorm (obng-profile-anvil-bc-storm, run 20261110-172041) is not
+  it: 4.6 ms busy, the scene pass 2.7 ms, as light as clear weather. The
+  Anvil scenario now sets the hour to 12, the timescale to 0 and clear
+  weather (fw 00038EEE); two runs with that agree to 0.01 ms in the busy
+  median (5.17 and 5.16). Every pair measured before 17:08 today carries
+  this spread.
+- **Multisampling**, the weather fixed, an eye of 4036x3376, the node cull
+  on (runs -170851 4x, -171242 2x, -171637 none): the application's GPU
+  time before submit 7.00 / 5.83 / 5.63 ms in the median (p95 9.17 / 7.89 /
+  7.67); the scene pass 2.68 / 2.71 / 3.05 ms (without multisampling the
+  engine takes its image-space texture route). Linux has 4x in its
+  Oblivion.ini and Windows 2x, which is a part of the "Linux GPU twice
+  Windows" noted above. The compositor's total stays at 8.8-9.3 ms in all
+  three and is not a measure of the application's work here.
+- **The pixels are not what the GPU time follows**: twice the pixels cost a
+  quarter more on the Gold Road (above), and 4x to no multisampling is a
+  fifth. The Dream Air's driver reports no hidden area (SteamVR's log of
+  2026-11-09: HiddenArea(0.00%)), so there is no ready mask of pixels the
+  lenses do not show either.
+- Not run: FoliageAA's four-pass leaf supersampling off (it is on on both
+  installs).
+
 ## Put back
 
 
