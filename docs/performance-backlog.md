@@ -117,6 +117,41 @@ picture was not looked at.
   8.4 %, ntdll 6 %, OBVR.dll 4 %, kernel32 3.4 %, OblivionFrameFixes 2.1 %,
   FoliageAA 1.9 % - the shape of capture 31's.
 
+### Anvil with the occlusion culler, and OBNG's own share (measured 2026-11-10)
+
+The run above was without [Route] OcclusionCull, which Nadi's Windows INI
+has had on since 2026-11-09 (docs/subsystems/occlusion-cull.md; capture 31
+is older than it). With it (run obng-profile-anvil-bc/20261110-122516,
+tools/hand-scripts/obng-measure-profile-current.ini as corrected):
+
+| per frame, Anvil on Linux | culler off | culler on |
+|---|---|---|
+| render thread busy, median / p90 / p95 | 8.4 / 10.5 / 11.5 ms | 6.5 / 8.8 / 9.7 |
+| scene pass, median / p90 / p95 | 5.1 / 6.6 / 7.0 ms | 3.6 / 5.4 / 5.8 |
+| busy over 10.5 ms | 10.0 % | 3.1 % |
+| compositor's GPU total, median / p90 | 12.0 / 14.0 ms | 10.1 / 12.4 |
+| reprojected (SteamVR, of the run) | 11.5 % | 6.5 % |
+
+The culler leaves out 30-71 % of an eye pass's 380-755 draws in the town
+(16-17 % at the harbour gate, 3 % before the move), 0 % unconfirmed.
+
+What is left of the scene pass with it (31 371 samples): Oblivion.exe 45 %
+spread (the pass lists 0x007AD270 3.4 %, the cull walk under 0x0070AB40
+about 7 % over six functions, the stream packing with OblivionFrameFixes
+about 4.5 %), D3D9 (DXVK here) 22 %, OBNG.dll 15.1 %, OBVR.dll 3.8 %,
+kernel32 3.6 %, ntdll 2.6 %.
+
+OBNG.dll's own 15.1 % by function (tools/re/dll-samples.py with the link
+map the build now writes, build-plugin/OBNG.map; shares of the pass's
+samples): the eye switch TimedEyeSwitch::Switch 2.9 %, the culler's
+BoundRect 2.2 %, RouteDrawPrimitive 1.3 %, the culler's Collect 1.2 %,
+CullDrawRenderPass 0.8 %, DecideDraw 0.8 %, Table::Find 0.7 %, the ports'
+Slot 0.6 %, three unnamed pieces 2.6 % together. The culler is about 6 %
+of the pass (0.2 ms a frame), the stereo route about 5.5 %. Outside the
+pass OBNG.dll is 5.3 % of the samples: the skeleton route's RoutedDown
+3.6 %, its Matches (the order checked against the tree on every call)
+0.9 %, SkinBound 0.7 %.
+
 ## Put back
 
 
@@ -128,5 +163,7 @@ picture was not looked at.
 | Character controller on several threads | B | at best about 2 ms with 134 actors | large; the state machine and the contact callbacks may write into the world | not started | knowledge/threading.md |
 | Volatile pack: the compare once a frame instead of once a pack | A | the compare is about 1.0 sample a frame in a crowd | small; needs a safe frame signal | put back | knowledge/skinned-vertex-streams.md |
 | The cells' selected update (`[Route] GridUpdate`) | A | none measured against the original | built and verified | off | docs/subsystems/scene-update.md |
+| OBNG's own code in the scene pass: the eye switch, the culler's BoundRect / Collect / Find, the draw route | A | 15 % of the pass in Anvil, about 0.5 ms a frame; half of it looks reachable (not measured) | small to medium, our own code, the link map names the functions | not started | this file |
+| The skeleton route's Matches on every call | A | 0.9 % of the samples outside the pass | small | not started | this file |
 | The rest of the process manager's update outside the actor updates | ? | 1.5 ms with 117 actors, not looked into | small to look | not started | knowledge/threading.md |
 | 0x00471C00 before ApplyAnimData | ? | 0.74-0.78 ms with 117 actors (6-7 us a call) | small to look | not started | knowledge/threading.md |

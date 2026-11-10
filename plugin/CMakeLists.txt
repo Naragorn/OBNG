@@ -34,3 +34,6 @@ target_include_directories(plugin_entry PUBLIC src)
 add_library(OBNG SHARED src/Plugin.cpp)
 target_compile_definitions(OBNG PRIVATE OBNG_BUILDING_DLL)
 target_link_libraries(OBNG PRIVATE plugin_entry shadow)
+# A link map beside the DLL (OBNG.map): the render sampler's addresses inside OBNG.dll are
+# resolved to its functions with it (tools/re/dll-samples.py). It changes nothing in the DLL.
+target_link_options(OBNG PRIVATE /MAP:${CMAKE_BINARY_DIR}/OBNG.map)
