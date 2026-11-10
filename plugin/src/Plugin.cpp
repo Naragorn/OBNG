@@ -14,6 +14,8 @@
 #include "ActorBatch.h"
 #include "HeapProbe.h"
 #include "LockProbe.h"
+#include "LogKeepLogic.h"
+#include "ProcessProbe.h"
 #include "FastConstantArrange.h"
 #include "RouteRangeWalk.h"
 #include "RouteStereoDraw.h"
@@ -27,6 +29,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+#include <vector>
 
 namespace {
 
@@ -57,8 +61,43 @@ void Log(const char* format, ...) {
 	va_end(args);
 }
 
+// The finished session's log goes to OBNG-logs under its last write's time
+// (LogKeepLogic.h) before the new one starts; an empty or missing log is
+// nothing to keep. Called under the log's lock.
+void KeepLastLog() {
+	namespace logkeep = obng::plugin::logkeep;
+	WIN32_FILE_ATTRIBUTE_DATA data{};
+	if (!GetFileAttributesExA(kLogFile, GetFileExInfoStandard, &data) || (data.nFileSizeLow == 0 && data.nFileSizeHigh == 0)) {
+		return;
+	}
+	FILETIME local{};
+	SYSTEMTIME t{};
+	if (!FileTimeToLocalFileTime(&data.ftLastWriteTime, &local) || !FileTimeToSystemTime(&local, &t)) {
+		return;
+	}
+	CreateDirectoryA(logkeep::kFolder, nullptr);
+	const std::string folder = std::string(logkeep::kFolder) + "\\";
+	const std::string kept = folder + logkeep::KeptName(logkeep::Stamp{t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond});
+	if (!MoveFileExA(kLogFile, kept.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+		return;
+	}
+	std::vector<std::string> names;
+	WIN32_FIND_DATAA found{};
+	const HANDLE find = FindFirstFileA((folder + "OBNG-*.log").c_str(), &found);
+	if (find != INVALID_HANDLE_VALUE) {
+		do {
+			names.emplace_back(found.cFileName);
+		} while (FindNextFileA(find, &found));
+		FindClose(find);
+	}
+	for (const std::string& name : logkeep::ToRemove(names, logkeep::kKeep)) {
+		DeleteFileA((folder + name).c_str());
+	}
+}
+
 void ResetLog() {
 	AcquireSRWLockExclusive(&g_logLock);
+	KeepLastLog();
 	if (FILE* file = std::fopen(kLogFile, "w")) {
 		std::fclose(file);
 	}
@@ -129,6 +168,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	s.memoryProbe = GetPrivateProfileIntA("Probe", "Memory", 1, path) != 0;
 	s.heapCalls = GetPrivateProfileIntA("Probe", "HeapCalls", 0, path) != 0;
 	s.lockCalls = GetPrivateProfileIntA("Probe", "LockCalls", 0, path) != 0;
+	s.processManager = GetPrivateProfileIntA("Probe", "ProcessManager", 0, path) != 0;
 	s.constantArrange = GetPrivateProfileIntA("Shadow", "ConstantArrange", 0, path) != 0;
 	s.mismatchLines = GetPrivateProfileIntA("Log", "MismatchLines", 20, path);
 	s.summaryEverySeconds = GetPrivateProfileIntA("Log", "SummaryEverySeconds", 10, path);
@@ -142,6 +182,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	r.actorBatch = GetPrivateProfileIntA("Route", "ActorBatch", 0, path) != 0;
 	r.constantArrange = GetPrivateProfileIntA("Route", "ConstantArrange", 0, path) != 0;
 	r.actorBatchTicks = GetPrivateProfileIntA("Route", "ActorBatchTicks", 0, path) != 0;
+	r.collisionWrites = GetPrivateProfileIntA("Probe", "CollisionWrites", 0, path) != 0;
 	r.stereoDraw = GetPrivateProfileIntA("Route", "StereoDraw", 0, path) != 0;
 	bool eyesKnown = false;
 	r.stereoEyes = obng::plugin::StereoEyesFromIni(GetPrivateProfileIntA("Route", "StereoEyes", 1, path), &eyesKnown);
@@ -252,6 +293,7 @@ bool StartSummaryTimerSideEffect(const obng::plugin::ShadowSettings&) {
 
 uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 	obng::plugin::InstallHeapProbe(settings, &Log);
+	obng::plugin::InstallProcessProbe(settings, &Log);
 	obng::plugin::InstallLockProbe(settings, &Log);  // its two detours are not among the counted ones
 	return obng::plugin::InstallProbes(settings, &Log);
 }

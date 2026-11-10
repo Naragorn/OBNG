@@ -297,12 +297,78 @@ need a Windows capture with this probe to stand.
 - Not run: FoliageAA's four-pass leaf supersampling off (it is on on both
   installs).
 
+### The Windows evening of 2026-11-10 (measured: captures 39-41, six OBVR session logs, two crash logs)
+
+With the occlusion culler, the node cull, ConstantArrange and VolatilePack
+on (the Windows OBNG.ini of 15:49). Frames over 13 ms by capture
+(tools/re/capture-frames.py; each about two minutes from the session's
+second minute on, cut at the event capacity; GPU timing off):
+
+| capture | place (derived from the sessions' cells) | frames over 13 ms | scene pass, in-time / slow |
+|---|---|---|---|
+| 31 (2026-11-07, before the culler) | Anvil | 32.9 % | 4.8 / 10.1 ms |
+| 39 | Anvil with a Walkers siege | 26.1 % | 3.6 / 5.6 ms |
+| 40 | Anvil, calm | 0.3 % | 2.6 ms |
+| 41 | Cheydinhal | 10.3 % | 4.1 / 4.5 ms |
+
+- Capture 39 is two halves: a minute at 0-11 % and a minute at 41-89 %.
+- In 39's slow frames the render thread is the limit: 6.27 sampler hits a
+  frame not waiting against 3.78 in the in-time frames (the sampler hits
+  about every 2 ms here: 67 107 samples in 136 s), about 12.7 against 7.7
+  ms. The difference is spread: the actor update 0x00603CA0 and its
+  skeleton 0x00471F20, 0x00519D90 / 0x0051E560 / 0x004D66B0 (not read),
+  the cull and draw (0x007AD270, 0x0053D7A0), Havok's Gsk. The inclusive
+  counts come from eight stack words a sample and are lower bounds.
+- A correction of how to read these captures: the ntdll share (41-49 % of
+  the slow frames' samples) is the thread waiting in a system call - every
+  such sample sits at an address ending in C, the return of a syscall stub
+  (0x7773837C alone has 16 872 of capture 39's samples) - and the stack
+  words behind it (0x008F0C90, 0x00908A40) are stale. It is not Havok.
+- SteamVR's half rate over whole sessions (OBVR's "Compositor:" lines over
+  the playtime the crash logs give): 8.7 % of the compositor's frames in
+  the 10-minute session, 4.3 % in the 23-minute one. The 2026-11-07
+  session of 23:45 had 35 713 frames at half rate in at most 27 minutes
+  (file times), about a quarter - another course of play.
+- Both crashes are at 0x0064F67C (0x0064F650 reads the flags of the
+  reference a package's +0x28 record points to: the pointer was dangling),
+  in packages of OblivionWalkers.esp; fixed there (794322a). OBNG.log of
+  the crash sessions did not exist any more (overwritten at each start;
+  kept per session since).
+- The engine's heap was 91 % and 99 % carved at the two crashes (512 MB);
+  33-65 % in every older crash log. Not explained. MoreHeap is at 1024 MB
+  since (Nadi), the fill is logged every summary since ([Probe] Memory).
+- Rare missing meshes and blue textures (Nadi, headset): not explained by
+  the logs. The culler's own count of skips that its test in the same pass
+  did not confirm is 0-1 % of the skips, 8 % in one window.
+
+### The actors' frame and the heap in the crowd scenario (measured 2026-11-10, Linux, obng-actors-count)
+
+Runs 20261110-225506 (the routes on, `obng-measure-actors-probes.ini`) and
+20261110-225751 (every route off, `obng-measure-heap-plain.ini`).
+
+- `[Probe] ProcessManager`: 0x00678510 takes 0.27 ms a frame with the
+  player alone, 2.0-2.9 ms with about 54 actors, 7.2-9.5 ms with about 100
+  (every frame over 3 ms); the same with the routes on and off within the
+  spread.
+- `[Probe] CollisionWrites`: a collision object's update wrote its own node
+  in 1-4 % of the skeletons at about 54 actors and 8-15 % at about 100
+  (2 % of the updates). The other 85-99 % of the skeletons touch the Havok
+  world alone in their collision updates.
+- The engine's heap grows at a constant actor count: flat at 239-250 MB and
+  about 618 000 blocks with about 54 actors, then with about 100 actors
+  about 95 000 blocks and 8-9 MB more every 10 s (1.05 -> 1.15 -> 1.25 ->
+  1.34 M blocks with the routes on; 0.86 -> 0.96 -> 1.05 -> 1.15 M with
+  every route off). Not OBNG's routes, then. Whether the engine alone
+  (the actors fight: AI, combat, pathing), OBVR or Walkers - not separated.
+  At that rate a 512 MB heap is full in a few minutes of such a crowd;
+  the Windows crash logs' 91 % and 99 % fit that, without proving it.
+
 ## Put back
 
 
 | item | class | measured or derived gain | cost | state | where |
 |---|---|---|---|---|---|
-| Skeleton down passes on several threads | B | at best 1.6 ms with 97 actors, 0.3 ms with 34 (derived from 2.15 / 0.37 ms measured) | large; the collision objects must leave the down pass first, the controllers' statics shown by a write watch | the reordering is built (`[Route] ActorBatch`), one thread, not accepted | docs/subsystems/actor-batch.md |
+| Skeleton down passes on several threads | B | at best 1.6 ms with 97 actors, 0.3 ms with 34 (derived from 2.15 / 0.37 ms measured); about 1 ms of a 12.7 ms slow frame in the Windows siege (sampler, a lower bound) | large; the collision objects must leave the down pass first (85-99 % of the skeletons allow it, measured), the controllers' statics shown by a write watch | the reordering is built (`[Route] ActorBatch`), one thread, not accepted | docs/subsystems/actor-batch.md |
 | Character controller: no support check for a standing actor | C | about 10 us a standing actor: 0.4 ms in the crowd scenario, up to 1.3 ms with 134 standing (derived) | medium; a standing actor must still notice the ground moving away | not started | knowledge/threading.md |
 | Character controller: far or unseen actors every second frame | C | by their share, not measured | medium | not started | knowledge/threading.md |
 | Character controller on several threads | B | at best about 2 ms with 134 actors | large; the state machine and the contact callbacks may write into the world | not started | knowledge/threading.md |
@@ -315,4 +381,5 @@ need a Windows capture with this probe to stand.
 | OBNG's own code in the scene pass: the eye switch, the culler's BoundRect / Collect / Find, the draw route | A | 15 % of the pass in Anvil, about 0.5 ms a frame; half of it looks reachable (not measured) | small to medium, our own code, the link map names the functions | not started | this file |
 | The skeleton route's Matches on every call | A | 0.9 % of the samples outside the pass | small | not started | this file |
 | The rest of the process manager's update outside the actor updates | ? | 1.5 ms with 117 actors, not looked into | small to look | not started | knowledge/threading.md |
+| The engine heap's growth in a crowd | ? | no frame time; it ends sessions (full heap) | small to look: [Probe] HeapCalls by call site while it grows, the scenario with OBVR and Walkers off | found 2026-11-10, not explained | this file |
 | 0x00471C00 before ApplyAnimData | ? | 0.74-0.78 ms with 117 actors (6-7 us a call) | small to look | not started | knowledge/threading.md |

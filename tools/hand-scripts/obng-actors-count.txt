@@ -10,6 +10,7 @@
 # profiler capture gives the frame phases per mark (tools/perf-phases.py).
 # Run with: tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-scene-update.ini tools/hand-scripts/obng-actors-count.txt
 
+ini SelfCheck ShowPanel=0
 ini Hands Enabled=1
 ini Hands ReachOpens=0
 ini Hands BodyCollision=1

@@ -67,6 +67,10 @@ volatile LONG64 g_sizeCollisionCalls[kSizeBuckets] = {};
 volatile LONG64 g_sizeControllerTicks[kSizeBuckets] = {};
 volatile LONG64 g_sizeControllerCalls[kSizeBuckets] = {};
 
+bool g_collisionWrites = false;
+SRWLOCK g_collisionWritesLock = SRWLOCK_INIT;
+probe::CollisionWrites g_collisionWritesSum;
+
 // The engine port with the geometry bounds timed (QueryPerformanceCounter
 // around each, about 20 ns a read; 15-25 geometries an actor).
 struct TimedPort : eng::Port {
@@ -79,11 +83,26 @@ struct TimedPort : eng::Port {
 	// Counted, not timed: a clock read per call would cost more than the
 	// calls (250 controller walks an armoured actor; run 20261109-191706
 	// timed them once: 32-37 us with the clock's own 10 us inside).
+	// With [Probe] CollisionWrites: the node's local and world transform
+	// before and after the collision object's update, compared.
+	std::uint32_t collisionWrote = 0;
 	void AfterWorldData(su::Handle h) {
-		if (eng::Dword(h, eng::kCollisionObjectOffset) != 0) {
-			++collisionCalls;
+		if (eng::Dword(h, eng::kCollisionObjectOffset) == 0) {
+			return;  // the engine port does nothing without one
 		}
+		++collisionCalls;
+		if (!g_collisionWrites) {
+			eng::Port::AfterWorldData(h);
+			return;
+		}
+		constexpr std::uint32_t kBoth = eng::kWorldTransformOffset + sizeof(su::Transform) - eng::kLocalTransformOffset;
+		UInt8 before[kBoth];
+		const void* transforms = reinterpret_cast<const void*>(static_cast<std::uintptr_t>(h + eng::kLocalTransformOffset));
+		std::memcpy(before, transforms, kBoth);
 		eng::Port::AfterWorldData(h);
+		if (std::memcmp(before, transforms, kBoth) != 0) {
+			++collisionWrote;
+		}
 	}
 	// What the walks find, counted: list nodes read, property updates and
 	// chain controllers fired (reusing the tick fields as plain counts).
@@ -194,6 +213,11 @@ void RoutedDown(su::Order* order, UInt32 timeBits, UInt32 flag) {
 	InterlockedAdd64(&g_sizeCollisionCalls[bucket], port.collisionCalls);
 	InterlockedAdd64(&g_sizeControllerTicks[bucket], port.controllerTicks);
 	InterlockedAdd64(&g_sizeControllerCalls[bucket], port.controllerCalls);
+	if (g_collisionWrites) {
+		AcquireSRWLockExclusive(&g_collisionWritesLock);
+		g_collisionWritesSum.AddSkeleton(static_cast<std::uint32_t>(port.collisionCalls), port.collisionWrote);
+		ReleaseSRWLockExclusive(&g_collisionWritesLock);
+	}
 }
 
 // The parent's upward pass, accounted to the same sums.
@@ -686,6 +710,7 @@ UInt32 InstallRouteActorUpdate(const RouteSettings& settings, LogFn log) {
 	}
 	s_done = true;
 	g_log = log;
+	g_collisionWrites = settings.collisionWrites;
 	QueryPerformanceFrequency(&g_frequency);
 	if (!InstallEntryDetour(kName, eng::kNiAVObjectUpdateAddress, kUpdateEntryBytes, sizeof(kUpdateEntryBytes),
 	                        reinterpret_cast<const void*>(&RouteReplacement), &g_original, log, DetourRole::Route)) {
@@ -898,6 +923,14 @@ void LogActorUpdateSummary() {
 		}
 	}
 	g_log("%s", line);
+	if (g_collisionWrites) {
+		AcquireSRWLockExclusive(&g_collisionWritesLock);
+		const probe::CollisionWrites taken = g_collisionWritesSum;
+		g_collisionWritesSum = probe::CollisionWrites{};
+		ReleaseSRWLockExclusive(&g_collisionWritesLock);
+		probe::FormatCollisionWrites(taken, line, sizeof(line));
+		g_log("%s", line);
+	}
 }
 
 }  // namespace obng::plugin

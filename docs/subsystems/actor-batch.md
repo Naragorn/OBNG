@@ -58,3 +58,32 @@ the loop (the player's among them). The picture was not compared.
   sections during a one-thread run would list every static they write.
 - The upward pass is already apart; the orders' map is held for the run.
 - Worker threads need the loop thread's x87 control word.
+
+## The collision object's update, read (2026-11-10)
+
+bhkNiCollisionObject::UpdateWorldData 0x0088EDC0 (the whole function): with
+the global mode 0x00BA7A8C at 3 nothing. Otherwise by the flags word +0x0C:
+bit 6 set -> 0x0089EAE0 and the bit cleared (nothing in mode 2); bit 0
+clear -> nothing; else the virtual +0x64 only when (the body +0x10 is there
+and 0x00607840 says so) or the blend +0x14 is below 1.0 or the motion type
++0x1C is 1.
+
+The blend object's +0x64, 0x0088F3D0: by the blend +0x14 - at 0.0 the hard
+set 0x0089EA70 (the Havok body from the node; skipped in mode 1), at 1.0 the
+virtual +0x68 (the node from the body; skipped in mode 2), between them the
+blended transform, written to the node through the virtual +0x78 in mode 0
+and to the body through the keyframe 0x008A34C0. Before that, when the
+motion type +0x1C is not the wanted one (1, or 6 at blend 1.0): +0x68 if it
+was 6, else the global list 0x00BA7A40, then the change 0x0089ED20.
+
+So an update writes its node at blend 1.0, at a blend between 0 and 1 in
+mode 0, and when it leaves motion type 6; at blend 0.0 it writes the Havok
+world alone. Which of these the game's actors are in, and how often, is what
+`[Probe] CollisionWrites=1` counts (the node's local and world transform
+compared around each update; ProbeLogic.h CollisionWrites): the share of
+skeletons with no node written is the share whose collision updates could
+move behind the down pass.
+
+`[Probe] ProcessManager=1` times the whole of 0x00678510 a frame - the size
+of the actors' frame in real play, which the scenario's 97 actors do not
+give.

@@ -880,6 +880,92 @@ inline int FormatMemory(const MemorySample& now, const MemoryPeak& peak, char* o
 	                     PercentOf(VirtualUsedBytes(now), now.virtualTotalBytes), Megabytes(VirtualUsedBytes(p)));
 }
 
+// The engine's own heap, MemoryHeap at 0x00B02020 (read in
+// MemoryHeap::Allocate 0x00401AA0: +0x0C the block's size, 0 when the heap
+// has no block and Allocate goes to malloc; +0x10 the top - the bytes carved
+// from the block's start so far, which freed blocks below it do not lower;
+// +0x14 the highest top; +0x1C the number of blocks. A request the free
+// lists cannot serve with the top at the size goes to 0x00401830 and can
+// come back null). The top is therefore the fill that decides, not the
+// bytes in use.
+struct GameHeapSample {
+	std::uint32_t sizeBytes = 0;
+	std::uint32_t topBytes = 0;
+	std::uint32_t highestTopBytes = 0;
+	std::uint32_t blocks = 0;
+};
+
+// "Probe: game heap N of N MB carved (N %, highest N MB), N blocks".
+inline int FormatGameHeap(const GameHeapSample& s, char* out, std::size_t capacity) {
+	if (s.sizeBytes == 0) {
+		return std::snprintf(out, capacity, "Probe: game heap - no block of its own (size 0), the engine allocates from the C runtime");
+	}
+	return std::snprintf(out, capacity, "Probe: game heap %u of %u MB carved (%u %%, highest %u MB), %u blocks", Megabytes(s.topBytes),
+	                     Megabytes(s.sizeBytes), PercentOf(s.topBytes, s.sizeBytes), Megabytes(s.highestTopBytes), s.blocks);
+}
+
+// Which collision objects' updates write their own node, counted over the
+// actors' skeleton updates ([Probe] CollisionWrites): an update that leaves
+// the node's local and world transform as they were touches the Havok world
+// alone and could run after the skeleton's down pass; one that writes the
+// node has the children's transforms depend on it, and its skeleton cannot
+// be split. Per skeleton and in all.
+struct CollisionWrites {
+	std::uint64_t skeletons = 0;
+	std::uint64_t skeletonsWithUpdates = 0;
+	std::uint64_t skeletonsWritten = 0;  // at least one update wrote its node
+	std::uint64_t updates = 0;
+	std::uint64_t wrote = 0;
+
+	void AddSkeleton(std::uint32_t skeletonUpdates, std::uint32_t skeletonWrote) {
+		++skeletons;
+		skeletonsWithUpdates += skeletonUpdates != 0 ? 1u : 0u;
+		skeletonsWritten += skeletonWrote != 0 ? 1u : 0u;
+		updates += skeletonUpdates;
+		wrote += skeletonWrote;
+	}
+};
+
+// "Probe: collision writes - N skeletons, N with collision updates, N of
+// them had a node written (N %); N updates, N wrote their node (N %)".
+inline int FormatCollisionWrites(const CollisionWrites& c, char* out, std::size_t capacity) {
+	return std::snprintf(out, capacity,
+	                     "Probe: collision writes - %llu skeletons, %llu with collision updates, %llu of them had a node written (%u %%); "
+	                     "%llu updates, %llu wrote their node (%u %%)",
+	                     static_cast<unsigned long long>(c.skeletons), static_cast<unsigned long long>(c.skeletonsWithUpdates),
+	                     static_cast<unsigned long long>(c.skeletonsWritten), PercentOf(c.skeletonsWritten, c.skeletonsWithUpdates),
+	                     static_cast<unsigned long long>(c.updates), static_cast<unsigned long long>(c.wrote), PercentOf(c.wrote, c.updates));
+}
+
+// A timed call over a summary's window: how often, how long in all, the
+// longest, and how many took longer than a limit.
+struct SpanStats {
+	std::uint64_t calls = 0;
+	std::uint64_t ticks = 0;
+	std::uint64_t longestTicks = 0;
+	std::uint64_t overLimit = 0;
+
+	void Add(std::uint64_t spanTicks, std::uint64_t limitTicks) {
+		++calls;
+		ticks += spanTicks;
+		if (spanTicks > longestTicks) {
+			longestTicks = spanTicks;
+		}
+		if (spanTicks > limitTicks) {
+			++overLimit;
+		}
+	}
+};
+
+// "Probe: <name> - N calls, mean N.NNN ms, longest N.NNN ms, N over N.N ms".
+inline int FormatSpan(const char* name, const SpanStats& s, std::uint64_t ticksPerSecond, double limitMs, char* out, std::size_t capacity) {
+	const double toMs = ticksPerSecond != 0 ? 1000.0 / static_cast<double>(ticksPerSecond) : 0.0;
+	const double mean = s.calls != 0 ? static_cast<double>(s.ticks) * toMs / static_cast<double>(s.calls) : 0.0;
+	return std::snprintf(out, capacity, "Probe: %s - %llu calls, mean %.3f ms, longest %.3f ms, %llu over %.1f ms", name,
+	                     static_cast<unsigned long long>(s.calls), mean, static_cast<double>(s.longestTicks) * toMs,
+	                     static_cast<unsigned long long>(s.overLimit), limitMs);
+}
+
 // ---- The view-dependence of the constant uploads ------------------------------------
 //
 // In the stereo route's test mode the second eye re-applies the shader's

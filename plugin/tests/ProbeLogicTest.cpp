@@ -108,6 +108,54 @@ void TestFormatMemory() {
 	Check(std::strstr(out, "(peak 1500)") != nullptr, "without a peak the sample stands in for it");
 }
 
+void TestFormatGameHeap() {
+	Section("The game heap's line");
+	char out[200];
+	const std::uint32_t mb = 1024u * 1024u;
+	FormatGameHeap(GameHeapSample{512 * mb, 466 * mb, 480 * mb, 123456}, out, sizeof(out));
+	Check(std::string(out) == "Probe: game heap 466 of 512 MB carved (91 %, highest 480 MB), 123456 blocks", (std::string("line: ") + out).c_str());
+	FormatGameHeap(GameHeapSample{1024 * mb, 0, 0, 0}, out, sizeof(out));
+	Check(std::string(out) == "Probe: game heap 0 of 1024 MB carved (0 %, highest 0 MB), 0 blocks", "an untouched heap");
+	FormatGameHeap(GameHeapSample{0, 5 * mb, 5 * mb, 7}, out, sizeof(out));
+	Check(std::string(out) == "Probe: game heap - no block of its own (size 0), the engine allocates from the C runtime", "size 0: the heap is not in use");
+	char tiny[16];
+	const int at = FormatGameHeap(GameHeapSample{512 * mb, 1 * mb, 1 * mb, 1}, tiny, sizeof(tiny));
+	Check(at >= static_cast<int>(sizeof(tiny)) - 1 && tiny[sizeof(tiny) - 1] == '\0', "a small buffer is cut, never overrun");
+}
+
+void TestSpan() {
+	Section("A timed call's window: count, mean, longest, over the limit");
+	char out[200];
+	SpanStats s;
+	FormatSpan("process manager", s, 10000000, 3.0, out, sizeof(out));
+	Check(std::string(out) == "Probe: process manager - 0 calls, mean 0.000 ms, longest 0.000 ms, 0 over 3.0 ms", (std::string("empty: ") + out).c_str());
+	s.Add(10000, 30000);  // 1 ms
+	s.Add(50000, 30000);  // 5 ms
+	s.Add(30000, 30000);  // 3 ms: at the limit is not over it
+	Check(s.calls == 3 && s.ticks == 90000 && s.longestTicks == 50000 && s.overLimit == 1, "three calls, one over");
+	FormatSpan("process manager", s, 10000000, 3.0, out, sizeof(out));
+	Check(std::string(out) == "Probe: process manager - 3 calls, mean 3.000 ms, longest 5.000 ms, 1 over 3.0 ms", (std::string("line: ") + out).c_str());
+	FormatSpan("x", s, 0, 3.0, out, sizeof(out));
+	Check(std::strstr(out, "mean 0.000 ms, longest 0.000 ms") != nullptr, "no clock frequency: zeros, no division");
+}
+
+void TestCollisionWrites() {
+	Section("Collision writes: per skeleton and in all");
+	char out[300];
+	CollisionWrites c;
+	FormatCollisionWrites(c, out, sizeof(out));
+	Check(std::string(out) == "Probe: collision writes - 0 skeletons, 0 with collision updates, 0 of them had a node written (0 %); 0 updates, 0 wrote their node (0 %)",
+	      (std::string("empty: ") + out).c_str());
+	c.AddSkeleton(0, 0);    // no collision objects
+	c.AddSkeleton(16, 0);   // updates, none wrote
+	c.AddSkeleton(18, 18);  // every one wrote (a ragdoll)
+	c.AddSkeleton(16, 1);   // one wrote
+	Check(c.skeletons == 4 && c.skeletonsWithUpdates == 3 && c.skeletonsWritten == 2 && c.updates == 50 && c.wrote == 19, "the sums");
+	FormatCollisionWrites(c, out, sizeof(out));
+	Check(std::string(out) == "Probe: collision writes - 4 skeletons, 3 with collision updates, 2 of them had a node written (66 %); 50 updates, 19 wrote their node (38 %)",
+	      (std::string("line: ") + out).c_str());
+}
+
 }  // namespace
 
 void TestStepTiming() {
@@ -520,6 +568,9 @@ int main() {
 	TestArithmetic();
 	TestFormatCalls();
 	TestFormatMemory();
+	TestFormatGameHeap();
+	TestSpan();
+	TestCollisionWrites();
 	TestViewConstants();
 	return Failures();
 }

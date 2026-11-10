@@ -10,6 +10,7 @@
 #include "ActorBatch.h"
 #include "HeapProbe.h"
 #include "LockProbe.h"
+#include "ProcessProbe.h"
 #include "FastConstantArrange.h"
 #include "RouteStereoDraw.h"
 #include "ShadowRangeWalk.h"
@@ -122,6 +123,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogActorBatchSummary();
 	LogHeapProbeSummary();
 	LogLockProbeSummary();
+	LogProcessProbeSummary();
 	LogConstantArrangeSummary();
 	LogOcclusionCullSummary();
 	if (planner != nullptr && g_settings.havokPlanner && sample.frames != 0) {

@@ -1523,6 +1523,12 @@ struct ProcessMemoryCounters {
 };
 using GetProcessMemoryInfoFn = BOOL(WINAPI*)(HANDLE process, ProcessMemoryCounters* counters, DWORD cb);
 
+// MemoryHeap, the engine's allocator object (read: the this of
+// MemoryHeap::Allocate 0x00401AA0 at its callers, e.g. MOV ECX,0x00B02020
+// in the wrapper 0x00401F00; CrashLogger names the same address
+// "Class: MemoryHeap" in its stack annotations).
+constexpr UInt32 kGameHeap = 0x00B02020;
+
 bool SampleMemory(probe::MemorySample* out) {
 	static GetProcessMemoryInfoFn s_getProcessMemoryInfo = reinterpret_cast<GetProcessMemoryInfoFn>(
 	    GetProcAddress(GetModuleHandleA("kernel32.dll"), "K32GetProcessMemoryInfo"));
@@ -1669,6 +1675,15 @@ void LogProbeSummary() {
 			probe::FormatMemory(sample, g_memoryPeak, line, sizeof(line));
 			g_log("%s", line);
 		}
+		// The engine's own heap (ProbeLogic.h has the fields as read).
+		const UInt8* heap = reinterpret_cast<const UInt8*>(kGameHeap);
+		probe::GameHeapSample game;
+		std::memcpy(&game.sizeBytes, heap + 0x0C, 4);
+		std::memcpy(&game.topBytes, heap + 0x10, 4);
+		std::memcpy(&game.highestTopBytes, heap + 0x14, 4);
+		std::memcpy(&game.blocks, heap + 0x1C, 4);
+		probe::FormatGameHeap(game, line, sizeof(line));
+		g_log("%s", line);
 	}
 }
 
