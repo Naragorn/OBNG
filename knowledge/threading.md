@@ -166,3 +166,38 @@ passes and 0.34 ms of upward passes and bookkeeping; the loop without them
 4.4-4.6 ms. The down passes are what threads could share: at four threads
 1.6 ms less at best with 97 actors, 0.3 ms with 34 (derived; the collision
 objects' share, about 3 us an actor, stays on one thread).
+
+## Inside the actors' loop: the character controller (measured 2026-11-10)
+
+OBVR's sampler cut by the loop's clock readings ([Route] ActorBatch=1 with
+ActorBatchTicks=1, tools/re/sampler-actor-loop.py; run obng-actors-count/
+20261110-102647, the 4 950 loops with 90 and more skeleton updates
+deferred, 14 807 samples). With the batch on the loop is the actors'
+updates without their skeleton updates: 4.2 ms a loop. By area: Havok
+63 %, the game's own code 17 %, the CRT 7 %, NiMain 4 %. The top functions
+are Havok's convex collision: 0x0093C690 15.4 %, 0x00916C00 14.4 %,
+0x008D1A30 7.3 % (under 0x0093F250, whose profiling label is "Gsk", under
+the agents labelled "CvxList" 0x00902160 and "BvTree" / "NarrowPhase"
+0x00908DE0 - read from the label strings in the functions). No function of
+the game's own code is above 1.5 %.
+
+The entry is the character controller's update 0x00896000 (its labels:
+"Character movement", "update character state"; __thiscall(float*), RET 4;
+proposal for the name), timed directly (run 20261110-103059, the route and
+the batch on):
+
+| actors in the loop | calls a loop | ms a loop | us a call | the loop | the skeleton run after it |
+|---|---|---|---|---|---|
+| 7 | 7.3 | 0.07 | 9.8 | 0.16 | 0.09 |
+| 56 | 54-56 | 0.96-1.14 | 17.9-20.3 | 1.35-1.77 | 0.65-0.73 |
+| 79 | 76-79 | 1.61-1.77 | 21.2-22.5 | 2.54-3.06 | 1.34-1.44 |
+| 99 | 96-99 | 2.14-2.33 | 22.2-23.6 | 3.78-4.10 | 1.91-2.00 |
+| 119 | 117-118 | 2.70-2.97 | 22.9-25.2 | 4.92-5.21 | 2.40-2.46 |
+
+One call an actor and frame, standing or not (the scenario's NPCs stand);
+the call gets dearer with the crowd (10 -> 25 us: more neighbours to test
+against). It is 55-60 % of the loop and more than the skeleton updates:
+the largest single item of the actors' frame. What it does per call
+(linear casts of the actor's shape against the world, the state machine's
+update, the contact handling) has been outlined, not read
+(re/export 0x00896000, 0x00896000-0x00897035).

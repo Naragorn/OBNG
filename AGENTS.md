@@ -42,6 +42,26 @@ main source of measured engine facts; it stays a separate project.
   **verified** only when the in-game differential check (original and rebuild
   run side by side, outputs compared) has run clean. The ledger keeps the two
   apart.
+- The goal is a modernised engine, not a bit-identical one (decided
+  2026-11-10). Bit identity is the gate where it is free and a tool
+  everywhere else. Every rebuild is one of three classes, named in its
+  ledger row, and each class has its own gate:
+  - **A - the same computation, faster** (the skeleton update, the square
+    root, the volatile pack): bit-identical in the shadow run -> **verified**,
+    as above. Not given up: it is the only automatic finder of errors.
+  - **B - another order, or several threads** (the actors' batch): not
+    comparable with the original as a whole. Bit-identical per unit in a test
+    (one unit, the same inputs, the same result), then in the game: the
+    scenarios pass, a long run without a crash, Nadi's look in the headset,
+    the peer sessions' regression tests -> **accepted**.
+  - **C - a different computation on purpose** (SSE in a free order, a new
+    algorithm): an exact version first as the reference (class A or the
+    original), the fast one compared against it within a stated tolerance,
+    then the game gates of class B -> **accepted**. The tolerance and what it
+    was measured on go into the ledger row.
+  Say which class a rebuild is before building it; a B or C needs no further
+  announcement than that. "Looks the same in the game" alone is never a gate:
+  it is not measurable and does not find rare errors.
 - Every rebuild is written 64-bit clean from the first line (decided
   2026-10-30, so that each block becomes a part of a later 64-bit host without
   a rewrite): no assumption that a pointer is four bytes, engine addresses and

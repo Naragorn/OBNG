@@ -6,6 +6,7 @@
 
 #include <windows.h>
 
+#include <cstdio>
 #include <unordered_map>
 #include <vector>
 
@@ -61,6 +62,50 @@ volatile LONG64 g_loopTicks = 0;
 volatile LONG64 g_runTicks = 0;
 volatile LONG64 g_downTicks = 0;
 LARGE_INTEGER g_frequency{};
+
+// [Route] ActorBatchTicks: every batched loop's three clock readings (before
+// the loop, after it, after the run) kept and written with the summary, so
+// that a sampler capture of the same run can be cut by them
+// (tools/re/sampler-actor-loop.py). The loop's thread appends, the summary's
+// thread takes them.
+struct LoopTicks {
+	LONGLONG start;
+	LONGLONG middle;
+	LONGLONG end;
+	UInt32 deferred;
+};
+bool g_keepTicks = false;
+SRWLOCK g_ticksLock = SRWLOCK_INIT;
+std::vector<LoopTicks> g_ticks;
+
+// With the ticks: the character controller's update 0x00896000 timed (the
+// game's Havok character update: its own labels are "Character movement"
+// and "update character state", read 0x00896000; __thiscall(float*), RET 4,
+// read 0x0089701A), inside the loop and outside it.
+constexpr const char* kControllerName = "CharacterController::Update";
+constexpr UInt32 kControllerAddress = 0x00896000;
+constexpr UInt8 kControllerBytes[] = {0x55, 0x8B, 0xEC, 0x83, 0xE4, 0xF0};  // push ebp; mov ebp,esp; and esp,-10h (read)
+using ControllerFn = void(__fastcall*)(void* self, void* edx, UInt32 argument);
+void* g_controllerOriginal = nullptr;
+volatile LONG64 g_controllerCallsInLoop = 0;
+volatile LONG64 g_controllerTicksInLoop = 0;
+volatile LONG64 g_controllerCallsOutside = 0;
+volatile LONG64 g_controllerTicksOutside = 0;
+
+void __fastcall ControllerReplacement(void* self, void* /*edx*/, UInt32 argument) {
+	LARGE_INTEGER start;
+	LARGE_INTEGER end;
+	QueryPerformanceCounter(&start);
+	reinterpret_cast<ControllerFn>(g_controllerOriginal)(self, nullptr, argument);
+	QueryPerformanceCounter(&end);
+	if (g_batching != 0 && GetCurrentThreadId() == g_loopThread) {
+		InterlockedIncrement64(&g_controllerCallsInLoop);
+		InterlockedAdd64(&g_controllerTicksInLoop, end.QuadPart - start.QuadPart);
+	} else {
+		InterlockedIncrement64(&g_controllerCallsOutside);
+		InterlockedAdd64(&g_controllerTicksOutside, end.QuadPart - start.QuadPart);
+	}
+}
 
 UInt32 Dword(UInt32 address) { return *reinterpret_cast<const UInt32*>(address); }
 
@@ -162,12 +207,18 @@ void __fastcall LoopReplacement(void* self, void* /*edx*/, UInt32 timeBits, UInt
 	original(self, nullptr, timeBits, flag);
 	InterlockedExchange(&g_batching, 0);
 	QueryPerformanceCounter(&middle);
+	const UInt32 deferredNow = static_cast<UInt32>(g_batch.Size());
 	RunBatch();
 	g_known.EndFrame();
 	QueryPerformanceCounter(&end);
 	InterlockedIncrement64(&g_loops);
 	InterlockedAdd64(&g_loopTicks, middle.QuadPart - start.QuadPart);
 	InterlockedAdd64(&g_runTicks, end.QuadPart - middle.QuadPart);
+	if (g_keepTicks) {
+		AcquireSRWLockExclusive(&g_ticksLock);
+		g_ticks.push_back(LoopTicks{start.QuadPart, middle.QuadPart, end.QuadPart, deferredNow});
+		ReleaseSRWLockExclusive(&g_ticksLock);
+	}
 }
 
 }  // namespace
@@ -196,6 +247,11 @@ UInt32 InstallRouteActorBatch(const RouteSettings& settings, LogFn log) {
 	}
 	++made;
 	g_installed = true;
+	g_keepTicks = settings.actorBatchTicks;
+	if (g_keepTicks) {
+		InstallEntryDetour(kControllerName, kControllerAddress, kControllerBytes, sizeof(kControllerBytes), reinterpret_cast<const void*>(&ControllerReplacement),
+		                   &g_controllerOriginal, log, DetourRole::Shadow);
+	}
 	log("Route %s: inside the frame's loop over the high actors ApplyAnimData's update is noted and run after the loop (down passes, then the "
 	    "upward passes in order); the player, a root new this frame and every other caller run in place",
 	    kLoopName);
@@ -205,6 +261,22 @@ UInt32 InstallRouteActorBatch(const RouteSettings& settings, LogFn log) {
 void LogActorBatchSummary() {
 	if (!g_installed || g_log == nullptr) {
 		return;
+	}
+	if (g_keepTicks) {
+		std::vector<LoopTicks> taken;
+		AcquireSRWLockExclusive(&g_ticksLock);
+		taken.swap(g_ticks);
+		ReleaseSRWLockExclusive(&g_ticksLock);
+		// Sixteen loops a line: start, then the two lengths and the bodies deferred.
+		char line[1200];
+		for (std::size_t i = 0; i < taken.size();) {
+			int at = std::snprintf(line, sizeof(line), "Probe: actor loop ticks");
+			for (unsigned n = 0; n < 16 && i < taken.size() && at > 0 && static_cast<std::size_t>(at) < sizeof(line) - 64; ++n, ++i) {
+				at += std::snprintf(line + at, sizeof(line) - at, " %lld+%lld+%lld:%u", taken[i].start, taken[i].middle - taken[i].start,
+				                    taken[i].end - taken[i].middle, taken[i].deferred);
+			}
+			g_log("%s", line);
+		}
 	}
 	const LONG64 loops = InterlockedExchange64(&g_loops, 0);
 	const LONG64 otherLoops = InterlockedExchange64(&g_otherLoops, 0);
@@ -220,6 +292,18 @@ void LogActorBatchSummary() {
 	const LONG64 downTicks = InterlockedExchange64(&g_downTicks, 0);
 	if (loops == 0 && otherLoops == 0 && outside == 0) {
 		return;
+	}
+	if (g_controllerOriginal != nullptr && loops > 0 && g_frequency.QuadPart > 0) {
+		const LONG64 inCalls = InterlockedExchange64(&g_controllerCallsInLoop, 0);
+		const LONG64 inTicks = InterlockedExchange64(&g_controllerTicksInLoop, 0);
+		const LONG64 outCalls = InterlockedExchange64(&g_controllerCallsOutside, 0);
+		const LONG64 outTicks = InterlockedExchange64(&g_controllerTicksOutside, 0);
+		const double toMs = 1000.0 / static_cast<double>(g_frequency.QuadPart);
+		g_log("Probe: character controller update 0x00896000 - inside the loop %.1f calls and %.3f ms a loop (%.1f us each); outside it %.1f calls "
+		      "and %.3f ms a loop",
+		      static_cast<double>(inCalls) / static_cast<double>(loops), static_cast<double>(inTicks) * toMs / static_cast<double>(loops),
+		      inCalls > 0 ? static_cast<double>(inTicks) * toMs * 1000.0 / static_cast<double>(inCalls) : 0.0,
+		      static_cast<double>(outCalls) / static_cast<double>(loops), static_cast<double>(outTicks) * toMs / static_cast<double>(loops));
 	}
 	const double perMs = g_frequency.QuadPart > 0 && loops > 0 ? 1000.0 / static_cast<double>(g_frequency.QuadPart) / static_cast<double>(loops) : 0.0;
 	const double perLoop = loops > 0 ? 1.0 / static_cast<double>(loops) : 0.0;

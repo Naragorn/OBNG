@@ -130,6 +130,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	r.gridUpdate = GetPrivateProfileIntA("Route", "GridUpdate", 0, path) != 0;
 	r.volatilePack = GetPrivateProfileIntA("Route", "VolatilePack", 0, path) != 0;
 	r.actorBatch = GetPrivateProfileIntA("Route", "ActorBatch", 0, path) != 0;
+	r.actorBatchTicks = GetPrivateProfileIntA("Route", "ActorBatchTicks", 0, path) != 0;
 	r.stereoDraw = GetPrivateProfileIntA("Route", "StereoDraw", 0, path) != 0;
 	bool eyesKnown = false;
 	r.stereoEyes = obng::plugin::StereoEyesFromIni(GetPrivateProfileIntA("Route", "StereoEyes", 1, path), &eyesKnown);
