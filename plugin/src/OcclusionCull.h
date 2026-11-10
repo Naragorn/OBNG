@@ -37,5 +37,8 @@ void OcclusionCullNoteDraw(UInt32 geometry);
 // next eye pass (the counts since the last line, then reset). Nothing when
 // the culler is off.
 void LogOcclusionCullSummary();
+// For other probes: whether the render thread is inside the eye pass, and how many eye passes there have been.
+bool OcclusionCullInEyePass();
+UInt32 OcclusionCullEyePasses();
 
 }  // namespace obng::plugin

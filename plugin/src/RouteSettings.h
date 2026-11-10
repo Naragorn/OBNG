@@ -99,6 +99,7 @@ struct RouteSettings {
 	UInt32 occlusionCullMargin = 2;     // [Route] OcclusionCullMargin: pixels the test rectangles grow on every side (0..64)
 	float occlusionCullMaxMove = 100.0f;  // [Route] OcclusionCullMaxMove: the camera moved further since the verdict: drawn
 	float occlusionCullMaxTurn = 10.0f;   // [Route] OcclusionCullMaxTurn: the camera turned further (degrees): drawn
+	bool occlusionCullStats = false;      // [Route] OcclusionCullStats: every eighth eye pass's draws counted by shared mesh and by hidden parent node (DrawGroupLogic.h); a measurement
 	bool occlusionCullFlat = false;       // [Route] OcclusionCullFlat: without the route's eye data the culler runs with the one camera of the flat game (the render target as the port); not for OBVR's dual pass
 	UInt32 occlusionCullTrace = 0;        // [Route] OcclusionCullTrace: eye passes to log in detail (camera, surfaces, control rectangles, first tests); 0 off
 	float occlusionCullTraceDepth = -1.0f;  // [Route] OcclusionCullTraceDepth: >= 0 puts a traced test's second query at this depth instead of the bound's far one

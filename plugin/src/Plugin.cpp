@@ -12,6 +12,7 @@
 #include "FastSqrt.h"
 #include "FastVolatilePack.h"
 #include "ActorBatch.h"
+#include "HeapProbe.h"
 #include "RouteRangeWalk.h"
 #include "RouteStereoDraw.h"
 #include "ShadowRangeWalk.h"
@@ -120,6 +121,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	s.unroutedDraws = GetPrivateProfileIntA("Probe", "UnroutedDraws", 0, path) != 0;
 	s.grass = GetPrivateProfileIntA("Probe", "Grass", 0, path) != 0;
 	s.memoryProbe = GetPrivateProfileIntA("Probe", "Memory", 1, path) != 0;
+	s.heapCalls = GetPrivateProfileIntA("Probe", "HeapCalls", 0, path) != 0;
 	s.mismatchLines = GetPrivateProfileIntA("Log", "MismatchLines", 20, path);
 	s.summaryEverySeconds = GetPrivateProfileIntA("Log", "SummaryEverySeconds", 10, path);
 	s.summaryTimer = GetPrivateProfileIntA("Log", "SummaryTimer", 0, path) != 0;
@@ -173,6 +175,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	GetPrivateProfileStringA("Route", "OcclusionCullMaxTurn", "10", cullTurn, sizeof(cullTurn), path);
 	r.occlusionCullMaxTurn = static_cast<float>(std::strtod(cullTurn, nullptr));
 	r.occlusionCullFlat = GetPrivateProfileIntA("Route", "OcclusionCullFlat", 0, path) != 0;
+	r.occlusionCullStats = GetPrivateProfileIntA("Route", "OcclusionCullStats", 0, path) != 0;
 	r.occlusionCullTrace = static_cast<UInt32>(GetPrivateProfileIntA("Route", "OcclusionCullTrace", 0, path));
 	char traceDepth[32] = {};
 	GetPrivateProfileStringA("Route", "OcclusionCullTraceDepth", "-1", traceDepth, sizeof(traceDepth), path);
@@ -236,6 +239,7 @@ bool StartSummaryTimerSideEffect(const obng::plugin::ShadowSettings&) {
 }
 
 uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
+	obng::plugin::InstallHeapProbe(settings, &Log);  // its two detours are not among the counted ones
 	return obng::plugin::InstallProbes(settings, &Log);
 }
 

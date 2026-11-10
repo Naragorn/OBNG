@@ -164,6 +164,33 @@ the culler's decide step 196 -> 173 ns a draw, BoundRect 2.2 -> 1.3 % of
 the scene pass's samples, OBNG.dll 15.1 -> 13.3 % of them - about 0.03 ms
 a frame; Wine's floor is not the slow one.
 
+### Three counts in Anvil (measured 2026-11-10, run obng-profile-anvil-bc/20261110-125834)
+
+[Route] OcclusionCullStats (every eighth eye pass's first asks noted,
+DrawGroupLogic.h) and [Probe] HeapCalls, tools/hand-scripts/
+obng-measure-draw-groups.ini; the 16 summary windows in the town, 2 940
+passes noted.
+
+- **Draws that share a mesh.** Per pass 1 068 asks, 624 hidden (58 %), 445
+  drawn, 20 of them skinned. The 425 drawn unskinned draws have 285
+  distinct model data (the shader object never splits a mesh's group
+  further): instancing by mesh could leave out at most a third of them,
+  and 88 (21 %) sit in groups of four or more; the largest group seen is
+  24. An upper bound - textures and lights still split groups.
+- **Hidden draws below hidden nodes.** Of the 624 hidden draws 448 (72 %)
+  sit below a parent all of whose noted draws are hidden (72 such nodes of
+  340); two levels up 394 (63 %) below 53 nodes, three levels up 377 (60 %)
+  below 35 nodes, four levels up 201 (32 %) below 14. A cull at the node
+  three levels up would dispose of a third of all asks with 35 decisions
+  instead of 377, before the engine collects them.
+- **The allocator.** Through its main entry 0x00401F00 the render thread
+  makes 212 allocations a frame in 0.09 ms (340-470 ns each), nearly all
+  of 64 bytes or less, and none inside the eye pass; the releases cost
+  0.007 ms. Other entries reach the heap as well (more releases than
+  allocations are seen), so this is a floor; the sampler's share of
+  0x00402480 puts the whole at 0.1-0.2 ms a frame in play. It is 17 % of
+  the long frames of capture 31: an item for loads, not for the frame.
+
 ## Put back
 
 
@@ -175,6 +202,9 @@ a frame; Wine's floor is not the slow one.
 | Character controller on several threads | B | at best about 2 ms with 134 actors | large; the state machine and the contact callbacks may write into the world | not started | knowledge/threading.md |
 | Volatile pack: the compare once a frame instead of once a pack | A | the compare is about 1.0 sample a frame in a crowd | small; needs a safe frame signal | put back | knowledge/skinned-vertex-streams.md |
 | The cells' selected update (`[Route] GridUpdate`) | A | none measured against the original | built and verified | off | docs/subsystems/scene-update.md |
+| A cull at the scene node: a node whose draws are all hidden left out before the engine collects them (its bound tested as a geometry's is) | C | a third of an eye pass's asks in Anvil sit below 35 such nodes; the time behind them (the cull walk, the accumulation, the culler's own decisions) not measured, 0.2-0.4 ms a frame estimated | medium | not started | this file |
+| Instancing of draws that share a mesh | C | at most a third of the drawn unskinned draws in Anvil, 21 % in groups of four or more | large | not started | this file |
+| The engine's allocator replaced | C | 0.1-0.2 ms a frame in play, 17 % of the long frames of capture 31 | medium | not started | this file |
 | OBNG's own code in the scene pass: the eye switch, the culler's BoundRect / Collect / Find, the draw route | A | 15 % of the pass in Anvil, about 0.5 ms a frame; half of it looks reachable (not measured) | small to medium, our own code, the link map names the functions | not started | this file |
 | The skeleton route's Matches on every call | A | 0.9 % of the samples outside the pass | small | not started | this file |
 | The rest of the process manager's update outside the actor updates | ? | 1.5 ms with 117 actors, not looked into | small to look | not started | knowledge/threading.md |

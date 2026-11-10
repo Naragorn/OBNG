@@ -41,6 +41,7 @@
 #include <cstring>
 
 #include "Memory.h"
+#include "DrawGroupLogic.h"
 #include "OcclusionCullLogic.h"
 #include "OcclusionRectDevice.h"
 #include "ProbeLogic.h"
@@ -122,6 +123,17 @@ ObngStereoEyes g_eyes{};
 oc::Viewport g_ports[2];
 UInt32 g_eyeCount = 2;  // this pass's cameras: 2 with the route's eye data, 1 in the flat game
 bool g_flat = false;    // [Route] OcclusionCullFlat
+// [Route] OcclusionCullStats: every eighth eye pass's draws noted (model
+// data, shader, four ancestors, hidden or not) and counted at the pass's end
+// (DrawGroupLogic.h): what instancing and a cull at the node could reach.
+constexpr UInt32 kGeometryModelDataOffset = 0xB4;  // NiGeometry's data (read 0x00722AE5, SceneUpdate.h)
+constexpr UInt32 kGeometryShaderOffset = 0xBC;     // its shader (NiDX9Renderer_DrawSkinnedPrimitive.h)
+bool g_groupStats = false;
+bool g_notePass = false;
+std::vector<draw_groups::DrawNote> g_notes;
+draw_groups::Totals g_groupTotals;
+volatile LONG g_inEyePass = 0;
+volatile LONG g_eyePassCount = 0;
 bool g_refusedLogged = false;
 volatile LONG g_summaryRequested = 0;
 probe::ClockPair g_summaryClock;
@@ -151,6 +163,26 @@ void FlushSummaryIfRequested() {
 	cull::FormatSummary(g_stats, g_settings, ticksPerMillisecond, now.qpc, line, sizeof(line));
 	g_log("%s", line);
 	g_stats.Reset();
+	if (g_groupStats && g_groupTotals.passes > 0) {
+		const draw_groups::Totals& t = g_groupTotals;
+		const double per = 1.0 / static_cast<double>(t.passes);
+		const double unskinned = static_cast<double>(t.drawn - t.drawnSkinned);
+		g_log("Route: occlusion cull draw groups - %llu passes noted; per pass %.0f draws asked, %.0f hidden, %.0f drawn (%.0f skinned); of the "
+		      "drawn unskinned: %.0f meshes, %.0f (mesh, shader) pairs - instancing by pair would leave %.0f draws of %.0f (%.0f %% less), %.0f "
+		      "draws share their pair with another, %.0f sit in groups of four or more, the largest group %u; hidden draws below a node whose "
+		      "noted draws are all hidden (two or more), by level above the geometry: 1: %.0f in %.0f of %.0f nodes, 2: %.0f in %.0f of %.0f, 3: "
+		      "%.0f in %.0f of %.0f, 4: %.0f in %.0f of %.0f",
+		      t.passes, static_cast<double>(t.draws) * per, static_cast<double>(t.hidden) * per, static_cast<double>(t.drawn) * per,
+		      static_cast<double>(t.drawnSkinned) * per, static_cast<double>(t.meshes) * per, static_cast<double>(t.meshAndShader) * per,
+		      static_cast<double>(t.meshAndShader) * per, unskinned * per,
+		      unskinned > 0.0 ? 100.0 * (unskinned - static_cast<double>(t.meshAndShader)) / unskinned : 0.0, static_cast<double>(t.inTwo) * per,
+		      static_cast<double>(t.inFour) * per, t.largest, static_cast<double>(t.hiddenBelow[0]) * per, static_cast<double>(t.hiddenNodes[0]) * per,
+		      static_cast<double>(t.nodes[0]) * per, static_cast<double>(t.hiddenBelow[1]) * per, static_cast<double>(t.hiddenNodes[1]) * per,
+		      static_cast<double>(t.nodes[1]) * per, static_cast<double>(t.hiddenBelow[2]) * per, static_cast<double>(t.hiddenNodes[2]) * per,
+		      static_cast<double>(t.nodes[2]) * per, static_cast<double>(t.hiddenBelow[3]) * per, static_cast<double>(t.hiddenNodes[3]) * per,
+		      static_cast<double>(t.nodes[3]) * per);
+		g_groupTotals = draw_groups::Totals{};
+	}
 }
 
 // The geometry's name for the trace; a pointer that cannot be read gives the
@@ -398,6 +430,19 @@ cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind, bool countRepeat
 	    cull::RectsFor(bound, origin, view0, view1, proj, g_ports, static_cast<float>(g_settings.margin), &rects, kinds, g_eyeCount);
 	const cull::Decided decided = cull::Decide(g_table, geometry, g_frame, testKind, g_settings, g_cameras, &g_stats);
 	cull::Count(&g_stats, kind, decided.decision, testKind, decided.newThisFrame, kinds);
+	if (g_notePass && decided.newThisFrame) {
+		draw_groups::DrawNote note;
+		note.data = ReadAt<UInt32>(geometry + kGeometryModelDataOffset);
+		note.shader = ReadAt<UInt32>(geometry + kGeometryShaderOffset);
+		UInt32 node = geometry;
+		for (unsigned level = 0; level < draw_groups::kLevels && node != 0; ++level) {
+			node = ReadAt<UInt32>(node + kObjectParentOffset);
+			note.ancestor[level] = node;
+		}
+		note.hidden = decided.decision == cull::Decision::kSkip;
+		note.skinned = kind == cull::DrawKind::kSkinned;
+		g_notes.push_back(note);
+	}
 	if (decided.newThisFrame && testKind == cull::TestKind::kTest) {
 		if (g_batch->count < cull::kMaxTests) {
 			cull::Test& test = g_batch->tests[g_batch->count];
@@ -606,9 +651,18 @@ UInt32 __fastcall CullFinish(void* self, void* /*edx*/) {
 	}
 	g_cameraSet = false;
 	g_lists.Reset();
+	g_notePass = g_groupStats && (g_frame % 8) == 0;
 	g_active = true;
+	InterlockedExchange(&g_inEyePass, 1);
 	const UInt32 eax = g_finish(self, nullptr);
+	InterlockedExchange(&g_inEyePass, 0);
+	InterlockedIncrement(&g_eyePassCount);
 	g_active = false;
+	if (g_notePass) {
+		g_groupTotals.Add(draw_groups::Count(g_notes));
+		g_notes.clear();
+		g_notePass = false;
+	}
 	if (!g_cameraSet) {
 		NoteCamera();  // no draw asked: the ring still gets this frame's camera
 	}
@@ -698,6 +752,7 @@ UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {
 	g_trace.passes = settings.occlusionCullTrace;
 	g_trace.probeDepth = settings.occlusionCullTraceDepth;
 	g_flat = settings.occlusionCullFlat;
+	g_groupStats = settings.occlusionCullStats;
 	UInt32 made = 0;
 	made += InstallEntryDetour("FinishAccumulating 0x007AE070 (occlusion cull: the eye pass)", kFinish, kFinishBytes, sizeof(kFinishBytes),
 	                           reinterpret_cast<const void*>(&CullFinish), reinterpret_cast<void**>(&g_finish), log, DetourRole::Route) ? 1 : 0;
@@ -721,6 +776,9 @@ UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {
 	    g_flat ? "without eye data the flat game's one camera (the render target as its port)" : "without eye data the pass runs untouched");
 	return made;
 }
+
+bool OcclusionCullInEyePass() { return g_inEyePass != 0; }
+UInt32 OcclusionCullEyePasses() { return static_cast<UInt32>(g_eyePassCount); }
 
 void LogOcclusionCullSummary() {
 	if (g_on) {
