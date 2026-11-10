@@ -41,7 +41,49 @@ long frames (a third of a percent of the frames, 4-8 % of the time), to
 the frames that miss by a millisecond although the thread waited, and to
 the scenes heavier than this one, which no capture here covers.
 
+### Corrections and the evening sessions (measured 2026-11-10, tools/re/capture-frames.py)
+
+- The Beyond at the Dream Air's frame size (an eye of 4036x3376, run
+  obng-profile-gold-road-single-dreamair/20261110-114256): the Gold Road
+  still holds 13.33 ms in every phase; the application's GPU time before
+  submit rises from 5.2-6.7 to 6.5-8.3 ms, the scene pass and the other CPU
+  spans stay; 0.3-0.9 % of the frames at the spots are over 20 ms (0-0.2 %
+  at 2568x2568).
+- The long frames of captures 35-37 are not hitches of play: they come in
+  clusters 45 s apart (+12 s, +57 s, +103 s), 70 % of their samples in
+  ntdll under the loader's drain loop 0x00434020 (knowledge/
+  background-loading.md) - the hand script's teleports. Withdrawn as an
+  item.
+- The frames of 11.6-13 ms are not misses: the compositor showed 99.5-
+  99.7 % of the frames of captures 32, 33, 36, 37 exactly once. They are
+  the frame start's jitter around the vsync. Withdrawn as an item.
+- What does miss, by the compositor's count of frames shown twice or more
+  (Dream Air, 90 Hz): capture 31 (2026-11-07 23:27) 29.5 %, 23 (11-02
+  21:11) 13.9 %, 30 (11-07 23:18) 7.0 %, 22 (11-02 20:42) 6.2 %, 26 4.1 %,
+  29 0.9 %, 28 0.6 %, 27 / 32 / 33 0.2-0.3 %. Where each was captured is
+  not in the captures.
+- Capture 31, the frames shown twice or more (2 929): the render thread
+  busy 17.1 ms (over 10.5 ms in 88 %), the scene pass 10.3 ms (5.1 ms in
+  the frames shown once), the GPU 12.7 ms (over 10 ms in 60 %); the CPU
+  alone over in 30 %, both in 58 %, the GPU alone in 2 %. Capture 23 the
+  same shape (CPU alone 40 %, both 46 %). Capture 30 is the GPU's: the GPU
+  alone over in 57 %, the scene pass 3.0 ms.
+- Capture 31's scene pass in those frames, by where the samples fall
+  (17 291 samples): Oblivion.exe 43 % spread over the constant and texture
+  stage functions (none above 2.6 %), D3D9.DLL 18.8 % (called from
+  SetupShaderPrograms 0x0077A1F0, ApplyConstants 0x009A8E30,
+  SetVertexShaderConstant 0x007830C0), OBNG.dll 9.2 %, OBVR.dll 8.3 %,
+  OblivionFrameFixes.dll 6.7 % (under the stream packing 0x0076F590 /
+  0x0076FE20), ntdll 5.6 %, FoliageAA.dll 3.2 %. That capture is older
+  than the square root, skeleton and volatile pack routes on Windows.
+
+What this says (derived): the large item is the scene pass of the heavy
+places - it doubles there, and it is the draw path (constants and their
+D3D9 calls, the stream packing, OBNG's and OBVR's own share in it), with
+the GPU over its budget in the same frames.
+
 ## Put back
+
 
 | item | class | measured or derived gain | cost | state | where |
 |---|---|---|---|---|---|
