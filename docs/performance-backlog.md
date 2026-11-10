@@ -191,6 +191,32 @@ passes noted.
   0x00402480 puts the whole at 0.1-0.2 ms a frame in play. It is 17 % of
   the long frames of capture 31: an item for loads, not for the frame.
 
+### What Oblivion Stutter Remover did, against today's numbers (2026-11-10)
+
+OSR (nexusmods.com/oblivion/mods/23208; its INI as quoted in the mod
+page's sticky posts, read 2026-11-10) had four parts: the heap replaced
+(`bReplaceHeap`, algorithms 1 FastMM4, 2 Microsoft, 3 SimpleHeap1, 5 / 6
+its own thread heaps, 8 tcmalloc), critical sections hooked (the default
+overrides: "Renderer+0x180", caller 0x00701748, suppressed; the MemoryHeap's
+own at 0x00B32B80 made to "stutter"), hash tables resized, and frame rate
+management. Nadi's Windows install has no OSR; of its plugins
+OblivionPerformanceRuntime sets `LowFragmentationHeap=1` (the process
+heap's, not the engine's MemoryHeap), nothing replaces MemoryHeap (the
+sampler still finds its slow path 0x00402480; the probe found the entry
+0x00401F00 unpatched).
+
+Against the Anvil run: the allocator is 0.1-0.2 ms a frame (above); the
+critical sections are visible in the scene pass as kernel32 3.6 % and
+ntdll 2.6 % of its samples, the stack words naming the accumulator's
+0x007AD270, 0x00405760 and the cull walk's 0x0070E1A0 as callers (stale
+words possible) - about 0.2 ms a frame if all of it is lock traffic. Which
+locks, taken how often and by which threads, is not counted yet.
+
+The cull at the node, estimated from the same samples: the cull walk and
+the accumulator's registration are about 12 % of the pass (0.4 ms a
+frame); a third of the asks sit below the 35 hidden nodes, so 0.15 ms,
+plus 377 culler decisions at 173 ns (0.07 ms): 0.2-0.25 ms a frame.
+
 ## Put back
 
 
@@ -203,6 +229,7 @@ passes noted.
 | Volatile pack: the compare once a frame instead of once a pack | A | the compare is about 1.0 sample a frame in a crowd | small; needs a safe frame signal | put back | knowledge/skinned-vertex-streams.md |
 | The cells' selected update (`[Route] GridUpdate`) | A | none measured against the original | built and verified | off | docs/subsystems/scene-update.md |
 | A cull at the scene node: a node whose draws are all hidden left out before the engine collects them (its bound tested as a geometry's is) | C | a third of an eye pass's asks in Anvil sit below 35 such nodes; the time behind them (the cull walk, the accumulation, the culler's own decisions) not measured, 0.2-0.4 ms a frame estimated | medium | not started | this file |
+| The render path's critical sections (OSR's "Renderer+0x180" among them) | C | kernel32 and ntdll are 6 % of the scene pass in Anvil, 0.2 ms a frame if all of it is locks; not counted | small to count, small to medium to act | not started | this file |
 | Instancing of draws that share a mesh | C | at most a third of the drawn unskinned draws in Anvil, 21 % in groups of four or more | large | not started | this file |
 | The engine's allocator replaced | C | 0.1-0.2 ms a frame in play, 17 % of the long frames of capture 31 | medium | not started | this file |
 | OBNG's own code in the scene pass: the eye switch, the culler's BoundRect / Collect / Find, the draw route | A | 15 % of the pass in Anvil, about 0.5 ms a frame; half of it looks reachable (not measured) | small to medium, our own code, the link map names the functions | not started | this file |
