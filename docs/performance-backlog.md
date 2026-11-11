@@ -628,3 +628,20 @@ list, obng-measure-docks-census.ini, Walkers DLL 774206fe, LINK++):
   still unmeasured. The Walkers log of the run shows one horde of four and no
   wait or hold line of 4.11c, so the drop from 96-100 actors is not shown to
   be 4.11c's.
+
+## Far actors' whole update in one frame of 16 (2026-11-11, measured, one run)
+
+[Route] ActorFarWhole=1 with ActorFarEvery=16 beyond 6000 units, alternating
+by summary window, run artifacts/shadow/obng-profile-anvil-docks/20261111-131630
+(Windows mod list, OBNG.dll 8ef8cf3e, about 37 of 57 actors far):
+
+- ProcessManager::Update 0x00678510 a frame: off 5.80 / 5.07 / 4.39 / 3.97 ms,
+  on 3.10 / 2.98 / 2.78 / 2.53 / 2.58 ms - about 2 ms less. 94 % of the far
+  actors' calls left out.
+- The harness passed, no crash. Not looked at: whether far actors move at
+  their speed with the summed time, and what the long steps do to their
+  physics. Class C; the gate is Nadi's look in the headset.
+- The run before (20261111-130350) is void for the picture: its clock ticked
+  on the player's update, which runs more than once a frame, so every call
+  got summed time.
+- On Windows for the evening of 2026-11-11: ActorFarWhole=1, ActorFarEvery=16.
