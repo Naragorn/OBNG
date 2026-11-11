@@ -110,6 +110,9 @@ struct RouteSettings {
 	bool actorBatch = false;   // [Route] ActorBatch: inside the frame's loop over the high actors 0x00677EC0 ApplyAnimData's update is noted and run after the loop (ActorBatch.cpp); needs ActorUpdate; off until measured
 	bool actorUnusedBones = false;  // [Route] ActorUnusedBones: in the actors' route the bones nothing hangs on are left out (SceneUpdateLogic.h UnusedBones; the names from OBNG-unused-bones.txt); needs actorUpdate
 	bool unusedBonesProbe = false;  // [Probe] UnusedBones: the same bones counted, with their controllers' classes, and nothing left out; a measurement
+	UInt32 actorFarEvery = 1;       // [Route] ActorFarEvery: an actor farther from the player than actorFarDistance gets its skeleton update on every n-th call only (ActorFarRateLogic.h); 1 = off; needs actorUpdate
+	float actorFarDistance = 6000.0f;  // [Route] ActorFarDistance, game units
+	bool actorFarAlternate = false;  // [Route] ActorFarAlternate: the lower rate only in every second summary window, for measuring it inside one run
 	bool collisionWrites = false;  // [Probe] CollisionWrites: in the actors' route every collision object's update is checked for writing its own node (ProbeLogic.h CollisionWrites); a measurement
 	bool actorBatchTicks = false;  // [Route] ActorBatchTicks: the batched loops' clock readings logged, for cutting a sampler capture by them
 	bool actorUpdate = false;  // [Route] ActorUpdate: the call from ApplyAnimData 0x00471F20 runs the flat subtree update - the same transforms and bounds bit for bit without the recursion's virtual calls (FastSceneUpdate.cpp); off until measured

@@ -14,6 +14,7 @@
 
 #include "ProbeLogic.h"
 #include "ShadowRecorder.h"
+#include "engine/scene/ActorFarRateLogic.h"
 #include "engine/scene/SceneUpdate.h"
 #include "engine/scene/SceneUpdateLogic.h"
 
@@ -191,6 +192,53 @@ std::size_t LoadBoneNames() {
 	}
 	std::fclose(in);
 	return g_boneNames.size();
+}
+
+// A far actor's update on every n-th call ([Route] ActorFarEvery;
+// ActorFarRateLogic.h). The distance is between the root's world position
+// as its last update left it (the world transform's translation, +0x64 + 9
+// floats) and the player's reference position (0x00B333C4, +0x2C: OBVR
+// GameAddresses.h kPlayerPointer, kRefPositionOffset).
+constexpr UInt32 kFarPlayerPointer = 0x00B333C4;
+constexpr UInt32 kFarRefPosition = 0x2C;
+constexpr std::uint32_t kWorldTranslateOffset = eng::kWorldTransformOffset + 9 * 4;
+std::uint32_t g_farEvery = 1;
+float g_farDistance = 6000.0f;
+bool g_farAlternate = false;
+volatile LONG g_farOnNow = 1;       // with the alternation: whether this summary window uses the lower rate
+volatile LONG64 g_farCalls = 0;     // calls of actors beyond the distance
+volatile LONG64 g_farSkipped = 0;   // of them left out
+
+// Whether this call of the root's update runs.
+bool FarRunsNow(su::Order* order, su::Handle root) {
+	namespace far_rate = obng::engine::scene::actor_far_rate;
+	std::uint32_t every = 1;
+	if (g_farEvery > 1) {
+		const UInt32 player = *reinterpret_cast<const UInt32*>(kFarPlayerPointer);
+		if (player != 0) {
+			float here[3];
+			float there[3];
+			std::memcpy(here, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(root + kWorldTranslateOffset)), sizeof(here));
+			std::memcpy(there, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(player + kFarRefPosition)), sizeof(there));
+			const float x = here[0] - there[0];
+			const float y = here[1] - there[1];
+			const float z = here[2] - there[2];
+			// Squared against squared: no root, and a NaN compares false (every call).
+			const float squared = x * x + y * y + z * z;
+			if (squared > g_farDistance * g_farDistance) {
+				InterlockedIncrement64(&g_farCalls);
+				every = g_farOnNow != 0 ? g_farEvery : 1;
+			}
+		}
+	}
+	far_rate::State state{order->farCalls, order->farRan};
+	const bool runs = far_rate::RunsNow(state, root, every);
+	order->farCalls = state.calls;
+	order->farRan = state.ran;
+	if (!runs) {
+		InterlockedIncrement64(&g_farSkipped);
+	}
+	return runs;
 }
 
 bool g_collisionWrites = false;
@@ -379,6 +427,9 @@ void __fastcall RouteReplacement(void* self, void* /*edx*/, UInt32 timeBits, UIn
 	if (order == nullptr) {
 		Original(self, timeBits, flag);
 		return;
+	}
+	if (g_farEvery > 1 && !FarRunsNow(order, root)) {
+		return;  // a far actor between two of its updates: the skeleton stays as it is
 	}
 	RoutedDown(order, timeBits, flag);
 	RoutedUp(order);
@@ -841,6 +892,13 @@ UInt32 InstallRouteActorUpdate(const RouteSettings& settings, LogFn log) {
 	s_done = true;
 	g_log = log;
 	g_collisionWrites = settings.collisionWrites;
+	g_farEvery = settings.actorFarEvery < 1 ? 1 : settings.actorFarEvery > 16 ? 16 : settings.actorFarEvery;
+	g_farDistance = settings.actorFarDistance;
+	g_farAlternate = settings.actorFarAlternate;
+	if (g_farEvery > 1) {
+		log("Route NiAVObject::Update: an actor farther than %.0f units from the player gets its skeleton update on every %u. call%s", static_cast<double>(g_farDistance),
+		    g_farEvery, g_farAlternate ? "; alternating: only in every second summary window" : "");
+	}
 	g_bonesSkip = settings.actorUnusedBones;
 	g_bonesCount = settings.unusedBonesProbe;
 	if (g_bonesSkip || g_bonesCount) {
@@ -1060,6 +1118,16 @@ void LogActorUpdateSummary() {
 		}
 	}
 	g_log("%s", line);
+	if (g_farEvery > 1) {
+		const LONG64 farCalls = InterlockedExchange64(&g_farCalls, 0);
+		const LONG64 farSkipped = InterlockedExchange64(&g_farSkipped, 0);
+		const bool wasOn = g_farOnNow != 0;
+		if (g_farAlternate) {
+			InterlockedExchange(&g_farOnNow, wasOn ? 0 : 1);
+		}
+		g_log("Route: far actors (every %u. call beyond %.0f units, %s in this window) - %lld calls of far actors, %lld left out", g_farEvery,
+		      static_cast<double>(g_farDistance), wasOn ? "on" : "off", farCalls, farSkipped);
+	}
 	if (g_bonesSkip || g_bonesCount) {
 		const LONG64 orders = InterlockedExchange64(&g_bonesOrders, 0);
 		const LONG64 entries = InterlockedExchange64(&g_bonesEntries, 0);

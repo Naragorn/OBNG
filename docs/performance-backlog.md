@@ -530,6 +530,34 @@ tree. The census run between them (same code, nothing left out) had large
 trees at 55-67 us; the machine's state differs between runs by more than
 the effect. An alternation inside one run would settle it.
 
+### Far actors' skeletons at a quarter rate, alternating inside one run (measured 2026-11-11, Linux, run obng-profile-anvil-docks/20261111-104859)
+
+`[Route] ActorFarEvery=4`, `ActorFarDistance=6000`, `ActorFarAlternate=1`
+(`obng-measure-docks-far.ini`): the lower rate on in every second summary
+window, the docks with the Windows mod list as before. In this run the
+engine updated 96-100 actors a frame (the Walkers hordes had gathered:
+twice the 50 of the runs an hour earlier), 73-79 of them beyond 6000 units.
+
+Per frame, the windows' means (five on, four off):
+
+| | off | on (75 % of the far actors' calls left out) |
+|---|---|---|
+| ProcessManager::Update, in all | 8.77 ms | 7.45 ms |
+| ApplyAnimData (the skeleton updates) | 2.67 | 1.52 |
+| the flat run alone | 2.31 | 1.19 |
+| CharacterController::Update | 2.20 | 2.17 |
+| the animation step | 0.67 | 0.66 |
+| the high actors' loop itself | 1.42 | 1.34 |
+
+The skeleton part drops by 1.15 ms (43 %), the actors' frame by 1.3 ms;
+the character controller and the animation step do not move, as expected.
+The scenario passed. What it looks like - a far actor in the open moves its
+figure at a quarter of the frame rate - nobody has looked at.
+
+A lesson for reading these logs: a summary writes the route's lines before
+the [Timed] lines; pairing them by the first timed line shifts them by one
+window (it made "on" look slower at first).
+
 ## Put back
 
 
@@ -550,5 +578,5 @@ the effect. An alternation inside one run would settle it.
 | The animation step 0x00603500, the high actors' loop itself, 0x005F6540 | ? | 1.1 + 1.1 + 0.7 ms with 119 fighting actors, under 0.5 ms together with 55 (measured 2026-11-11) | small to look: [Timed] one level down | not started | this file |
 | The engine heap's growth in a crowd | ? | no frame time; it ends sessions (full heap) | small to look: [Probe] HeapCalls by call site while it grows, the scenario with OBVR and Walkers off | found 2026-11-10, not explained | this file |
 | The loose skeleton's unused bones left out (`[Route] ActorUnusedBones`) | C | not shown: between nothing and about 7 us a large tree (0.3 ms a frame at the docks at best); the 0.75 ms derived before was wrong - the bones left out are the cheap ones | built 2026-11-11, off; an alternation inside one run would measure it | built, not accepted | this file |
-| Far actors' skeletons at a lower rate | C | half the docks' 50 actors are a horde 10 000-11 700 units away: up to half of 1.9 ms a frame there (derived) | medium: what reads a far actor's bones between two updates (collision bodies, attached lights), and the look of it up close when it comes nearer | not started | this file |
+| Far actors' skeletons at a lower rate (`[Route] ActorFarEvery`) | C | measured at the docks with 98 actors, 75 of them beyond 6000 units, every 4th call: the skeleton updates 2.67 -> 1.52 ms a frame, the actors' frame 8.77 -> 7.45 | built 2026-11-11, off; the headset look (a far figure at a quarter rate), and what reads a far actor's bones between two updates, are open | built, not accepted | this file |
 | 0x00471C00 before ApplyAnimData | ? | 0.74-0.78 ms with 117 actors (6-7 us a call) | small to look | not started | knowledge/threading.md |

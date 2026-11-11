@@ -195,6 +195,9 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	r.actorBatchTicks = GetPrivateProfileIntA("Route", "ActorBatchTicks", 0, path) != 0;
 	r.collisionWrites = GetPrivateProfileIntA("Probe", "CollisionWrites", 0, path) != 0;
 	r.actorUnusedBones = GetPrivateProfileIntA("Route", "ActorUnusedBones", 0, path) != 0;
+	r.actorFarEvery = GetPrivateProfileIntA("Route", "ActorFarEvery", 1, path);
+	r.actorFarDistance = static_cast<float>(GetPrivateProfileIntA("Route", "ActorFarDistance", 6000, path));
+	r.actorFarAlternate = GetPrivateProfileIntA("Route", "ActorFarAlternate", 0, path) != 0;
 	r.unusedBonesProbe = GetPrivateProfileIntA("Probe", "UnusedBones", 0, path) != 0;
 	r.stereoDraw = GetPrivateProfileIntA("Route", "StereoDraw", 0, path) != 0;
 	bool eyesKnown = false;

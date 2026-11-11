@@ -407,6 +407,9 @@ struct Order {
 	// tree goes - whoever fills it fills it when the order is built.
 	std::vector<std::uint8_t> unused;
 	std::uint32_t unusedCount = 0;  // the unused entries found for this order, left out or only counted
+	// This root's calls and whether it has had an update (ActorFarRateLogic.h State; kept here so that it lives with the order).
+	std::uint32_t farCalls = 0;
+	bool farRan = false;
 };
 
 // The tree port Build and Matches read through:
