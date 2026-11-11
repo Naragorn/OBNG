@@ -716,3 +716,42 @@ of the door, so a bar and the frame cover the picture's left half. One run,
 the head moved in jumps. The Windows defect is not reproduced on Linux in a
 still cell, a new game standing, or the running scene; what is left untested
 is Windows itself and real head motion.
+
+### 2026-11-11 evening: the node log in the new game's prison, and the far actors' travel at the docks
+
+Two runs on Linux with the Windows mod list linked, OBNG.dll of 7a64685.
+
+**The node log** (`[Route] OcclusionCullNodeLog=400`, run
+`artifacts/shadow/obng-cull-newgame-bars/20261111-181303`, measured): 50 nodes
+were left out for the first time in the whole run, all of them before the
+`prison` mark - during the race menu, which already renders the cell. They are
+other rooms of the cell (`IDWall01`, `IDCeiling01`, `IDColumnShort..`, the
+other cells' gates) and the tutorial's NPCs waiting off stage near
+(-505, 480, 241): the whole nodes of Glenroy, Baurus and the Emperor, and
+parts of them (`UpperBody` of Glenroy and of Captain Renault, `Bip01 Pelvis`,
+`SideWeapon`, `Bip01 Neck1`, `BSFaceGenNiNodeBiped`, the Emperor's `Amulet`);
+2 to 5 skinned draws a pass were skipped as well. From the `prison` mark to the
+end (the scene running, the guards at the bars) exactly 1.0 node a pass was
+left out, 0 skinned draws were skipped and 1496 to 1502 particle draws a
+window were counted. So: the culler does take actors' part nodes and skinned
+draws out by their bounds (the mechanism Nadi's missing arms and chest would
+need), but in this run it did so only while they stood behind walls. Whether
+it misfires on Windows is not shown; which node the constant one is is not
+known (the log names a node's first leaving out only). The particle loss of
+the standing run did not repeat here.
+
+**The far actors' travel** (run
+`artifacts/shadow/obng-profile-anvil-docks/20261111-182322`,
+`obng-measure-docks-far-whole.ini`, the route alternating by 10 s window,
+measured): the far actors that move made
+
+| window | lower rate off | lower rate on (every 16th) |
+|---|---|---|
+| moving ones, units/s | 79.2, 70.4, 81.5, 66.3, 74.5 | 34.5, 30.1, 30.7, 33.8, 38.0 |
+| all far ones, units/s | 59.6, 51.5, 63.4, 51.1, 56.7 | 21.1, 23.4, 23.6, 25.3, 26.6 |
+
+With the whole update on every 16th frame a far actor walks at about 45 % of
+its speed: the summed time in frameSeconds 0x00B33E9C does not carry the
+movement in full. Which part reads another time (the character controller's
+step is the first suspect - unverified) is the next thing to read. Until then
+`ActorFarWhole` is not accepted (class C: the gate was this measurement).
