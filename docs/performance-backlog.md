@@ -621,5 +621,10 @@ list, obng-measure-docks-census.ini, Walkers DLL 774206fe, LINK++):
   actor in both runs, so the cost follows the actor count (derived from the
   two runs).
 - Of the last summary's 30 actors, 11 are creatures with FF references of
-  base forms in plugins 3F and 38 standing 10 600 to 11 800 units away:
-  actors that far are still updated as high process.
+  base forms in plugins 3F (MOO) and 38 (OblivionWalkers.esp) standing
+  10 600 to 11 800 units away: actors that far are still updated as high
+  process. Walkers' reading: they stand in cells within two of the player's
+  cell (-48,-8), so inside the 5x5 loaded grid; an actor outside the grid is
+  still unmeasured. The Walkers log of the run shows one horde of four and no
+  wait or hold line of 4.11c, so the drop from 96-100 actors is not shown to
+  be 4.11c's.
