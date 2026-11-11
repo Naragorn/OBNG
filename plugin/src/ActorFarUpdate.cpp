@@ -82,6 +82,37 @@ void __fastcall Controller(void* self, void*, float* step) {
 	reinterpret_cast<ControllerFn>(g_controllerOriginal)(self, step);
 }
 
+// The animation's update 0x00476D10 (proposal for the name; __thiscall of the
+// animation data with the actor, the step and a time or -1; read: the step is
+// added to the time at +0x94 and the controllers run at it): what step a far
+// actor's animation gets, inside its update and outside of it.
+constexpr UInt32 kAnimUpdate = 0x00476D10;
+constexpr UInt8 kAnimUpdateBytes[] = {0x55, 0x8B, 0xEC, 0x83, 0xE4, 0xF8};  // push ebp; mov ebp, esp; and esp, -8 (read)
+using AnimUpdateFn = void(__thiscall*)(void* self, UInt32 actor, float step, float time);
+void* g_animOriginal = nullptr;
+volatile LONG64 g_animCalls[3] = {};   // 0, 1 as the controller's kinds; 2: a far actor's, outside its update
+volatile LONG64 g_animMicros[3] = {};
+
+bool IsFar(UInt32 actor, UInt32 player);
+UInt32 Dword(UInt32 address);
+
+void __fastcall AnimUpdate(void* self, void*, UInt32 actor, float step, float time) {
+	if (GetCurrentThreadId() == g_thread) {
+		const UInt32 player = Dword(kPlayerPointer);
+		int kind = -1;
+		if (g_inFar) {
+			kind = g_inSummed > 0.0f ? 1 : 0;
+		} else if (actor != 0 && player != 0 && actor != player && IsFar(actor, player)) {
+			kind = 2;
+		}
+		if (kind >= 0 && step == step) {
+			InterlockedIncrement64(&g_animCalls[kind]);
+			InterlockedExchangeAdd64(&g_animMicros[kind], static_cast<LONG64>(static_cast<double>(step) * 1000000.0));
+		}
+	}
+	reinterpret_cast<AnimUpdateFn>(g_animOriginal)(self, actor, step, time);
+}
+
 far_update::Clock g_clock;
 far_update::Table g_table;
 
@@ -209,6 +240,8 @@ void InstallActorFarUpdate(const char* iniPath, LogFn log) {
 	if (GetPrivateProfileIntA("Route", "ActorFarProbe", 0, iniPath) != 0) {
 		g_probe = InstallEntryDetour("character controller update 0x00896000 (far actors' probe)", kController, kControllerBytes, sizeof(kControllerBytes),
 		                             reinterpret_cast<const void*>(&Controller), &g_controllerOriginal, log, DetourRole::Route);
+		g_probe = InstallEntryDetour("animation update 0x00476D10 (far actors' probe)", kAnimUpdate, kAnimUpdateBytes, sizeof(kAnimUpdateBytes),
+		                             reinterpret_cast<const void*>(&AnimUpdate), &g_animOriginal, log, DetourRole::Route) && g_probe;
 	}
 	log("Route %s: the whole update of an actor beyond %.0f units on every %u. call, with the summed time%s", kName,
 	    static_cast<double>(g_distance), g_every, g_alternate ? "; alternating: only in every second summary window" : "");
@@ -236,6 +269,12 @@ void LogActorFarUpdateSummary() {
 	      movingSeconds > 0.0 ? movingUnits / movingSeconds : 0.0);
 	if (g_probe) {
 		const double stoodFor = static_cast<double>(InterlockedExchange64(&g_controllerSummedMicros, 0)) / 1000000.0;
+		static const char* const kAnimKinds[3] = {"inside updates with the frame's own time", "inside updates run with summed time", "outside the actor's update"};
+		for (int kind = 0; kind < 3; ++kind) {
+			const LONG64 calls = InterlockedExchange64(&g_animCalls[kind], 0);
+			g_log("Route: far actors' animation (%s) - %lld animation updates, handed %.3f s", kAnimKinds[kind], calls,
+			      static_cast<double>(InterlockedExchange64(&g_animMicros[kind], 0)) / 1000000.0);
+		}
 		for (int kind = 0; kind < 2; ++kind) {
 			const LONG64 calls = InterlockedExchange64(&g_controllerCalls[kind], 0);
 			const double given = static_cast<double>(InterlockedExchange64(&g_controllerMicros[kind], 0)) / 1000000.0;
