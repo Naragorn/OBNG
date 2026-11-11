@@ -495,6 +495,41 @@ the blend controllers in the Havok world) is not measured.
 The Linux game's MoreHeap is at 1024 MB since 2026-11-11 (Nadi), as the
 Windows one since 2026-11-10.
 
+### Who the docks' actors are, and the unused bones left out (measured 2026-11-11, Linux, runs obng-profile-anvil-docks/20261111-101335 and -101643)
+
+`[Probe] ActorCensus` (ActorCensus.cpp), one frame's Actor::Update calls
+every ten seconds, standing in front of The Flowing Bowl with the Windows
+mod list (the run's load order: 02 Better Cities Resources.esm, 20
+LivingOblivion.esp, 38 OblivionWalkers.esp, 3B Better Cities Full.esp, 3F
+Maskar's Oblivion Overhaul.esp):
+
+- 48-50 actors a frame: 33-34 NPCs (type 0x23), 15-16 creatures (0x24).
+- By distance from the player (game units, about 70 a metre): 3-4 within
+  1000, 5 to 2000, 10-12 to 4000, 5-6 to 8000, 23-25 beyond 8000.
+- The far half is one cluster at 10 000-11 700 units: 14-15 creatures with
+  base forms of OblivionWalkers.esp (0x38) and Maskar's Oblivion Overhaul
+  (0x3F), and 8-9 NPCs with base forms made at run time (0xFF).
+- No actor's scene node had the hidden bit (flags bit 0) set; whether the
+  engine has another mark for "not in view" that this census misses is not
+  known.
+
+`[Probe] UnusedBones` / `[Route] ActorUnusedBones` (SceneUpdateLogic.h
+UnusedBones; 189 names in the Linux game's OBNG-unused-bones.txt): a large
+skeleton's order has 325 entries, 148 of them unused, with 230 controllers
+in their chains - NiTransformController (vtable 0x00A79634; its update
+0x006C3C40 writes its target's local transform from its interpolator, read)
+and bhkBlendController (0x00A97AC4; its update 0x008AAD60 only stores the
+time when the target has no blend collision object, read with 0x00497420).
+
+Left out against not (the first docks run of 09:27 against the run of
+10:16; two separate runs): a large tree's update 39.0 -> 31.8-33.4 us (321
+-> 176-201 controller updates fired) - but the small trees, which have
+nothing left out, went 16.1 -> 13.0-13.6 us in the same pair, the same 17
+%. The gain is therefore not shown: between nothing and about 7 us a large
+tree. The census run between them (same code, nothing left out) had large
+trees at 55-67 us; the machine's state differs between runs by more than
+the effect. An alternation inside one run would settle it.
+
 ## Put back
 
 
@@ -514,5 +549,6 @@ Windows one since 2026-11-10.
 | The skeleton route's Matches on every call | A | 0.9 % of the samples outside the pass | small | not started | this file |
 | The animation step 0x00603500, the high actors' loop itself, 0x005F6540 | ? | 1.1 + 1.1 + 0.7 ms with 119 fighting actors, under 0.5 ms together with 55 (measured 2026-11-11) | small to look: [Timed] one level down | not started | this file |
 | The engine heap's growth in a crowd | ? | no frame time; it ends sessions (full heap) | small to look: [Probe] HeapCalls by call site while it grows, the scenario with OBVR and Walkers off | found 2026-11-10, not explained | this file |
-| The loose skeleton's extra bones: nodes and controllers no geometry or animation uses, left out of the flat update | C | about 0.75 ms a frame at the docks if the large trees cost as the small ones (derived) | medium: which bones are unobservable (no skin, no attachment, no collision object, no reader by name) has to be shown | not started | this file |
+| The loose skeleton's unused bones left out (`[Route] ActorUnusedBones`) | C | not shown: between nothing and about 7 us a large tree (0.3 ms a frame at the docks at best); the 0.75 ms derived before was wrong - the bones left out are the cheap ones | built 2026-11-11, off; an alternation inside one run would measure it | built, not accepted | this file |
+| Far actors' skeletons at a lower rate | C | half the docks' 50 actors are a horde 10 000-11 700 units away: up to half of 1.9 ms a frame there (derived) | medium: what reads a far actor's bones between two updates (collision bodies, attached lights), and the look of it up close when it comes nearer | not started | this file |
 | 0x00471C00 before ApplyAnimData | ? | 0.74-0.78 ms with 117 actors (6-7 us a call) | small to look | not started | knowledge/threading.md |

@@ -402,6 +402,11 @@ struct Order {
 	Handle root = 0;
 	std::vector<Entry> entries;
 	std::vector<std::uint32_t> children;
+	// Per entry 1 when the run leaves it out (UnusedBones below); empty: every
+	// entry is run. Belongs to the shape Matches checks only as far as the
+	// tree goes - whoever fills it fills it when the order is built.
+	std::vector<std::uint8_t> unused;
+	std::uint32_t unusedCount = 0;  // the unused entries found for this order, left out or only counted
 };
 
 // The tree port Build and Matches read through:
@@ -606,8 +611,12 @@ void Reference(const Tree& tree, Port& port, Handle object, float time, bool con
 // (derived: a merge reads only the node's and that child's bound).
 template <ActionPort Port>
 void RunForward(const Order& order, Port& port, float time, bool controllers) {
+	const bool prune = !order.unused.empty();
 	for (std::size_t i = 0; i < order.entries.size(); ++i) {
 		const Entry& e = order.entries[i];
+		if (prune && order.unused[i] != 0) {
+			continue;  // a bone nothing hangs on: no controllers, no world
+		}
 		if (e.kind == Kind::Other) {
 			port.UpdateDownwardOriginal(e.object, time, controllers);
 			continue;
@@ -628,15 +637,20 @@ void RunForward(const Order& order, Port& port, float time, bool controllers) {
 // arithmetic) on a copy of the node's bound that is written once.
 template <ActionPort Port>
 void RunBounds(const Order& order, Port& port) {
+	const bool prune = !order.unused.empty();
 	for (std::size_t n = order.entries.size(); n-- > 0;) {
 		const Entry& e = order.entries[n];
-		if (e.kind != Kind::Node) {
+		if (e.kind != Kind::Node || (prune && order.unused[n] != 0)) {
 			continue;
 		}
 		Bound own = port.ReadBound(e.object);
 		own.radius = 0.0f;
 		for (std::uint32_t c = 0; c < e.childCount; ++c) {
-			const Bound child = port.ReadBound(order.entries[order.children[e.childrenBegin + c]].object);
+			const std::uint32_t childEntry = order.children[e.childrenBegin + c];
+			if (prune && order.unused[childEntry] != 0) {
+				continue;  // in the original its radius is 0 (no geometry below it): MergeStep::Skip
+			}
+			const Bound child = port.ReadBound(order.entries[childEntry].object);
 			switch (MergeStepFor(own.radius, child.radius)) {
 				case MergeStep::Skip:
 					break;
@@ -650,6 +664,56 @@ void RunBounds(const Order& order, Port& port) {
 		}
 		port.WriteBound(e.object, own);
 	}
+}
+
+// ---- Bones nothing hangs on ----------------------------------------------------------------
+//
+// A replaced skeleton can carry several times the game's bones (read
+// 2026-11-11: 295 nodes against 71), most of them for meshes an actor does
+// not wear. Such a bone's controllers and world transform are computed every
+// frame and read by nobody. An entry is unused when it is a node other than
+// the root, the port says its name is one that may be left out (a list of
+// names no skeleton of the game has: nothing in the engine can ask for it by
+// name), it has no collision object, no geometry of the tree is skinned to
+// it, and every child is unused too - so the whole subtree is nodes of that
+// kind, without geometry, and in the original its bound's radius is 0.
+// Leaving it out changes no value of any other entry (derived: a child
+// depends on its parent, never the other way; the bound merge skips a radius
+// of 0), provided its controllers write nothing but the node itself.
+//   bool MayBeUnused(Handle)    by name
+//   bool HasCollision(Handle)   +0xA8 set
+//   bool IsSkinBone(Handle)     a bone or the root parent of a skin instance in this tree
+template <class Port>
+concept BonePort = requires(const Port& p, Handle h) {
+	{ p.MayBeUnused(h) } -> std::same_as<bool>;
+	{ p.HasCollision(h) } -> std::same_as<bool>;
+	{ p.IsSkinBone(h) } -> std::same_as<bool>;
+};
+
+template <BonePort Port>
+std::vector<std::uint8_t> UnusedBones(const Order& order, const Port& port) {
+	std::vector<std::uint8_t> unused(order.entries.size(), 0);
+	// Backwards: an entry's children all come after it.
+	for (std::size_t n = order.entries.size(); n-- > 1;) {
+		const Entry& e = order.entries[n];
+		if (e.kind != Kind::Node || !port.MayBeUnused(e.object) || port.HasCollision(e.object) || port.IsSkinBone(e.object)) {
+			continue;
+		}
+		bool all = true;
+		for (std::uint32_t c = 0; c < e.childCount && all; ++c) {
+			all = unused[order.children[e.childrenBegin + c]] != 0;
+		}
+		unused[n] = all ? 1 : 0;
+	}
+	return unused;
+}
+
+inline std::size_t CountUnused(const std::vector<std::uint8_t>& unused) {
+	std::size_t n = 0;
+	for (std::uint8_t u : unused) {
+		n += u != 0 ? 1u : 0u;
+	}
+	return n;
 }
 
 template <ActionPort Port>

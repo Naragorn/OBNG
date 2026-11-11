@@ -414,6 +414,110 @@ void TestRunAgainstReference() {
 	std::printf("  %u trees, %u objects\n", trees, objects);
 }
 
+struct FakeBones {
+	std::vector<Handle> named;      // names that may be left out
+	std::vector<Handle> collision;
+	std::vector<Handle> skinned;
+	static bool In(const std::vector<Handle>& v, Handle h) {
+		for (Handle x : v) {
+			if (x == h) {
+				return true;
+			}
+		}
+		return false;
+	}
+	bool MayBeUnused(Handle h) const { return In(named, h); }
+	bool HasCollision(Handle h) const { return In(collision, h); }
+	bool IsSkinBone(Handle h) const { return In(skinned, h); }
+};
+
+// 1: [2: [3, 4: [5 (geometry)]], 6: [7, 8], 9 (geometry), 10: [11: [12]]]
+FakeTree BoneTree() {
+	FakeTree t;
+	t.objects[1] = FakeObject{Kind::Node, {2, 6, 9, 10}};
+	t.objects[2] = FakeObject{Kind::Node, {3, 4}};
+	t.objects[3] = FakeObject{Kind::Node, {}};
+	t.objects[4] = FakeObject{Kind::Node, {5}};
+	t.objects[5] = FakeObject{Kind::GeometryPlain, {}};
+	t.objects[6] = FakeObject{Kind::Node, {7, 8}};
+	t.objects[7] = FakeObject{Kind::Node, {}};
+	t.objects[8] = FakeObject{Kind::Node, {}};
+	t.objects[9] = FakeObject{Kind::Geometry, {}};
+	t.objects[10] = FakeObject{Kind::Node, {11}};
+	t.objects[11] = FakeObject{Kind::Node, {12}};
+	t.objects[12] = FakeObject{Kind::Node, {}};
+	for (auto& [h, o] : t.objects) {
+		o.controllers = true;
+		o.local.pos[0] = static_cast<float>(h);
+		for (Handle c : o.slots) {
+			if (c != 0) {
+				t.objects[c].parent = h;
+			}
+		}
+	}
+	return t;
+}
+
+std::vector<Handle> UnusedHandles(const Order& order, const std::vector<std::uint8_t>& unused) {
+	std::vector<Handle> out;
+	for (std::size_t i = 0; i < unused.size(); ++i) {
+		if (unused[i] != 0) {
+			out.push_back(order.entries[i].object);
+		}
+	}
+	return out;
+}
+
+void TestUnusedBones() {
+	Section("Unused bones: a named node without collision or skin whose whole subtree is the same; never the root, never above a geometry");
+	FakeTree t = BoneTree();
+	const Order order = Build(t, 1);
+	const std::vector<Handle> everyNode = {1, 2, 3, 4, 6, 7, 8, 10, 11, 12};
+	FakeBones all{everyNode, {}, {}};
+	Check(UnusedHandles(order, UnusedBones(order, all)) == std::vector<Handle>({3, 6, 7, 8, 10, 11, 12}),
+	      "every name allowed: the root stays, 2 and 4 stay above the geometry, the rest goes");
+	Check(CountUnused(UnusedBones(order, all)) == 7, "seven of twelve");
+	Check(CountUnused(UnusedBones(order, FakeBones{{}, {}, {}})) == 0, "no name allowed: nothing");
+	Check(UnusedHandles(order, UnusedBones(order, FakeBones{{6, 7, 10, 11, 12}, {}, {}})) == std::vector<Handle>({7, 10, 11, 12}),
+	      "a child whose name is not allowed (8) keeps its parent (6); its sibling still goes");
+	Check(UnusedHandles(order, UnusedBones(order, FakeBones{everyNode, {12}, {}})) == std::vector<Handle>({3, 6, 7, 8}),
+	      "a collision object deep down (12) keeps the whole chain above it (11, 10)");
+	Check(UnusedHandles(order, UnusedBones(order, FakeBones{everyNode, {}, {7}})) == std::vector<Handle>({3, 8, 10, 11, 12}),
+	      "a skin bone (7) stays, and its parent (6) with it");
+	Check(UnusedBones(Order{}, all).empty(), "an empty order");
+
+	Section("The run with unused bones: no call on them, every other object as the full run leaves it, bit for bit");
+	FakeTree full = BoneTree();
+	FakeTree pruned = BoneTree();
+	// The pruned tree's unused nodes carry a stale bound: the merge must not take it.
+	for (Handle h : {3u, 6u, 7u, 8u, 10u, 11u, 12u}) {
+		pruned.objects[h].bound = Bound{{50, 50, 50}, 9.0f};
+	}
+	FakePort pf{&full, {}};
+	FakePort pp{&pruned, {}};
+	Order plain = Build(full, 1);
+	Run(plain, pf, 0.5f, true);
+	Order withUnused = Build(pruned, 1);
+	withUnused.unused = UnusedBones(withUnused, all);
+	Run(withUnused, pp, 0.5f, true);
+	bool same = true;
+	for (Handle h : {1u, 2u, 4u, 5u, 9u}) {
+		same = same && SameBits(full.objects.at(h).world, pruned.objects.at(h).world) && SameBits(full.objects.at(h).bound, pruned.objects.at(h).bound);
+	}
+	Check(same, "the root, the nodes above geometry and the geometries: the same worlds and bounds");
+	bool touched = false;
+	for (const std::string& c : pp.calls) {
+		for (const char* h : {" 3", " 6", " 7", " 8", " 10", " 11", " 12"}) {
+			if (c == std::string("world") + h || c.rfind(std::string("controllers") + h + " ", 0) == 0) {
+				touched = true;
+			}
+		}
+	}
+	Check(!touched, "no controller update and no world write on an unused bone");
+	Check(pp.calls.size() + 2 * 7 == pf.calls.size(), "exactly the seven bones' controller and world calls are missing");
+	Check(pruned.objects.at(7).bound.radius == 9.0f, "an unused bone's own bound is left as it was");
+}
+
 void TestSelectedOrder() {
 	Section("The selected order: only the children flagged for the visit are entries, every child is merged, a rigid child is the original's");
 	// 1 (node, visited root): [2 (geometry, visited), 3 (node, not visited), 4 (node, visited, rigid), 0, 5 (node visited): [6 (other, visited), 7 (geometry, not visited)]]
@@ -656,6 +760,7 @@ int main() {
 	TestClassify();
 	TestBuildAndMatches();
 	TestRunAgainstReference();
+	TestUnusedBones();
 	TestRunLeavesBoundCentreWhenNoChild();
 	TestSelectedOrder();
 	TestRunSelectedAgainstReference();

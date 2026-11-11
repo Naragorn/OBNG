@@ -37,6 +37,11 @@ target_include_directories(TimedCallLogicTest PRIVATE ../src ../../tests)
 target_compile_options(TimedCallLogicTest PRIVATE -Wall -Wextra -Werror)
 add_test(NAME TimedCallLogicTest COMMAND TimedCallLogicTest)
 
+add_executable(ActorCensusLogicTest ActorCensusLogicTest.cpp)
+target_include_directories(ActorCensusLogicTest PRIVATE ../src ../../tests)
+target_compile_options(ActorCensusLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME ActorCensusLogicTest COMMAND ActorCensusLogicTest)
+
 add_executable(PluginEntryTest PluginEntryTest.cpp ../src/PluginEntry.cpp)
 target_include_directories(PluginEntryTest PRIVATE ../src ../../tests)
 target_compile_options(PluginEntryTest PRIVATE -Wall -Wextra -Werror)

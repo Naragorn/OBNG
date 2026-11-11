@@ -7,7 +7,10 @@
 
 #include <cstdio>
 #include <cstring>
+#include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #include "ProbeLogic.h"
 #include "ShadowRecorder.h"
@@ -66,6 +69,129 @@ volatile LONG64 g_sizeCollisionTicks[kSizeBuckets] = {};
 volatile LONG64 g_sizeCollisionCalls[kSizeBuckets] = {};
 volatile LONG64 g_sizeControllerTicks[kSizeBuckets] = {};
 volatile LONG64 g_sizeControllerCalls[kSizeBuckets] = {};
+
+// The bones nothing hangs on (SceneUpdateLogic.h UnusedBones): the names
+// that may be left out come from OBNG-unused-bones.txt beside the DLL, one a
+// line (tools/re/unused-bone-names.py writes it: the installed skeleton's
+// names that no skeleton of the game has). g_bonesSkip leaves them out
+// ([Route] ActorUnusedBones), g_bonesCount only counts ([Probe] UnusedBones).
+constexpr const char* kBoneNamesFile = "OBNG-unused-bones.txt";
+constexpr std::uint32_t kNameOffset = 0x08;            // NiObjectNET's name, a char* (OBVR GameAddresses.h kNiObjectNameOffset; CrashLogger prints it as "Name")
+constexpr std::uint32_t kControllerNextOffset = 0x34;  // NiTimeController's next (read 0x0047C930: the chain's walk)
+bool g_bonesSkip = false;
+bool g_bonesCount = false;
+std::unordered_set<std::string> g_boneNames;
+volatile LONG64 g_bonesOrders = 0;       // orders built that have unused bones
+volatile LONG64 g_bonesEntries = 0;      // their entries
+volatile LONG64 g_bonesUnused = 0;       // of them unused
+volatile LONG64 g_bonesControllers = 0;  // controllers in the unused bones' chains
+volatile LONG64 g_bonesWithProperties = 0;  // unused bones with a property list
+volatile LONG64 g_bonesLeftOut = 0;      // unused bones over the routed calls (left out, or would be)
+constexpr unsigned kBoneClasses = 8;
+SRWLOCK g_boneClassLock = SRWLOCK_INIT;
+UInt32 g_boneClass[kBoneClasses] = {};   // the controllers' vtables
+LONG64 g_boneClassCount[kBoneClasses] = {};
+
+struct EngineBones {
+	const std::unordered_set<su::Handle>* skinned;
+	bool MayBeUnused(su::Handle h) const {
+		const char* name = reinterpret_cast<const char*>(eng::Dword(h, kNameOffset));
+		return name != nullptr && g_boneNames.count(name) != 0;
+	}
+	bool HasCollision(su::Handle h) const { return eng::Dword(h, eng::kCollisionObjectOffset) != 0; }
+	bool IsSkinBone(su::Handle h) const { return skinned->count(h) != 0; }
+};
+
+// The order's unused bones, counted; set on the order when they are to be left out.
+void MarkUnusedBones(su::Order* order) {
+	if ((!g_bonesSkip && !g_bonesCount) || g_boneNames.empty()) {
+		return;
+	}
+	std::unordered_set<su::Handle> skinned;
+	for (const su::Entry& e : order->entries) {
+		if (e.kind != su::Kind::Geometry && e.kind != su::Kind::GeometryPlain) {
+			continue;
+		}
+		const su::Handle instance = eng::Dword(e.object, eng::kSkinInstanceOffset);
+		if (instance == 0) {
+			continue;
+		}
+		skinned.insert(eng::Dword(instance, eng::kSkinRootParentOffset));
+		const su::Handle bones = eng::Dword(instance, eng::kSkinBonesOffset);
+		const su::Handle data = eng::Dword(instance, eng::kSkinDataOffset);
+		const std::uint32_t count = data != 0 && bones != 0 ? eng::Dword(data, eng::kSkinBoneCountOffset) : 0;
+		for (std::uint32_t i = 0; i < count && i < 1024; ++i) {
+			skinned.insert(eng::Dword(bones, 4 * i));
+		}
+	}
+	std::vector<std::uint8_t> unused = su::UnusedBones(*order, EngineBones{&skinned});
+	const std::size_t n = su::CountUnused(unused);
+	if (n == 0) {
+		return;
+	}
+	InterlockedIncrement64(&g_bonesOrders);
+	InterlockedAdd64(&g_bonesEntries, static_cast<LONG64>(order->entries.size()));
+	InterlockedAdd64(&g_bonesUnused, static_cast<LONG64>(n));
+	AcquireSRWLockExclusive(&g_boneClassLock);
+	for (std::size_t i = 0; i < unused.size(); ++i) {
+		if (unused[i] == 0) {
+			continue;
+		}
+		const su::Handle h = order->entries[i].object;
+		if (eng::Dword(h, eng::kPropertyListOffset) != 0) {
+			++g_bonesWithProperties;
+		}
+		unsigned guard = 0;
+		for (su::Handle c = eng::Dword(h, eng::kControllerOffset); c != 0 && guard < 16; c = eng::Dword(c, kControllerNextOffset), ++guard) {
+			++g_bonesControllers;
+			const UInt32 vtable = eng::Dword(c, 0);
+			for (unsigned k = 0; k < kBoneClasses; ++k) {
+				if (g_boneClass[k] == vtable || g_boneClass[k] == 0) {
+					g_boneClass[k] = vtable;
+					++g_boneClassCount[k];
+					break;
+				}
+			}
+		}
+	}
+	ReleaseSRWLockExclusive(&g_boneClassLock);
+	order->unusedCount = static_cast<std::uint32_t>(n);
+	if (g_bonesSkip) {
+		order->unused = std::move(unused);
+	}
+}
+
+// The names file beside this DLL; the number of names read.
+std::size_t LoadBoneNames() {
+	HMODULE module = nullptr;
+	char path[MAX_PATH] = {};
+	if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, reinterpret_cast<LPCSTR>(&LoadBoneNames), &module) ||
+	    GetModuleFileNameA(module, path, MAX_PATH) == 0) {
+		return 0;
+	}
+	char* slash = std::strrchr(path, '\\');
+	if (slash == nullptr) {
+		return 0;
+	}
+	*(slash + 1) = '\0';
+	const std::string file = std::string(path) + kBoneNamesFile;
+	FILE* in = std::fopen(file.c_str(), "rb");
+	if (in == nullptr) {
+		return 0;
+	}
+	char line[160];
+	while (std::fgets(line, sizeof(line), in) != nullptr) {
+		std::size_t n = std::strlen(line);
+		while (n > 0 && (line[n - 1] == '\n' || line[n - 1] == '\r')) {
+			line[--n] = '\0';
+		}
+		if (n > 0) {
+			g_boneNames.insert(line);  // as it stands: a name may begin or end with a blank
+		}
+	}
+	std::fclose(in);
+	return g_boneNames.size();
+}
 
 bool g_collisionWrites = false;
 SRWLOCK g_collisionWritesLock = SRWLOCK_INIT;
@@ -173,6 +299,7 @@ su::Order* OrderFor(su::Handle root) {
 	InterlockedIncrement64(&g_built);
 	auto inserted = g_orders.emplace(root, su::Build(tree, root));
 	su::Order* order = &inserted.first->second;
+	MarkUnusedBones(order);
 	ReleaseSRWLockExclusive(&g_lock);
 	return order;
 }
@@ -213,6 +340,9 @@ void RoutedDown(su::Order* order, UInt32 timeBits, UInt32 flag) {
 	InterlockedAdd64(&g_sizeCollisionCalls[bucket], port.collisionCalls);
 	InterlockedAdd64(&g_sizeControllerTicks[bucket], port.controllerTicks);
 	InterlockedAdd64(&g_sizeControllerCalls[bucket], port.controllerCalls);
+	if (order->unusedCount != 0) {
+		InterlockedAdd64(&g_bonesLeftOut, order->unusedCount);
+	}
 	if (g_collisionWrites) {
 		AcquireSRWLockExclusive(&g_collisionWritesLock);
 		g_collisionWritesSum.AddSkeleton(static_cast<std::uint32_t>(port.collisionCalls), port.collisionWrote);
@@ -711,6 +841,13 @@ UInt32 InstallRouteActorUpdate(const RouteSettings& settings, LogFn log) {
 	s_done = true;
 	g_log = log;
 	g_collisionWrites = settings.collisionWrites;
+	g_bonesSkip = settings.actorUnusedBones;
+	g_bonesCount = settings.unusedBonesProbe;
+	if (g_bonesSkip || g_bonesCount) {
+		const std::size_t names = LoadBoneNames();
+		log("Route NiAVObject::Update: unused bones %s - %u names from %s%s", g_bonesSkip ? "left out" : "counted only", static_cast<unsigned>(names),
+		    kBoneNamesFile, names == 0 ? " (no file or no names: nothing is unused)" : "");
+	}
 	QueryPerformanceFrequency(&g_frequency);
 	if (!InstallEntryDetour(kName, eng::kNiAVObjectUpdateAddress, kUpdateEntryBytes, sizeof(kUpdateEntryBytes),
 	                        reinterpret_cast<const void*>(&RouteReplacement), &g_original, log, DetourRole::Route)) {
@@ -923,6 +1060,24 @@ void LogActorUpdateSummary() {
 		}
 	}
 	g_log("%s", line);
+	if (g_bonesSkip || g_bonesCount) {
+		const LONG64 orders = InterlockedExchange64(&g_bonesOrders, 0);
+		const LONG64 entries = InterlockedExchange64(&g_bonesEntries, 0);
+		const LONG64 unused = InterlockedExchange64(&g_bonesUnused, 0);
+		const LONG64 controllers = InterlockedExchange64(&g_bonesControllers, 0);
+		const LONG64 withProperties = InterlockedExchange64(&g_bonesWithProperties, 0);
+		const LONG64 leftOut = InterlockedExchange64(&g_bonesLeftOut, 0);
+		int at = std::snprintf(line, sizeof(line),
+		                       "Route: unused bones (%s) - %lld bones over the routed calls; %lld orders built with unused bones: %lld entries, %lld unused, "
+		                       "%lld controllers in their chains, %lld with a property list; the controllers' classes",
+		                       g_bonesSkip ? "left out" : "counted only", leftOut, orders, entries, unused, controllers, withProperties);
+		AcquireSRWLockExclusive(&g_boneClassLock);
+		for (unsigned k = 0; k < kBoneClasses && g_boneClass[k] != 0 && at > 0 && static_cast<std::size_t>(at) < sizeof(line); ++k) {
+			at += std::snprintf(line + at, sizeof(line) - at, " %08X:%lld", g_boneClass[k], g_boneClassCount[k]);
+		}
+		ReleaseSRWLockExclusive(&g_boneClassLock);
+		g_log("%s", line);
+	}
 	if (g_collisionWrites) {
 		AcquireSRWLockExclusive(&g_collisionWritesLock);
 		const probe::CollisionWrites taken = g_collisionWritesSum;

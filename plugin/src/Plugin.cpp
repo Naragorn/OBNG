@@ -15,6 +15,7 @@
 #include "HeapProbe.h"
 #include "LockProbe.h"
 #include "LogKeepLogic.h"
+#include "ActorCensus.h"
 #include "ProcessProbe.h"
 #include "TimedCalls.h"
 #include "FastConstantArrange.h"
@@ -178,6 +179,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	s.heapCalls = GetPrivateProfileIntA("Probe", "HeapCalls", 0, path) != 0;
 	s.lockCalls = GetPrivateProfileIntA("Probe", "LockCalls", 0, path) != 0;
 	s.processManager = GetPrivateProfileIntA("Probe", "ProcessManager", 0, path) != 0;
+	s.actorCensus = GetPrivateProfileIntA("Probe", "ActorCensus", 0, path) != 0;
 	s.constantArrange = GetPrivateProfileIntA("Shadow", "ConstantArrange", 0, path) != 0;
 	s.mismatchLines = GetPrivateProfileIntA("Log", "MismatchLines", 20, path);
 	s.summaryEverySeconds = GetPrivateProfileIntA("Log", "SummaryEverySeconds", 10, path);
@@ -192,6 +194,8 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	r.constantArrange = GetPrivateProfileIntA("Route", "ConstantArrange", 0, path) != 0;
 	r.actorBatchTicks = GetPrivateProfileIntA("Route", "ActorBatchTicks", 0, path) != 0;
 	r.collisionWrites = GetPrivateProfileIntA("Probe", "CollisionWrites", 0, path) != 0;
+	r.actorUnusedBones = GetPrivateProfileIntA("Route", "ActorUnusedBones", 0, path) != 0;
+	r.unusedBonesProbe = GetPrivateProfileIntA("Probe", "UnusedBones", 0, path) != 0;
 	r.stereoDraw = GetPrivateProfileIntA("Route", "StereoDraw", 0, path) != 0;
 	bool eyesKnown = false;
 	r.stereoEyes = obng::plugin::StereoEyesFromIni(GetPrivateProfileIntA("Route", "StereoEyes", 1, path), &eyesKnown);
@@ -303,6 +307,7 @@ bool StartSummaryTimerSideEffect(const obng::plugin::ShadowSettings&) {
 uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 	obng::plugin::InstallHeapProbe(settings, &Log);
 	obng::plugin::InstallProcessProbe(settings, &Log);
+	obng::plugin::InstallActorCensus(settings, &Log);
 	obng::plugin::InstallLockProbe(settings, &Log);  // its two detours are not among the counted ones
 	const uint32_t made = obng::plugin::InstallProbes(settings, &Log);
 	// Last of all: a timed function must not take an entry a route or another probe wants.
