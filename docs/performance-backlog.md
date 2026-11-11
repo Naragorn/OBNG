@@ -755,3 +755,49 @@ its speed: the summed time in frameSeconds 0x00B33E9C does not carry the
 movement in full. Which part reads another time (the character controller's
 step is the first suspect - unverified) is the next thing to read. Until then
 `ActorFarWhole` is not accepted (class C: the gate was this measurement).
+
+### 2026-11-11 evening: why the far actors were slow, and the fix
+
+Three probe runs and one run of the fix at the docks (`[Route] ActorFarProbe`,
+`obng-measure-docks-far-probe.ini`, the route alternating by window).
+
+- **The controller gets the summed time** (measured, run 20261111-190646):
+  every update of the character controller 0x00896000 inside an update run
+  with summed time was handed exactly the summed seconds (100 % in every
+  window, 0.22 s an update on average). The guess of a step capped by Havok's
+  fMaxTime is refuted.
+- **The way it is asked to go is one frame's** (measured, run
+  20261111-191058): 62-73 units/s asked in updates with the frame's own time,
+  4-5 units/s in updates run with summed time - about 1 unit an update. Read
+  in 0x00896000: the way (the argument's floats 4..6) is multiplied by the
+  step's reciprocal into the velocity.
+- **The animation runs past the lower rate** (measured, run
+  20261111-191517): the animation update 0x00476D10 (__thiscall of the
+  animation data: the actor, the step, a time or -1; proposal for the name) of
+  far actors was called about 32 000 times a window, with the lower rate and
+  without, never inside Actor::Update 0x00603CA0. Read in 0x00476D10: it
+  zeroes the step at +0x0C..+0x14 at its entry, adds its step argument to the
+  time at +0x94 and writes the frame's root motion to +0x0C..+0x14 at its end;
+  0x004723A0 reads that as the way to go. So an update on every 16th frame
+  found one frame's way. (Correction: +0x94 of the animation data is its time,
+  a float - 0x00471F20 hands it to NiAVObject::Update as the time; the text in
+  knowledge/render-thread-outside-the-pass.md calls it a node.) It also means
+  the lower rate does not save the far actors' animation.
+- **The fix** (`[Route] ActorFarRootMotion`, on by default, fb124b7): the
+  steps of the frames between are summed per actor
+  (ActorFarUpdateLogic.h AddRootMotion / TakeRootMotion) and written to
+  +0x0C..+0x14 before the update that runs. Measured, run 20261111-192034:
+
+  | moving far actors, units/s | windows |
+  |---|---|
+  | lower rate off | 94.6, 106.1, 118.2, 102.4 (the first window 76.4, warming up) |
+  | lower rate on, steps summed | 97.6, 104.2, 102.0, 93.6, 92.8 |
+
+  The way asked of the controller is 76-79 units/s with the lower rate against
+  85-94 without. So the speed is within about 7 % of the original's on
+  average, inside the windows' spread; whether the rest is a real loss (the
+  clamp in 0x004723A0, a loop wrap of the animation) is not shown by one run.
+  812 to 1075 updates a window got the summed step, 0 to 44 had none.
+
+Open: the far actors' animation could be put on the lower rate too (the time
+it costs is not measured; their limbs would move at the lower rate, visibly).
