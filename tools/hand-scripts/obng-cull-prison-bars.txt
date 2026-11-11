@@ -52,4 +52,21 @@ head pitch 0
 wait 8
 mark bars-late
 wait 2
+# The spot under the cell's window (OBVR's newgame fork: the screen went dark there): the head
+# moved towards the back wall, level and looking up. The sign of forward is not known here, so
+# both ways; the dumps say which one is the window.
+head yaw 0
+head pos 0 1.7 -2.5
+wait 2
+mark window-minus
+wait 2
+head pitch -30
+wait 0.3
+mark window-minus-up
+wait 2
+head pitch 0
+head pos 0 1.7 2.5
+wait 2
+mark window-plus
+wait 2
 mark done
