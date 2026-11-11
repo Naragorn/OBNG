@@ -702,3 +702,17 @@ run - 11 actors updated a frame, none in the picture: the tutorial's scene
 does not begin while the player stands at the spot the game puts them. The
 defect with the NPCs is therefore still not looked at. The script now steps
 back to the door first (taken to start Valen Dreth's taunt; unverified).
+
+### The new game's prison with the scene running: the guard at the bars is whole
+
+Run 20261111-165457 (culler with nodes, as on Windows), the script stepping
+back to the door and `setstage charactergen 6` from the console (the stage
+read by OBVR's newgame fork from Oblivion.esm). **Measured:** the scene plays
+(skinned draws rise from 67 thousand to 243 thousand a window; from the mark
+at 50 s a Blade stands in the corridor before the door), no pixel of the
+clear colour at any of 32 marks, the Blade drawn with head, chest, arms and
+legs where the door's bars do not cover him. The camera stood within a step
+of the door, so a bar and the frame cover the picture's left half. One run,
+the head moved in jumps. The Windows defect is not reproduced on Linux in a
+still cell, a new game standing, or the running scene; what is left untested
+is Windows itself and real head motion.
