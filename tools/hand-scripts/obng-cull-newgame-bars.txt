@@ -210,6 +210,15 @@ wait 4
 # In the prison.
 wait 2
 mark prison
+# Standing where the game puts the player the scene does not begin (runs 20261111-155710,
+# -160744, -161816: 150 s, nobody at the bars). Valen Dreth's taunt is taken to begin when the
+# player comes to the cell's door (unverified): the door is behind the player (the back wall with
+# the window is ahead, yaw 0), so three seconds backwards on the left stick.
+left stick 0 -1
+wait 3
+left stick 0 0
+wait 1
+mark at-door
 head yaw 0
 wait 0.5
 mark t000-yaw0

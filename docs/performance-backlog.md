@@ -689,3 +689,16 @@ spot under the window make the culler drop something visible while the head
 stands. What the runs lack against Nadi's session: a new game with the
 tutorial's scene (NPCs behind the bars), the first seconds after the load,
 real head motion. The defect's cause stays **unverified**.
+
+### A new game's prison, standing: no defect, but the scene did not begin
+
+Runs 20261111-155710 (culler with nodes), -160744 (off), -161816 (on, no
+nodes), `tools/hand-scripts/obng-cull-newgame-bars.txt` (the way in from
+OBVR's newgame-hands.txt), the Windows mod list. **Measured:** the world ran
+from the first mark on (the tutorial's box closed), 150 s of looking at the
+bars and back: no pixel of the clear colour, the brightness equal within 1 of
+100 between the runs at each of 31 marks. But nobody came to the bars in any
+run - 11 actors updated a frame, none in the picture: the tutorial's scene
+does not begin while the player stands at the spot the game puts them. The
+defect with the NPCs is therefore still not looked at. The script now steps
+back to the door first (taken to start Valen Dreth's taunt; unverified).
