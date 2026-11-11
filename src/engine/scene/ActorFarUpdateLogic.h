@@ -71,6 +71,8 @@ struct Entry {
 	std::uint32_t actor = 0;      // 0: free
 	std::uint32_t lastFrame = 0;  // the clock at its last update that ran
 	double lastSeconds = 0.0;
+	float lastPosition[3] = {};   // where it stood at that update's entry (the travel measurement)
+	bool hasPosition = false;
 };
 
 // One call's verdict.
@@ -99,6 +101,23 @@ constexpr Step Decide(Entry& entry, bool isNew, std::uint32_t every, const Clock
 	entry.lastFrame = clock.frame;
 	entry.lastSeconds = clock.seconds;
 	return step;
+}
+
+// The measurement of whether the summed time carries a far actor as far as
+// every frame's own would: the way an actor made between two of its updates
+// that ran, over the game seconds between them. Summed over the far actors of
+// a window it is their speed, to compare between windows with the lower rate
+// and without.
+inline constexpr double kMovingSpeed = 5.0;    // units a second; at or below: standing (idle sway, settling)
+inline constexpr double kLeapSpeed = 3000.0;   // units a second; above: moved by something else than walking
+
+enum class Travel { None, Still, Moving };  // None: not counted
+
+constexpr Travel TravelOf(double units, double seconds) {
+	if (!(seconds > 0.0) || !(units >= 0.0) || units > kLeapSpeed * seconds) {  // a NaN compares false: not counted
+		return Travel::None;
+	}
+	return units > kMovingSpeed * seconds ? Travel::Moving : Travel::Still;
 }
 
 // The actors' entries: a fixed table, a short window probed from the

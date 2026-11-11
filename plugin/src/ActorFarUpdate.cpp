@@ -2,6 +2,7 @@
 
 #include <windows.h>
 
+#include <cmath>
 #include <cstring>
 
 #include "engine/scene/ActorFarRateLogic.h"
@@ -38,6 +39,12 @@ volatile LONG g_onNow = 1;         // with the alternation: whether this summary
 volatile LONG64 g_farCalls = 0;    // calls of far actors
 volatile LONG64 g_skipped = 0;     // of them left out
 volatile LONG64 g_summed = 0;      // calls run with summed time
+// The travel measurement: the far actors' way between their updates that ran
+// and the game seconds between them, in thousandths of a unit and microseconds.
+volatile LONG64 g_travelUnits = 0;
+volatile LONG64 g_travelMicros = 0;
+volatile LONG64 g_movingUnits = 0;   // of them, of actors moving faster than far_update::kMovingSpeed
+volatile LONG64 g_movingMicros = 0;
 far_update::Clock g_clock;
 far_update::Table g_table;
 
@@ -56,6 +63,32 @@ bool IsFar(UInt32 actor, UInt32 player) {
 	const float y = here[1] - there[1];
 	const float z = here[2] - there[2];
 	return x * x + y * y + z * z > g_distance * g_distance;
+}
+
+// An update that runs: the way the actor made since its last one that ran,
+// counted when it is far, and where it stands now.
+void NoteTravel(far_update::Entry& entry, UInt32 actor, bool counted, double seconds) {
+	float here[3];
+	std::memcpy(here, reinterpret_cast<const void*>(actor + kRefPosition), sizeof(here));
+	if (counted && entry.hasPosition) {
+		const double x = static_cast<double>(here[0]) - static_cast<double>(entry.lastPosition[0]);
+		const double y = static_cast<double>(here[1]) - static_cast<double>(entry.lastPosition[1]);
+		const double z = static_cast<double>(here[2]) - static_cast<double>(entry.lastPosition[2]);
+		const double units = std::sqrt(x * x + y * y + z * z);
+		const far_update::Travel travel = far_update::TravelOf(units, seconds);
+		if (travel != far_update::Travel::None) {
+			const LONG64 milliUnits = static_cast<LONG64>(units * 1000.0);
+			const LONG64 micros = static_cast<LONG64>(seconds * 1000000.0);
+			InterlockedExchangeAdd64(&g_travelUnits, milliUnits);
+			InterlockedExchangeAdd64(&g_travelMicros, micros);
+			if (travel == far_update::Travel::Moving) {
+				InterlockedExchangeAdd64(&g_movingUnits, milliUnits);
+				InterlockedExchangeAdd64(&g_movingMicros, micros);
+			}
+		}
+	}
+	std::memcpy(entry.lastPosition, here, sizeof(here));
+	entry.hasPosition = true;
 }
 
 // The entry's replacement: __fastcall with an unused second register takes a
@@ -86,17 +119,20 @@ void __fastcall Update(void* self, void*, float time) {
 		return;
 	}
 	std::uint32_t every = 1;
-	if (IsFar(actor, player)) {
+	const bool isFar = IsFar(actor, player);
+	if (isFar) {
 		InterlockedIncrement64(&g_farCalls);
 		every = g_onNow != 0 ? g_every : 1;
 	}
 	bool isNew = false;
 	far_update::Entry& entry = g_table.Find(actor, g_clock.frame, isNew);
+	const double since = g_clock.seconds - entry.lastSeconds;
 	const far_update::Step step = far_update::Decide(entry, isNew, every, g_clock, *frameSeconds);
 	if (!step.runs) {
 		InterlockedIncrement64(&g_skipped);
 		return;
 	}
+	NoteTravel(entry, actor, isFar && !isNew, since);
 	if (!step.summed) {
 		Original(self, time);
 		return;
@@ -144,6 +180,13 @@ void LogActorFarUpdateSummary() {
 	}
 	g_log("Route: far actors' whole update (every %u. call beyond %.0f units, %s in this window) - %lld calls of far actors, %lld left out, %lld run with summed time",
 	      g_every, static_cast<double>(g_distance), wasOn ? "on" : "off", farCalls, skipped, summed);
+	const double travelUnits = static_cast<double>(InterlockedExchange64(&g_travelUnits, 0)) / 1000.0;
+	const double travelSeconds = static_cast<double>(InterlockedExchange64(&g_travelMicros, 0)) / 1000000.0;
+	const double movingUnits = static_cast<double>(InterlockedExchange64(&g_movingUnits, 0)) / 1000.0;
+	const double movingSeconds = static_cast<double>(InterlockedExchange64(&g_movingMicros, 0)) / 1000000.0;
+	g_log("Route: far actors' travel (%s in this window) - %.1f units in %.1f actor seconds (%.2f units/s); moving ones %.1f units in %.1f actor seconds (%.2f units/s)",
+	      wasOn ? "on" : "off", travelUnits, travelSeconds, travelSeconds > 0.0 ? travelUnits / travelSeconds : 0.0, movingUnits, movingSeconds,
+	      movingSeconds > 0.0 ? movingUnits / movingSeconds : 0.0);
 }
 
 }  // namespace obng::plugin

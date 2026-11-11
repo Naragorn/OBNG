@@ -145,5 +145,17 @@ int main() {
 	t->Find(same[5], 1100, isNew);
 	Check(!isNew, "a younger one stayed");
 
+	Section("TravelOf: what an actor moved between two updates that ran, as counted or not");
+	Check(TravelOf(20.0, 0.2) == Travel::Moving, "100 units a second: moving");
+	Check(TravelOf(0.5, 0.2) == Travel::Still, "2.5 units a second: still");
+	Check(TravelOf(kMovingSpeed * 0.2, 0.2) == Travel::Still, "exactly the moving speed: still");
+	Check(TravelOf(0.0, 0.2) == Travel::Still, "no way at all: still");
+	Check(TravelOf(20.0, 0.0) == Travel::None, "no time between (a second call in its frame): not counted");
+	Check(TravelOf(20.0, -0.1) == Travel::None, "time backwards: not counted");
+	Check(TravelOf(2000.0, 0.2) == Travel::None, "10000 units a second: a leap (moved by a script, a cell change), not counted");
+	Check(TravelOf(kLeapSpeed * 0.2, 0.2) == Travel::Moving, "exactly the leap speed: still moving");
+	Check(TravelOf(std::numeric_limits<double>::quiet_NaN(), 0.2) == Travel::None, "a way that is not a number: not counted");
+	Check(TravelOf(-1.0, 0.2) == Travel::None, "a negative way: not counted");
+
 	return Failures();
 }
