@@ -467,6 +467,34 @@ frames, per frame, own time):
   this mod list, 1.96 M blocks. The address space: 3284 of 4095 MB used
   (80 %, the Linux process).
 
+### The installed skeleton is four times the game's (read 2026-11-11)
+
+Both installs carry a loose `Meshes/Characters/_male/skeleton.nif` (and the
+same file as `skeletonbeast.nif`); block types counted from the NIF headers:
+
+| file | bytes | NiNode | NiTransformController | bhkBlendController | bhkBlendCollisionObject |
+|---|---|---|---|---|---|
+| the game's (Oblivion - Meshes.bsa) | 28 856 | 71 | 70 | 18 | 18 |
+| Linux, loose (2026-11-05) | 95 298 | 289 | 286 | 108 | 18 |
+| Windows, loose (2013-05-06) | 96 302 | 295 | 292 | 114 | 18 |
+
+The actors' route splits its calls by subtree size (the "actor update by
+subtree size" line). At the docks (run 20261111-092728, a window): 19 609
+calls with 201-400 entries at 39.0 us (244 controller walks firing 321
+updates each) and 12 254 with 51-100 entries at 16.1 us (34 walks, 20
+updates). The large class is 76 % of the skeleton time. That the large
+class is the loose skeleton and the small one a tree of the game's size is
+derived from the counts (289-295 nodes against 71), not shown per actor;
+which actors still have the small tree is not known.
+
+Derived: were the large class as cheap as the small one, the docks'
+skeleton updates would be about 0.75 ms a frame less (19 609 x 23 us over
+about 600 frames). What else scales with the bones (the animation step,
+the blend controllers in the Havok world) is not measured.
+
+The Linux game's MoreHeap is at 1024 MB since 2026-11-11 (Nadi), as the
+Windows one since 2026-11-10.
+
 ## Put back
 
 
@@ -486,4 +514,5 @@ frames, per frame, own time):
 | The skeleton route's Matches on every call | A | 0.9 % of the samples outside the pass | small | not started | this file |
 | The animation step 0x00603500, the high actors' loop itself, 0x005F6540 | ? | 1.1 + 1.1 + 0.7 ms with 119 fighting actors, under 0.5 ms together with 55 (measured 2026-11-11) | small to look: [Timed] one level down | not started | this file |
 | The engine heap's growth in a crowd | ? | no frame time; it ends sessions (full heap) | small to look: [Probe] HeapCalls by call site while it grows, the scenario with OBVR and Walkers off | found 2026-11-10, not explained | this file |
+| The loose skeleton's extra bones: nodes and controllers no geometry or animation uses, left out of the flat update | C | about 0.75 ms a frame at the docks if the large trees cost as the small ones (derived) | medium: which bones are unobservable (no skin, no attachment, no collision object, no reader by name) has to be shown | not started | this file |
 | 0x00471C00 before ApplyAnimData | ? | 0.74-0.78 ms with 117 actors (6-7 us a call) | small to look | not started | knowledge/threading.md |
