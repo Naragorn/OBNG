@@ -11,6 +11,7 @@
 #   python3 tools/run-with-windows-mods.py -- tools/shadow-run.sh \
 #     --ini tools/hand-scripts/obng-cull-all-off.ini|obng-cull-nodes-off.ini|obng-cull-nodes-on.ini \
 #     tools/hand-scripts/obng-cull-newgame-bars.txt --save continue --run-timeout 480
+# with OBNG_OBVR_DIR at a tree of OBVR's origin/main (its runner knows today's script lines).
 
 start main-menu
 ini Hands Enabled=1
@@ -19,6 +20,18 @@ ini Debug EyeDumpFrames=12
 ini Render SinglePassStereo=1
 ini Hands ReachOpens=0
 expect Single-pass stereo: OBNG took the eyes ok (0)
+
+# The tutorial's boxes (menu Generic, "push the left stick forward" and those after it) pause the
+# world (OBVR's newgame run of 2026-11-11 15:32 stood in one): closed from the console in the
+# prison and every twenty seconds after. The state line at each mark says whether a menu is up.
+console-at prison CloseAllMenus
+console-at t000-yaw0 CloseAllMenus
+console-at t020-yaw0 CloseAllMenus
+console-at t040-yaw0 CloseAllMenus
+console-at t060-yaw0 CloseAllMenus
+console-at t080-yaw0 CloseAllMenus
+console-at t100-yaw0 CloseAllMenus
+console-at t120-yaw0 CloseAllMenus
 
 expect HandScript: finished
 expect the tile under it "main_new"
