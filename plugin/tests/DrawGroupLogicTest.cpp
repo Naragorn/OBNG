@@ -92,7 +92,8 @@ void TestNodeBook() {
 	book.LeftOut(500, 108);
 	Check(book.Candidate(500, 110, 2) && !book.Candidate(500, 111, 2), "each leaving out renews it; beyond the age it ends");
 	static NodeBook fresh;
-	fresh.LeftOut(7, 1000);
+	Check(fresh.LeftOut(7, 1000), "the first leaving out of a node says so (the node log's line)");
+	Check(!fresh.LeftOut(7, 1001), "the next one does not");
 	Check(fresh.Candidate(7, 1001, 2) && !fresh.Candidate(8, 1001, 2), "a node first heard of by being left out; its neighbour is none");
 	Section("NodeBook: a full probe run drops the note, a stale slot is taken over");
 	static NodeBook full;

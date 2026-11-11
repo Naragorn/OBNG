@@ -100,6 +100,7 @@ struct RouteSettings {
 	float occlusionCullMaxMove = 100.0f;  // [Route] OcclusionCullMaxMove: the camera moved further since the verdict: drawn
 	float occlusionCullMaxTurn = 10.0f;   // [Route] OcclusionCullMaxTurn: the camera turned further (degrees): drawn
 	bool occlusionCullNodes = false;      // [Route] OcclusionCullNodes: a scene node whose draws were all hidden is tested by its own bound and, hidden, not visited by the cull walk (two more detours); off until measured
+	UInt32 occlusionCullNodeLog = 0;      // [Route] OcclusionCullNodeLog: the first this many nodes left out are logged by name, parents and children; a measurement
 	bool occlusionCullStats = false;      // [Route] OcclusionCullStats: every eighth eye pass's draws counted by shared mesh and by hidden parent node (DrawGroupLogic.h); a measurement
 	bool occlusionCullFlat = false;       // [Route] OcclusionCullFlat: without the route's eye data the culler runs with the one camera of the flat game (the render target as the port); not for OBVR's dual pass
 	UInt32 occlusionCullTrace = 0;        // [Route] OcclusionCullTrace: eye passes to log in detail (camera, surfaces, control rectangles, first tests); 0 off

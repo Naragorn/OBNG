@@ -149,11 +149,17 @@ public:
 		s->hidden += hidden && s->hidden < 0xFFFFu ? 1u : 0u;
 	}
 
-	void LeftOut(std::uint32_t node, std::uint32_t pass) {
-		if (Slot* s = Claim(node, pass)) {
-			s->leftOutPass = pass;
-			s->everLeftOut = true;
+	// Whether this is the node's first leaving out as far as the book knows (a
+	// slot taken over forgets): the node log's line. A full probe run: false.
+	bool LeftOut(std::uint32_t node, std::uint32_t pass) {
+		Slot* s = Claim(node, pass);
+		if (s == nullptr) {
+			return false;
 		}
+		const bool first = !s->everLeftOut;
+		s->leftOutPass = pass;
+		s->everLeftOut = true;
+		return first;
 	}
 
 	bool Candidate(std::uint32_t node, std::uint32_t pass, std::uint32_t maxAge) const {

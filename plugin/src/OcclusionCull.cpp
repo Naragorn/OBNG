@@ -830,6 +830,50 @@ UInt32 __fastcall CullDriver(void* self, void* /*edx*/, UInt32 process) {
 	return eax;
 }
 
+// [Route] OcclusionCullNodeLog: a node's first leaving out, by name - the
+// node, its vtable, its bound, three parents and its first children (the
+// layout as GrassProbe.cpp reads it: the child array at +0xB0, its count at
+// +0xB6). For the question of what the node cull leaves out in a place.
+constexpr UInt32 kNodeChildrenOffset = 0xB0;
+constexpr UInt32 kNodeChildCountOffset = 0xB6;
+constexpr UInt32 kNodeLogChildren = 8;
+UInt32 g_nodeLogLeft = 0;
+
+void LogNodeLeftOut(UInt32 node) {
+	--g_nodeLogLeft;
+	char line[768];
+	char name[oc::kNameWidth];
+	ReadName(node, name);
+	oc::Bound bound;
+	std::memcpy(&bound, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(node + kGeometryBoundOffset)), sizeof(bound));
+	int at = std::snprintf(line, sizeof(line), "Route: occlusion cull node left out - frame %u node 0x%08X '%s' vtable 0x%08X bound (%.0f, %.0f, %.0f) r %.0f; parents",
+	                       g_frame, node, name, ReadAt<UInt32>(node), static_cast<double>(bound.centre[0]), static_cast<double>(bound.centre[1]),
+	                       static_cast<double>(bound.centre[2]), static_cast<double>(bound.radius));
+	UInt32 parent = node;
+	for (unsigned level = 0; level < 3 && at > 0 && static_cast<std::size_t>(at) < sizeof(line); ++level) {
+		parent = ReadAt<UInt32>(parent + kObjectParentOffset);
+		if (parent == 0) {
+			break;
+		}
+		ReadName(parent, name);
+		at += std::snprintf(line + at, sizeof(line) - at, " '%s'", name);
+	}
+	const UInt32 children = ReadAt<UInt32>(node + kNodeChildrenOffset);
+	const UInt32 count = ReadAt<UInt16>(node + kNodeChildCountOffset);
+	if (at > 0 && static_cast<std::size_t>(at) < sizeof(line)) {
+		at += std::snprintf(line + at, sizeof(line) - at, "; %u children:", count);
+	}
+	for (UInt32 i = 0; children != 0 && i < count && i < kNodeLogChildren && at > 0 && static_cast<std::size_t>(at) < sizeof(line); ++i) {
+		const UInt32 child = ReadAt<UInt32>(children + i * 4);
+		if (child == 0) {
+			continue;
+		}
+		ReadName(child, name);
+		at += std::snprintf(line + at, sizeof(line) - at, " '%s' 0x%08X", name, ReadAt<UInt32>(child));
+	}
+	g_log("%s", line);
+}
+
 // One object's visit in a cull walk. In the eye pass's walk a candidate node
 // (a plain node or a fade node, by its +0x7C) is asked about like a draw;
 // hidden, it is not visited.
@@ -841,7 +885,9 @@ void __fastcall CullVisit(void* self, void* /*edx*/, UInt32 object) {
 			++g_nodesAsked;
 			if (DecideDraw(object, cull::DrawKind::kShape, false, true) == cull::Decision::kSkip) {
 				++g_nodesLeftOut;
-				g_nodeBook.LeftOut(object, g_frame);
+				if (g_nodeBook.LeftOut(object, g_frame) && g_nodeLogLeft != 0) {
+					LogNodeLeftOut(object);
+				}
 				return;
 			}
 		}
@@ -886,6 +932,7 @@ UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {
 	g_settings.margin = settings.occlusionCullMargin;
 	g_settings.maxMoveUnits = settings.occlusionCullMaxMove;
 	g_settings.maxTurnDegrees = settings.occlusionCullMaxTurn;
+	g_nodeLogLeft = settings.occlusionCullNodeLog;
 	g_trace.passes = settings.occlusionCullTrace;
 	g_trace.probeDepth = settings.occlusionCullTraceDepth;
 	g_flat = settings.occlusionCullFlat;
