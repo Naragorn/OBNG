@@ -606,3 +606,20 @@ instructions), for the question of throttling a far actor's whole update:
 - Derived: moving far actors to level 1 is a change of the process object
   (0x0067B260), not a flag; what a level-1 actor shows (animation, 3D) is
   unverified.
+
+## Anvil's docks after Walkers 4.11c (2026-11-11, measured, one run)
+
+Run artifacts/shadow/obng-profile-anvil-docks/20261111-115649 (Windows mod
+list, obng-measure-docks-census.ini, Walkers DLL 774206fe, LINK++):
+
+- The census at the docks: 30 to 51 actors updated in a frame over nine
+  summaries, 12 to 20 of them beyond 8000 units (the run before 4.11c: 96 to
+  100 actors, 75 beyond). Whether the drop is 4.11c or where the hordes
+  happened to be is not separated by one run.
+- ProcessManager::Update 0x00678510: 4.2 to 4.6 ms a frame at about 44
+  skeleton updates a frame (before: 8.77 ms at 98). About 90 to 100 us an
+  actor in both runs, so the cost follows the actor count (derived from the
+  two runs).
+- Of the last summary's 30 actors, 11 are creatures with FF references of
+  base forms in plugins 3F and 38 standing 10 600 to 11 800 units away:
+  actors that far are still updated as high process.
