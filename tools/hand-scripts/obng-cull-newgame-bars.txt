@@ -25,6 +25,10 @@ expect Single-pass stereo: OBNG took the eyes ok (0)
 # world (OBVR's newgame run of 2026-11-11 15:32 stood in one): closed from the console in the
 # prison and every twenty seconds after. The state line at each mark says whether a menu is up.
 console-at prison CloseAllMenus
+# The scene begins once the movement tutorial is done - the player moved and turned - which sets
+# stage 6 of the quest CharacterGen: Valen Dreth talks, his line sets stage 9 (the guards come)
+# (OBVR's newgame fork, read from the stage's SCTX in Oblivion.esm, 2026-11-11). Set from the console.
+console-at at-door setstage charactergen 6
 console-at t000-yaw0 CloseAllMenus
 console-at t020-yaw0 CloseAllMenus
 console-at t040-yaw0 CloseAllMenus
