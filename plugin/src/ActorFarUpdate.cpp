@@ -45,6 +45,29 @@ volatile LONG64 g_travelUnits = 0;
 volatile LONG64 g_travelMicros = 0;
 volatile LONG64 g_movingUnits = 0;   // of them, of actors moving faster than far_update::kMovingSpeed
 volatile LONG64 g_movingMicros = 0;
+// [Route] ActorFarProbe: what time the character controller's update
+// 0x00896000 (knowledge/threading.md) is handed inside an update that runs
+// with summed time - its argument's first float is its step (read: stored at
+// +0x2D8 with its reciprocal at +0x2DC, 0x00896000's `in_ECX[0xb6]`).
+constexpr UInt32 kController = 0x00896000;
+constexpr UInt8 kControllerBytes[] = {0x55, 0x8B, 0xEC, 0x83, 0xE4, 0xF0};  // push ebp; mov ebp, esp; and esp, -10h (read)
+using ControllerFn = void(__thiscall*)(void* self, float* step);
+void* g_controllerOriginal = nullptr;
+bool g_probe = false;
+float g_inSummed = 0.0f;                 // the summed seconds of the update in flight; 0: none
+volatile LONG64 g_controllerCalls = 0;   // controller updates inside an update run with summed time
+volatile LONG64 g_controllerMicros = 0;  // the step they were handed
+volatile LONG64 g_controllerSummedMicros = 0;  // the summed seconds of the updates they ran in
+
+void __fastcall Controller(void* self, void*, float* step) {
+	if (g_inSummed > 0.0f && step != nullptr && GetCurrentThreadId() == g_thread) {
+		InterlockedIncrement64(&g_controllerCalls);
+		InterlockedExchangeAdd64(&g_controllerMicros, static_cast<LONG64>(static_cast<double>(*step) * 1000000.0));
+		InterlockedExchangeAdd64(&g_controllerSummedMicros, static_cast<LONG64>(static_cast<double>(g_inSummed) * 1000000.0));
+	}
+	reinterpret_cast<ControllerFn>(g_controllerOriginal)(self, step);
+}
+
 far_update::Clock g_clock;
 far_update::Table g_table;
 
@@ -140,7 +163,9 @@ void __fastcall Update(void* self, void*, float time) {
 	InterlockedIncrement64(&g_summed);
 	const float frame = *frameSeconds;
 	*frameSeconds = step.seconds;
+	g_inSummed = step.seconds;
 	Original(self, time);
+	g_inSummed = 0.0f;
 	*frameSeconds = frame;
 }
 
@@ -163,6 +188,10 @@ void InstallActorFarUpdate(const char* iniPath, LogFn log) {
 		return;
 	}
 	g_installed = true;
+	if (GetPrivateProfileIntA("Route", "ActorFarProbe", 0, iniPath) != 0) {
+		g_probe = InstallEntryDetour("character controller update 0x00896000 (far actors' probe)", kController, kControllerBytes, sizeof(kControllerBytes),
+		                             reinterpret_cast<const void*>(&Controller), &g_controllerOriginal, log, DetourRole::Route);
+	}
 	log("Route %s: the whole update of an actor beyond %.0f units on every %u. call, with the summed time%s", kName,
 	    static_cast<double>(g_distance), g_every, g_alternate ? "; alternating: only in every second summary window" : "");
 }
@@ -187,6 +216,14 @@ void LogActorFarUpdateSummary() {
 	g_log("Route: far actors' travel (%s in this window) - %.1f units in %.1f actor seconds (%.2f units/s); moving ones %.1f units in %.1f actor seconds (%.2f units/s)",
 	      wasOn ? "on" : "off", travelUnits, travelSeconds, travelSeconds > 0.0 ? travelUnits / travelSeconds : 0.0, movingUnits, movingSeconds,
 	      movingSeconds > 0.0 ? movingUnits / movingSeconds : 0.0);
+	if (g_probe) {
+		const LONG64 calls = InterlockedExchange64(&g_controllerCalls, 0);
+		const double given = static_cast<double>(InterlockedExchange64(&g_controllerMicros, 0)) / 1000000.0;
+		const double stoodFor = static_cast<double>(InterlockedExchange64(&g_controllerSummedMicros, 0)) / 1000000.0;
+		g_log("Route: far actors' controller - %lld controller updates inside updates run with summed time were handed %.3f s where the updates stood "
+		      "for %.3f s (%.0f %%)",
+		      calls, given, stoodFor, stoodFor > 0.0 ? 100.0 * given / stoodFor : 0.0);
+	}
 }
 
 }  // namespace obng::plugin
