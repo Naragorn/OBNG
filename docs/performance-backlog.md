@@ -826,3 +826,20 @@ windows, while the head turns and the scene settles). Putting it on the lower
 rate too could gain at most that, about 0.15 ms a frame here, for limbs that
 move at the lower rate: not worth it. The caller's other work a frame is not
 in this number.
+
+### 2026-11-11 night: the second driver pass a frame (read, not yet measured apart)
+
+Where the Anvil profile stopped. In the docks runs the culler's driver
+(ShadowSceneNode::OnVisible 0x007C78D0) begins two passes a frame (1476
+passes in 738 frames, run 20261111-193818), in the prison one; on Windows the
+windows with 1500-1800 passes in 10 s are the ones whose draws also go to a
+1024x1024 viewport (OBNG.log of 2026-11-11). Derived: the second pass is the
+water's reflection (WaterManager::RenderReflections 0x0049BEF0, a mirrored
+camera, OBVR's map size) - unverified. Read in OcclusionCull.cpp: with eye
+data given BeginEyePass does not ask whether the target is the frame's, so
+that pass counts as an eye pass (the frame counter, the batch, the node
+candidates' ages all step twice a frame); its draws are let through by the
+viewport test in DecideDraw. The log's "ms a pass" is therefore the mean of
+two different passes. Next: the driver's time and visits by the culling
+process's vtable in one docks run (what the second pass is and costs), then
+an eye pass only for the frame's own pass.
