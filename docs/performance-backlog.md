@@ -675,3 +675,17 @@ the tutorial dungeon only). All **measured** in that one session unless marked.
   stands behind it. The log shows skips there (up to 104 of 626 draws a pass,
   593 unconfirmed in a window) but not which draws. To settle: the same place
   with `[Route] OcclusionCull=0` and `=1`, eye dumps compared.
+
+### The prison cell looked at on Linux: the defect does not reproduce in a still look
+
+Runs 20261111-151757 (culler off), -152235 (culler on, no nodes), -152713
+(culler with nodes), `tools/hand-scripts/obng-cull-prison-bars.txt`, the
+Windows mod list linked in, `coc ImperialDungeon01` from OBVRHarnessMOO.
+**Measured:** no pixel of the clear colour in any left-eye dump at any of the
+ten marks in all three runs, the mean brightness equal within 1 of 100, both
+first-person hands drawn; with the nodes the culler left out 30 of 34
+candidate nodes and 29 of 500 draws a pass there. So neither the bars nor the
+spot under the window make the culler drop something visible while the head
+stands. What the runs lack against Nadi's session: a new game with the
+tutorial's scene (NPCs behind the bars), the first seconds after the load,
+real head motion. The defect's cause stays **unverified**.
