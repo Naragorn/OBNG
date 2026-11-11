@@ -425,6 +425,48 @@ without the timed functions inside:
   on the game's main thread under the Steam loader. The timed thread is now
   the first that calls the first listed function.
 
+### Anvil's docks in front of The Flowing Bowl, the Windows mod list (measured 2026-11-11, Linux, run obng-profile-anvil-docks/20261111-092728)
+
+`obng-profile-anvil-docks.txt` with `obng-measure-docks-all.ini`: the cell
+AnvilDockGate 00005699 (-48, -8), noon, fixed weather, an eye of 4036x3376,
+the Beyond at 75 Hz, every route as the Windows INI has it (the culler with
+its node cull). The head through eight directions, then forty seconds
+standing.
+
+The frames (OBVR's capture, 5214 frames in 90 s): 37 % in time, 21 % near,
+42 % over 15.2 ms. Busy (the frame without the wait for poses and the
+pacing wait): median 11.0 ms, p75 12.7, p95 15.6 - over the Dream Air's
+11.1 ms in 49 % of the frames, over 13.3 ms in 18 %. The scene pass: median
+4.9 ms, p95 6.4. The GPU intervals of the capture are all 0.000 ms here
+(GpuTiming=1 gives nothing on this path).
+
+Where the update goes while standing ([Timed], two windows of about 600
+frames, per frame, own time):
+
+| part | ms a frame |
+|---|---|
+| the actors: ProcessManager::Update 0x00678510, in all (58 skeletons a frame) | 5.05-5.20 |
+| - the skeleton updates 0x00471F20 (33 us a call) | 1.91-1.93 |
+| - CharacterController::Update | 1.06-1.10 |
+| - the animation step 0x00603500 | 0.57-0.62 |
+| - the high actors' loop itself | 0.57-0.68 |
+| - UpdateHighProcesses, 0x005F6540, 0x00471C00, Actor::Update itself | 0.34-0.36, 0.27-0.32, 0.16-0.26, 0.14 |
+| the cells: GridCellArray::Update with Havok's step 0x004CCCE0 (0.28-0.63) and the cells' selected nodes (0.50-0.52) | 0.78-1.15 |
+| 0x00440400 on g_TES (not read) | 0.71 |
+| sound, input, IO, time globals, the rest of the timed callees | under 0.05 each |
+| the render routine 0x0040D4D0 (the scene pass, the interface, present, and OBVR's waits inside it) | 6.4 |
+| the update step itself (untimed callees: the player's update, the world's update 0x00707370, OBVR's hooks and waits) | 2.9-3.1 |
+
+- The actors are the largest part of the update here too: 5 ms with 58
+  actors, more per actor than in the crowd scenario (2.7 ms with 55).
+- The culler: 701 draws a pass, 95 skipped (13 %); 13.6 of 15 candidate
+  nodes left out a pass.
+- A collision object's update wrote its node in 24 % of the skeletons
+  (15 % of the updates) - more than in the crowd scenario (8-15 %).
+- The engine's heap: 451 of 512 MB carved (88 %) after two minutes with
+  this mod list, 1.96 M blocks. The address space: 3284 of 4095 MB used
+  (80 %, the Linux process).
+
 ## Put back
 
 
