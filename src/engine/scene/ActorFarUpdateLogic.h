@@ -17,6 +17,14 @@
 // back after a long absence (or whose address a new actor took) does not
 // leap.
 //
+// The clock ticks when the engine's own frame clock moved (TimeInfo's
+// clockMs 0x00B33EA0, knowledge/frame-clock.md), not on a call counted as
+// "once a frame": the first build ticked on the player's update, which runs
+// more than once a frame (measured 2026-11-11, run 20261111-130350: every
+// call got doubled time).
+//
+// A far actor runs in one frame of n, the frame taken from its handle so a
+// crowd does not update together; whatever calls it gets in that frame run.
 // An actor's first call always runs; a near actor runs every call, and gets
 // the summed time only on the first call after it was far.
 //
@@ -37,6 +45,18 @@ inline constexpr std::uint32_t kStaleFrames = 600;  // an entry not seen for thi
 struct Clock {
 	std::uint32_t frame = 0;
 	double seconds = 0.0;
+	std::uint32_t stamp = 0;  // the engine's frame clock at the last tick
+	bool stamped = false;
+
+	// A call's look at the engine's frame clock: a tick when it moved.
+	constexpr void See(std::uint32_t engineStamp, float frameSeconds) {
+		if (stamped && engineStamp == stamp) {
+			return;
+		}
+		stamped = true;
+		stamp = engineStamp;
+		Tick(frameSeconds);
+	}
 
 	constexpr void Tick(float frameSeconds) {
 		++frame;
@@ -49,7 +69,6 @@ struct Clock {
 // What is kept for one actor.
 struct Entry {
 	std::uint32_t actor = 0;      // 0: free
-	std::uint32_t calls = 0;      // its calls so far
 	std::uint32_t lastFrame = 0;  // the clock at its last update that ran
 	double lastSeconds = 0.0;
 };
@@ -65,11 +84,8 @@ struct Step {
 // every: 1 for a near actor or with the route off (actor_far_rate::EveryFor).
 constexpr Step Decide(Entry& entry, bool isNew, std::uint32_t every, const Clock& clock, float frameSeconds) {
 	Step step;
-	if (isNew) {
-		entry.calls = 1;
-	} else {
-		const std::uint32_t call = entry.calls++;
-		if (every > 1 && (call + actor_far_rate::PhaseOf(entry.actor, every)) % every != 0) {
+	if (!isNew) {
+		if (every > 1 && (clock.frame + actor_far_rate::PhaseOf(entry.actor, every)) % every != 0) {
 			step.runs = false;
 			return step;
 		}

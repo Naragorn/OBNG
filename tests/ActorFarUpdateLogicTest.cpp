@@ -28,26 +28,44 @@ int main() {
 	c.Tick(1.0f);
 	Check(Near(c.seconds, 1.023), "a whole second still counts");
 
+	Section("Clock: See ticks when the engine's frame clock moved, once");
+	Clock seen;
+	seen.See(5000, 0.01f);
+	Check(seen.frame == 1 && Near(seen.seconds, 0.01), "the first look is a tick, whatever the stamp");
+	seen.See(5000, 0.01f);
+	seen.See(5000, 0.01f);
+	Check(seen.frame == 1, "the same stamp again: the same frame");
+	seen.See(5011, 0.011f);
+	Check(seen.frame == 2 && Near(seen.seconds, 0.021), "the stamp moved: the next frame");
+	Clock zero;
+	zero.See(0, 0.01f);
+	Check(zero.frame == 1, "a first stamp of 0 is a tick too");
+
 	Section("Decide: the first call runs with the frame's own time");
 	Clock clock;
 	clock.Tick(0.01f);
 	Entry e;
-	e.actor = 0x1040;  // phase 1 of 4
+	e.actor = 0x1040;  // phase 1 of 4: runs in frames 3, 7, ..
 	Step s = Decide(e, true, 4, clock, 0.01f);
-	Check(s.runs && !s.summed && e.calls == 1 && e.lastFrame == 1, "new: runs, nothing summed, the clock noted");
+	Check(s.runs && !s.summed && e.lastFrame == 1, "new: runs, nothing summed, the clock noted");
 
-	Section("Decide: a far actor runs one call in n and gets the time of the frames between");
-	// calls 1, 2, 3 with phase 1: (call + 1) % 4 == 0 at call 3
-	bool ran[3];
+	Section("Decide: a far actor runs in one frame of n and gets the time of the frames between");
+	clock.Tick(0.01f);
+	Check(!Decide(e, false, 4, clock, 0.01f).runs && e.lastFrame == 1, "frame 2: left out, the clock not noted");
+	clock.Tick(0.01f);
+	s = Decide(e, false, 4, clock, 0.01f);
+	Check(s.runs && s.summed && Near(s.seconds, 0.02), "frame 3: runs for two frames, 0.02 s");
+	s = Decide(e, false, 4, clock, 0.01f);
+	Check(s.runs && !s.summed, "a second call in its frame runs too, with the frame's own time");
+	bool ran[4];
 	Step last;
-	for (int i = 0; i < 3; ++i) {
+	for (int i = 0; i < 4; ++i) {
 		clock.Tick(0.01f);
 		last = Decide(e, false, 4, clock, 0.01f);
 		ran[i] = last.runs;
 	}
-	Check(!ran[0] && !ran[1] && ran[2], "the two calls between left out, the third runs");
-	Check(last.summed && Near(last.seconds, 0.03), "it stands for three frames: 0.03 s");
-	Check(e.lastFrame == 4 && e.calls == 4, "the clock noted at the run only, every call counted");
+	Check(!ran[0] && !ran[1] && !ran[2] && ran[3], "frames 4, 5, 6 left out, 7 runs");
+	Check(last.summed && Near(last.seconds, 0.04) && e.lastFrame == 7, "it stands for four frames: 0.04 s");
 
 	Section("Decide: a near actor runs every call and its time is left alone");
 	clock.Tick(0.01f);
@@ -56,7 +74,7 @@ int main() {
 
 	Section("Decide: a far actor that comes near gets the left-out time once");
 	Entry f;
-	f.actor = 0x1000;  // phase 0 of 4: runs at calls 4, 8, ..
+	f.actor = 0x1000;  // phase 0 of 4: runs in frames 4, 8, ..
 	Clock k;
 	k.Tick(0.01f);
 	Decide(f, true, 4, k, 0.01f);
@@ -93,11 +111,10 @@ int main() {
 	auto table = std::make_unique<Table>();
 	bool isNew = false;
 	Entry& a = table->Find(0x2000, 1, isNew);
-	Check(isNew && a.actor == 0x2000 && a.calls == 0, "made");
-	a.calls = 7;
-	a.lastFrame = 1;
+	Check(isNew && a.actor == 0x2000 && a.lastFrame == 0, "made");
+	a.lastFrame = 7;
 	Entry& again = table->Find(0x2000, 2, isNew);
-	Check(!isNew && &again == &a && again.calls == 7, "found again, as left");
+	Check(!isNew && &again == &a && again.lastFrame == 7, "found again, as left");
 
 	Section("Table: a full window gives away a stale entry before a fresh one, else the oldest");
 	// Handles with the same home slot: found by search.
@@ -119,7 +136,7 @@ int main() {
 	Check(!isNew && kept.lastFrame == 1003, "all sixteen still there");
 	kept.lastFrame = 100;  // stale at frame 1100
 	Entry& over = t->Find(same[Table::kWindow], 1100, isNew);
-	Check(isNew && &over == &kept && over.calls == 0 && over.actor == same[Table::kWindow], "the stale one given away, cleared");
+	Check(isNew && &over == &kept && over.lastSeconds == 0.0 && over.actor == same[Table::kWindow], "the stale one given away, cleared");
 	over.lastFrame = 1100;
 	Entry& oldest = t->Find(same[Table::kWindow + 1], 1100, isNew);
 	Check(isNew && oldest.actor == same[Table::kWindow + 1], "none stale: one given away");

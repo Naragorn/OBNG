@@ -19,6 +19,7 @@ constexpr UInt32 kAddress = 0x00603CA0;  // __thiscall, one float, RET 4 at 0x00
 constexpr UInt8 kBytes[] = {0x6A, 0xFF, 0x68, 0x60, 0x2C, 0x9C, 0x00};  // push -1; push 009C2C60h (read)
 constexpr UInt32 kPlayerPointer = 0x00B333C4;  // (read 0x00603CA0's compares; xOBSE g_thePlayer, OBVR kPlayerPointer)
 constexpr UInt32 kFrameSeconds = 0x00B33E9C;   // frameSeconds as Actor::Update reads it (read: seven places in 0x00603CA0; knowledge/actor-shadows.md)
+constexpr UInt32 kClockMs = 0x00B33EA0;        // TimeInfo 0x00B33E90 +0x10 clockMs: moves once a frame (knowledge/frame-clock.md; xOBSE g_timeInfo)
 constexpr UInt32 kRefPosition = 0x2C;          // (OBVR GameAddresses.h kRefPositionOffset)
 constexpr UInt32 kActorProcess = 0x58;         // the process (read 0x00659A00: [this+0x58] -> vfunc +0x08 is the level)
 constexpr UInt32 kProcessLevelSlot = 0x08;
@@ -71,8 +72,8 @@ void __fastcall Update(void* self, void*, float time) {
 		Original(self, time);
 		return;
 	}
+	g_clock.See(Dword(kClockMs), *frameSeconds);
 	if (actor == player) {
-		g_clock.Tick(*frameSeconds);  // once a frame: the player is one of the high loop's actors
 		Original(self, time);
 		return;
 	}
