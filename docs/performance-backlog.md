@@ -801,3 +801,28 @@ Three probe runs and one run of the fix at the docks (`[Route] ActorFarProbe`,
 
 Open: the far actors' animation could be put on the lower rate too (the time
 it costs is not measured; their limbs would move at the lower rate, visibly).
+
+### 2026-11-11 evening: what the far actors' lower rate gains, and what their animation costs
+
+The docks runs alternate the route by 10 s window; the timed entries
+([Timed], logged after the route's lines of the same window) give ms a frame.
+
+| run | far actors a frame | actor updates a frame off -> on | ProcessManager::Update 0x00678510 off -> on | UpdateStep 0x0040D800 off -> on |
+|---|---|---|---|---|
+| 20261111-182322 (before the root motion fix) | 64-74 | 82-93 -> 23-26 | 7.98-8.34 -> 3.34-3.90 ms | 20.4-22.2 -> 13.6-16.4 ms |
+| 20261111-192034 (with the fix) | 18-24 | 40-45 -> 23-24 | 4.04-4.48 -> 2.72-2.98 ms | 13.5-15.8 -> 13.4-13.8 ms |
+| 20261111-193818 (with the fix) | 21-29 | - | 4.12-4.59 -> 2.74-2.93 ms | 13.3-15.7 -> 13.3-13.8 ms |
+
+(measured; why the first run had three times the far actors is not looked
+into - Oblivion Walkers deployed a new build between the runs.) About 70-80 us
+a left-out update. With 20 far actors the whole update step stays at about
+13.4 ms either way; whether a frame cap hides the gain there is not checked.
+
+The far actors' animation update 0x00476D10, which the lower rate does not
+reach (run 20261111-193818, [Route] ActorFarProbe, measured): 37-46 calls a
+frame for 21-29 far actors (more than one call an actor), 0.12-0.16 ms a frame
+in the steady windows (3.2-3.8 us a call; 0.24-0.96 ms in the first three
+windows, while the head turns and the scene settles). Putting it on the lower
+rate too could gain at most that, about 0.15 ms a frame here, for limbs that
+move at the lower rate: not worth it. The caller's other work a frame is not
+in this number.
