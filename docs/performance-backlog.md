@@ -580,3 +580,29 @@ window (it made "on" look slower at first).
 | The loose skeleton's unused bones left out (`[Route] ActorUnusedBones`) | C | not shown: between nothing and about 7 us a large tree (0.3 ms a frame at the docks at best); the 0.75 ms derived before was wrong - the bones left out are the cheap ones | built 2026-11-11, off; an alternation inside one run would measure it | built, not accepted | this file |
 | Far actors' skeletons at a lower rate (`[Route] ActorFarEvery`) | C | measured at the docks with 98 actors, 75 of them beyond 6000 units, every 4th call: the skeleton updates 2.67 -> 1.52 ms a frame, the actors' frame 8.77 -> 7.45 | built 2026-11-11, off; the headset look (a far figure at a quarter rate), and what reads a far actor's bones between two updates, are open | built, not accepted | this file |
 | 0x00471C00 before ApplyAnimData | ? | 0.74-0.78 ms with 117 actors (6-7 us a call) | small to look | not started | knowledge/threading.md |
+
+## Far actors: the engine's own process levels and where the frame time comes from (2026-11-11, read)
+
+Read in the decompiled functions (pseudocode, not yet checked against the
+instructions), for the question of throttling a far actor's whole update:
+
+- ProcessManager::Update 0x00678510 calls all four loops with a time
+  argument of 0: 0x00673C10 (level 3), 0x00673E90 (level 2), 0x00674200
+  (level 1), 0x00677EC0 (level 0, high). The first three run only on frames
+  a random draw (0x009828C0 against 50 and 10) and the accumulator at +0x24
+  let through.
+- Levels 1 and 2 call the same Actor::Update vfunc +0x1C0 as the high loop,
+  but only when 0.15 s (level 1, 0x00674200) or 0.3 s (level 2, 0x00673E90)
+  have passed since the actor's last update (0x006599B0 against 0x00402BD0).
+- Actor::Update 0x00603CA0 does not take the frame time as its argument: it
+  reads frameSeconds 0x00B33E9C directly in seven places and hands it to the
+  animation step 0x00603500 (which reads it in six more). Its argument is
+  only tested against 900.
+- Derived: a throttle of our own (skip n-1 calls at the high loop's call of
+  +0x1C0, run the n-th) must put the summed time into 0x00B33E9C around that
+  one call and restore it after, or far actors run n times slower. Main
+  thread only, so the swap is safe there; unverified which callees keep
+  their own clocks.
+- Derived: moving far actors to level 1 is a change of the process object
+  (0x0067B260), not a flag; what a level-1 actor shows (animation, 3D) is
+  unverified.
