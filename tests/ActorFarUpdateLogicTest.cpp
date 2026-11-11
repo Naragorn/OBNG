@@ -157,5 +157,52 @@ int main() {
 	Check(TravelOf(std::numeric_limits<double>::quiet_NaN(), 0.2) == Travel::None, "a way that is not a number: not counted");
 	Check(TravelOf(-1.0, 0.2) == Travel::None, "a negative way: not counted");
 
+	Section("Table: Peek finds an actor's entry and makes none");
+	auto peeked = std::make_unique<Table>();
+	Check(peeked->Peek(0x3000) == nullptr, "an actor never seen: none");
+	Entry& made = peeked->Find(0x3000, 1, isNew);
+	Check(peeked->Peek(0x3000) == &made && peeked->Peek(0x3010) == nullptr, "found once made; its neighbour still none");
+	Check(peeked->Peek(0) == nullptr, "the free slots' handle 0 is no actor");
+
+	Section("Root motion: the animation's steps of the frames an update was left out are summed for the one that runs");
+	Entry r;
+	r.actor = 0x1000;
+	const float step1[3] = {1.0f, 2.0f, 0.5f};
+	const float step2[3] = {0.5f, -1.0f, 0.0f};
+	float sum[3] = {9.0f, 9.0f, 9.0f};
+	Check(!TakeRootMotion(r, 0x5000, sum) && sum[0] == 9.0f, "nothing noted: nothing to take, the output left alone");
+	AddRootMotion(r, 0x5000, step1);
+	AddRootMotion(r, 0x5000, step2);
+	Check(TakeRootMotion(r, 0x5000, sum) && Near(sum[0], 1.5) && Near(sum[1], 1.0) && Near(sum[2], 0.5), "two frames' steps: their sum");
+	Check(!TakeRootMotion(r, 0x5000, sum), "taken once: gone");
+	AddRootMotion(r, 0x5000, step1);
+	AddRootMotion(r, 0x6000, step2);
+	Check(TakeRootMotion(r, 0x6000, sum) && Near(sum[0], 0.5) && Near(sum[1], -1.0), "other animation data: the sum starts again");
+	AddRootMotion(r, 0x6000, step1);
+	Check(!TakeRootMotion(r, 0x7000, sum), "the actor's animation data is another one now: not taken");
+	Check(!TakeRootMotion(r, 0x6000, sum), "and the sum is dropped by that");
+	AddRootMotion(r, 0x6000, step1);
+	Check(!TakeRootMotion(r, 0, sum), "no animation data at all: not taken");
+	const float bad[3] = {std::numeric_limits<float>::quiet_NaN(), 1.0f, 1.0f};
+	const float huge[3] = {1.0f, std::numeric_limits<float>::infinity(), 1.0f};
+	AddRootMotion(r, 0x6000, step1);
+	AddRootMotion(r, 0x6000, bad);
+	AddRootMotion(r, 0x6000, huge);
+	Check(TakeRootMotion(r, 0x6000, sum) && Near(sum[0], 1.0) && Near(sum[1], 2.0), "a step that is not a finite number is not added");
+	AddRootMotion(r, 0, step1);
+	Check(!TakeRootMotion(r, 0, sum), "a step of no animation data is not noted");
+	AddRootMotion(r, 0x6000, step1);
+	DropRootMotion(r);
+	Check(!TakeRootMotion(r, 0x6000, sum), "dropped (an update that ran with the frame's own time): nothing to take");
+
+	Section("Root motion: the animation data is trusted only while its steps are fresh");
+	Entry fr;
+	fr.actor = 0x1000;
+	Check(FreshAnimData(fr, 10) == 0, "nothing noted: none");
+	AddRootMotion(fr, 0x5000, step1, 10);
+	Check(FreshAnimData(fr, 10) == 0x5000 && FreshAnimData(fr, 11) == 0x5000, "noted this frame or the one before: it");
+	Check(FreshAnimData(fr, 12) == 0, "older: none");
+	Check(!TakeRootMotion(fr, FreshAnimData(fr, 12), sum), "so a stale sum is not taken");
+
 	return Failures();
 }

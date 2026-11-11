@@ -73,6 +73,10 @@ struct Entry {
 	double lastSeconds = 0.0;
 	float lastPosition[3] = {};   // where it stood at that update's entry (the travel measurement)
 	bool hasPosition = false;
+	std::uint32_t animData = 0;   // the animation data the steps below came from
+	float rootMotion[3] = {};     // the animation's steps since the actor's last update that ran
+	bool hasRootMotion = false;
+	std::uint32_t rootFrame = 0;  // the clock at the last step noted
 };
 
 // One call's verdict.
@@ -120,6 +124,63 @@ constexpr Travel TravelOf(double units, double seconds) {
 	return units > kMovingSpeed * seconds ? Travel::Moving : Travel::Still;
 }
 
+// The way a far actor is to go. The animation's update 0x00476D10 runs every
+// frame whether the actor's update does or not (measured 2026-11-11, run
+// obng-profile-anvil-docks/20261111-191517: never inside Actor::Update), and
+// each run of it overwrites the step the animation made (its +0x0C..+0x14,
+// read: zeroed at its entry, written at its end). The actor's update takes
+// that step as the way to go (0x004723A0), so one that runs every 16th frame
+// went one frame's way in sixteen frames' time. The steps of the frames
+// between are summed here and handed to the update that runs.
+constexpr float kMaxRootStep = 1000000.0f;  // a component beyond this is no step
+
+constexpr void DropRootMotion(Entry& entry) {
+	entry.rootMotion[0] = entry.rootMotion[1] = entry.rootMotion[2] = 0.0f;
+	entry.hasRootMotion = false;
+}
+
+// One run of the animation's update for the actor: its step noted.
+constexpr void AddRootMotion(Entry& entry, std::uint32_t animData, const float step[3], std::uint32_t frame = 0) {
+	if (animData == 0) {
+		return;
+	}
+	entry.rootFrame = frame;
+	if (animData != entry.animData) {
+		DropRootMotion(entry);
+		entry.animData = animData;
+	}
+	for (int i = 0; i < 3; ++i) {
+		if (!(step[i] >= -kMaxRootStep && step[i] <= kMaxRootStep)) {  // a NaN compares false
+			return;
+		}
+	}
+	for (int i = 0; i < 3; ++i) {
+		entry.rootMotion[i] += step[i];
+	}
+	entry.hasRootMotion = true;
+}
+
+// The animation data the noted steps came from, when the last of them is of
+// this frame or the one before (the animation's update runs every frame: an
+// older note is of an object that may be gone); else 0.
+constexpr std::uint32_t FreshAnimData(const Entry& entry, std::uint32_t frame) {
+	return entry.hasRootMotion && frame - entry.rootFrame <= 1 ? entry.animData : 0;
+}
+
+// The summed step for an update that runs with summed time; the sum is gone
+// after it either way. False (out untouched) when nothing was noted or the
+// actor's animation data is not the one the steps came from.
+constexpr bool TakeRootMotion(Entry& entry, std::uint32_t animDataNow, float out[3]) {
+	const bool take = entry.hasRootMotion && animDataNow != 0 && animDataNow == entry.animData;
+	if (take) {
+		out[0] = entry.rootMotion[0];
+		out[1] = entry.rootMotion[1];
+		out[2] = entry.rootMotion[2];
+	}
+	DropRootMotion(entry);
+	return take;
+}
+
 // The actors' entries: a fixed table, a short window probed from the
 // handle's hash. A full window gives away a stale entry, else its oldest.
 class Table {
@@ -145,6 +206,21 @@ public:
 		take->actor = actor;
 		isNew = true;
 		return *take;
+	}
+
+	// The actor's entry when it has one; none is made.
+	Entry* Peek(std::uint32_t actor) {
+		if (actor == 0) {
+			return nullptr;
+		}
+		const std::size_t home = Home(actor);
+		for (std::size_t i = 0; i < kWindow; ++i) {
+			Entry& e = slots_[(home + i) % kSlots];
+			if (e.actor == actor) {
+				return &e;
+			}
+		}
+		return nullptr;
 	}
 
 	static constexpr std::size_t Home(std::uint32_t actor) {

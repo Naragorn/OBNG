@@ -96,9 +96,17 @@ volatile LONG64 g_animMicros[3] = {};
 bool IsFar(UInt32 actor, UInt32 player);
 UInt32 Dword(UInt32 address);
 
+far_update::Clock g_clock;
+far_update::Table g_table;
+bool g_rootMotion = true;              // [Route] ActorFarRootMotion: the animation's steps summed for the update that runs
+volatile LONG64 g_rootTaken = 0;       // updates run with summed time that got the summed step
+volatile LONG64 g_rootMissing = 0;     // ... that had none to get
+constexpr UInt32 kAnimRootMotion = 0x0C;  // the animation data's step of its last update, three floats (read 0x00476D10, 0x004723A0)
+
 void __fastcall AnimUpdate(void* self, void*, UInt32 actor, float step, float time) {
-	if (GetCurrentThreadId() == g_thread) {
-		const UInt32 player = Dword(kPlayerPointer);
+	const bool ours = GetCurrentThreadId() == g_thread;
+	const UInt32 player = ours ? Dword(kPlayerPointer) : 0;
+	if (ours && g_probe) {
 		int kind = -1;
 		if (g_inFar) {
 			kind = g_inSummed > 0.0f ? 1 : 0;
@@ -111,10 +119,14 @@ void __fastcall AnimUpdate(void* self, void*, UInt32 actor, float step, float ti
 		}
 	}
 	reinterpret_cast<AnimUpdateFn>(g_animOriginal)(self, actor, step, time);
+	if (ours && g_rootMotion && actor != 0 && actor != player) {
+		if (far_update::Entry* entry = g_table.Peek(actor)) {
+			float made[3];
+			std::memcpy(made, reinterpret_cast<const void*>(reinterpret_cast<UInt32>(self) + kAnimRootMotion), sizeof(made));
+			far_update::AddRootMotion(*entry, reinterpret_cast<UInt32>(self), made, g_clock.frame);
+		}
+	}
 }
-
-far_update::Clock g_clock;
-far_update::Table g_table;
 
 UInt32 Dword(UInt32 address) { return *reinterpret_cast<const UInt32*>(address); }
 
@@ -202,12 +214,22 @@ void __fastcall Update(void* self, void*, float time) {
 	}
 	NoteTravel(entry, actor, isFar && !isNew, since);
 	if (!step.summed) {
+		far_update::DropRootMotion(entry);
 		g_inFar = isFar;
 		Original(self, time);
 		g_inFar = false;
 		return;
 	}
 	InterlockedIncrement64(&g_summed);
+	// The way to go: the animation's steps of the frames this update stands for.
+	const UInt32 animData = far_update::FreshAnimData(entry, g_clock.frame);
+	float way[3];
+	if (far_update::TakeRootMotion(entry, animData, way)) {
+		std::memcpy(reinterpret_cast<void*>(animData + kAnimRootMotion), way, sizeof(way));
+		InterlockedIncrement64(&g_rootTaken);
+	} else {
+		InterlockedIncrement64(&g_rootMissing);
+	}
 	const float frame = *frameSeconds;
 	*frameSeconds = step.seconds;
 	g_inSummed = step.seconds;
@@ -237,11 +259,17 @@ void InstallActorFarUpdate(const char* iniPath, LogFn log) {
 		return;
 	}
 	g_installed = true;
-	if (GetPrivateProfileIntA("Route", "ActorFarProbe", 0, iniPath) != 0) {
+	g_rootMotion = GetPrivateProfileIntA("Route", "ActorFarRootMotion", 1, iniPath) != 0;
+	const bool probe = GetPrivateProfileIntA("Route", "ActorFarProbe", 0, iniPath) != 0;
+	if (g_rootMotion || probe) {
+		const bool anim = InstallEntryDetour("animation update 0x00476D10 (far actors: the steps summed)", kAnimUpdate, kAnimUpdateBytes, sizeof(kAnimUpdateBytes),
+		                                     reinterpret_cast<const void*>(&AnimUpdate), &g_animOriginal, log, DetourRole::Route);
+		g_rootMotion = g_rootMotion && anim;
+	}
+	log("Route %s: the animation's steps of the frames left out %s", kName, g_rootMotion ? "are summed for the update that runs" : "are NOT summed (the actor goes one frame's way an update)");
+	if (probe) {
 		g_probe = InstallEntryDetour("character controller update 0x00896000 (far actors' probe)", kController, kControllerBytes, sizeof(kControllerBytes),
 		                             reinterpret_cast<const void*>(&Controller), &g_controllerOriginal, log, DetourRole::Route);
-		g_probe = InstallEntryDetour("animation update 0x00476D10 (far actors' probe)", kAnimUpdate, kAnimUpdateBytes, sizeof(kAnimUpdateBytes),
-		                             reinterpret_cast<const void*>(&AnimUpdate), &g_animOriginal, log, DetourRole::Route) && g_probe;
 	}
 	log("Route %s: the whole update of an actor beyond %.0f units on every %u. call, with the summed time%s", kName,
 	    static_cast<double>(g_distance), g_every, g_alternate ? "; alternating: only in every second summary window" : "");
@@ -267,6 +295,11 @@ void LogActorFarUpdateSummary() {
 	g_log("Route: far actors' travel (%s in this window) - %.1f units in %.1f actor seconds (%.2f units/s); moving ones %.1f units in %.1f actor seconds (%.2f units/s)",
 	      wasOn ? "on" : "off", travelUnits, travelSeconds, travelSeconds > 0.0 ? travelUnits / travelSeconds : 0.0, movingUnits, movingSeconds,
 	      movingSeconds > 0.0 ? movingUnits / movingSeconds : 0.0);
+	{
+		const LONG64 taken = InterlockedExchange64(&g_rootTaken, 0);
+		const LONG64 missing = InterlockedExchange64(&g_rootMissing, 0);
+		g_log("Route: far actors' way - %lld updates run with summed time got the animation's summed step, %lld had none", taken, missing);
+	}
 	if (g_probe) {
 		const double stoodFor = static_cast<double>(InterlockedExchange64(&g_controllerSummedMicros, 0)) / 1000000.0;
 		static const char* const kAnimKinds[3] = {"inside updates with the frame's own time", "inside updates run with summed time", "outside the actor's update"};
