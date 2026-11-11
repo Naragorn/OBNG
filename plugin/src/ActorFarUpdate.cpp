@@ -55,15 +55,29 @@ using ControllerFn = void(__thiscall*)(void* self, float* step);
 void* g_controllerOriginal = nullptr;
 bool g_probe = false;
 float g_inSummed = 0.0f;                 // the summed seconds of the update in flight; 0: none
-volatile LONG64 g_controllerCalls = 0;   // controller updates inside an update run with summed time
-volatile LONG64 g_controllerMicros = 0;  // the step they were handed
-volatile LONG64 g_controllerSummedMicros = 0;  // the summed seconds of the updates they ran in
+bool g_inFar = false;                    // a far actor's update is in flight
+// By kind of update in flight (0: a far actor's with the frame's own time, 1: with summed time): the
+// controller's updates, the step they were handed, the summed seconds they ran in, and the way they
+// were asked to go (the argument's floats 4..6, read: divided by the step into the velocity at +0x290).
+volatile LONG64 g_controllerCalls[2] = {};
+volatile LONG64 g_controllerMicros[2] = {};
+volatile LONG64 g_controllerSummedMicros = 0;
+volatile LONG64 g_controllerMilliUnits[2] = {};
 
 void __fastcall Controller(void* self, void*, float* step) {
-	if (g_inSummed > 0.0f && step != nullptr && GetCurrentThreadId() == g_thread) {
-		InterlockedIncrement64(&g_controllerCalls);
-		InterlockedExchangeAdd64(&g_controllerMicros, static_cast<LONG64>(static_cast<double>(*step) * 1000000.0));
-		InterlockedExchangeAdd64(&g_controllerSummedMicros, static_cast<LONG64>(static_cast<double>(g_inSummed) * 1000000.0));
+	if (g_inFar && step != nullptr && GetCurrentThreadId() == g_thread) {
+		const int kind = g_inSummed > 0.0f ? 1 : 0;
+		const double x = static_cast<double>(step[4]);
+		const double y = static_cast<double>(step[5]);
+		const double asked = std::sqrt(x * x + y * y);  // the way on the ground
+		InterlockedIncrement64(&g_controllerCalls[kind]);
+		InterlockedExchangeAdd64(&g_controllerMicros[kind], static_cast<LONG64>(static_cast<double>(*step) * 1000000.0));
+		if (asked == asked && asked < 100000.0) {
+			InterlockedExchangeAdd64(&g_controllerMilliUnits[kind], static_cast<LONG64>(asked * 1000.0));
+		}
+		if (kind == 1) {
+			InterlockedExchangeAdd64(&g_controllerSummedMicros, static_cast<LONG64>(static_cast<double>(g_inSummed) * 1000000.0));
+		}
 	}
 	reinterpret_cast<ControllerFn>(g_controllerOriginal)(self, step);
 }
@@ -157,14 +171,18 @@ void __fastcall Update(void* self, void*, float time) {
 	}
 	NoteTravel(entry, actor, isFar && !isNew, since);
 	if (!step.summed) {
+		g_inFar = isFar;
 		Original(self, time);
+		g_inFar = false;
 		return;
 	}
 	InterlockedIncrement64(&g_summed);
 	const float frame = *frameSeconds;
 	*frameSeconds = step.seconds;
 	g_inSummed = step.seconds;
+	g_inFar = true;
 	Original(self, time);
+	g_inFar = false;
 	g_inSummed = 0.0f;
 	*frameSeconds = frame;
 }
@@ -217,12 +235,18 @@ void LogActorFarUpdateSummary() {
 	      wasOn ? "on" : "off", travelUnits, travelSeconds, travelSeconds > 0.0 ? travelUnits / travelSeconds : 0.0, movingUnits, movingSeconds,
 	      movingSeconds > 0.0 ? movingUnits / movingSeconds : 0.0);
 	if (g_probe) {
-		const LONG64 calls = InterlockedExchange64(&g_controllerCalls, 0);
-		const double given = static_cast<double>(InterlockedExchange64(&g_controllerMicros, 0)) / 1000000.0;
 		const double stoodFor = static_cast<double>(InterlockedExchange64(&g_controllerSummedMicros, 0)) / 1000000.0;
-		g_log("Route: far actors' controller - %lld controller updates inside updates run with summed time were handed %.3f s where the updates stood "
-		      "for %.3f s (%.0f %%)",
-		      calls, given, stoodFor, stoodFor > 0.0 ? 100.0 * given / stoodFor : 0.0);
+		for (int kind = 0; kind < 2; ++kind) {
+			const LONG64 calls = InterlockedExchange64(&g_controllerCalls[kind], 0);
+			const double given = static_cast<double>(InterlockedExchange64(&g_controllerMicros[kind], 0)) / 1000000.0;
+			const double asked = static_cast<double>(InterlockedExchange64(&g_controllerMilliUnits[kind], 0)) / 1000.0;
+			g_log("Route: far actors' controller (%s) - %lld controller updates were handed %.3f s and asked to go %.1f units on the ground (%.2f units/s)",
+			      kind == 1 ? "updates run with summed time" : "updates with the frame's own time", calls, given, asked,
+			      given > 0.0 ? asked / given : 0.0);
+			if (kind == 1) {
+				g_log("Route: far actors' controller - the updates run with summed time stood for %.3f s", stoodFor);
+			}
+		}
 	}
 }
 
