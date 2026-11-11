@@ -966,6 +966,12 @@ inline int FormatSpan(const char* name, const SpanStats& s, std::uint64_t ticksP
 	                     static_cast<unsigned long long>(s.overLimit), limitMs);
 }
 
+// "Probe: character controller - N of N updates with the moving bit (N %)".
+inline int FormatMoving(std::uint64_t moving, std::uint64_t updates, char* out, std::size_t capacity) {
+	return std::snprintf(out, capacity, "Probe: character controller - %llu of %llu updates with the moving bit (%u %%)",
+	                     static_cast<unsigned long long>(moving), static_cast<unsigned long long>(updates), PercentOf(moving, updates));
+}
+
 // ---- The view-dependence of the constant uploads ------------------------------------
 //
 // In the stereo route's test mode the second eye re-applies the shader's

@@ -363,6 +363,36 @@ Runs 20261110-225506 (the routes on, `obng-measure-actors-probes.ini`) and
   At that rate a 512 MB heap is full in a few minutes of such a crowd;
   the Windows crash logs' 91 % and 99 % fit that, without proving it.
 
+### The actors' frame split: controller, skeletons, the rest (measured 2026-11-11, Linux, run obng-actors-count/20261111-080227)
+
+`[Probe] ProcessManager` with the character controller and its parts, the
+routes on, per frame (calls times mean over the window's frames):
+
+| actors a frame | process manager | character controller | of it integrate / support check | skeletons (route) | the rest |
+|---|---|---|---|---|---|
+| 55-58 | 3.0-3.1 ms | 0.9-1.0 ms | 0.4 / 0.4 | about 1.0-1.3 | about 0.8-1.2 |
+| 72-75 | 5.1-5.6 | 1.3 | 0.55 / 0.55 | about 2.0-2.7 | about 1.6-1.9 |
+| 89-91 | 7.3-7.9 | 1.7-1.8 | 0.75-0.80 / 0.71-0.73 | about 2.8-3.1 | about 2.8-3.0 |
+| 108 | 8.9-11.0 | 1.8-2.3 | 0.7-1.0 / 0.9-1.0 | about 3.3-4.0 | about 3.7-4.7 |
+
+(The skeleton line and the probe's lines are written at slightly different
+moments of a summary; the skeleton and rest columns are good to a few
+tenths.)
+
+- The character controller is 20-23 % of the process manager's update, 17-
+  21 us a call - not the 4-5 ms derived on 2026-11-10 from "55-60 % of the
+  loop" (that share was of the loop without the skeleton updates, in the
+  batch's run). Withdrawn.
+- 59-78 % of the controller updates have the moving bit in this scenario
+  (the placed NPCs fight): skipping the support check for standing actors
+  would reach a third of 0.7-1.0 ms.
+- The skeletons are the largest named part (30-37 %), the rest - AI, the
+  animation step, 0x00471C00, everything unread in 0x00603CA0 and
+  0x00678510 - is as large or larger (37-43 %) and grows faster than the
+  actor count.
+- The last window (177 frames, 14.4 ms, longest 43 ms) is the scenario's
+  end with long frames; not used.
+
 ## Put back
 
 

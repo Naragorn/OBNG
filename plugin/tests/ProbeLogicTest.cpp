@@ -135,6 +135,10 @@ void TestSpan() {
 	Check(s.calls == 3 && s.ticks == 90000 && s.longestTicks == 50000 && s.overLimit == 1, "three calls, one over");
 	FormatSpan("process manager", s, 10000000, 3.0, out, sizeof(out));
 	Check(std::string(out) == "Probe: process manager - 3 calls, mean 3.000 ms, longest 5.000 ms, 1 over 3.0 ms", (std::string("line: ") + out).c_str());
+	FormatMoving(25, 100, out, sizeof(out));
+	Check(std::string(out) == "Probe: character controller - 25 of 100 updates with the moving bit (25 %)", (std::string("moving: ") + out).c_str());
+	FormatMoving(0, 0, out, sizeof(out));
+	Check(std::strstr(out, "0 of 0 updates with the moving bit (0 %)") != nullptr, "no updates: no division");
 	FormatSpan("x", s, 0, 3.0, out, sizeof(out));
 	Check(std::strstr(out, "mean 0.000 ms, longest 0.000 ms") != nullptr, "no clock frequency: zeros, no division");
 }
