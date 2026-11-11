@@ -92,6 +92,7 @@ using AnimUpdateFn = void(__thiscall*)(void* self, UInt32 actor, float step, flo
 void* g_animOriginal = nullptr;
 volatile LONG64 g_animCalls[3] = {};   // 0, 1 as the controller's kinds; 2: a far actor's, outside its update
 volatile LONG64 g_animMicros[3] = {};
+volatile LONG64 g_animTicks[3] = {};   // the time they took (QueryPerformanceCounter)
 
 bool IsFar(UInt32 actor, UInt32 player);
 UInt32 Dword(UInt32 address);
@@ -106,6 +107,7 @@ constexpr UInt32 kAnimRootMotion = 0x0C;  // the animation data's step of its la
 void __fastcall AnimUpdate(void* self, void*, UInt32 actor, float step, float time) {
 	const bool ours = GetCurrentThreadId() == g_thread;
 	const UInt32 player = ours ? Dword(kPlayerPointer) : 0;
+	int timedKind = -1;
 	if (ours && g_probe) {
 		int kind = -1;
 		if (g_inFar) {
@@ -114,11 +116,21 @@ void __fastcall AnimUpdate(void* self, void*, UInt32 actor, float step, float ti
 			kind = 2;
 		}
 		if (kind >= 0 && step == step) {
+			timedKind = kind;
 			InterlockedIncrement64(&g_animCalls[kind]);
 			InterlockedExchangeAdd64(&g_animMicros[kind], static_cast<LONG64>(static_cast<double>(step) * 1000000.0));
 		}
 	}
-	reinterpret_cast<AnimUpdateFn>(g_animOriginal)(self, actor, step, time);
+	if (timedKind >= 0) {
+		LARGE_INTEGER before;
+		LARGE_INTEGER after;
+		QueryPerformanceCounter(&before);
+		reinterpret_cast<AnimUpdateFn>(g_animOriginal)(self, actor, step, time);
+		QueryPerformanceCounter(&after);
+		InterlockedExchangeAdd64(&g_animTicks[timedKind], after.QuadPart - before.QuadPart);
+	} else {
+		reinterpret_cast<AnimUpdateFn>(g_animOriginal)(self, actor, step, time);
+	}
 	if (ours && g_rootMotion && actor != 0 && actor != player) {
 		if (far_update::Entry* entry = g_table.Peek(actor)) {
 			float made[3];
@@ -305,8 +317,11 @@ void LogActorFarUpdateSummary() {
 		static const char* const kAnimKinds[3] = {"inside updates with the frame's own time", "inside updates run with summed time", "outside the actor's update"};
 		for (int kind = 0; kind < 3; ++kind) {
 			const LONG64 calls = InterlockedExchange64(&g_animCalls[kind], 0);
-			g_log("Route: far actors' animation (%s) - %lld animation updates, handed %.3f s", kAnimKinds[kind], calls,
-			      static_cast<double>(InterlockedExchange64(&g_animMicros[kind], 0)) / 1000000.0);
+			LARGE_INTEGER frequency;
+			QueryPerformanceFrequency(&frequency);
+			const double ms = static_cast<double>(InterlockedExchange64(&g_animTicks[kind], 0)) * 1000.0 / static_cast<double>(frequency.QuadPart);
+			g_log("Route: far actors' animation (%s) - %lld animation updates, handed %.3f s, they took %.3f ms (%.1f us each)", kAnimKinds[kind], calls,
+			      static_cast<double>(InterlockedExchange64(&g_animMicros[kind], 0)) / 1000000.0, ms, calls > 0 ? ms * 1000.0 / static_cast<double>(calls) : 0.0);
 		}
 		for (int kind = 0; kind < 2; ++kind) {
 			const LONG64 calls = InterlockedExchange64(&g_controllerCalls[kind], 0);
