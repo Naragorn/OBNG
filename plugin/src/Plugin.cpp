@@ -16,6 +16,7 @@
 #include "LockProbe.h"
 #include "LogKeepLogic.h"
 #include "ActorCensus.h"
+#include "ActorFarUpdate.h"
 #include "ProcessProbe.h"
 #include "TimedCalls.h"
 #include "FastConstantArrange.h"
@@ -196,6 +197,9 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	r.collisionWrites = GetPrivateProfileIntA("Probe", "CollisionWrites", 0, path) != 0;
 	r.actorUnusedBones = GetPrivateProfileIntA("Route", "ActorUnusedBones", 0, path) != 0;
 	r.actorFarEvery = GetPrivateProfileIntA("Route", "ActorFarEvery", 1, path);
+	if (GetPrivateProfileIntA("Route", "ActorFarWhole", 0, path) != 0) {
+		r.actorFarEvery = 1;  // the whole update is left out instead (ActorFarUpdate.cpp): not the skeleton's a second time
+	}
 	r.actorFarDistance = static_cast<float>(GetPrivateProfileIntA("Route", "ActorFarDistance", 6000, path));
 	r.actorFarAlternate = GetPrivateProfileIntA("Route", "ActorFarAlternate", 0, path) != 0;
 	r.unusedBonesProbe = GetPrivateProfileIntA("Probe", "UnusedBones", 0, path) != 0;
@@ -310,12 +314,16 @@ bool StartSummaryTimerSideEffect(const obng::plugin::ShadowSettings&) {
 uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 	obng::plugin::InstallHeapProbe(settings, &Log);
 	obng::plugin::InstallProcessProbe(settings, &Log);
+	char path[MAX_PATH] = {};
+	const bool havePath = ActiveIniPath(path, sizeof(path));
+	if (havePath) {
+		obng::plugin::InstallActorFarUpdate(path, &Log);  // before the census: the route has the entry first
+	}
 	obng::plugin::InstallActorCensus(settings, &Log);
 	obng::plugin::InstallLockProbe(settings, &Log);  // its two detours are not among the counted ones
 	const uint32_t made = obng::plugin::InstallProbes(settings, &Log);
 	// Last of all: a timed function must not take an entry a route or another probe wants.
-	char path[MAX_PATH] = {};
-	if (ActiveIniPath(path, sizeof(path))) {
+	if (havePath) {
 		obng::plugin::InstallTimedCalls(path, &Log);
 	}
 	return made;
