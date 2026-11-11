@@ -393,6 +393,38 @@ tenths.)
 - The last window (177 frames, 14.4 ms, longest 43 ms) is the scenario's
   end with long frames; not used.
 
+### The actors' frame function by function (measured 2026-11-11, Linux, run obng-actors-count/20261111-090312)
+
+`[Timed]` (plugin/src/TimedCalls.h, `obng-measure-actor-frame-timed.ini`):
+41 functions timed at entry and return, the routes on. Per frame, the time
+without the timed functions inside:
+
+| function | 55-58 actors (751 frames) | 114-119 actors (249 frames) |
+|---|---|---|
+| ProcessManager::Update 0x00678510, in all | 2.71 ms | 9.78 ms |
+| ApplyAnimData 0x00471F20 (the skeleton update, routed) | 1.01 (17 us a call) | 3.78 (32 us a call) |
+| CharacterController::Update 0x00896000 | 0.89 | 2.37 |
+| the animation step 0x00603500 | 0.02 | 1.10 |
+| the high actors' loop 0x00677EC0 itself (and its untimed calls) | 0.39 | 1.06 |
+| 0x005F6540 (10 and 190 calls a frame) | 0.05 | 0.71 |
+| 0x00471C00 | 0.08 | 0.36 |
+| Actor::Update 0x00603CA0 itself (and its 103 virtual calls) | 0.11 | 0.34 |
+| UpdateHighProcesses 0x00673C10 | 0.31 | 0.12 |
+| every other timed function | under 0.02 each | under 0.02 each |
+
+- The rows add up to the whole (9.72 of 9.78 ms): the "rest" of the earlier
+  split is the animation step, the loop's own part and 0x005F6540 - all
+  three small with 55 actors and large with 119, where the placed NPCs
+  fight. The actor update's own part with its virtual calls is small.
+- The skeleton update is 39 % of the actors' frame with 119 actors, the
+  character controller 24 %; a skeleton costs twice as much a call as with
+  55 actors (not explained: the fight's animations, or the cache).
+- The actor loop's slots +0x1D4 / +0x1DC (0x00610540, 0x00610EB0) were not
+  called in this scenario.
+- The first run (20261111-085559) timed nothing: the plugin is not loaded
+  on the game's main thread under the Steam loader. The timed thread is now
+  the first that calls the first listed function.
+
 ## Put back
 
 
@@ -410,6 +442,6 @@ tenths.)
 | The engine's allocator replaced | C | measured: at most 0.1 ms a frame in play and 1.4-6.6 % of the long frames on Linux; 17 % of capture 31's long frames on Windows unconfirmed | medium, and the riskiest item here (errors show late) | put back; a Windows run with [Probe] HeapCalls would reopen it | this file |
 | OBNG's own code in the scene pass: the eye switch, the culler's BoundRect / Collect / Find, the draw route | A | 15 % of the pass in Anvil, about 0.5 ms a frame; half of it looks reachable (not measured) | small to medium, our own code, the link map names the functions | not started | this file |
 | The skeleton route's Matches on every call | A | 0.9 % of the samples outside the pass | small | not started | this file |
-| The rest of the process manager's update outside the actor updates | ? | 1.5 ms with 117 actors, not looked into | small to look | not started | knowledge/threading.md |
+| The animation step 0x00603500, the high actors' loop itself, 0x005F6540 | ? | 1.1 + 1.1 + 0.7 ms with 119 fighting actors, under 0.5 ms together with 55 (measured 2026-11-11) | small to look: [Timed] one level down | not started | this file |
 | The engine heap's growth in a crowd | ? | no frame time; it ends sessions (full heap) | small to look: [Probe] HeapCalls by call site while it grows, the scenario with OBVR and Walkers off | found 2026-11-10, not explained | this file |
 | 0x00471C00 before ApplyAnimData | ? | 0.74-0.78 ms with 117 actors (6-7 us a call) | small to look | not started | knowledge/threading.md |

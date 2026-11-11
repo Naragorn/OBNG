@@ -16,6 +16,7 @@
 #include "LockProbe.h"
 #include "LogKeepLogic.h"
 #include "ProcessProbe.h"
+#include "TimedCalls.h"
 #include "FastConstantArrange.h"
 #include "RouteRangeWalk.h"
 #include "RouteStereoDraw.h"
@@ -122,12 +123,20 @@ bool IniPath(char* path, size_t length, const char* name) {
 // arranging, which wants the shadow's and the route's switch together).
 obng::plugin::RouteSettings g_routeAsRead;
 
-bool ReadSettings(obng::plugin::Settings* settings) {
-	char path[MAX_PATH] = {};
-	if (!IniPath(path, sizeof(path), kTestIniFile) || GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) {
-		if (!IniPath(path, sizeof(path), kIniFile) || GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) {
+// The INI in use: a harness run's OBNG-test.ini when it is there, else OBNG.ini.
+bool ActiveIniPath(char* path, size_t length) {
+	if (!IniPath(path, length, kTestIniFile) || GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) {
+		if (!IniPath(path, length, kIniFile) || GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) {
 			return false;
 		}
+	}
+	return true;
+}
+
+bool ReadSettings(obng::plugin::Settings* settings) {
+	char path[MAX_PATH] = {};
+	if (!ActiveIniPath(path, sizeof(path))) {
+		return false;
 	}
 	obng::plugin::ShadowSettings& s = settings->shadow;
 	s.update = GetPrivateProfileIntA("Shadow", "TimeInfoUpdate", 1, path) != 0;
@@ -295,7 +304,13 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 	obng::plugin::InstallHeapProbe(settings, &Log);
 	obng::plugin::InstallProcessProbe(settings, &Log);
 	obng::plugin::InstallLockProbe(settings, &Log);  // its two detours are not among the counted ones
-	return obng::plugin::InstallProbes(settings, &Log);
+	const uint32_t made = obng::plugin::InstallProbes(settings, &Log);
+	// Last of all: a timed function must not take an entry a route or another probe wants.
+	char path[MAX_PATH] = {};
+	if (ActiveIniPath(path, sizeof(path))) {
+		obng::plugin::InstallTimedCalls(path, &Log);
+	}
+	return made;
 }
 
 bool InstallFixesSideEffect(const obng::plugin::FixSettings& settings) {

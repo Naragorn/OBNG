@@ -32,6 +32,11 @@ target_include_directories(LogKeepLogicTest PRIVATE ../src ../../tests)
 target_compile_options(LogKeepLogicTest PRIVATE -Wall -Wextra -Werror)
 add_test(NAME LogKeepLogicTest COMMAND LogKeepLogicTest)
 
+add_executable(TimedCallLogicTest TimedCallLogicTest.cpp)
+target_include_directories(TimedCallLogicTest PRIVATE ../src ../../tests)
+target_compile_options(TimedCallLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME TimedCallLogicTest COMMAND TimedCallLogicTest)
+
 add_executable(PluginEntryTest PluginEntryTest.cpp ../src/PluginEntry.cpp)
 target_include_directories(PluginEntryTest PRIVATE ../src ../../tests)
 target_compile_options(PluginEntryTest PRIVATE -Wall -Wextra -Werror)
