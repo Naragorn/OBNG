@@ -645,3 +645,33 @@ by summary window, run artifacts/shadow/obng-profile-anvil-docks/20261111-131630
   on the player's update, which runs more than once a frame, so every call
   got summed time.
 - On Windows for the evening of 2026-11-11: ActorFarWhole=1, ActorFarEvery=16.
+
+## Windows session 2026-11-11 13:49-14:27 (Dream Air, full mod list, ActorFarWhole n = 16)
+
+Source: the game folder's `OBNG.log` (227 summary windows of 10 s), `OBVR.log`,
+`OBVR-performance-1-42/` (OBVR's capture: the first 105 s after its start delay,
+the tutorial dungeon only). All **measured** in that one session unless marked.
+
+- Nadi's look in the headset: far actors moved fine with `ActorFarWhole=1`,
+  `ActorFarEvery=16`, `ActorFarDistance=6000`; smooth but for dips at Anvil's
+  market, Chorrol's south gate and a Walkers horde at Anvil's gate. No crash.
+- Far actors: 94 % of the far calls left out in every window; 12 to 36 of 70 to
+  105 actors were far at Anvil, so the ProcessManager still took 3.5 to 5.6 ms a
+  frame there (the near actors), 0.1 to 1.2 ms elsewhere.
+- The dips at Anvil (windows 95 to 105) are the render walk on the CPU, not the
+  actors: 1400 to 1700 draws a pass, two passes a frame, the cull driver (walk
+  and finish) 5 to 8 ms a pass - 10 to 16 ms a frame against a period of
+  11.1 ms, plus the ProcessManager's 4 to 5.6 ms. SteamVR went to half rate in
+  186 episodes, 16591 frames (about 184 s of 38 min), most of them there.
+- GPU: 3.5 ms median, 5.4 ms at the 99th percentile of total render GPU time -
+  in the tutorial dungeon only. The capture ended (capacity) before the first
+  exterior; the GPU at the dips is **unmeasured**.
+- Memory: game heap at most 449 of 1024 MB, address space at most 2527 of
+  4095 MB.
+- Defect seen by Nadi in the tutorial dungeon: behind the cell's bars the floor
+  stayed blue for seconds and NPCs lacked arms or the chest, fine once the door
+  opened. **Unverified** suspicion: the occlusion cull takes the bars' door for
+  an occluder (a see-through surface that writes depth) and leaves out what
+  stands behind it. The log shows skips there (up to 104 of 626 draws a pass,
+  593 unconfirmed in a window) but not which draws. To settle: the same place
+  with `[Route] OcclusionCull=0` and `=1`, eye dumps compared.
