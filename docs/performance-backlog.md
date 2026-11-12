@@ -1362,3 +1362,33 @@ same computation (class A): the switch's own logic (a part of about 0.1 ms) and 
 calls for draws with a vertex shader (0.06 ms; whether any routed draw uses the fixed-function transform is
 unverified). The culler's own work at the docks was 0.68 ms a frame (decide 0.26, the tests' issue 0.25, the
 results' read 0.17; run 20261112-085817): ~1 000 tests a pass, 82 % of them confirming a draw that is visible.
+
+## 2026-11-12: S3 - the culler tests a visible draw in one frame of four; the eye switch's clock reads only for a measurement
+
+- **`[Route] OcclusionCullVisibleEvery`** (class C, built, 1 = as before): a draw found visible is tested again in
+  one frame of n (its turn from its handle, and anyway after n frames); a draw skipped on a hidden verdict, one
+  with a hidden verdict on record and one never tested are tested every frame as before
+  (`OcclusionCullLogic.h` TestDue, its flows in `plugin/tests/OcclusionCullLogicTest.cpp`). The culler can only
+  skip less, never more: a draw that has just become hidden is drawn up to n - 1 frames longer, as without the
+  culler. `OcclusionCullVisibleAlternate=1` switches it by window.
+- Run `obng-profile-anvil-docks/20261112-152535` (`tools/hand-scripts/obng-measure-docks-cull-visible.ini`, n = 4,
+  alternating; the culler's own lines per eye pass, one eye pass a frame):
+
+| per eye pass, the steady windows | rule off (w06, w10, w12) | rule on (w05, w09, w11, w13) |
+|---|---:|---:|
+| tests | 995-1 019 | 369-393 (613-628 visible ones left out) |
+| the tests' issue (end tests) | 0.238-0.246 ms | 0.101-0.106 |
+| the results' read (collect) | 0.182-0.187 ms | 0.077-0.088 |
+| draws skipped | 13-14 % | 13-14 % |
+| skips unconfirmed (the popping's bound) | 0-40 | 0-108 (0 in the last three) |
+| the eye pass with the culler (pass ms) | 3.67 (paused windows), 3.89 | 3.37-3.58 |
+
+  So about 0.24 ms a frame of the culler's own CPU time, and the eye pass 0.1-0.3 ms shorter; the GPU's share
+  (the test rectangles rasterized) is not measured. In the windows w10-w13 the world stood (a message box after
+  the "still" mark: ProcessManager::Update 0 calls) - the scene was drawn the same; the docks script now closes
+  menus every ten seconds of its last forty.
+- **The eye switch** (class A): the switch reads the clock only with `StereoDrawTimer` (four reads a switch
+  before), and the view probe's eye phase is a plain store (two locked exchanges a switch before; writer and
+  readers are the render thread's). Derived from the instruction counts: 0.05-0.1 ms a frame at 1 410 switches.
+  Not shown by measurement: the baseline run with the previous DLL (`...-152303`) had an eye pass of 3.69-3.85 ms
+  in its steady windows against 3.67 in the new run's paused ones - within what two runs differ by.

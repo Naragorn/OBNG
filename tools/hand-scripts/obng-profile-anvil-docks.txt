@@ -47,6 +47,9 @@ console-at s1-y135 CloseAllMenus
 console-at s1-y90 CloseAllMenus
 console-at s1-y45 CloseAllMenus
 console-at still CloseAllMenus
+console-at still-10 CloseAllMenus
+console-at still-20 CloseAllMenus
+console-at still-30 CloseAllMenus
 expect HandScript: finished
 expect Performance: capture armed, it starts in 40 seconds
 expect Performance: capture 1 started
@@ -97,5 +100,11 @@ wait 3
 head yaw 0
 wait 1
 mark still
-wait 40
+wait 10
+mark still-10
+wait 10
+mark still-20
+wait 10
+mark still-30
+wait 10
 mark done
