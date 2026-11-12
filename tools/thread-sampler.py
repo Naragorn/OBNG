@@ -4,7 +4,9 @@ rate falls after an arrival.
 
     python3 -I tools/thread-sampler.py <out.csv> [seconds]   (started beside tools/shadow-run.sh)
 
-Columns: wall time, pid, tid, thread name, utime+stime in clock ticks (cumulative);
+Columns: wall time, pid, tid, thread name, utime+stime in clock ticks (cumulative), and the bytes
+the thread had read from the disk and through read calls (/proc/<pid>/task/<tid>/io read_bytes and
+rchar, cumulative; -1 when not readable);
 pid 0 rows are the machine: the busy and the total jiffies of /proc/stat's first line.
 It waits for the process to appear and stops when it is gone or after the time limit.
 """
@@ -41,7 +43,7 @@ def main():
     start = time.time()
     pid = None
     with open(out, 'w') as f:
-        f.write('wall,pid,tid,name,ticks\n')
+        f.write('wall,pid,tid,name,ticks,read_bytes,rchar\n')
         while time.time() - start < limit:
             if pid is None:
                 pid = find_game()
@@ -50,7 +52,7 @@ def main():
                     continue
             now = time.time()
             busy, total = machine()
-            f.write('%.3f,0,0,machine-busy,%d\n%.3f,0,1,machine-total,%d\n' % (now, busy, now, total))
+            f.write('%.3f,0,0,machine-busy,%d,-1,-1\n%.3f,0,1,machine-total,%d,-1,-1\n' % (now, busy, now, total))
             try:
                 tids = os.listdir('/proc/%d/task' % pid)
             except OSError:
@@ -65,7 +67,18 @@ def main():
                     ticks = int(rest[11]) + int(rest[12])  # utime, stime (fields 14 and 15)
                 except (OSError, ValueError, IndexError):
                     continue
-                f.write('%.3f,%d,%s,%s,%d\n' % (now, pid, tid, name, ticks))
+                read_bytes = rchar = -1
+                try:
+                    with open('/proc/%d/task/%s/io' % (pid, tid)) as io:
+                        for line in io:
+                            key, _, value = line.partition(':')
+                            if key == 'read_bytes':
+                                read_bytes = int(value)
+                            elif key == 'rchar':
+                                rchar = int(value)
+                except (OSError, ValueError):
+                    pass
+                f.write('%.3f,%d,%s,%s,%d,%d,%d\n' % (now, pid, tid, name, ticks, read_bytes, rchar))
             f.flush()
             time.sleep(0.5)
 

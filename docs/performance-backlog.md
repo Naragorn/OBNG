@@ -1282,3 +1282,21 @@ The same still-first docks run three times in a row (Linux, Windows mod list, si
   hardly. What a modern engine does instead: animations (and meshes, textures) streamed in on worker threads
   before they are needed, not set up on the main thread on first use. Not measured on Windows; not yet measured
   with a cold page cache on purpose (needs `drop_caches`, root).
+
+### The arrival with a cold page cache: not the disk - the number of actors (measured 2026-11-12, run obng-profile-anvil-docks-still-first/20261112-141835)
+
+Nadi dropped the page cache (`drop_caches`, fincore: the archives 0 bytes resident), then the still-first run with
+`tools/thread-sampler.py` now also counting each thread's reads (/proc/<pid>/task/<tid>/io):
+
+- The load itself (ready to placed, 12 s): the main thread read 45 MB a second from the disk. The thirty seconds
+  after it: 1.3 MB a second from the disk (17 MB a second through read calls, served from the cache), 0.2 and 0.0
+  later. The disk is not what the arrival waits on; the derivation above ("files not yet in the page cache") is
+  refuted.
+- The arrival was moderate again: UpdateStep 17-26 ms for about 35 s, the keyframe manager's adds (0x00474070)
+  0.6-4.5 ms a frame for 25 s.
+- What differs between the four still-first runs is the number of actors: skeleton updates and far actors' calls
+  a frame in the windows after the arrival - run 134643 (severe) 21-25 / 31-113, run 140045 (moderate) 21-28 /
+  42-77, run 140513 (none) 21-25 / 16-27, the cold run (moderate) 21-31 / 80-226. The run without an arrival cost
+  had a quarter of the far actors. Derived: the half minute after an arrival is the actors who come into the
+  loaded area getting their first animations set up on the main thread, and it grows with how many come - where
+  that number comes from (the town's NPCs, Oblivion Walkers' hordes, both) is not separated.
