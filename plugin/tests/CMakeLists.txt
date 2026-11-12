@@ -128,3 +128,8 @@ target_include_directories(FastSqrtOracleTest PRIVATE ../src ../../tests)
 target_compile_options(FastSqrtOracleTest PRIVATE -Wall -Wextra -Werror)
 add_test(NAME FastSqrtOracleTest COMMAND FastSqrtOracleTest)
 set_tests_properties(FastSqrtOracleTest PROPERTIES SKIP_RETURN_CODE 77)
+
+add_executable(InstanceGroupLogicTest InstanceGroupLogicTest.cpp)
+target_include_directories(InstanceGroupLogicTest PRIVATE ../src ../../tests)
+target_compile_options(InstanceGroupLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME InstanceGroupLogicTest COMMAND InstanceGroupLogicTest)

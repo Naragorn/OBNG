@@ -7,7 +7,10 @@
 #include <intrin.h>
 
 #include <cstdint>
+#include <cstring>
+#include <vector>
 
+#include "InstanceGroupLogic.h"
 #include "RouteStereoDrawLogic.h"
 
 namespace obng::plugin::draw_timer {
@@ -21,6 +24,56 @@ struct Timers {
 	route::StepTimes steps;
 	route::PortTimes ports;
 	route::PassRepeats repeats;
+	// The instance count (InstanceGroupLogic.h): every eighth frame's eye-pass
+	// pass setups noted and counted at the next frame's eye data.
+	bool eyeDraw = false;  // the whole draw in flight draws for the eyes
+	bool noteFrame = false;
+	std::uint32_t frames = 0;
+	std::vector<instance_groups::Key> keys;
+	instance_groups::Totals instances;
+
+	static constexpr std::uint32_t kGeometryDataOffset = 0xB4;     // NiGeometry's model data (xOBSE NiObjects.h geomData; read 0x00722AE5)
+	static constexpr std::uint32_t kShaderPassOffset = 0x3C;       // what slot 12 0x0077A1B0 calls slot 2 of (re/export/rea-all 0x77a1b0.c)
+	static constexpr std::uint32_t kPropertyWordsOffset = 0x08;    // NiPropertyState: ten dwords after the reference count (xOBSE NiNodes.h, size 0x30)
+	static constexpr std::uint32_t kPropertyWords = 10;
+	static constexpr std::uint32_t kEffectWordsOffset = 0x0C;      // NiDynamicEffectState: five dwords after its flag byte (xOBSE NiNodes.h, size 0x20)
+	static constexpr std::uint32_t kEffectWords = 5;
+
+	// A pass setup (slot 12) of the whole draw: its key, when this frame is noted.
+	void NotePassSetup(std::uint32_t geometry, std::uint32_t shader, std::uint32_t propertyState, std::uint32_t effectState) {
+		if (!noteFrame || !eyeDraw || geometry == 0 || shader == 0) {
+			return;
+		}
+		instance_groups::Key k;
+		k.data = Word(geometry + kGeometryDataOffset);
+		k.pass = Word(shader + kShaderPassOffset);
+		std::uint32_t words[kPropertyWords] = {};
+		if (propertyState != 0) {
+			std::memcpy(words, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(propertyState + kPropertyWordsOffset)), sizeof(words));
+		}
+		k.props = instance_groups::HashWords(words, kPropertyWords);
+		std::uint32_t effects[kEffectWords] = {};
+		if (effectState != 0) {
+			std::memcpy(effects, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(effectState + kEffectWordsOffset)), sizeof(effects));
+		}
+		k.effects = instance_groups::HashWords(effects, kEffectWords);
+		keys.push_back(k);
+	}
+
+	// The eye data of a new frame: the noted frame before it counted.
+	void FrameBoundary() {
+		if (noteFrame && !keys.empty()) {
+			instances.Add(instance_groups::Count(keys));
+		}
+		keys.clear();
+		noteFrame = (frames++ % 8) == 0;
+	}
+
+	static std::uint32_t Word(std::uint32_t address) {
+		std::uint32_t value;
+		std::memcpy(&value, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(address)), sizeof(value));
+		return value;
+	}
 
 	// The summary's lines, and the counts started again.
 	template <class Log>
@@ -34,9 +87,14 @@ struct Timers {
 		log(line);
 		route::FormatPassRepeats(repeats, line, sizeof(line));
 		log(line);
-		const bool keep = on;
-		*this = Timers{};
-		on = keep;
+		instance_groups::Format(instances, line, sizeof(line));
+		log(line);
+		deviceCalls = 0;
+		deviceTicks = 0;
+		steps = route::StepTimes{};
+		ports = route::PortTimes{};
+		repeats = route::PassRepeats{};
+		instances = instance_groups::Totals{};
 	}
 };
 

@@ -662,6 +662,7 @@ struct RecordingShaderPort {
 		}
 		if (call.slot == 12 && shader != 0) {
 			draw_timer::g_timers.repeats.Note(ReadAt<std::uint32_t>(shader + kShaderCurrentPassOffset), call.arguments[3], call.arguments[4]);
+			draw_timer::g_timers.NotePassSetup(call.arguments[0], shader, call.arguments[3], call.arguments[4]);
 		}
 		const std::uint64_t t0 = __rdtsc();
 		const std::uint32_t result = engine->Slot(shader, call);
@@ -712,6 +713,7 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
 	TimedEyeSwitch timed{&eyeSwitch, &ticks, &trace};
 	const whole::DrawInput in{geometry, data, skin, world, worldBound, record};
 	const auto plan = route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode()));
+	draw_timer::g_timers.eyeDraw = eyes != nullptr;
 	draw_timer::TimedDevice<whole_engine::EnginePorts, whole::IndexedDraw, whole::PlainDraw> timedDevice{&ports};
 	const std::uint64_t wholeStart = __rdtsc();
 	const whole::Outcome outcome = draw_timer::g_timers.on ? whole::Draw(in, plan, ports, shader, timedDevice, timedDevice, timed)
@@ -1205,6 +1207,9 @@ UInt32 SetStereoEyes(const ObngStereoEyes* eyes) {
 	g_eyes = eye::FromApi(*eyes);
 	g_eyesSet = true;
 	g_traceFrame = g_settings.stereoTraceConstants && g_traceFrames++ % kTraceFrameEvery == 0;
+	if (draw_timer::g_timers.on) {
+		draw_timer::g_timers.FrameBoundary();
+	}
 	if (g_grassProbeOn) {
 		GrassProbePassBoundary();  // the draws counted so far are the pass before this frame's
 	}
