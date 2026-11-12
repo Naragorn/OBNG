@@ -1300,3 +1300,23 @@ Nadi dropped the page cache (`drop_caches`, fincore: the archives 0 bytes reside
   had a quarter of the far actors. Derived: the half minute after an arrival is the actors who come into the
   loaded area getting their first animations set up on the main thread, and it grows with how many come - where
   that number comes from (the town's NPCs, Oblivion Walkers' hordes, both) is not separated.
+
+### Who the actors at the docks are (measured 2026-11-12, run obng-profile-anvil-docks-still-first/20261112-142459)
+
+`tools/hand-scripts/obng-measure-docks-arrival-census.ini`: the actor census on (it takes Actor::Update's entry,
+so the far actors' route is off in this run), the keyframe manager's adds 0x00474070 timed. The plugin indices
+from the run's load order as `tools/run-with-windows-mods.py` builds it (the Windows list, then what only Linux
+has, masters first - reconstructed, not read from the game): 00 Oblivion.esm, 02 Better Cities Resources.esm,
+38 OblivionWalkers.esp, 3F Maskar's Oblivion Overhaul.esp; FF = made in the game.
+
+- After the arrival 52-63 actors are updated a frame, 18-23 of them within 6000 units. Half have a reference
+  made in the game (FF): 23 in the first window after the load, growing to 35 over the next thirty seconds while
+  the other prefixes stay. By base: 15-17 from OblivionWalkers.esp (the hordes), 8-21 Better Cities, 10-17
+  Oblivion.esm, 7-9 bases made in the game, 3-5 Maskar's Oblivion Overhaul.
+- The keyframe manager's adds: 659 a frame for the load's 14 frames (41.7 ms a frame - the hitch of the load
+  itself), then 5-23 a frame at 0.9-1.8 ms a frame for thirty seconds - while the actors made in the game go
+  from 23 to 35 - and none after. So the arrival's tail is mostly actors that are made or come in after the load,
+  each setting up its first animations on the main thread; Walkers' hordes are about a third of the actors, not
+  most of them, and which of the twelve that came later were Walkers' is not separated.
+- Without the far route the actors' frame stays at 4.3-8.3 ms (ProcessManager::Update) and UpdateStep at 15-33
+  ms through the whole run - the route (on in play) is what keeps the docks near 75 frames a second.
