@@ -584,6 +584,7 @@ window (it made "on" look slower at first).
 | Keep a geometry's render passes when its light set did not change (`[Route] PassListKeep`) | A | counted in the Market: one to seven pass builds a frame, 3-6 us each - under 0.05 ms; nearly every relight leaves the key as it was (the sampler's 5-8 % were stale stack words) | built 2026-11-12, off | put back: nothing to gain | knowledge/culling-and-draw-setup.md |
 | The render pass records from a pool instead of three heap allocations each | A | one to seven builds a frame make few records (counted 2026-11-12); who calls the allocator 0.49 ms a frame in the eye pass is open | small to medium | put back | knowledge/culling-and-draw-setup.md |
 | Fewer passes: lights merged into fewer passes, the actor shadow folded into the base pass | C | about half of the eye pass's draws are further passes of a geometry (922 of 1 801 asked in the Market), about 5 us each | large to huge: own shader programs | not started | knowledge/culling-and-draw-setup.md |
+| The actor shadows' receivers filtered by size or distance (`[Route] ActorShadowReceiverMin` / `MaxGap`) | C | measured in the Market: no small receiver at all (every one 128 units or more); beyond 256 units 25-30 % of them, about 27 receiver draws a frame, about 0.2 ms (derived) | built 2026-11-12, off | built, not accepted: little to gain, a visual risk at a low sun | this file |
 
 ## Far actors: the engine's own process levels and where the frame time comes from (2026-11-11, read)
 
@@ -1724,4 +1725,29 @@ merge here (nights and interiors not counted). The actor shadows' receiver pass 
 860 records, 20 %, from two to three shadows (iActorShadowCountExt 3 on Linux). Derived: at the eye pass's 7.5 ms of draws
 for 860 records, about 1.5 ms a frame, beside the shadow step's own 0.7 ms - the actor shadows cost about 2.2 ms a frame
 in the town.
+
+## 2026-11-12: B - the actor shadows' receiver filter (`[Route] ActorShadowReceiverMin` / `ActorShadowReceiverMaxGap`, built, off; class C)
+
+`plugin/src/ShadowReceiverFilter.{h,cpp}`, decisions in `src/engine/render/ShadowReceiverFilterLogic.h`
+(tests/ShadowReceiverFilterLogicTest.cpp): the entry of AddGeometry 0x007D5790; for an actor shadow light (+0xF4 set, a
+caster at +0x130) a geometry is not taken as a receiver when its world bound radius is under r, or when its bound sphere
+lies more than g units from the caster's bound centre. The summary counts the shadow lights' receivers by radius and by
+that distance ("gap") either way.
+
+Measured in the Market District (runs obng-profile-market/20261112-210651 with r = 16 and 20261112-211231 with g = 256,
+both alternating by summary window, `tools/hand-scripts/obng-measure-market-receivers.ini`; harness passed both times):
+
+- **Every receiver has a radius of 128 units or more, none is skinned**: 180-250 receiver calls a frame for the two to
+  three actor shadows, all of them large meshes. The radius rule leaves nothing out (r = 16: 0 a frame).
+- By gap (a frame, steady windows): the caster inside the receiver's bound sphere 70-150, up to 64 units 3-7, 64-128
+  6-12, 128-256 11-24, 256-512 16-45, 512-1024 9-22, beyond 1 024 8-20.
+- g = 256 leaves out 42-62 receivers a frame (25-30 %); the receiver passes in the GPU census (pass ids 0x177..0x17A
+  over every finish) 99 a frame in the windows with it against 126 without (five against four windows, the crowd
+  differing between them). Derived: about 27 draws a frame fewer, about 0.2 ms at the eye pass's 8-9 us a draw. The
+  driver's time a call is not comparable between these windows (the scene grew heavier in the second half).
+
+Derived: the receiver pass's cost is the large meshes around the actor - the ground and building pieces whose bound
+sphere holds the actor (60 % of the receivers): each actor shadow draws them once more in full. Leaving out the far ones
+gives about 0.2 ms with a visual risk (a long evening shadow on a wall more than 256 units away); the near ones can only
+go with the shadow itself (fewer actor shadows) or folded into the base pass by own shader programs. Built, off.
 

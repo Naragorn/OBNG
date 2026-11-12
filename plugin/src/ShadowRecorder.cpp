@@ -17,6 +17,7 @@
 #include "ReferenceAnimRate.h"
 #include "ActorShadowRest.h"
 #include "PassListKeep.h"
+#include "ShadowReceiverFilter.h"
 #include "ProcessProbe.h"
 #include "TimedCalls.h"
 #include "FastConstantArrange.h"
@@ -137,6 +138,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogReferenceAnimRateSummary();
 	LogActorShadowRestSummary();
 	LogPassListKeepSummary();
+	LogShadowReceiverFilterSummary();
 	LogTimedCallsSummary();
 	LogConstantArrangeSummary();
 	LogOcclusionCullSummary();
