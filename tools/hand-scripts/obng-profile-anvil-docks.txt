@@ -35,6 +35,18 @@ console-at placed player.setpos y -32705
 console-at placed player.setpos z 250
 console-at placed player.setangle z 218
 
+# A mod's message box ("Quest added", seen in the Market District run 20261112-124259) pauses the world:
+# closed from the console at every mark.
+console-at s1 CloseAllMenus
+console-at s1-y0 CloseAllMenus
+console-at s1-y-45 CloseAllMenus
+console-at s1-y-90 CloseAllMenus
+console-at s1-y-135 CloseAllMenus
+console-at s1-y180 CloseAllMenus
+console-at s1-y135 CloseAllMenus
+console-at s1-y90 CloseAllMenus
+console-at s1-y45 CloseAllMenus
+console-at still CloseAllMenus
 expect HandScript: finished
 expect Performance: capture armed, it starts in 40 seconds
 expect Performance: capture 1 started
