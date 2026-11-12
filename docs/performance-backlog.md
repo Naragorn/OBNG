@@ -1320,3 +1320,11 @@ has, masters first - reconstructed, not read from the game): 00 Oblivion.esm, 02
   most of them, and which of the twelve that came later were Walkers' is not separated.
 - Without the far route the actors' frame stays at 4.3-8.3 ms (ProcessManager::Update) and UpdateStep at 15-33
   ms through the whole run - the route (on in play) is what keeps the docks near 75 frames a second.
+
+### How far the docks are from 11.1 ms (derived 2026-11-12 from run obng-profile-anvil-docks-still-first/20261112-140513)
+
+The thread sampler beside the warm run (the far actors' route and the references' rate on, the culler on, no view
+rule; 74.6 frames a second, the harness's 75 Hz cap): the main thread used 0.78 / 0.73 / 0.80 s of CPU a second
+standing / turning / standing - 10.5 / 9.8 / 10.7 ms a frame against the 11.1 ms of 90 Hz. Unverified: whether a
+part of that is a spin-wait (OBVR's frame clock, a driver) rather than work; on Windows nothing of this is
+measured.
