@@ -15,6 +15,43 @@ bool Near(double a, double b) { return a - b < 1e-6 && b - a < 1e-6; }
 }  // namespace
 
 int main() {
+	Section("Near actors by where the camera looks");
+	{
+		const float camera[3] = {100.0f, 200.0f, 50.0f};
+		const float ahead[3] = {0.0f, 2.0f, 0.0f};  // not unit length on purpose
+		const float cone = 0.2588f;                 // 75 degrees
+		const auto at = [&](float x, float y, float z) {
+			const float actor[3] = {camera[0] + x, camera[1] + y, camera[2] + z};
+			return ViewOfActor(actor, camera, ahead, cone);
+		};
+		Check(at(0, 500, 0).side == ViewSide::Inside && at(0, 500, 0).band == 0, "straight ahead at 500 units: inside, the first band");
+		Check(at(0, 999, 0).band == 0 && at(0, 1000, 0).band == 1 && at(0, 2999, 0).band == 1 && at(0, 3000, 0).band == 2 &&
+		          at(0, 50000, 0).band == 2,
+		      "the bands end at 1000 and 3000 units, the last one is open");
+		Check(at(500, 500, 0).side == ViewSide::Inside, "45 degrees to the side: inside a 75 degree cone");
+		Check(at(1000, 100, 0).side == ViewSide::Outside, "84 degrees to the side: in front but outside the cone");
+		Check(at(0, 100, 1000).side == ViewSide::Outside, "the same upward");
+		Check(at(0, -500, 0).side == ViewSide::Behind && at(300, -1, 0).side == ViewSide::Behind, "behind the camera's plane: behind");
+		Check(at(300, 0, 0).side == ViewSide::Outside, "exactly beside: in front's edge, outside the cone");
+		Check(at(0, 0, 0).side == ViewSide::Inside && at(0, 0, 0).band == 0, "an actor at the camera reads as inside");
+		const float none[3] = {0.0f, 0.0f, 0.0f};
+		const float actor[3] = {0.0f, -900.0f, 0.0f};
+		Check(ViewOfActor(actor, camera, none, cone).side == ViewSide::Inside, "a direction of no length: inside");
+		const float bad[3] = {std::numeric_limits<float>::quiet_NaN(), 0.0f, 0.0f};
+		Check(ViewOfActor(bad, camera, ahead, cone).side == ViewSide::Inside && ViewOfActor(actor, camera, bad, cone).side == ViewSide::Inside &&
+		          ViewOfActor(actor, bad, ahead, cone).side == ViewSide::Inside,
+		      "a value that is not a number anywhere: inside");
+		const float huge[3] = {1.0e20f, 0.0f, 0.0f};
+		Check(ViewOfActor(huge, camera, ahead, cone).side == ViewSide::Inside, "a position too far to square: inside");
+		ViewCounts counts;
+		counts.Add(at(0, 500, 0));
+		counts.Add(at(1000, 100, 0));
+		counts.Add(at(0, -500, 0));
+		counts.Add(at(0, -4000, 0));
+		Check(counts.All() == 4 && counts.inside[0] == 1 && counts.outside[1] == 1 && counts.behind[0] == 1 && counts.behind[2] == 1,
+		      "each count lands in its side and band");
+		Check(counts.Unseen(0) == 3 && counts.Unseen(1) == 2 && counts.Unseen(2) == 1, "the unseen from a band outward");
+	}
 	Section("Clock: a frame and its seconds a tick; a frame that is no frame counts no time");
 	Clock c;
 	c.Tick(0.011f);

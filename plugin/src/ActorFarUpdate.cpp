@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstring>
 
+#include "OcclusionCull.h"
 #include "engine/scene/ActorFarRateLogic.h"
 #include "engine/scene/ActorFarUpdateLogic.h"
 
@@ -33,6 +34,14 @@ bool g_installed = false;
 LogFn g_log = nullptr;
 std::uint32_t g_every = 1;
 float g_distance = 6000.0f;
+// [Route] ActorViewCount: the near actors' calls by where the camera of the
+// last eye pass looks (ActorFarUpdateLogic.h ViewOfActor); a measurement.
+bool g_viewCount = false;
+float g_viewConeCosine = 0.2588f;
+far_update::ViewCounts g_viewCounts;
+LONG64 g_viewNoCamera = 0;
+constexpr float kHeadHeight = 110.0f;  // game units above the reference's feet; the count's bands are 1000 units wide
+unsigned g_viewLogLeft = 0;            // sample lines left in this summary window
 bool g_alternate = false;
 DWORD g_thread = 0;                // the thread of the first call: the only one whose calls are left out
 volatile LONG g_onNow = 1;         // with the alternation: whether this summary window uses the lower rate
@@ -216,6 +225,31 @@ void __fastcall Update(void* self, void*, float time) {
 		InterlockedIncrement64(&g_farCalls);
 		every = g_onNow != 0 ? g_every : 1;
 	}
+	if (g_viewCount && !isFar) {
+		float camera[3];
+		float direction[3];
+		if (OcclusionCullLastCamera(camera, direction)) {
+			// The direction is the eye pass's; the place is the player's with a head's height: the renderer's camera
+			// position is not in the actors' coordinates (measured 2026-11-12, run 20261112-112847: every near actor
+			// came out beyond 3000 units from it).
+			float here[3];
+			float eye[3];
+			std::memcpy(here, reinterpret_cast<const void*>(actor + kRefPosition), sizeof(here));
+			std::memcpy(eye, reinterpret_cast<const void*>(player + kRefPosition), sizeof(eye));
+			eye[2] += kHeadHeight;
+			here[2] += kHeadHeight;
+			g_viewCounts.Add(far_update::ViewOfActor(here, eye, direction, g_viewConeCosine));
+			if (g_viewLogLeft != 0) {
+				--g_viewLogLeft;
+				g_log("Route: near actors' view sample - player %.0f %.0f %.0f, renderer camera %.0f %.0f %.0f, direction %.3f %.3f %.3f, actor %.0f %.0f %.0f",
+				      static_cast<double>(eye[0]), static_cast<double>(eye[1]), static_cast<double>(eye[2]), static_cast<double>(camera[0]),
+				      static_cast<double>(camera[1]), static_cast<double>(camera[2]), static_cast<double>(direction[0]), static_cast<double>(direction[1]),
+				      static_cast<double>(direction[2]), static_cast<double>(here[0]), static_cast<double>(here[1]), static_cast<double>(here[2]));
+			}
+		} else {
+			++g_viewNoCamera;
+		}
+	}
 	bool isNew = false;
 	far_update::Entry& entry = g_table.Find(actor, g_clock.frame, isNew);
 	const double since = g_clock.seconds - entry.lastSeconds;
@@ -267,6 +301,11 @@ void InstallActorFarUpdate(const char* iniPath, LogFn log) {
 	g_every = every > 64 ? 64 : every;
 	g_distance = static_cast<float>(GetPrivateProfileIntA("Route", "ActorFarDistance", 6000, iniPath));
 	g_alternate = GetPrivateProfileIntA("Route", "ActorFarAlternate", 0, iniPath) != 0;
+	g_viewCount = GetPrivateProfileIntA("Route", "ActorViewCount", 0, iniPath) != 0;
+	{
+		const UINT degrees = GetPrivateProfileIntA("Route", "ActorViewConeDegrees", 75, iniPath);
+		g_viewConeCosine = static_cast<float>(std::cos(static_cast<double>(degrees > 89 ? 89 : degrees) * 3.14159265358979323846 / 180.0));
+	}
 	if (!InstallEntryDetour(kName, kAddress, kBytes, sizeof(kBytes), reinterpret_cast<const void*>(&Update), &g_original, log, DetourRole::Route)) {
 		return;
 	}
@@ -311,6 +350,17 @@ void LogActorFarUpdateSummary() {
 		const LONG64 taken = InterlockedExchange64(&g_rootTaken, 0);
 		const LONG64 missing = InterlockedExchange64(&g_rootMissing, 0);
 		g_log("Route: far actors' way - %lld updates run with summed time got the animation's summed step, %lld had none", taken, missing);
+	}
+	if (g_viewCount) {
+		g_viewLogLeft = 6;  // six sample lines a window
+		const far_update::ViewCounts c = g_viewCounts;
+		g_viewCounts = far_update::ViewCounts{};
+		const LONG64 noCamera = g_viewNoCamera;
+		g_viewNoCamera = 0;
+		g_log("Route: near actors by the camera's direction (cone cosine %.4f; bands to 1000, 3000 units and beyond) - %llu calls; inside the cone %llu / "
+		      "%llu / %llu; in front outside it %llu / %llu / %llu; behind %llu / %llu / %llu; %lld calls without a camera",
+		      static_cast<double>(g_viewConeCosine), c.All(), c.inside[0], c.inside[1], c.inside[2], c.outside[0], c.outside[1], c.outside[2], c.behind[0],
+		      c.behind[1], c.behind[2], noCamera);
 	}
 	if (g_probe) {
 		const double stoodFor = static_cast<double>(InterlockedExchange64(&g_controllerSummedMicros, 0)) / 1000000.0;

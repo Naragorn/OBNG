@@ -170,6 +170,8 @@ float g_walkView[16] = {};
 // they are (DrawGroupLogic.h DriverBook) - a frame runs more than one where
 // the water's reflection renders.
 bool g_targetCheck = true;  // [Route] OcclusionCullEyeTarget
+cull::Camera g_lastCamera;      // the last eye pass's camera, for OcclusionCullLastCamera
+bool g_lastCameraSet = false;
 bool g_driverLog = false;
 draw_groups::DriverBook g_driverBook;
 unsigned __int64 g_walkVisitsAll = 0;  // objects visited in any outermost driver's walk
@@ -448,7 +450,9 @@ void NoteCamera() {
 	std::memcpy(view, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(g_renderer + kRendererViewOffset)), sizeof(view));
 	std::memcpy(inverseRow, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(g_renderer + kRendererInverseViewOffset + 12 * sizeof(float))),
 	            sizeof(inverseRow));
-	g_cameras.Set(g_frame, cull::CameraOf(view, inverseRow));
+	g_lastCamera = cull::CameraOf(view, inverseRow);
+	g_lastCameraSet = true;
+	g_cameras.Set(g_frame, g_lastCamera);
 	if (g_batch != nullptr && g_batch->traced) {
 		float proj[16];
 		std::memcpy(proj, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(g_renderer + kRendererProjOffset)), sizeof(proj));
@@ -946,6 +950,15 @@ void __fastcall CullVisit(void* self, void* /*edx*/, UInt32 object) {
 }
 
 }  // namespace
+
+bool OcclusionCullLastCamera(float position[3], float direction[3]) {
+	if (!g_on || !g_lastCameraSet) {
+		return false;
+	}
+	std::memcpy(position, g_lastCamera.position, sizeof(g_lastCamera.position));
+	std::memcpy(direction, g_lastCamera.direction, sizeof(g_lastCamera.direction));
+	return true;
+}
 
 void OcclusionCullNoteDraw(UInt32 geometry) {
 	if (!g_on || !g_active || g_inner != 0 || g_batch == nullptr || !g_batch->traced) {

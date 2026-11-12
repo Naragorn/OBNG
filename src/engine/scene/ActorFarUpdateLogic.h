@@ -241,4 +241,79 @@ private:
 	std::array<Entry, kSlots> slots_{};
 };
 
+// ---- Near actors by where the camera looks ([Route] ActorViewCount) ----------
+//
+// A count for a possible next step: how many of the near actors (those the
+// distance rule leaves alone) stand outside a cone around the camera's
+// direction, by their distance from the camera. A measurement only - nothing
+// is left out by it. The cone is wider than the view on purpose; what stands
+// outside it cannot be on screen.
+inline constexpr unsigned kViewBands = 3;
+inline constexpr float kViewBandEnd[kViewBands - 1] = {1000.0f, 3000.0f};  // game units; the last band is everything beyond
+
+enum class ViewSide : std::uint8_t { Inside, Outside, Behind };
+
+struct ViewOf {
+	ViewSide side = ViewSide::Inside;
+	unsigned band = 0;
+};
+
+// Where the actor stands for the camera. An actor at the camera, a direction
+// of no length or a value that is not a number reads as inside the cone,
+// band 0: the count must not claim an actor unseen that it cannot place.
+inline ViewOf ViewOfActor(const float actor[3], const float camera[3], const float direction[3], float coneCosine) {
+	const float x = actor[0] - camera[0];
+	const float y = actor[1] - camera[1];
+	const float z = actor[2] - camera[2];
+	const float squared = x * x + y * y + z * z;
+	const float directionSquared = direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2];
+	ViewOf out;
+	if (!(squared > 0.0f) || !(directionSquared > 0.0f) || !(squared < 1.0e30f) || !(directionSquared < 1.0e30f)) {
+		return out;
+	}
+	float distance = 0.0f;
+	// A plain Newton root is enough for a band and a cosine (constexpr-free, no <cmath> in a logic header).
+	distance = squared;
+	for (int i = 0; i < 40; ++i) {
+		distance = 0.5f * (distance + squared / distance);
+	}
+	float directionLength = directionSquared;
+	for (int i = 0; i < 40; ++i) {
+		directionLength = 0.5f * (directionLength + directionSquared / directionLength);
+	}
+	while (out.band < kViewBands - 1 && distance >= kViewBandEnd[out.band]) {
+		++out.band;
+	}
+	const float cosine = (x * direction[0] + y * direction[1] + z * direction[2]) / (distance * directionLength);
+	if (cosine < 0.0f) {
+		out.side = ViewSide::Behind;
+	} else if (cosine < coneCosine) {
+		out.side = ViewSide::Outside;
+	}
+	return out;
+}
+
+struct ViewCounts {
+	std::uint64_t inside[kViewBands] = {};
+	std::uint64_t outside[kViewBands] = {};  // in front, outside the cone
+	std::uint64_t behind[kViewBands] = {};
+	void Add(const ViewOf& view) {
+		(view.side == ViewSide::Inside ? inside : view.side == ViewSide::Outside ? outside : behind)[view.band] += 1;
+	}
+	std::uint64_t All() const {
+		std::uint64_t n = 0;
+		for (unsigned b = 0; b < kViewBands; ++b) {
+			n += inside[b] + outside[b] + behind[b];
+		}
+		return n;
+	}
+	std::uint64_t Unseen(unsigned fromBand) const {
+		std::uint64_t n = 0;
+		for (unsigned b = fromBand; b < kViewBands; ++b) {
+			n += outside[b] + behind[b];
+		}
+		return n;
+	}
+};
+
 }  // namespace obng::engine::scene::actor_far_update

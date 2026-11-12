@@ -33,6 +33,10 @@ bool OcclusionCullDraws(UInt32 geometry, bool strips);
 // draw issues the early tests. Render thread.
 void OcclusionCullNoteDraw(UInt32 geometry);
 
+// The camera of the last eye pass the culler saw (its position and its
+// direction, world space); false before the first one or with the culler off.
+bool OcclusionCullLastCamera(float position[3], float direction[3]);
+
 // Asks for the culler's summary line; the render thread writes it at its
 // next eye pass (the counts since the last line, then reset). Nothing when
 // the culler is off.

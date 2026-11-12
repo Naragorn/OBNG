@@ -1064,3 +1064,35 @@ already leaves out are 29-40 % of the updates here, so the skip reaches 0.19-0.2
 the far throttle (derived), and less with it. Medium cost, and a standing actor must still notice the ground
 leaving - it stays put back. The support check of the moving two thirds (about 0.4 ms) is the ground under a
 walking actor and is not a repeat.
+
+## 2026-11-12: near actors by where the camera looks (measured, a count only)
+
+`[Route] ActorViewCount=1` (off by default; `tools/hand-scripts/obng-measure-docks-view-count.ini`) sorts every
+update call of a near actor (within `ActorFarDistance`, so not throttled) by where it stands for the camera:
+inside a cone of 75 degrees half angle around the eye pass's direction, in front but outside it, or behind; and by
+its distance from the player in three bands. The place is the player's (with a head's height), the direction the
+last eye pass's: the renderer's camera position (+0xA00+0x30) is 0 0 0 at that moment - the render is
+camera-relative (measured in the run's samples; knowledge/culling-and-draw-setup.md has the origin global
+0x00B3F92C) - while column 2 of the view is the world-space forward (measured: -0.616 -0.788 0 at the script's
+heading of 218 degrees). The first run (20261112-112847) used the renderer's position and is void.
+
+Run `artifacts/shadow/obng-profile-anvil-docks/20261112-113230`, the nine windows with actors after the first
+(5 796 frames; the script turns the head through eight directions, so this is a mean over directions, not one
+view), the far throttle on:
+
+| band (units from the player) | near actors a frame | inside the cone | in front, outside | behind |
+|---|---:|---:|---:|---:|
+| under 1000 | 1.0 | 86 % | 14 % | 0 % |
+| 1000-3000 | 9.7 | 60 % | 22 % | 18 % |
+| beyond 3000 (to 6000) | 8.3 | 52 % | 29 % | 20 % |
+
+19.0 near actors a frame (and 88 far ones, throttled). Outside the cone and beyond 1000 units: 7.9 a frame, 42 %
+of the near actors; behind and beyond 1000 units: 3.4 a frame.
+
+Derived: an update of a near actor is about 80 us without the throttle (Actor::Update 71 us and the high process's
+slot 4 8.5 us, measured above). The far rule's rate (every 16th call) on the 7.9 would take about 0.6 ms a frame
+at the docks; on the 3.4 behind only, about 0.25 ms. Occlusion is not in the count (an actor behind a wall inside
+the cone counts as inside). Open before anything is built: an actor outside the cone can come into view within a
+few frames of a head turn (the cone's 20 degrees of margin are five frames at 300 degrees a second), so it must
+run at once when it enters the cone; and an actor in combat behind the player must not fight at a sixteenth of the
+rate.
