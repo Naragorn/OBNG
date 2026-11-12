@@ -265,3 +265,50 @@ ground is (the five actors of the road window have 0.1 tests an update -
 where they stand has not been looked at). The earlier reading "25 tests
 against the neighbours" is withdrawn, and with it the idea of filtering
 them out: these are the contacts the character stands on.
+
+## Could the update of frame N+1 run beside the render of frame N? (read 2026-11-12, two reading passes)
+
+Read in the instructions (tools/re/disasm.py) where marked R, else in the rea-all pseudocode (Rp); the costs are the
+Market District's (run obng-profile-market/20261112-195635, OBNG's [Timed] lines, ms a frame): the frame body 18.0, the
+render 0x0040D4D0 9.2, the update around it 8.8.
+
+**The render side reads and writes more than the scene graph:**
+- the process manager's list +0x60 (0x00B3BD00): the actor shadow step walks it through 0x006747C0, which also trims it
+  past iAINumberActorsComplexScene (0x00B36CD0) and frees the nodes (R 0x006747DF-0x00674809); the update fills and
+  sorts the same list (0x00674820 at 0x0067483C R, 0x0067A230 Rp);
+- the light graph every frame: dead lights dropped, sorted and rescanned (0x007C78D0), the moved geometry relit
+  (0x007AD270 -> 0x007C7050 -> 0x007C6100), the pass caches freed and rebuilt (0x007D85D0), the bound-moved bit 0x80 of
+  a geometry's flags set (0x007AD270) - while the update adds lights (0x007C6AE0 from five places) and rescans them
+  (0x007C6FF0 from the actor update 0x00603CA0 at 0x00604247 R);
+- the app-culled bit of node flags set and restored (the first-person node, the sky root, the node groups through
+  0x00442A30, NiLights, the grid's outer ring 0x0049BEF0) - a read-modify-write of the word the update writes too;
+- game logic inside the render: the water pre-pass 0x0049E880 plays a sound (0x006AE0A0 at 0x0049EE0E R) and loads
+  textures (0x00442890 at 0x0049EEE1 R), sets the current water 0x00B35220 and the underwater flag; the canopy timer
+  0x00543A00; the interface's tile update 0x0058FBA0; TimeInfo's fixedStepMs written at 0x0040D7A3..B7.
+- **Gamebryo's parallel update manager is in the binary and never used on PC**: [0x00B3F940] (NiParallelUpdateTaskManager by
+  the RTTI beside it, re/symbols/xobse.csv) is waited on in 0x00404D60 (RenderScene with 3 ms, 0x00701AB0 with INFINITE,
+  the UI pass) and fed by particles (0x007493D0) and two more; 22 code references, all loads or compares and one store
+  of 0 in the teardown; the address is in .data's uninitialised part (R). Derived: it is never created.
+
+**The update side writes what the render reads, nearly all of it** (ms a frame):
+
+| Part | ms | Writes render-visible state |
+|---|---:|---|
+| ApplyAnimData 0x00471F20 | 1.47 | the skeleton's world transforms and bounds |
+| Actor::Update 0x00603CA0 itself | 0.17 | the root node's translate +0x54..+0x5C and rotation (0x00604192, 0x006040CD, 0x00604227 R); the carried light's rescan (0x00604247 R) |
+| 0x00471C00 | 0.36 | a hidden actor's world bound (0x00471EE5-F7 R), the controllers (0x00471E15 R) |
+| AnimStep 0x00603500 | 0.55 | the spine twist's bones (Rp); the look target pick is logic |
+| the high loop's own work, UpdateHighProcesses | about 0.9 | the shadow step's list (0x00674820), process level changes 0x0067B260 |
+| selected nodes 0x004D4970, the references' animation 0x004CCC50 | 1.16 | world data, controllers, bounds (the references' node writes partly unverified) |
+| the player, the camera 0x0055FA50, the grid move, sky, temp nodes, MagicProjectileRoot | in the 2.3 of 0x0040D800's own time | the player's update, the shader manager's camera, cell attach, app-cull, Update 0x00707370 |
+| AI slots (slot 4 0x0063A210, slot 3 0x0063BA30, slot 8 0x00643640), detection 0x005F6540, the character controller 0x00896000 | 0.3-1.4 | none seen; slot 4's callees unread, they can reach equip, spells, disable and level changes (U); whether the controller writes a node is U |
+| sound 0x006AE860, Havok's step 0x004CCCE0, input | 0.35 | none seen |
+
+**Verdict (derived):** without separating anything about 0.35 ms of the 8.8 could run beside the render. Splitting the
+per-actor update 0x00605770 into a logic phase (AI slots, detection, the target pick) with a queue for its 3D side effects
+(class B: an actor's AI then sees the others' state of the frame before), plus a per-frame copy of the shadow step's list
+and its predicates, the camera and fixedStepMs, would add about 1.2 ms, up to 2.3 ms if the character controller and the
+references' animation write no node - large work with real risk (scripts run from the AI can touch anything). The other
+6.4 ms overlap only behind a full render snapshot: double-buffered world transforms, bounds, skin palettes, light lists
+and the interface - an own renderer in all but name, huge. The structural overlap is not the large lever it looked like.
+
