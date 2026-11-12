@@ -984,3 +984,24 @@ ten calls - if the objects behind 0x00B42040 / 0x00B427A4 / 0x00B42758 do not al
 holds (unverified; then the repeats cost only their loops). What share of the 0.6 ms a frame steps 1, 2 and 4
 hold is not measured. A skip would be class C, and its risk is a render state left over from a draw this count
 does not see (the skinned and direct draws, the eye switch).
+
+### The pass setup's steps timed (measured 2026-11-12, run obng-profile-anvil-docks/20261112-105825) - put back
+
+Four `[Timed]` entries beside the step timers (`tools/hand-scripts/obng-measure-docks-draw-timer.ini`, F40-F43).
+The timers inflate everything: 6-7 million timed calls a window took the frame rate from 75 to 52-72 a second, and
+slot 12 itself read 0.81 us a draw against 0.51 without them (about 30 ns a timed call, derived). Three windows:
+
+| step | calls a setup | share of the setup's time | us a call (with the timer) |
+|---|---:|---:|---:|
+| the setup 0x0075FD90 as a whole | 1 | 100 % | 0.78-0.85 |
+| step 3, the stages' configure 0x00772400 | 6.8 | 65-66 % | 0.075-0.082 |
+| step 2, the render state lists 0x007726C0 | 1.05 | 6.6-6.8 % | 0.051-0.054 |
+| step 4, the stage tail 0x00771790 | 1.3 (it has other callers) | 5.9-6.1 % | 0.038-0.040 |
+| its own body (step 1 and the loop; holds the children's timer cost) | | 24-25 % | |
+
+Derived: the part that depends on the shape (step 3) is two thirds of the setup; the parts that depend on the pass
+object alone (steps 1, 2 and 4) are a third at most, with the timers' cost taken out about 0.2 us a draw at most -
+under 0.25 ms a frame, of which nine in ten calls repeat. A stage's configure costs about 45 ns without the timer,
+so the engine's state objects do drop most of what the device already holds (derived from the cost, not read).
+Verdict: a skip of the pass-only part is worth 0.2 ms a frame at the very best against the risk of a left-over
+render state - put back. The draw side's lever stays the number of shapes.
