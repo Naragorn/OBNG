@@ -70,9 +70,35 @@ int main() {
 		t.Add(n);
 		char line[900];
 		Format(t, line, sizeof(line));
-		Check(std::string(line).find("within the mesh groups 2 draws compared with their group's first, the property word differing in %: 0:0 1:0 2:0 3:0 4:50 5:0 6:50") !=
+		Check(std::string(line).find("within the mesh groups 2 draws compared with their group's first, the word differing in %: 0:0 1:0 2:0 3:0 4:50 5:0 6:50") !=
 		          std::string::npos,
 		      "the share of each word written");
+	}
+
+	Section("Coverage: the grouped draws' pass objects");
+	{
+		std::vector<Key> none;
+		const PassCoverage z = Coverage(none);
+		Check(z.grouped == 0 && z.passes == 0 && z.forEighty == 0, "nothing grouped");
+		std::vector<Key> keys;
+		for (int i = 0; i < 8; ++i) {
+			keys.push_back(K(1, 100, 0, 0));  // eight copies of mesh 1 in pass 100
+		}
+		keys.push_back(K(2, 200, 0, 0));
+		keys.push_back(K(2, 200, 0, 0));  // two of mesh 2 in pass 200
+		keys.push_back(K(3, 300, 0, 0));  // a single draw: not grouped
+		const PassCoverage c = Coverage(keys);
+		Check(c.grouped == 10 && c.passes == 2, "ten grouped draws in two pass objects; the single draw left out");
+		Check(c.forEighty == 1 && c.forNinety == 2 && c.topShare[0] == 8 && c.topShare[1] == 2 && c.topShare[2] == 0,
+		      "the largest pass covers 80 %, both are needed for 90 %");
+		Totals t;
+		t.Add(Count(keys));
+		t.AddCoverage(c);
+		char line[1200];
+		Format(t, line, sizeof(line));
+		Check(std::string(line).find("the grouped draws' pass objects: up to 2 a pass, 1 cover 80 % and 2 cover 90 % of them, the three largest 80 / 20 / 0 %") !=
+		          std::string::npos,
+		      "the coverage written");
 	}
 
 	Section("Totals and the line");

@@ -7,6 +7,7 @@
 #include <intrin.h>
 
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <vector>
 
@@ -16,6 +17,10 @@
 namespace obng::plugin::draw_timer {
 
 namespace route = stereo_draw_route;
+
+// The words InstanceGroupLogic.h compares, read under SEH (StereoDrawTimer.cpp);
+// false when a read faulted.
+bool ReadInstanceWords(std::uint32_t propertyState, std::uint32_t pass, std::uint32_t* words);
 
 struct Timers {
 	bool on = false;
@@ -31,11 +36,10 @@ struct Timers {
 	std::uint32_t frames = 0;
 	std::vector<instance_groups::Key> keys;
 	instance_groups::Totals instances;
+	std::uint64_t unreadable = 0;  // pass setups whose words faulted (not noted)
 
 	static constexpr std::uint32_t kGeometryDataOffset = 0xB4;     // NiGeometry's model data (xOBSE NiObjects.h geomData; read 0x00722AE5)
 	static constexpr std::uint32_t kShaderPassOffset = 0x3C;       // what slot 12 0x0077A1B0 calls slot 2 of (re/export/rea-all 0x77a1b0.c)
-	static constexpr std::uint32_t kPropertyWordsOffset = 0x08;    // NiPropertyState: ten dwords after the reference count (xOBSE NiNodes.h, size 0x30)
-	static constexpr std::uint32_t kPropertyWords = 10;
 	static constexpr std::uint32_t kEffectWordsOffset = 0x0C;      // NiDynamicEffectState: five dwords after its flag byte (xOBSE NiNodes.h, size 0x20)
 	static constexpr std::uint32_t kEffectWords = 5;
 
@@ -47,11 +51,11 @@ struct Timers {
 		instance_groups::Key k;
 		k.data = Word(geometry + kGeometryDataOffset);
 		k.pass = Word(shader + kShaderPassOffset);
-		if (propertyState != 0) {
-			std::memcpy(k.words, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(propertyState + kPropertyWordsOffset)), kPropertyWords * 4);
-			k.words[kPropertyWords] = k.words[4] != 0 ? Word(k.words[4]) : 0;  // the shader property's vtable
+		if (!ReadInstanceWords(propertyState, k.pass, k.words)) {
+			++unreadable;
+			return;
 		}
-		k.props = instance_groups::HashWords(k.words, kPropertyWords);
+		k.props = instance_groups::HashWords(k.words, 10);
 		std::uint32_t effects[kEffectWords] = {};
 		if (effectState != 0) {
 			std::memcpy(effects, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(effectState + kEffectWordsOffset)), sizeof(effects));
@@ -63,6 +67,7 @@ struct Timers {
 	// The eye data of a new frame: the noted frame before it counted.
 	void FrameBoundary() {
 		if (noteFrame && !keys.empty()) {
+			instances.AddCoverage(instance_groups::Coverage(keys));
 			instances.Add(instance_groups::Count(keys));
 		}
 		keys.clear();
@@ -89,6 +94,11 @@ struct Timers {
 		log(line);
 		instance_groups::Format(instances, line, sizeof(line));
 		log(line);
+		if (unreadable != 0) {
+			std::snprintf(line, sizeof(line), "Route: stereo draw instance groups - %llu pass setups not noted (a read faulted)", static_cast<unsigned long long>(unreadable));
+			log(line);
+			unreadable = 0;
+		}
 		deviceCalls = 0;
 		deviceTicks = 0;
 		steps = route::StepTimes{};
