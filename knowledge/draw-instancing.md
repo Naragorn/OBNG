@@ -55,3 +55,28 @@ program, covering most of the gain - plus a draw path that collects a pass list'
 one call with a per-instance stream (SetStreamSourceFreq). Not read yet: where c28-c33 are computed (0x007C9230's
 step 7 names the shadow projection 0x00B45498 and the packed world 0x00B45560) and whether the material and shader
 property's alpha are the only per-instance values the pixel side reads.
+
+## The constant tables, and what the order of draws allows (2026-11-12)
+
+The programs keep their D3DX constant tables (CTAB, read with a small parser over the bytecode): SLS2003.vso -
+ModelViewProj c0x4, LightDirection c13, FogParam c23, FogColor c24, ShadowProj c28x4, ShadowProjData c32,
+ShadowProjTransform c33; SLS2003.pso - AmbientColor c1, PSLightColor c2, Toggles c7, BaseMap s0, NormalMap s1,
+ShadowMap s6, ShadowMaskMap s7 (and ps_2_b, not ps_2_1 as vkd3d prints it); SLS2073.vso - ModelViewProj c0x4,
+ObjToCubeSpace c8x4, LightPosition c16, FogParam c23; SLS2080.pso - PSLightColor c2, ShadowMap s6. The pixel
+program's alpha is `BaseMap.a x AmbientColor.w` (read).
+
+Hardware instancing in D3D9 needs a vs_3_0 vertex program (Microsoft Learn, "Efficiently Drawing Multiple Instances
+of Geometry (Direct3D 9)": "This technique requires a device that supports the 3_0 vertex shader model"; the DirectX 9
+SDK's "Vertex Stream Frequency": stream frequency "is ignored ... if the current vertex shader set is less than version
+3_0"), and a hardware vs_3_0 pairs only with a ps_3_0 (the shader model 3 rules as quoted on Stack Overflow
+13913691, not read in Microsoft's own page) - so both programs are rewritten, not patched.
+`plugin/shaders/SLS2003Instanced.hlsl` is that pair, translated from the disassembly line by line, the model-space
+constants rebuilt from a per-instance world transform; vkd3d-compiler builds it (vs_3_0: 153 instructions against the
+original's 33 - vkd3d does not fold the matrix products; fxc would, not available on Linux).
+
+Order (measured, runs `obng-profile-anvil-docks/20261112-162150`, `obng-profile-market/20261112-162422`): in draw
+order a pass has 134-182 (docks) and 281-298 (town) runs of consecutive draws with one pass object, the longest
+118-160 draws; grouping only inside a run leaves exactly as many groups as grouping over the whole pass (39-40 %
+fewer draws at the docks, 50-51 % in the town). So an instanced path that only reorders inside a run - which keeps
+every additive pass after the pass it adds to - loses nothing. (Skinned and direct draws between two whole draws are
+not in the count: an upper bound.)
