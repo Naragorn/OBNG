@@ -2,7 +2,8 @@
 
 Status: knowledge, written 2026-10-26 from OBVR's shadow sharing
 (`../OBVR`, src/render/ShadowShare*.h/.cpp, commit f53cf6d) and the
-OblivionWalkers captures. Nothing of this is built in OBNG.
+OblivionWalkers captures; a light's frame read 2026-11-12 for OBNG's
+`[Route] ActorShadowEvery` (docs/performance-backlog.md, S1).
 
 ## Where Oblivion draws them (read, Oblivion.exe 1.2.0.416, REA/Ghidra 12.1.4)
 
@@ -91,6 +92,59 @@ chosen casters) changes the count without touching the draw. Which callee
 carries the measured 1.4 ms needs a per-callee timing. Worth their own
 slice: 0x007C6C30 (what registering a caster does), 0x007D6900 (the draw),
 0x007C2710 (the map reservation).
+
+## A light's frame (read 2026-11-12, re/export/actor-shadow-rest/ and re/export/perf-levers/0x004073D0/)
+
+Read in the instructions unless marked; the light is the shadow scene's
+light object (0x220 bytes, made by 0x007D6060 in 0x007C6C30).
+
+- **The reset** 0x007C5BE0 (called only from 0x004073D0, rea-all): for every
+  light of the scene's list (+0xF8) whose NiLight (+0x100, returned with a
+  reference by 0x00405AD0) is not null: its map (+0x114) goes back to the
+  pool - `0x007C1A30` thiscall on `[0x00B42F50]` with the map
+  (0x007C5C61-0x007C5C6E) -, the light's own reference is dropped and +0x114
+  cleared (to 0x007C5C99), the NiLight is hidden (app-culled, +0x18 bit 0,
+  0x007C5CB1), then 0x007D5320 (clears the pending geometry list +0x144).
+- **The pool** is resized to the step's map count by 0x007C2710 right after
+  the reset; shrinking pops the free list as many times as the size drops,
+  without an emptiness check (pseudocode of 0x007C2710/0x007C1740 - a reading
+  aid). The count: `[[0x00B333A0]+0x34] != 0 ? [0x00B06F04] : [0x00B06EFC]`;
+  the setting table names 0x00B06F04 `iActorShadowCountInt` and 0x00B06EFC
+  `iActorShadowCountExt` (the name pointer beside each value, read in the EXE's
+  data 2026-11-12) - so [g_TES]+0x34 set means the interior count (derived; the
+  "exterior" above under "Where Oblivion draws them" reads the flag the other
+  way and is unverified). Nadi's INIs: Int 5 / Ext 3 (Linux), 4 / 2 (Windows).
+- **The registration** 0x007C6C30 finds a caster's light by +0x130 == the
+  caster's node, shows its NiLight and sets the fade target 1 (0x007D1ED0);
+  a new caster gets a new light with +0xF5 = 0.
+- **The walk**, per light with a NiLight (0x00407770-0x004079C9): a hidden
+  light whose fade is running or whose target is above 0.1 (its caster not
+  registered this step) is faded out - target 0 through 0x007D1ED0, and shown
+  again when its caster is shown and the count not reached (0x004077AC-
+  0x00407868). Then a shown light under the count with its caster shown is
+  placed at the caster's world bound centre (`0x007D2280(0, x, y, z)`, the
+  caster node's +0x20..+0x28, RET 0x10), gets its camera and fade
+  (0x007D6390, RET 4), and - when +0x118 != 0xFF and +0xD8 >= 0.05 - is
+  counted (`[esp+0x1C] += 1` at 0x00407930) and collects the geometry in its
+  reach (0x007D5ED0, 0x007D6900 on the scene root, 0x007D6A40).
+- **The fade** 0x007D6390: the light's distance to the camera less the
+  caster's bound radius against `fLightLOD1/2` (0x00B06EAC/0x00B06EB4, 1000 /
+  1500, into +0xD4) and `fShadowLOD1/2` (0x00B06EBC/0x00B06EC4, 200 / 400, into
+  +0xD8: an actor's shadow fades out between 200 and 400 units from the
+  camera), times the fade timer (+0xE0 += the frame time, against
+  [0x00B2C680]; reversed when the target +0xDC is 0); +0x118 is 0xFF when
+  the light is out of the camera's view. A light whose +0xD8 reaches 0 gives
+  its map back (pseudocode).
+- **The maps' render** 0x007C6770 (thiscall(scene; camera), RET 4, called
+  only from 0x004073D0 at 0x00407A4B): per light with a NiLight, a hidden one
+  goes to 0x007D21F0 (off its geometry's light lists), a shown one with
+  +0x118 != 0xFF to 0x007D59C0 (RET 8) -> 0x007D46C0 for +0xF5 == 0, which
+  takes a map from the pool (0x007C1960 on [0x00B42F50]) when +0x114 is 0,
+  draws it and stores the light's projection at +0x10..+0x4C (pseudocode).
+- Derived: a light's map, projection and geometry list last from its draw
+  to the next step's reset. A light whose map the reset leaves with it, that
+  the walk does not place and the maps' render does not draw, keeps showing
+  its last shadow - the ground for `[Route] ActorShadowEvery`.
 
 ## Measured (OblivionWalkers perf-walkers-in-view.txt, Linux, 75 Hz, OBVR dual pass)
 

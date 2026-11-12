@@ -580,6 +580,7 @@ window (it made "on" look slower at first).
 | The loose skeleton's unused bones left out (`[Route] ActorUnusedBones`) | C | not shown: between nothing and about 7 us a large tree (0.3 ms a frame at the docks at best); the 0.75 ms derived before was wrong - the bones left out are the cheap ones | built 2026-11-11, off; an alternation inside one run would measure it | built, not accepted | this file |
 | Far actors' skeletons at a lower rate (`[Route] ActorFarEvery`) | C | measured at the docks with 98 actors, 75 of them beyond 6000 units, every 4th call: the skeleton updates 2.67 -> 1.52 ms a frame, the actors' frame 8.77 -> 7.45 | built 2026-11-11, off; the headset look (a far figure at a quarter rate), and what reads a far actor's bones between two updates, are open | built, not accepted | this file |
 | 0x00471C00 before ApplyAnimData | ? | 0.74-0.78 ms with 117 actors (6-7 us a call) | small to look | not started | knowledge/threading.md |
+| Actor shadows at rest (`[Route] ActorShadowEvery`) | C | the step 0x004073D0 is at most 1.1-2.3 ms a frame in the Market District (G1, an upper bound); what resting saves of it is not measured | built 2026-11-12, off; the alternating run, a long run and the headset look are open | built, not accepted | this file |
 
 ## Far actors: the engine's own process levels and where the frame time comes from (2026-11-11, read)
 
@@ -1581,3 +1582,40 @@ again in their own pass - 126-201 draws a frame beside the shadow maps themselve
 
 Derived: the town's frame is the main thread's - the actors (3.7 ms), the eye pass (about 1 300 draws with the
 culler) and the actor shadows (their step and the receiver pass, together the largest item not looked at yet).
+
+## 2026-11-12: S1 - the actor shadows at rest (`[Route] ActorShadowEvery`, built, off by default; class C)
+
+Built without a measurement first (Nadi: "Ja dann Bau das"); the measurement is built in.
+
+What the step does with its lights, read 2026-11-12 in the instructions (re/export/perf-levers/0x004073D0,
+re/export/actor-shadow-rest/; knowledge/actor-shadows.md "A light's frame"): the reset 0x007C5BE0 gives every
+light's map (+0x114) back to the pool [0x00B42F50] and hides the light; the registration shows again the lights of
+the casters it accepts; the walk places, fades and collects the geometry of each shown light; 0x007C6770 draws the
+map of each shown light, 0x007D46C0 taking a map from the pool and storing the light's projection at +0x10. So
+the map, the projection and the geometry list of a light last from its draw to the next step's reset - a light can
+keep them through more steps if the reset leaves its map with it and nothing places or draws it.
+
+The route (`plugin/src/ActorShadowRest.{h,cpp}`, decisions in `src/engine/render/ActorShadowRestLogic.h`, every flow
+in `tests/ActorShadowRestLogicTest.cpp`): with `ActorShadowEvery=n` a light rests - keeps its map through the reset,
+is counted by the walk without being placed, its map render left out - when it was drawn or at rest in the step
+before, its caster is the same and its bound centre within `ActorShadowStill` units (4 by default) of where it
+stood at the light's last draw, it holds its map, was in view and faded in (+0xDC 1, +0xE0 past the fade time,
++0xD8 at least 0.05), it is a casters' light (+0xF5 0) and it is not its turn (one step of n, the turns given in
+order so the lights spread over the steps). A step after a gap (over 100 ms) or with another map count than the
+step before keeps nothing: the pool is resized right after the reset (0x007C2710 pops a shrinking pool's free list
+without a check). A light kept but not at rest (its caster not registered, the count reached) gives its map back
+before the maps' render; one the walk shows again to fade out (target 0) is drawn into the map it holds.
+
+Tolerance (class C), held by construction: a resting shadow is at most n - 1 steps old and its caster within
+`still` units of the drawn place; the camera's fade and view of a resting light are as old. Five patches, all
+checked against the game's bytes before any is written, the step's call written last: the scene render's call of
+the step 0x0040C91B (numbers and times the step), the reset's release 0x007C5C61, the walk's draw block 0x004078DA,
+the maps' render's call 0x00407A4B and its call of a light's map 0x007C6943. Not the step's entry (OBVR's shadow
+share and `[Probe] GpuPasses` take it).
+
+Measured: nothing yet. Unit tests: 61 checks over the flows of the logic. Not run in the game. Open: the run with
+`tools/hand-scripts/obng-measure-market-shadows.ini` (ActorShadowEvery=4, alternating in blocks of four steps: the
+step's own time on and off in one run, the lights drawn and at rest a step, the reasons a light was not kept); a
+device Reset while lights rest (their maps' content after it is unverified); the headset look. What resting cannot
+touch: the receivers' pass (0x177, 126-201 draws a frame in the Market) draws every frame.
+
