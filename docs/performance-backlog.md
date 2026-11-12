@@ -1178,3 +1178,43 @@ With the docks (0.3-2.7 a frame) that is two places where the culler's node cull
 the ten to eighteen inside the cone. The part works and holds Nadi's condition at the bars on Linux, and gains
 about 0.1 ms: it stays off and is put back. What would change the picture is a count of actors hidden as a whole
 that the node cull does not reach (it asks only nodes whose draws were all hidden before) - not looked at.
+
+## 2026-11-12: the references' animation update (`[Route] ReferenceAnimEvery`, built, off by default; class C)
+
+What 0x00440400 on g_TES is (read; the backlog had it as "not read", 0.71-1.0 ms a frame): it clears
+[0x00B33C28] and jumps - in an interior into TESObjectCELL::UpdateReferenceAnimations 0x004CCC50 (proposal) for
+the one cell ([tes+0x34]), outside into 0x00482470, which calls 0x004CCC50 for every cell of the grid ([tes+0x08]:
+its size at +0x0C, the cells at +0x10, eight bytes each). That is the caller knowledge/render-thread-outside-the-
+pass.md left unverified. 0x004CCC50 calls slot +0x160 of each reference of the cell that is no actor (or an actor
+with +0x78 set, or 0x0045A500), 0x004E3F30 for a plain reference.
+
+Measured at Anvil's docks with the Windows mod list (`tools/hand-scripts/obng-measure-docks-ref-animations.ini`,
+run `obng-profile-anvil-docks/20261112-130655`): 25 cells and about 4 760 calls of 0x004E3F30 a frame; 0x00482470
+0.89-1.68 ms a frame with a timer on every call, the cells' own walk 0.13-0.14 ms of it.
+
+The route (`plugin/src/ReferenceAnimRate.cpp`, `src/engine/scene/ReferenceAnimRateLogic.h`): a reference found
+with nothing to do (0x004E3F30's own gates, read again after its call) is called again only in one frame of n from
+the cell's loop; one with something to do every frame; any other caller gets the original. Lights and references
+with an NPC's or a creature's base (types 0x1A, 0x23, 0x24, for which 0x004E3F30 calls slot +0xFC first) are never
+left out. `ReferenceAnimAlternate=1` switches it by window. n = 4 in the runs.
+
+Run `obng-profile-anvil-docks/20261112-133246` (the route timing the calls that run, by kind; per frame, the
+steady windows):
+
+| kind of reference | calls a frame | ms a frame without the route | with it |
+|---|---:|---:|---:|
+| nothing to do | 4 709 (1 182 with the route) | 0.30-0.32 (0.06-0.07 us each) | 0.05 |
+| an NPC's or creature's base | 71-76 | 0.18-0.36 (2.6-4.8 us each; 1.0-1.1 while the head turns) | the same |
+| a controller manager with sequences | 10 | 0.003 | the same |
+| lights | 1 | 0.003 | the same |
+| animation data on a plain reference | 0 | | |
+
+- The gain is the idle references' 0.26 ms a frame (0x00482470: 0.51-0.70 ms with the route against 0.62-0.77
+  without). Not the 0.6-0.7 ms hoped for: an idle reference's gate costs 60-70 ns here, not the cold loads the
+  sampler showed on 2026-11-08; n = 16 would add 0.03 ms.
+- What stays is the 71-76 actors' call - the animation update 0x00476D10 outside Actor::Update that the far
+  actors' fix sums (2026-11-11: 0.12-0.16 ms a frame for the far ones; here all of them, and three times dearer
+  while the head turns).
+- Noticed late: one reference in ten windows (found with something to do on its turn); 0 in the run before
+  (`...-132903`). No call ran without a slot in the table.
+- Open: the look at doors, levers and flames in the headset (a start up to three frames late); interiors.

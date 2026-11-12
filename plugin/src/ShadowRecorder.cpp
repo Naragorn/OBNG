@@ -12,6 +12,7 @@
 #include "LockProbe.h"
 #include "ActorCensus.h"
 #include "ActorFarUpdate.h"
+#include "ReferenceAnimRate.h"
 #include "ProcessProbe.h"
 #include "TimedCalls.h"
 #include "FastConstantArrange.h"
@@ -129,6 +130,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogProcessProbeSummary();
 	LogActorCensusSummary();
 	LogActorFarUpdateSummary();
+	LogReferenceAnimRateSummary();
 	LogTimedCallsSummary();
 	LogConstantArrangeSummary();
 	LogOcclusionCullSummary();
