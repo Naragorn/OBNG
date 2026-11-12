@@ -104,6 +104,16 @@ int main() {
 		      "the coverage written");
 	}
 
+	Section("Runs: groups only inside a run of one pass object, in draw order");
+	{
+		// pass 1: meshes 1 1 2 | pass 2: 1 | pass 1: 1 2 2
+		std::vector<Key> keys = {K(1, 1, 0, 0), K(1, 1, 0, 0), K(2, 1, 0, 0), K(1, 2, 0, 0), K(1, 1, 0, 0), K(2, 1, 0, 0), K(2, 1, 0, 0)};
+		const Counts n = Count(keys);
+		Check(n.runs == 3 && n.longestRun == 3, "three runs, the longest three draws");
+		Check(n.runGroups == 5, "groups within the runs: 2 + 1 + 2 = 5 (against 3 by mesh and pass over the whole pass)");
+		Check(n.groups[0] == 3, "the whole-pass count is still three");
+	}
+
 	Section("Totals and the line");
 	{
 		Totals t;

@@ -92,7 +92,33 @@ struct Counts {
 	// group's first, and how often each property word differs.
 	std::uint64_t compared = 0;
 	std::uint64_t wordDiffers[kPropertyWords] = {};
+	// In draw order: the runs of consecutive draws with one pass object, and
+	// the groups by mesh within each run - what an instanced path keeps when
+	// it may only reorder inside a run (an additive pass must stay after the
+	// pass it adds to).
+	std::uint64_t runs = 0;
+	std::uint64_t runGroups = 0;
+	std::uint64_t longestRun = 0;
 };
+
+// The run-bound count over the keys in draw order (before any sort).
+inline void CountRuns(const std::vector<Key>& keys, Counts& c) {
+	std::vector<std::uint32_t> meshes;
+	for (std::size_t i = 0; i < keys.size();) {
+		std::size_t j = i;
+		meshes.clear();
+		while (j < keys.size() && keys[j].pass == keys[i].pass) {
+			if (std::find(meshes.begin(), meshes.end(), keys[j].data) == meshes.end()) {
+				meshes.push_back(keys[j].data);
+			}
+			++j;
+		}
+		++c.runs;
+		c.runGroups += meshes.size();
+		c.longestRun = std::max<std::uint64_t>(c.longestRun, j - i);
+		i = j;
+	}
+}
 
 namespace detail {
 inline bool SameAt(const Key& a, const Key& b, int level) {
@@ -116,6 +142,7 @@ inline bool LessAt(const Key& a, const Key& b, int level) {
 inline Counts Count(std::vector<Key>& keys) {
 	Counts c;
 	c.draws = keys.size();
+	CountRuns(keys, c);  // in draw order, before the sorts below
 	for (int level = 0; level < kLevels; ++level) {
 		std::sort(keys.begin(), keys.end(), [level](const Key& a, const Key& b) { return detail::LessAt(a, b, level); });
 		for (std::size_t i = 0; i < keys.size();) {
@@ -223,6 +250,9 @@ struct Totals {
 			sum.inFour[level] += c.inFour[level];
 			sum.largest[level] = std::max(sum.largest[level], c.largest[level]);
 		}
+		sum.runs += c.runs;
+		sum.runGroups += c.runGroups;
+		sum.longestRun = std::max(sum.longestRun, c.longestRun);
 		sum.compared += c.compared;
 		for (int w = 0; w < kPropertyWords; ++w) {
 			sum.wordDiffers[w] += c.wordDiffers[w];
@@ -244,6 +274,11 @@ inline int Format(const Totals& t, char* out, std::size_t capacity) {
 		at += std::snprintf(out + at, capacity - at, " %s %.0f groups (%.0f %% fewer draws), %.0f draws in groups of four or more, the largest %llu;",
 		                    kNames[level], groups, 100.0 * (draws - groups) / draws, static_cast<double>(t.sum.inFour[level]) * per,
 		                    static_cast<unsigned long long>(t.sum.largest[level]));
+	}
+	if (at >= 0 && static_cast<std::size_t>(at) < capacity && t.sum.runs != 0) {
+		at += std::snprintf(out + at, capacity - at, " in draw order %.0f runs of one pass object a pass (the longest %llu), by mesh within a run %.0f groups (%.0f %% fewer draws);",
+		                    static_cast<double>(t.sum.runs) * per, static_cast<unsigned long long>(t.sum.longestRun), static_cast<double>(t.sum.runGroups) * per,
+		                    100.0 * (draws - static_cast<double>(t.sum.runGroups) * per) / draws);
 	}
 	if (at >= 0 && static_cast<std::size_t>(at) < capacity && t.sum.compared != 0) {
 		at += std::snprintf(out + at, capacity - at, " within the mesh groups %llu draws compared with their group's first, the word differing in %%:",
