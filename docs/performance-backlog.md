@@ -1702,3 +1702,26 @@ the relight left the passes valid by itself; the getter about 1 000 calls a fram
 each**; one compared rebuild, the same. The sampler's reading (8.3 % under the getter, 4.3 % under the builder) came from stale
 stack words. L1 and L2 are put back; the route stays in the code, off, as the counter it turned out to be.
 
+## 2026-11-12: L3's census - which passes the Market District's eye pass draws (measured, run obng-profile-market/20261112-205546)
+
+`[Probe] GpuPasses` with its new second line, the pass lists by records (`MostRecordsLists`), the routes as played
+(`tools/hand-scripts/obng-measure-market-gpu.ini`, ActorShadowEvery off), the last five windows (steady). The eye pass is
+finish #3 (target 8072x3376): 860 records a frame in 23 lists. Records a frame by pass id there:
+
+| Pass | Records | What makes it (knowledge/culling-and-draw-setup.md) |
+|---|---:|---|
+| 0x84 (132) | 268.7 | the base pass without point lights (0x00856D60) |
+| **0x177 (375), 0x179 (377)** | **167.7 + 6.4** | **the actor shadows' receivers: one more pass per shadow light on the geometry** |
+| 0x16F (367) | 44.0 | (builder not read) |
+| 0x8B, 0xB9, 0x86 (139, 185, 134) | 30.8, 28.2, 11.9 | base pass variants (0x00856D60, 0x008580E0) |
+| 0x8D, 0x87 (141, 135), SkinShader | 25.5, 4.7 | skinned base passes |
+| 0x11F, 0x11C (287, 284), SkinShader | 22.0, 8.1 | one pass per light (0x00859880) |
+| 0x88 (136) ParallaxShader, 0x0E leaves, 0x90 branches | 14.1, 11.9, 11.9 | |
+| 0x49, 0x176, 0x190 (73, 374, 400) | 11.3, 11.2, 9.0 | |
+
+No pass of two or three further lights (0xE8..0xFC) at noon in the town: merging lights into fewer passes has nothing to
+merge here (nights and interiors not counted). The actor shadows' receiver pass is the largest further pass: 174 of the
+860 records, 20 %, from two to three shadows (iActorShadowCountExt 3 on Linux). Derived: at the eye pass's 7.5 ms of draws
+for 860 records, about 1.5 ms a frame, beside the shadow step's own 0.7 ms - the actor shadows cost about 2.2 ms a frame
+in the town.
+
