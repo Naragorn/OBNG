@@ -1751,3 +1751,19 @@ sphere holds the actor (60 % of the receivers): each actor shadow draws them onc
 gives about 0.2 ms with a visual risk (a long evening shadow on a wall more than 256 units away); the near ones can only
 go with the shadow itself (fewer actor shadows) or folded into the base pass by own shader programs. Built, off.
 
+## 2026-11-12: OBNG's own code in the Market District's eye pass, looked at item by item (measured, read)
+
+Run obng-profile-market/20261112-211231 (DLL c262a48337145196, build-plugin/OBNG.map): OBNG.dll holds 16.7 % of the eye
+pass's samples, about 1.5 ms a frame. By function and what can be had:
+
+| Item | Share | What it is | What can be had |
+|---|---:|---|---|
+| memcmp under the volatile pack's PackerReplacement | 3.3 % | the heads' positions and normals compared with their last pack: 37 compares a frame, about 80 KB each (18 417 skips and 749 changed packs in 10 s, 5.4 GB not copied) | none cheaply: about one pack a frame a record (no repeat to share), the compare is memory bound; only skipping the morph itself upstream would remove it |
+| the eye switch (EyeSwitch::Switch) | 2.5 % | two calls a draw (to the second eye and back), about 70 ns a call | small: the view rows could be shifted once a pass instead of a draw |
+| the culler (CullDrawRenderPass, DecideDraw, its table, BoundRect, CullVisit, BeginEyePass) | about 4.5 % | it leaves out 290 draws a pass and pays for itself many times; per new draw it asks the device's viewport and copies the view, projection and origin | about 0.05-0.1 ms: those copies once a pass |
+| draw instancing (ReadFacts, DecideRecord, the list hook) | about 1.6 % | every record's facts read, nothing groups in the town | about 0.1 ms: a list that grouped nothing for a while asked again only now and then |
+| the stereo route (RouteDrawPrimitive, RouteDrawSkinned, the routed device, Apply, IssueDraws) | about 3 % | the double draw itself | little without drawing both eyes in one call (own vertex shaders) |
+
+Derived: of the 1.5 ms about 0.2 ms can be had with small work; E1's "0.5-0.8 ms" was too high. Put back as small gains
+(Nadi's order: the large items first).
+
