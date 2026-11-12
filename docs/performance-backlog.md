@@ -887,3 +887,31 @@ the culler's own work is 0.68 ms (decide 0.26, end tests 0.25, collect 0.17) and
 about 2.9 ms (derived: about 2.5 us a draw). A rebuild of the frame's pass has to start at the drawing, not at the
 walk. Linux (DXVK, headless) only; the Windows build with `OcclusionCullDriverLog=1` was put into the Windows game
 on 2026-11-12 so that Nadi's next Windows session gives the same split there.
+
+### The draw side at the docks under the single-pass route (measured 2026-11-12, run obng-profile-anvil-docks/20261112-100131)
+
+`[Probe] PassSteps=1` with the route as played but the occlusion culler off (they share entries;
+`tools/hand-scripts/obng-measure-docks-steps.ini`), two steady windows of 750 and 747 frames, per frame:
+
+| step | calls a frame | ms a frame | us a call |
+|---|---:|---:|---:|
+| FinishAccumulating 0x007AE070, all sites | 8-9 | 4.52-4.56 | |
+| - at the eye-pass site 0x007C7D56 (the frame's and the reflection's) | 2 | 4.35-4.45 | |
+| - at 0x0070E152 (the shadow maps) | 4-6 | 0.22-0.42 | |
+| Do_RenderShape 0x007693E0 | 1224-1251 | 3.44-3.48 | 2.75-2.84 |
+| slot 13 SetupTransformations 0x007C9230 | 1207-1234 | 0.18 | 0.15 |
+| slot 15 PrepareGeometry 0x0077A310 | 1357-1385 | 0.43-0.44 | 0.31 |
+| slot 14 SetupShaderPrograms 0x0077A1F0 | 1247-1275 | 0.59 | 0.47 |
+| ApplyConstantMap 0x009A8E30 (inside slot 14) | 3069-3125 | 0.49-0.50 | 0.16 |
+| SetVertexShaderConstant 0x007830C0 | 2622-2679 | 0.10 | 0.04 |
+| SetVertexShaderConstantArray 0x00783180 | 45-52 | 0.02 | 0.35 |
+
+(DrawSkinnedPrimitive 0x00767520 has no line in this run: the route holds its entry.)
+
+Derived: the three shader slots are 1.20 ms; Do_RenderShape without them is 2.25-2.28 ms a frame, 1.8 us a shape -
+two thirds of the draw side. That rest holds, per shape, the route's eye switch (the second eye's viewport and
+constants) and two device draws; what each of them costs is not measured apart. Against the dual pass of
+2026-10-30 (0.9 us a shape for one eye's rest, the three slots 1.25 us a shape and eye) the single pass pays the
+slots once for both eyes (0.97 us a shape here) and the rest twice. The finish outside Do_RenderShape is about
+1.1 ms (the list walk, DrawRenderPass, the shader states' begin and end, the skinned draws, the probe's own
+timers). Linux and DXVK; the culler off, so about 13 % more draws than in play.
