@@ -97,6 +97,8 @@ struct RouteSettings {
 	bool stereoFollowers = true;  // [Route] StereoFollowers: geometry below the camera-following roots (the sky) gets the second eye's viewport without the view shift; 0 for the comparison
 	bool occlusionCull = false;   // [Route] OcclusionCull: geometries hidden in both eyes by a query of the last frames are not drawn (OcclusionCull.cpp, OcclusionCullLogic.h); needs stereoDraw; off in play until measured
 	UInt32 occlusionCullMaxAge = 2;     // [Route] OcclusionCullMaxAge: frames a hidden verdict is acted on (1..8)
+	UInt32 occlusionCullVisibleEvery = 1;  // [Route] OcclusionCullVisibleEvery: a draw found visible is tested again in one frame of this many (1 = every frame, 1..16; OcclusionCullLogic.h TestDue)
+	bool occlusionCullVisibleAlternate = false;  // [Route] OcclusionCullVisibleAlternate: the lower test rate only in every second summary window (a measurement)
 	UInt32 occlusionCullMargin = 2;     // [Route] OcclusionCullMargin: pixels the test rectangles grow on every side (0..64)
 	float occlusionCullMaxMove = 100.0f;  // [Route] OcclusionCullMaxMove: the camera moved further since the verdict: drawn
 	float occlusionCullMaxTurn = 10.0f;   // [Route] OcclusionCullMaxTurn: the camera turned further (degrees): drawn

@@ -195,6 +195,8 @@ int main() {
 	route::FormatStats(stats, 0.0, line, sizeof(line));
 	Check(std::strstr(line, "; shader classes (vtable x switches): 00A8977C x2 00A9459C x1; 1 re-applies through the type-1 shader's maps") != nullptr,
 	      "the shader classes with their counts");
+	route::FormatStats(stats, 1000.0, line, sizeof(line));
+	Check(std::strstr(line, "; switch ") == nullptr, "no ticks noted (the switch is timed only with StereoDrawTimer): no timing written");
 	stats.AddTicks(6000, 2000);
 	route::FormatStats(stats, 1000.0, line, sizeof(line));  // 1000 ticks a millisecond: a tick is a microsecond
 	Check(std::strstr(line, "; switch 3000.00 us, re-apply 1000.00 us per applied switch") != nullptr, "the timing per applied switch (two applied)");

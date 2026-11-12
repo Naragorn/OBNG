@@ -1552,7 +1552,9 @@ bool SampleMemory(probe::MemorySample* out) {
 }  // namespace
 
 void SetProbeEyePhase(UInt8 phase) {
-	InterlockedExchange(&g_eyePhase, phase);
+	// Written and read on the render thread only (the re-apply runs the reads inside): a plain store; a locked
+	// exchange here cost two locked instructions on every eye switch (2026-11-12).
+	g_eyePhase = phase;
 }
 
 UInt32 ProbesAsked(const ShadowSettings& settings) {

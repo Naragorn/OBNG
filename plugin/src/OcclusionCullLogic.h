@@ -229,6 +229,7 @@ struct Verdict {
 	std::uint32_t geometry = 0;     // the key (0: empty)
 	std::uint32_t seenFrame = 0;    // the last frame the geometry was asked about
 	std::uint32_t hiddenFrame = 0;  // the frame of the last test that found it hidden; 0 none, or a later test saw it
+	std::uint32_t testedFrame = 0;  // the frame of the last test queued for it; 0 none ([Route] OcclusionCullVisibleEvery)
 	Decision decision = Decision::kDraw;  // this frame's, for the geometry's later passes
 };
 
@@ -434,6 +435,30 @@ struct Stats {
 	}
 	void Reset() { *this = Stats{}; }
 };
+
+// ---- How often a visible draw is tested ([Route] OcclusionCullVisibleEvery) ----------
+//
+// Four in five of an eye pass's tests confirm a draw that is drawn anyway
+// (measured 2026-11-12 at the docks: 617 322 visible against 132 176 hidden
+// results a window). Such a draw only needs a test to find out when it
+// becomes hidden; with every > 1 it is tested in one frame of `every` (its
+// turn from its handle, so that a pass's tests are spread over the frames),
+// and anyway once `every` frames have passed since its last test. A draw
+// skipped on a hidden verdict, or with a hidden verdict on record, and a draw
+// never tested are tested in every frame as before. What it changes (class C,
+// on purpose): a draw that has just become hidden is found up to every - 1
+// frames later and drawn meanwhile, as without the culler - the culler skips
+// less, never more.
+inline std::uint32_t VisiblePhase(std::uint32_t geometry, std::uint32_t every) {
+	return every > 1 ? (geometry >> 4) % every : 0u;
+}
+
+inline bool TestDue(const Verdict& v, Decision decision, std::uint32_t frame, std::uint32_t every) {
+	if (every <= 1 || decision != Decision::kDraw || v.hiddenFrame != 0 || v.testedFrame == 0) {
+		return true;
+	}
+	return (frame + VisiblePhase(v.geometry, every)) % every == 0 || frame - v.testedFrame >= every;
+}
 
 // ---- The decision for one draw -----------------------------------------------------
 

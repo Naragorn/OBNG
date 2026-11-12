@@ -636,7 +636,34 @@ void TestTrace() {
 
 }  // namespace
 
+void TestVisibleEvery() {
+	Section("[Route] OcclusionCullVisibleEvery: a visible draw is tested on its turn only");
+	cull::Verdict v;
+	v.geometry = 0x1000;  // phase of 4: (0x1000 >> 4) % 4 = 0
+	Check(cull::VisiblePhase(0x1000, 4) == 0 && cull::VisiblePhase(0x1010, 4) == 1 && cull::VisiblePhase(0x1000, 1) == 0, "the phase from the handle");
+	Check(cull::TestDue(v, cull::Decision::kDraw, 7, 1) && cull::TestDue(v, cull::Decision::kDraw, 7, 0), "every 1 or 0: always (the culler as before)");
+	Check(cull::TestDue(v, cull::Decision::kDraw, 7, 4), "never tested: tested now");
+	v.testedFrame = 8;
+	Check(!cull::TestDue(v, cull::Decision::kDraw, 9, 4) && !cull::TestDue(v, cull::Decision::kDraw, 10, 4) && !cull::TestDue(v, cull::Decision::kDraw, 11, 4),
+	      "tested visible in frame 8: not in 9, 10, 11");
+	Check(cull::TestDue(v, cull::Decision::kDraw, 12, 4), "frame 12: its turn (and four frames since the test)");
+	Check(cull::TestDue(v, cull::Decision::kSkip, 9, 4), "a draw skipped on a hidden verdict is tested in its own pass, whatever the turn");
+	v.hiddenFrame = 6;
+	Check(cull::TestDue(v, cull::Decision::kDraw, 9, 4), "a hidden verdict on record (the camera gate refused it, or it is old): tested");
+	v.hiddenFrame = 0;
+	cull::Verdict w = v;
+	w.geometry = 0x1010;  // phase 1: its turn when (frame + 1) % 4 == 0
+	w.testedFrame = 7;
+	Check(!cull::TestDue(w, cull::Decision::kDraw, 8, 4) && !cull::TestDue(w, cull::Decision::kDraw, 10, 4) && cull::TestDue(w, cull::Decision::kDraw, 11, 4),
+	      "another handle has another turn");
+	w.testedFrame = 3;  // drawn only now and then: its turns passed without a draw
+	Check(cull::TestDue(w, cull::Decision::kDraw, 8, 4), "four frames or more since its last test: tested, turn or not");
+	w.testedFrame = 9;
+	Check(cull::TestDue(w, cull::Decision::kDraw, 11, 4), "its turn comes before four frames have passed: tested on the turn");
+}
+
 int main() {
+	TestVisibleEvery();
 	TestSettings();
 	TestSecondEyeView();
 	TestRects();

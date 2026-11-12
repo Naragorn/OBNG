@@ -285,7 +285,7 @@ inline int FormatStats(const Stats& s, double ticksPerMillisecond, char* out, st
 		static_cast<unsigned long long>(s.eyeSwitchesViewportOnly), static_cast<unsigned long long>(s.carriedRegisters),
 		static_cast<unsigned long long>(s.drawsOutsideEye), static_cast<unsigned long long>(s.eyeDataSets),
 		static_cast<unsigned long long>(s.eyeDataRefused));
-	if (at >= 0 && static_cast<std::size_t>(at) < capacity && ticksPerMillisecond > 0.0 && s.eyeSwitchesApplied != 0) {
+	if (at >= 0 && static_cast<std::size_t>(at) < capacity && ticksPerMillisecond > 0.0 && s.eyeSwitchesApplied != 0 && s.switchTicks != 0) {
 		const double perSwitch = 1000.0 / ticksPerMillisecond / static_cast<double>(s.eyeSwitchesApplied);
 		at += std::snprintf(out + at, capacity - at, "; switch %.2f us, re-apply %.2f us per applied switch",
 		                    static_cast<double>(s.switchTicks) * perSwitch, static_cast<double>(s.reapplyTicks) * perSwitch);

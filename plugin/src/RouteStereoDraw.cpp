@@ -375,11 +375,13 @@ struct EyeEnginePort {
 		    reinterpret_cast<void*>(device), start, data, count);
 	}
 	void ReapplyConstants() const {
-		const std::uint64_t t0 = __rdtsc();
+		const std::uint64_t t0 = draw_timer::g_timers.on ? __rdtsc() : 0;
 		SetProbeEyePhase(1);  // the view-dependence probe keys the uploads inside
 		reapply(context);
 		SetProbeEyePhase(0);
-		ticks->reapply += __rdtsc() - t0;
+		if (t0 != 0) {
+			ticks->reapply += __rdtsc() - t0;
+		}
 	}
 };
 
@@ -515,9 +517,15 @@ struct TimedEyeSwitch {
 		if (trace != nullptr && e == 1) {
 			trace->Take(0);
 		}
-		const std::uint64_t t0 = __rdtsc();
-		inner->Switch(e);
-		ticks->all += __rdtsc() - t0;
+		// Timed only for the measurement: two reads of the clock a call are about
+		// 4 % of the switch (2026-11-12).
+		if (!draw_timer::g_timers.on) {
+			inner->Switch(e);
+		} else {
+			const std::uint64_t t0 = __rdtsc();
+			inner->Switch(e);
+			ticks->all += __rdtsc() - t0;
+		}
 		if (trace != nullptr) {
 			trace->Take(e == 1 ? 1 : 2);
 		}

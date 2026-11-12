@@ -173,6 +173,13 @@ bool g_targetCheck = true;  // [Route] OcclusionCullEyeTarget
 cull::Camera g_lastCamera;      // the last eye pass's camera, for OcclusionCullLastCamera
 bool g_lastCameraSet = false;
 bool g_driverLog = false;
+// [Route] OcclusionCullVisibleEvery: a draw found visible is tested in one
+// frame of this many (OcclusionCullLogic.h TestDue); alternating by summary
+// window for a measurement.
+std::uint32_t g_visibleEvery = 1;
+bool g_visibleAlternate = false;
+bool g_visibleOnNow = true;
+unsigned __int64 g_visibleTestsLeftOut = 0;
 draw_groups::DriverBook g_driverBook;
 unsigned __int64 g_walkVisitsAll = 0;  // objects visited in any outermost driver's walk
 unsigned __int64 g_leftOutAll = 0;     // nodes left out, never reset (the summary resets g_nodesLeftOut inside a driver call)
@@ -206,6 +213,14 @@ void FlushSummaryIfRequested() {
 	cull::FormatSummary(g_stats, g_settings, ticksPerMillisecond, now.qpc, line, sizeof(line));
 	g_log("%s", line);
 	g_stats.Reset();
+	if (g_visibleEvery > 1) {
+		g_log("Route: occlusion cull visible draws - tested in one frame of %u (%s in this window): %llu tests of draws found visible left out",
+		      g_visibleEvery, g_visibleOnNow ? "on" : "off", g_visibleTestsLeftOut);
+		g_visibleTestsLeftOut = 0;
+		if (g_visibleAlternate) {
+			g_visibleOnNow = !g_visibleOnNow;
+		}
+	}
 	if (g_nodeCull && g_passesWithWalk > 0) {
 		const double per = 1.0 / static_cast<double>(g_passesWithWalk);
 		g_log("Route: occlusion cull nodes - %llu passes begun at the driver; per pass %.0f objects visited in the walk, %.1f candidate nodes asked, "
@@ -530,8 +545,16 @@ cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind, bool countRepeat
 		note.skinned = kind == cull::DrawKind::kSkinned;
 		g_notes.push_back(note);
 	}
-	if (decided.newThisFrame && testKind == cull::TestKind::kTest) {
+	const std::uint32_t every = g_visibleOnNow ? g_visibleEvery : 1;
+	const bool due = decided.verdict == nullptr || cull::TestDue(*decided.verdict, decided.decision, g_frame, every);
+	if (decided.newThisFrame && testKind == cull::TestKind::kTest && !due) {
+		++g_visibleTestsLeftOut;
+	}
+	if (decided.newThisFrame && testKind == cull::TestKind::kTest && due) {
 		if (g_batch->count < cull::kMaxTests) {
+			if (decided.verdict != nullptr) {
+				decided.verdict->testedFrame = g_frame;
+			}
 			cull::Test& test = g_batch->tests[g_batch->count];
 			test.geometry = geometry;
 			test.rects = rects;
@@ -997,6 +1020,8 @@ UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {
 	g_log = log;
 	g_settings.maxAge = settings.occlusionCullMaxAge;
 	g_settings.margin = settings.occlusionCullMargin;
+	g_visibleEvery = settings.occlusionCullVisibleEvery;
+	g_visibleAlternate = settings.occlusionCullVisibleAlternate;
 	g_settings.maxMoveUnits = settings.occlusionCullMaxMove;
 	g_settings.maxTurnDegrees = settings.occlusionCullMaxTurn;
 	g_nodeLogLeft = settings.occlusionCullNodeLog;

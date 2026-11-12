@@ -240,6 +240,11 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	r.occlusionCull = GetPrivateProfileIntA("Route", "OcclusionCull", 0, path) != 0;
 	r.occlusionCullMaxAge = obng::plugin::occlusion_cull::MaxAgeFromIni(GetPrivateProfileIntA("Route", "OcclusionCullMaxAge", 2, path));
 	r.occlusionCullMargin = obng::plugin::occlusion_cull::MarginFromIni(GetPrivateProfileIntA("Route", "OcclusionCullMargin", 2, path));
+	{
+		const UINT every = GetPrivateProfileIntA("Route", "OcclusionCullVisibleEvery", 1, path);
+		r.occlusionCullVisibleEvery = every < 1 ? 1 : every > 16 ? 16 : every;
+	}
+	r.occlusionCullVisibleAlternate = GetPrivateProfileIntA("Route", "OcclusionCullVisibleAlternate", 0, path) != 0;
 	char cullMove[32] = {};
 	GetPrivateProfileStringA("Route", "OcclusionCullMaxMove", "100", cullMove, sizeof(cullMove), path);
 	r.occlusionCullMaxMove = static_cast<float>(std::strtod(cullMove, nullptr));
