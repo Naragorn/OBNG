@@ -1218,3 +1218,41 @@ steady windows):
 - Noticed late: one reference in ten windows (found with something to do on its turn); 0 in the run before
   (`...-132903`). No call ran without a slot in the table.
 - Open: the look at doors, levers and flames in the headset (a start up to three frames late); interiors.
+
+### What makes the actors' animation call dear: the arrival, not the head's turning (measured 2026-11-12, run obng-profile-anvil-docks-still-first/20261112-134643)
+
+`tools/hand-scripts/obng-profile-anvil-docks-still-first.txt` stands forty seconds before the eight head turns
+(`obng-measure-docks-anim-phases.ini`: the references' route on with its time by kind, a summary every 5 s). The
+windows mapped onto the marks by the clock both logs share (the HandScript marks' "tick" and the culler's "totals
+qpc"). The cells' loop's call for the 44-185 actors a frame (an NPC's or creature's base - 0x004E3F30 steps their
+animation through 0x00476D10):
+
+| phase | windows | us a call | ms a frame | ProcessManager::Update | frames in 5 s |
+|---|---|---:|---:|---:|---:|
+| the forty seconds after the arrival, standing | w09-w16 | 17-77 | 1.8-6.4 | 3.7-11.2 ms | 88-260 |
+| standing on | w17-w18 | 5.5-9 | 0.7-1.2 | 3.5-4.0 | 195-274 |
+| the eight head turns | w19-w24 | 5.5-8.6 | 0.49-0.80 | 3.2-4.1 | 242-373 |
+| standing after the turns | w25-w33 | 6.8-28 | 0.6-1.6 | 3.7-7.2 | 138-302 |
+
+So the head's turning costs nothing extra; the earlier reading "three times dearer while the head turns" was the
+arrival, which the docks script's turns used to follow at once. For about thirty seconds after arriving the
+actors' animation calls cost ten times their later price and the frame rate falls to 18-52 a second (Linux,
+harness); later in the run it rises again (w29-w31, standing) without a turn. Not known: what the call does then
+(first sequences, blends, loads - 0x00476D10's callees were not timed), and whether Windows shows the same.
+
+### The three routes together (measured 2026-11-12, run obng-profile-anvil-docks/20261112-134958)
+
+`tools/hand-scripts/obng-measure-docks-three-routes.ini`: the far actors' whole update (every 16th call beyond
+6000 units), the view rule (75 degrees, from 1000 units) and the references' rate (every 4th frame) switched on
+and off together by 10 s window, the culler on in both. The steady windows after the turns, per frame:
+
+| | ProcessManager::Update | 0x00482470 (references) | the two | UpdateStep |
+|---|---:|---:|---:|---:|
+| all three on (w11, w13) | 2.69 / 2.72 ms | 0.64 / 0.83 | 3.33 / 3.55 | 16.3 / 18.2 |
+| all three off (w10, w12, w14) | 4.93 / 4.97 / 4.47 | 0.81 / 1.00 / 0.84 | 5.74 / 5.97 / 5.31 | 18.4 / 22.6 / 17.5 |
+
+The three together: about 2.0-2.6 ms a frame on the measured parts at the docks (about 40 far actors left out a
+frame, 6-8 near ones taken by the view rule, 3 530 references left out). The whole run was slower than the
+morning's docks runs (27-61 frames a second against 75; UpdateStep 16-30 ms against 13.2) - not explained; the
+OBVR.dll in the game changed between them (a59e316b) and nothing here separates that from other causes. This is
+what the Windows game now has on (the three keys are set there).

@@ -1,0 +1,106 @@
+# obng-profile-anvil-docks.txt with the order changed: forty seconds standing still FIRST, then the eight head
+# turns, then forty seconds still again - to tell what the arrival costs from what the head's turning costs.
+# Anvil's docks with the Windows mod list (Better Cities, Unique Landscapes), standing in front of
+# The Flowing Bowl, at the Dream Air's frame size (an eye of 4036x3376). The spot is where the
+# tavern's door puts the player outside: the interior door 000308EA of AnvilTheFlowingBowl
+# (000308D2) teleports to the exterior door 0000BCB9 at -193234 -32705 245, heading -142 degrees
+# (read from Oblivion.esm, the REFR's XTEL; Better Cities Full.esp does not touch that cell).
+# The head goes through eight directions for three seconds apiece, then the player stands still
+# for forty seconds looking where the door let them out. Noon, the weather fixed (00038EEE), the
+# time stopped, so that runs compare.
+# Run with the Windows mod list for the run:
+#   python3 tools/run-with-windows-mods.py -- tools/shadow-run.sh \
+#     --ini tools/hand-scripts/obng-measure-docks-all.ini \
+#     tools/hand-scripts/obng-profile-anvil-docks.txt --save OBVRHarnessMOO --run-timeout 480
+ini Render SinglePassStereo=1
+ini SelfCheck ShowPanel=0
+ini Render GameResolutionWidth=4036
+ini Render GameResolutionHeight=3376
+expect Single-pass stereo: OBNG took the eyes ok (0)
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Hands BodyCollision=1
+ini Hands PhysicsRate=0
+ini Performance Enabled=1
+ini Performance GpuTiming=1
+ini Performance StartAfterSeconds=40
+ini Performance CaptureSeconds=130
+ini Performance MaxRecords=262144
+ini Performance Sampler=1
+console-at ready player.moveto 0000BCB9
+console-at ready set gamehour to 12
+console-at ready set timescale to 0
+console-at ready fw 00038EEE
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at placed player.setpos x -193234
+console-at placed player.setpos y -32705
+console-at placed player.setpos z 250
+console-at placed player.setangle z 218
+
+# A mod's message box ("Quest added", seen in the Market District run 20261112-124259) pauses the world:
+# closed from the console at every mark.
+console-at s1 CloseAllMenus
+console-at s1-y0 CloseAllMenus
+console-at s1-y-45 CloseAllMenus
+console-at s1-y-90 CloseAllMenus
+console-at s1-y-135 CloseAllMenus
+console-at s1-y180 CloseAllMenus
+console-at s1-y135 CloseAllMenus
+console-at s1-y90 CloseAllMenus
+console-at s1-y45 CloseAllMenus
+console-at still CloseAllMenus
+console-at still-first CloseAllMenus
+expect HandScript: finished
+expect Performance: capture armed, it starts in 40 seconds
+expect Performance: capture 1 started
+expect Performance: export
+reject Performance: export partial
+reject menu Container
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 12
+mark placed
+wait 10
+mark s1
+wait 40
+mark still-first
+head yaw 0
+wait 0.3
+mark s1-y0
+wait 3
+head yaw -45
+wait 0.3
+mark s1-y-45
+wait 3
+head yaw -90
+wait 0.3
+mark s1-y-90
+wait 3
+head yaw -135
+wait 0.3
+mark s1-y-135
+wait 3
+head yaw 180
+wait 0.3
+mark s1-y180
+wait 3
+head yaw 135
+wait 0.3
+mark s1-y135
+wait 3
+head yaw 90
+wait 0.3
+mark s1-y90
+wait 3
+head yaw 45
+wait 0.3
+mark s1-y45
+wait 3
+head yaw 0
+wait 1
+mark still
+wait 40
+mark done
+wait 2
