@@ -1339,3 +1339,26 @@ the main thread was off the CPU 2.7-3.6 ms of it (the sampler: 0.73-0.80 s of CP
 wait and a part of the present - so the waits block, they do not spin, and the 9.8-10.7 ms a frame are the
 game's, OBNG's and OBVR's work. At the docks on Linux that leaves 0.4-1.3 ms to 11.1 ms. Also in the capture:
 `present` p99 12.6 ms and `scene_pass` max 50 ms - single long frames, not looked at.
+
+## 2026-11-12: OBNG's own code in the scene pass, measured by step (R1)
+
+The eye switch's port steps timed (`[Route] StereoDrawTimer`, `tools/hand-scripts/obng-measure-docks-switch-steps.ini`,
+run `obng-profile-anvil-docks/20261112-151057`, the docks, the culler off; three windows of 633-737 frames, about
+1 410 applied switches a frame). Per applied switch (a switch to the second eye and back):
+
+| step | calls a switch | ns a call | ms a frame |
+|---|---:|---:|---:|
+| GetVertexShaderConstantF (c0..c47, before and after the re-apply) | 2 | 34-35 | 0.095 |
+| the constants' re-apply (the engine's own map) | 1 | 90 | 0.13 |
+| SetTransform(VIEW) (there and back) | 2 | 20-22 | 0.057 |
+| SetVertexShaderConstantF (the carry and the restore) | 1.17 | 31-32 | 0.051 |
+| SetViewport (there and back) | 2 | 11-12 | 0.031 |
+| write rows / read view / GetViewport (the draw's eye check) | 2 / 1 / 1.1 | 8-14 | 0.055 |
+| the rest: the switch's own logic (axes, rows, the carry's compares) and the timers | | | about 0.2 |
+
+The switch is 0.44-0.46 us with these timers and 0.37 without (this morning): about 0.6 ms a frame timed, 0.5
+untimed. Each device call is cheap (11-35 ns); the re-apply is the engine's and needed. What is reachable in the
+same computation (class A): the switch's own logic (a part of about 0.1 ms) and possibly the two SetTransform
+calls for draws with a vertex shader (0.06 ms; whether any routed draw uses the fixed-function transform is
+unverified). The culler's own work at the docks was 0.68 ms a frame (decide 0.26, the tests' issue 0.25, the
+results' read 0.17; run 20261112-085817): ~1 000 tests a pass, 82 % of them confirming a draw that is visible.
