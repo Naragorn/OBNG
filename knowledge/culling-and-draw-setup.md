@@ -820,3 +820,38 @@ the Market District without water in view, once a frame. A hook on that site
 that keeps state by frame must tell the two apart (OBNG's culler: the eye
 data's viewports in the single pass, the render target's size against the
 back buffer's in the flat game).
+
+## A geometry's render passes: built per property, cached by +0x24, rebuilt on every light change (read 2026-11-12)
+
+Read in the rea-all pseudocode (re/export/rea-all/functions, a reading aid; the instructions not yet checked), the
+vtables by their RTTI names in the EXE's data (2026-11-12). Names are proposals.
+
+- **The list and its key.** A lit shader property keeps its render passes in the list at +0x28 (xOBSE's
+  `BSShaderProperty::passes`, `RenderPass` records of 0x10 bytes: +0x00 the geometry, +0x04 the pass id (u16),
+  +0x08 the light count, +0x0C a heap array of that many ShadowSceneLight pointers; re/functions/0x007A9820.md C5).
+  Vtable slot +0x5C, `GetRenderPasses` 0x007D85D0 in BSShaderPPLightingProperty (vtable 0x00A91384),
+  SpeedTreeBranchShaderProperty and SpeedTreeShaderPPLightingProperty, returns the list at once when +0x24 equals
+  `(render mode [0x00B42EAC] << 8) | flags` and the call may keep it; otherwise it frees the records (0x007E24C0),
+  stores the key and builds anew through slot +0x98 (shader level 1) or +0x9C (above 1: 0x0085AE20 in
+  BSShaderPPLightingProperty, SpeedTree*, Lighting30ShaderProperty, HairShaderProperty). Render modes 5 and 6 keep
+  their own lists (+0x38, +0x48).
+- **What clears the key** (+0x24 = 0, "the light set changed"; knowledge/shadow-light-list-remove.md): a light
+  added to the property (0x007EE330 from AddGeometry 0x007D5790), a light removed (0x007EE720 from RemoveGeometry
+  0x007D6940), a light whose fade or view changed (0x007D6390 walks the light's geometry list), the shadow scene's
+  reset of a light's pending list (0x007D5320). RelightGeometry 0x007C6100 detaches a moving geometry from all its
+  lights and attaches it again, so a moving actor's shapes lose their passes every frame, and so does every
+  geometry under a light inside its fade band (fLightLOD1/2 for lights, fShadowLOD1/2 for actor shadows) while the
+  camera or the light moves (derived).
+- **What a rebuild makes** (0x0085AE20): one base pass with no, one or two lights (0x00856D60 - pass ids
+  0x76..0x8x and 0x17B, 0x84 = 132 among them -, 0x008580E0 - 0xAC..0xBF, 185 among them -, 0x00855E80,
+  0x00856510, 0x00857750, 0x008588E0, 0x00852150); further light passes of two or three lights for the lights
+  beyond (0x00859160 0xE8..0xEE, 0x00859430 0xF6..0xFC) after 0x00853720 (0xE2..0xE7); one pass per light for
+  flag 8 (0x00859880, 0x115..0x11F, 287 among them); effect passes (0x0085A010 0x184..0x187, 0x00859720
+  0x10D/0x10E, 0x00854190 0x190..0x194, 0x0085A200, 0x0085ACC0, 0x00854FF0, 0x00855170, a fog-like pass 3 for
+  more than two lights); and **one pass per actor-shadow light on the geometry** (+0xF4 set: 0x177..0x17A, 375 =
+  0x177 among them). Each pass is three heap allocations (the record, its light array, the list node); the
+  list's old records are freed first.
+- **Measured** (run obng-profile-market/20261112-195635, the render sampler's stack words, approximate): inside
+  the eye pass, GetRenderPasses is on the stack of 8.3 % of the samples (about 0.77 ms a frame), the builder
+  0x0085AE20 4.3 %, the record constructor 0x007E2370 3.7 %, the actor-shadow pass add 0x0085AAC0 1.5 %, the
+  free 0x007E24C0 1.2 % - the passes are rebuilt for a large share of the town's geometry every frame.

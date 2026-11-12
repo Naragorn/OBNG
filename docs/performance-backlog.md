@@ -581,6 +581,9 @@ window (it made "on" look slower at first).
 | Far actors' skeletons at a lower rate (`[Route] ActorFarEvery`) | C | measured at the docks with 98 actors, 75 of them beyond 6000 units, every 4th call: the skeleton updates 2.67 -> 1.52 ms a frame, the actors' frame 8.77 -> 7.45 | built 2026-11-11, off; the headset look (a far figure at a quarter rate), and what reads a far actor's bones between two updates, are open | built, not accepted | this file |
 | 0x00471C00 before ApplyAnimData | ? | 0.74-0.78 ms with 117 actors (6-7 us a call) | small to look | not started | knowledge/threading.md |
 | Actor shadows at rest (`[Route] ActorShadowEvery`) | C | measured in the Market District at every 4th step: the step 0.70 -> 0.42 ms (0.28 ms a frame; lights drawn 2.5 -> 1.3 a step) | built 2026-11-12, off; a long run and the headset look are open | built, not accepted | this file |
+| Keep a geometry's render passes when its light set did not change (RelightGeometry re-attaching the same lights, a fade that changes no pass) | A | the pass lists' rebuild is on the stack of 5-8 % of the Market's eye pass, 0.5-0.8 ms a frame (sampler, approximate) | medium: what else +0x24 = 0 stands for must be read; a gate rebuilds and compares | not started | knowledge/culling-and-draw-setup.md |
+| The render pass records from a pool instead of three heap allocations each | A | part of the allocator's 0.49 ms in the Market's eye pass | small to medium | not started | knowledge/culling-and-draw-setup.md |
+| Fewer passes: lights merged into fewer passes, the actor shadow folded into the base pass | C | about half of the eye pass's draws are further passes of a geometry (922 of 1 801 asked in the Market), about 5 us each | large to huge: own shader programs | not started | knowledge/culling-and-draw-setup.md |
 
 ## Far actors: the engine's own process levels and where the frame time comes from (2026-11-11, read)
 
