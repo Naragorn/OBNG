@@ -35,6 +35,7 @@
 
 #include "Probes.h"
 #include "RouteStereoDrawLogic.h"
+#include "StereoDrawTimer.h"
 #include "EntryDetour.h"
 #include "EyeConstantsTraceLogic.h"
 #include "GrassFadeFix.h"
@@ -116,11 +117,7 @@ DrawSkinnedEntryFn g_originalDrawSkinned = nullptr;
 bool g_on = false;
 LogFn g_log = nullptr;
 RouteSettings g_settings;
-std::uint64_t g_deviceDrawCalls = 0;
-route::StepTimes g_stepTimes;
-route::PassRepeats g_passRepeats;
 constexpr std::uint32_t kShaderCurrentPassOffset = 0x3C;  // what slot 12 0x0077A1B0 calls slot 2 of (pseudocode, re/export/rea-all 0x77a1b0.c)
-std::uint64_t g_deviceDrawTicks = 0;
 
 // The eye data: the interface's (render thread only, by its contract) or
 // none; the test mode is a setting.
@@ -166,49 +163,10 @@ void FlushSummaryIfRequested() {
 	route::FormatStats(g_stats, ticksPerMillisecond, line, sizeof(line));
 	g_stats.Reset();
 	g_log("%s", line);
-	if (g_settings.stereoDrawTimer) {
-		route::FormatDeviceDraws(g_deviceDrawCalls, g_deviceDrawTicks, ticksPerMillisecond, line, sizeof(line));
-		g_log("%s", line);
-		g_deviceDrawCalls = 0;
-		g_deviceDrawTicks = 0;
-		route::FormatStepTimes(g_stepTimes, ticksPerMillisecond, line, sizeof(line));
-		g_log("%s", line);
-		g_stepTimes = route::StepTimes{};
-		route::FormatPassRepeats(g_passRepeats, line, sizeof(line));
-		g_log("%s", line);
-		g_passRepeats = route::PassRepeats{};
+	if (draw_timer::g_timers.on) {
+		draw_timer::g_timers.LogAndReset(ticksPerMillisecond, [](const char* text) { g_log("%s", text); });
 	}
 }
-
-// [Route] StereoDrawTimer: the whole draw's device port with a timer around
-// each device call.
-struct TimedDevice {
-	const whole_engine::EnginePorts* inner;
-	void DrawIndexedPrimitive(const whole::IndexedDraw& d) const {
-		const std::uint64_t t0 = __rdtsc();
-		inner->DrawIndexedPrimitive(d);
-		g_deviceDrawTicks += __rdtsc() - t0;
-		++g_deviceDrawCalls;
-	}
-	void DrawPrimitive(const whole::PlainDraw& d) const {
-		const std::uint64_t t0 = __rdtsc();
-		inner->DrawPrimitive(d);
-		g_deviceDrawTicks += __rdtsc() - t0;
-		++g_deviceDrawCalls;
-	}
-	void SubObjectSlot1() const {
-		const std::uint64_t t0 = __rdtsc();
-		inner->SubObjectSlot1();
-		g_stepTimes.stateTicks += __rdtsc() - t0;
-		++g_stepTimes.stateCalls;
-	}
-	void SetDrawFlag(std::uint32_t value) const {
-		const std::uint64_t t0 = __rdtsc();
-		inner->SetDrawFlag(value);
-		g_stepTimes.stateTicks += __rdtsc() - t0;
-		++g_stepTimes.stateCalls;
-	}
-};
 
 // The ticks one draw call's switches took, split by the re-apply.
 struct SwitchTicks {
@@ -370,6 +328,7 @@ struct EyeEnginePort {
 	std::uint32_t Device() const { return ReadAt<std::uint32_t>(renderer + kRendererDeviceOffset); }
 
 	void ReadView(float out[16]) const {
+		const draw_timer::StepTimer timer(route::PortTimes::kReadView);
 		const volatile float* m = View();
 		for (int i = 0; i < 16; ++i) {
 			out[i] = m[i];
@@ -381,28 +340,36 @@ struct EyeEnginePort {
 		out[1] = m[13];
 		out[2] = m[14];
 	}
-	void WriteRows(const eye::TranslationRows& rows) const { eye::WriteRows(rows, View(), Inverse()); }
+	void WriteRows(const eye::TranslationRows& rows) const {
+		const draw_timer::StepTimer timer(route::PortTimes::kWriteRows);
+		eye::WriteRows(rows, View(), Inverse());
+	}
 	void SetViewTransform() const {
+		const draw_timer::StepTimer timer(route::PortTimes::kSetTransform);
 		const std::uint32_t device = Device();
 		reinterpret_cast<SetTransformFn>(VtableSlot(device, kDeviceSetTransformOffset))(
 		    reinterpret_cast<void*>(device), kD3DTransformView, View());
 	}
 	void SetViewport(const eye::Viewport& viewport) const {
+		const draw_timer::StepTimer timer(route::PortTimes::kSetViewport);
 		const std::uint32_t device = Device();
 		reinterpret_cast<SetViewportFn>(VtableSlot(device, kDeviceSetViewportOffset))(reinterpret_cast<void*>(device), &viewport);
 	}
 	eye::Viewport CurrentViewport() const {
+		const draw_timer::StepTimer timer(route::PortTimes::kGetViewport);
 		eye::Viewport viewport;
 		const std::uint32_t device = Device();
 		reinterpret_cast<GetViewportFn>(VtableSlot(device, kDeviceGetViewportOffset))(reinterpret_cast<void*>(device), &viewport);
 		return viewport;
 	}
 	bool ReadRegisters(float* out) const {
+		const draw_timer::StepTimer timer(route::PortTimes::kReadRegisters);
 		const std::uint32_t device = Device();
 		return reinterpret_cast<GetVertexShaderConstantFFn>(VtableSlot(device, kDeviceGetVertexShaderConstantFOffset))(
 		           reinterpret_cast<void*>(device), 0, out, eye::kCarriedRegisters) >= 0;
 	}
 	void WriteRegisters(std::uint32_t start, const float* data, std::uint32_t count) const {
+		const draw_timer::StepTimer timer(route::PortTimes::kWriteRegisters);
 		const std::uint32_t device = Device();
 		reinterpret_cast<SetVertexShaderConstantFFn>(VtableSlot(device, kDeviceSetVertexShaderConstantFOffset))(
 		    reinterpret_cast<void*>(device), start, data, count);
@@ -682,15 +649,15 @@ struct RecordingShaderPort {
 			lastShader = shader;
 			lastSetup = call;
 		}
-		if (!g_settings.stereoDrawTimer) {
+		if (!draw_timer::g_timers.on) {
 			return engine->Slot(shader, call);
 		}
 		if (call.slot == 12 && shader != 0) {
-			g_passRepeats.Note(ReadAt<std::uint32_t>(shader + kShaderCurrentPassOffset), call.arguments[3], call.arguments[4]);
+			draw_timer::g_timers.repeats.Note(ReadAt<std::uint32_t>(shader + kShaderCurrentPassOffset), call.arguments[3], call.arguments[4]);
 		}
 		const std::uint64_t t0 = __rdtsc();
 		const std::uint32_t result = engine->Slot(shader, call);
-		g_stepTimes.AddSlot(call.slot, __rdtsc() - t0);
+		draw_timer::g_timers.steps.AddSlot(call.slot, __rdtsc() - t0);
 		return result;
 	}
 
@@ -737,13 +704,13 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
 	TimedEyeSwitch timed{&eyeSwitch, &ticks, &trace};
 	const whole::DrawInput in{geometry, data, skin, world, worldBound, record};
 	const auto plan = route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode()));
-	TimedDevice timedDevice{&ports};
+	draw_timer::TimedDevice<whole_engine::EnginePorts, whole::IndexedDraw, whole::PlainDraw> timedDevice{&ports};
 	const std::uint64_t wholeStart = __rdtsc();
-	const whole::Outcome outcome = g_settings.stereoDrawTimer ? whole::Draw(in, plan, ports, shader, timedDevice, timedDevice, timed)
+	const whole::Outcome outcome = draw_timer::g_timers.on ? whole::Draw(in, plan, ports, shader, timedDevice, timedDevice, timed)
 	                                                          : whole::Draw(in, plan, ports, shader, ports, ports, timed);
-	if (g_settings.stereoDrawTimer) {
-		g_stepTimes.wholeTicks += __rdtsc() - wholeStart;
-		++g_stepTimes.wholeCalls;
+	if (draw_timer::g_timers.on) {
+		draw_timer::g_timers.steps.wholeTicks += __rdtsc() - wholeStart;
+		++draw_timer::g_timers.steps.wholeCalls;
 	}
 	g_stats.AddWhole(outcome);
 	FinishTrace(trace, "whole draw", geometry, geometry != 0 ? ReadAt<std::uint32_t>(geometry + kTraceShaderCandidateOffset) : 0u, false);
@@ -1185,6 +1152,7 @@ UInt32 InstallRouteStereoDraw(const RouteSettings& settings, LogFn log) {
 	s_done = true;
 	g_log = log;
 	g_settings = settings;
+	draw_timer::g_timers.on = settings.stereoDrawTimer;
 	g_stats.eyes = settings.stereoEyes;
 	UInt32 made = 0;
 	made += InstallEntryDetour("NiDX9Renderer::DrawPrimitive", whole_engine::kDrawPrimitiveAddress, kDrawPrimitiveBytes, sizeof(kDrawPrimitiveBytes),

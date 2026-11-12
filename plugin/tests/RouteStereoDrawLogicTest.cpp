@@ -61,6 +61,23 @@ int main() {
 		                           "calls, 0.500 ms; slot 19 2 calls, 0.500 ms",
 		      "the draws, the render state's calls and only the slots that ran");
 	}
+	Section("[Route] StereoDrawTimer: the switch steps' line");
+	{
+		route::PortTimes t;
+		char line[800];
+		route::FormatPortTimes(t, 0.0, line, sizeof(line));
+		Check(std::string(line) == "Route: stereo draw switch steps - none timed", "no calibration: said so");
+		t.Add(route::PortTimes::kSetViewport, 2000);
+		t.Add(route::PortTimes::kSetViewport, 2000);
+		t.Add(route::PortTimes::kReadRegisters, 500);
+		Check(t.calls[route::PortTimes::kSetViewport] == 2 && t.ticks[route::PortTimes::kSetViewport] == 4000, "a step's calls and ticks summed");
+		route::FormatPortTimes(t, 1000.0, line, sizeof(line));
+		const std::string text(line);
+		Check(text.rfind("Route: stereo draw switch steps - read view 0 calls 0.000 ms (0.000 us);", 0) == 0, "every step named, the first one too");
+		Check(text.find("SetViewport 2 calls 4.000 ms (2000.000 us)") != std::string::npos, "the time in all and a call's");
+		Check(text.find("GetVertexShaderConstantF 1 calls 0.500 ms (500.000 us)") != std::string::npos, "another step apart");
+		Check(text.find("SetVertexShaderConstantF 0 calls 0.000 ms (0.000 us)") != std::string::npos, "the last step written");
+	}
 	Section("[Route] StereoDrawTimer: the device calls' line");
 	{
 		char line[200];

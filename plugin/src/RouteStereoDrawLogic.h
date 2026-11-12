@@ -195,6 +195,33 @@ inline int FormatPassRepeats(const PassRepeats& r, char* out, std::size_t capaci
 	                     static_cast<double>(r.samePassAndStates) * percent, r.passCount, r.passesFull ? " or more" : "");
 }
 
+// [Route] StereoDrawTimer: the eye switch's device and memory steps of a
+// summary window, so that the switch's own cost has names.
+struct PortTimes {
+	enum Step : unsigned { kReadView, kWriteRows, kSetTransform, kSetViewport, kGetViewport, kReadRegisters, kWriteRegisters, kSteps };
+	static constexpr const char* kNames[kSteps] = {"read view",   "write rows",               "SetTransform(VIEW)",      "SetViewport",
+	                                               "GetViewport", "GetVertexShaderConstantF", "SetVertexShaderConstantF"};
+	std::uint64_t calls[kSteps] = {};
+	std::uint64_t ticks[kSteps] = {};
+	void Add(Step step, std::uint64_t t) {
+		++calls[step];
+		ticks[step] += t;
+	}
+};
+
+inline int FormatPortTimes(const PortTimes& t, double ticksPerMillisecond, char* out, std::size_t capacity) {
+	if (ticksPerMillisecond <= 0.0) {
+		return std::snprintf(out, capacity, "Route: stereo draw switch steps - none timed");
+	}
+	int at = std::snprintf(out, capacity, "Route: stereo draw switch steps -");
+	for (unsigned i = 0; i < PortTimes::kSteps && at >= 0 && static_cast<std::size_t>(at) < capacity; ++i) {
+		const double ms = static_cast<double>(t.ticks[i]) / ticksPerMillisecond;
+		at += std::snprintf(out + at, capacity - at, "%s %s %llu calls %.3f ms (%.3f us)", i == 0 ? "" : ";", PortTimes::kNames[i],
+		                    static_cast<unsigned long long>(t.calls[i]), ms, t.calls[i] != 0 ? ms * 1000.0 / static_cast<double>(t.calls[i]) : 0.0);
+	}
+	return at;
+}
+
 inline int FormatStepTimes(const StepTimes& t, double ticksPerMillisecond, char* out, std::size_t capacity) {
 	if (t.wholeCalls == 0 || ticksPerMillisecond <= 0.0) {
 		return std::snprintf(out, capacity, "Route: stereo draw steps - none timed");
