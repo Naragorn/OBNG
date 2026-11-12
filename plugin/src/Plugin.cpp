@@ -248,6 +248,8 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	r.occlusionCullStats = GetPrivateProfileIntA("Route", "OcclusionCullStats", 0, path) != 0;
 	r.occlusionCullNodes = GetPrivateProfileIntA("Route", "OcclusionCullNodes", 0, path) != 0;
 	r.occlusionCullNodeLog = static_cast<UInt32>(GetPrivateProfileIntA("Route", "OcclusionCullNodeLog", 0, path));
+	r.occlusionCullEyeTarget = GetPrivateProfileIntA("Route", "OcclusionCullEyeTarget", 1, path) != 0;
+	r.occlusionCullDriverLog = GetPrivateProfileIntA("Route", "OcclusionCullDriverLog", 0, path) != 0;
 	r.occlusionCullTrace = static_cast<UInt32>(GetPrivateProfileIntA("Route", "OcclusionCullTrace", 0, path));
 	char traceDepth[32] = {};
 	GetPrivateProfileStringA("Route", "OcclusionCullTraceDepth", "-1", traceDepth, sizeof(traceDepth), path);

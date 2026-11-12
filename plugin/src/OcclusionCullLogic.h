@@ -521,6 +521,23 @@ inline bool FlatTargetIsFrame(std::uint32_t targetWidth, std::uint32_t targetHei
 	return targetWidth == backWidth && targetHeight == backHeight && backWidth != 0 && backHeight != 0;
 }
 
+// With the route's eye data: the pass is the frame's when its render target
+// holds both eyes' ports. The water's reflection walks and finishes through
+// the same driver and finish site into its own 1024x1024 map (measured
+// 2026-11-12 at the Anvil docks: one call a frame with the
+// TESWaterCullingProcess, vtable 0x00A3F380, beside the frame's); taken for
+// an eye pass it counted the frame twice and asked the eyes' verdicts for
+// another camera's draws.
+inline bool EyeTargetIsFrame(std::uint32_t targetWidth, std::uint32_t targetHeight, const oc::Viewport ports[2]) {
+	for (int eye = 0; eye < 2; ++eye) {
+		const oc::Viewport& port = ports[eye];
+		if (port.width == 0 || port.height == 0 || port.x + port.width > targetWidth || port.y + port.height > targetHeight) {
+			return false;
+		}
+	}
+	return true;
+}
+
 inline void FlatPorts(std::uint32_t targetWidth, std::uint32_t targetHeight, oc::Viewport out[2]) {
 	out[0] = oc::Viewport{0, 0, targetWidth, targetHeight, 0.0f, 1.0f};
 	out[1] = oc::Viewport{0, 0, 0, 0, 0.0f, 1.0f};

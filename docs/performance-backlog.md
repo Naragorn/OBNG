@@ -843,3 +843,37 @@ viewport test in DecideDraw. The log's "ms a pass" is therefore the mean of
 two different passes. Next: the driver's time and visits by the culling
 process's vtable in one docks run (what the second pass is and costs), then
 an eye pass only for the frame's own pass.
+
+## 2026-11-12: the second driver pass is the water's reflection (measured), and the culler no longer takes it for an eye pass
+
+`[Route] OcclusionCullDriverLog=1` (a measurement, off by default; `tools/hand-scripts/obng-measure-docks-driver.ini`)
+splits the driver's outermost calls of a summary window by caller, culling process and render target. Anvil docks,
+Linux harness, Windows mod list, run `artifacts/shadow/obng-profile-anvil-docks/20261112-085440` (measured):
+
+| call | process vtable | target | calls a frame | ms a call | objects visited | nodes left out |
+|---|---|---|---|---|---|---|
+| the frame's | 0x00A7E610 NiCullingProcess | 8072x3376 | 1 | 3.7-4.5 (walk and finish) | 2700-3100 | 25-27 |
+| the reflection's | 0x00A3F380 TESWaterCullingProcess | 1024x1024 | 1 | 0.30-0.46 | 220-430 | 0 |
+
+Both arrive through NiCullingProcess::Cull's call of the object's slot +0x7C (return address 0x0070E02F). So the
+"ms a pass" of the node summary was a mean of these two (about 2.2 ms); the frame's own driver call is about 4.2 ms
+here and the reflection's walk about 0.3 ms. The 10-16 ms a pass of Nadi's Windows session are therefore a mean as
+well; what the frame's pass costs there is not measured apart yet (the driver log is in the Windows build only after
+the next deploy).
+
+The defect (read, then measured): with the route's eye data `BeginEyePass` did not look at the render target, so the
+reflection's pass was begun as an eye pass too - the frame counter went up twice a frame (a verdict's hold of two
+"frames" was one), the results were collected twice, and the reflection's draws went through the eyes' decision (77
+a pass "outside eye 0's viewport"). The flat game had the check already (`FlatTargetIsFrame`). Fix:
+`cull::EyeTargetIsFrame` - a pass is an eye pass only when its target holds both eyes' ports (`[Route]
+OcclusionCullEyeTarget`, on; 0 is the earlier behaviour). Run `20261112-085817` with it (measured): 747-751 eye
+passes a window for as many frames (before: 1416-1462), "1494-1502 into other targets" (the reflection is asked
+twice, at the driver and at the finish), 0 draws outside eye 0's viewport, per frame 1310 draws asked and 176
+skipped (13 %, as before: 2 x 88), 25.0 nodes left out (before 25.8). The driver's time is unchanged (4.1-4.5 ms);
+the frame time cannot show a gain here because the run sits at the 75 Hz cap (UpdateStep 13.2-13.6 ms in both).
+Not checked: whether the reflection looked wrong before (nodes hidden from the eyes left out of the reflection's
+walk were 0.0 a call in the windows measured, so probably not at this place).
+
+Also answered (Oblivion Walkers, 2026-11-12): run 182322 of 2026-11-11 had three times the far actors of the later
+runs because a Walkers deploy at 18:53:54 (`[Horde] GateHordesMost=1`) sends all but one horde a gate out of the
+loaded grid (the deploy is measured by its file time; the effect on the count is derived).

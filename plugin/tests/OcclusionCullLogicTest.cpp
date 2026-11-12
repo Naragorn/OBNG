@@ -472,6 +472,15 @@ void TestFlat() {
 	Check(cull::FlatTargetIsFrame(2568, 1444, 2568, 1444), "the frame's target: the back buffer's size");
 	Check(!cull::FlatTargetIsFrame(1024, 1024, 2568, 1444), "a reflection map is not the frame");
 	Check(!cull::FlatTargetIsFrame(2568, 1444, 0, 0), "no back buffer read: no frame");
+	const oc::Viewport eyes[2] = {oc::Viewport{0, 0, 4036, 3376, 0.0f, 1.0f}, oc::Viewport{4036, 0, 4036, 3376, 0.0f, 1.0f}};
+	Check(cull::EyeTargetIsFrame(8072, 3376, eyes), "with eye data: a target that holds both eyes' ports is the frame's");
+	Check(cull::EyeTargetIsFrame(8100, 3400, eyes), "a larger target holds them too");
+	Check(!cull::EyeTargetIsFrame(1024, 1024, eyes), "the reflection's map holds neither: not the frame");
+	Check(!cull::EyeTargetIsFrame(4036, 3376, eyes), "a target that holds only the left eye's port is not the frame");
+	Check(!cull::EyeTargetIsFrame(8072, 3375, eyes), "one row short is not the frame");
+	const oc::Viewport noRight[2] = {eyes[0], oc::Viewport{0, 0, 0, 0, 0.0f, 1.0f}};
+	const oc::Viewport noLeft[2] = {oc::Viewport{0, 0, 4036, 0, 0.0f, 1.0f}, eyes[1]};
+	Check(!cull::EyeTargetIsFrame(8072, 3376, noRight) && !cull::EyeTargetIsFrame(8072, 3376, noLeft), "an eye without a port: no frame");
 }
 
 void TestListLeaders() {

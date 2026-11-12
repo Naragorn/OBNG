@@ -218,4 +218,67 @@ private:
 	Slot slots_[kSlots];
 };
 
+// The driver's calls of one summary window, apart by what the call is: who
+// called it (the return address), the culling process's vtable and the render
+// target's size. A frame can run the driver more than once (the water's
+// reflection, a shadow map); a mean over all of them describes none.
+class DriverBook {
+public:
+	static constexpr unsigned kKinds = 12;
+	struct Kind {
+		std::uint32_t site = 0;
+		std::uint32_t processVtable = 0;
+		std::uint32_t width = 0;
+		std::uint32_t height = 0;
+		std::uint64_t calls = 0;
+		std::uint64_t begun = 0;   // calls the culler began an eye pass at
+		std::uint64_t ticks = 0;
+		std::uint64_t visits = 0;  // objects visited in the walk
+		std::uint64_t leftOut = 0; // nodes left out in the walk
+	};
+
+	// False: the table is full and the call went into `dropped`.
+	bool Add(std::uint32_t site, std::uint32_t processVtable, std::uint32_t width, std::uint32_t height, bool begun, std::uint64_t ticks,
+	         std::uint64_t visits, std::uint64_t leftOut) {
+		Kind* kind = nullptr;
+		for (unsigned i = 0; i < count_; ++i) {
+			Kind& k = kinds_[i];
+			if (k.site == site && k.processVtable == processVtable && k.width == width && k.height == height) {
+				kind = &k;
+				break;
+			}
+		}
+		if (kind == nullptr) {
+			if (count_ == kKinds) {
+				++dropped_;
+				return false;
+			}
+			kind = &kinds_[count_++];
+			*kind = Kind{};
+			kind->site = site;
+			kind->processVtable = processVtable;
+			kind->width = width;
+			kind->height = height;
+		}
+		++kind->calls;
+		kind->begun += begun ? 1u : 0u;
+		kind->ticks += ticks;
+		kind->visits += visits;
+		kind->leftOut += leftOut;
+		return true;
+	}
+	unsigned Count() const { return count_; }
+	const Kind& At(unsigned index) const { return kinds_[index]; }
+	std::uint64_t Dropped() const { return dropped_; }
+	void Reset() {
+		count_ = 0;
+		dropped_ = 0;
+	}
+
+private:
+	Kind kinds_[kKinds];
+	unsigned count_ = 0;
+	std::uint64_t dropped_ = 0;
+};
+
 }  // namespace obng::plugin::draw_groups

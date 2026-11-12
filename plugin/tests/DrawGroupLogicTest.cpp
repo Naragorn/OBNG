@@ -115,9 +115,37 @@ void TestNodeBook() {
 	Check(full.Candidate(last, 50 + NodeBook::kStale + 2, 2), "after the stale time the run's slots are free for it");
 }
 
+void TestDriverBook() {
+	Section("DriverBook: the driver's calls apart by caller, process, target");
+	static DriverBook book;
+	Check(book.Count() == 0 && book.Dropped() == 0, "empty at first");
+	Check(book.Add(0x40C830, 0xA3F000, 3840, 2160, true, 100, 50, 2), "the first call makes its kind");
+	Check(book.Add(0x40C830, 0xA3F000, 3840, 2160, false, 60, 30, 1), "the same kind again");
+	Check(book.Count() == 1 && book.At(0).calls == 2 && book.At(0).begun == 1 && book.At(0).ticks == 160 && book.At(0).visits == 80 &&
+	          book.At(0).leftOut == 3,
+	      "one kind: calls, passes begun, ticks, visits and nodes left out summed");
+	book.Add(0x49C000, 0xA3F000, 3840, 2160, true, 1, 1, 0);
+	book.Add(0x40C830, 0xA3F111, 3840, 2160, true, 1, 1, 0);
+	book.Add(0x40C830, 0xA3F000, 1024, 2160, true, 1, 1, 0);
+	book.Add(0x40C830, 0xA3F000, 3840, 1024, true, 1, 1, 0);
+	Check(book.Count() == 5, "another caller, process, width or height is another kind each");
+	Check(book.At(1).site == 0x49C000 && book.At(4).height == 1024 && book.At(4).calls == 1, "each kind keeps its own key and counts");
+	for (std::uint32_t n = 0; book.Count() < DriverBook::kKinds; ++n) {
+		book.Add(n + 1, 0, 0, 0, false, 0, 0, 0);
+	}
+	Check(!book.Add(0xFFFF, 0, 0, 0, false, 5, 5, 5) && book.Dropped() == 1 && book.Count() == DriverBook::kKinds,
+	      "a full table drops a new kind and counts it");
+	Check(book.Add(0x40C830, 0xA3F000, 3840, 2160, true, 1, 1, 0) && book.At(0).calls == 3, "a known kind is still counted when the table is full");
+	book.Reset();
+	Check(book.Count() == 0 && book.Dropped() == 0, "the reset empties it");
+	Check(book.Add(9, 9, 9, 9, false, 7, 0, 0) && book.At(0).calls == 1 && book.At(0).ticks == 7 && book.At(0).begun == 0,
+	      "after the reset a slot starts from nothing");
+}
+
 }  // namespace
 
 int main() {
+	TestDriverBook();
 	TestNodeBook();
 	TestMeshes();
 	TestHiddenNodes();

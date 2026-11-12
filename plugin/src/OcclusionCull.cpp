@@ -166,6 +166,14 @@ unsigned __int64 g_walkTicks = 0;
 unsigned __int64 g_passesWithWalk = 0;
 unsigned __int64 g_viewChangedAfterWalk = 0;
 float g_walkView[16] = {};
+// [Route] OcclusionCullDriverLog: the driver's outermost calls apart by what
+// they are (DrawGroupLogic.h DriverBook) - a frame runs more than one where
+// the water's reflection renders.
+bool g_targetCheck = true;  // [Route] OcclusionCullEyeTarget
+bool g_driverLog = false;
+draw_groups::DriverBook g_driverBook;
+unsigned __int64 g_walkVisitsAll = 0;  // objects visited in any outermost driver's walk
+unsigned __int64 g_leftOutAll = 0;     // nodes left out, never reset (the summary resets g_nodesLeftOut inside a driver call)
 volatile LONG g_eyePassCount = 0;
 bool g_refusedLogged = false;
 volatile LONG g_summaryRequested = 0;
@@ -202,6 +210,22 @@ void FlushSummaryIfRequested() {
 		      "%.1f left out; the driver (walk and finish) %.3f ms a pass; the view differed between the walk and the finish in %llu passes",
 		      g_passesWithWalk, static_cast<double>(g_nodeVisits) * per, static_cast<double>(g_nodesAsked) * per, static_cast<double>(g_nodesLeftOut) * per,
 		      ticksPerMillisecond > 0.0 ? static_cast<double>(g_walkTicks) / ticksPerMillisecond * per : 0.0, g_viewChangedAfterWalk);
+		if (g_driverLog) {
+			for (unsigned i = 0; i < g_driverBook.Count(); ++i) {
+				const draw_groups::DriverBook::Kind& k = g_driverBook.At(i);
+				const double perCall = 1.0 / static_cast<double>(k.calls);
+				g_log("Route: occlusion cull driver - called from 0x%08X, process vtable 0x%08X, target %ux%u: %llu calls, an eye pass begun at %llu; "
+				      "per call %.3f ms, %.0f objects visited, %.1f nodes left out",
+				      k.site, k.processVtable, k.width, k.height, k.calls, k.begun,
+				      ticksPerMillisecond > 0.0 ? static_cast<double>(k.ticks) / ticksPerMillisecond * perCall : 0.0,
+				      static_cast<double>(k.visits) * perCall, static_cast<double>(k.leftOut) * perCall);
+			}
+			if (g_driverBook.Dropped() != 0) {
+				g_log("Route: occlusion cull driver - %llu calls of further kinds not noted (the table holds %u)", g_driverBook.Dropped(),
+				      draw_groups::DriverBook::kKinds);
+			}
+			g_driverBook.Reset();
+		}
 		g_passesWithWalk = 0;
 		g_nodeVisits = 0;
 		g_nodesAsked = 0;
@@ -660,6 +684,14 @@ bool BeginEyePass() {
 		for (int eye = 0; eye < 2; ++eye) {
 			std::memcpy(&g_ports[eye], &g_eyes.viewport[eye], sizeof(oc::Viewport));
 		}
+		// Only the frame's own pass: the water's reflection comes through the
+		// same driver and finish into its own map (EyeTargetIsFrame).
+		UInt32 width = 0;
+		UInt32 height = 0;
+		if (g_targetCheck && TargetSize(&width, &height) && !cull::EyeTargetIsFrame(width, height, g_ports)) {
+			++g_stats.otherTargetPasses;
+			return false;
+		}
 	} else {
 		// The flat game: the one camera's port is the render target itself -
 		// when that is the frame's (the back buffer's size); a reflection or
@@ -800,6 +832,7 @@ UInt32 __fastcall CullRenderShape(void* self, void* /*edx*/, UInt32 geometry) {
 // the cull walk, so that the walk can ask about nodes. A driver inside
 // another (depth above one) is left alone.
 UInt32 __fastcall CullDriver(void* self, void* /*edx*/, UInt32 process) {
+	const UInt32 site = static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(_ReturnAddress()));
 	if (!g_on || !g_nodeCull || g_driverDepth != 0 || g_active) {
 		++g_driverDepth;
 		const UInt32 inner = g_driver(self, nullptr, process);
@@ -809,13 +842,26 @@ UInt32 __fastcall CullDriver(void* self, void* /*edx*/, UInt32 process) {
 	++g_driverDepth;
 	g_passBegun = BeginEyePass();
 	g_walk = g_passBegun;
+	const bool begun = g_passBegun;
 	if (g_passBegun) {
 		++g_passesWithWalk;
 		std::memcpy(g_walkView, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(g_renderer + kRendererViewOffset)), sizeof(g_walkView));
 	}
+	UInt32 targetWidth = 0;
+	UInt32 targetHeight = 0;
+	if (g_driverLog && g_device != nullptr) {
+		TargetSize(&targetWidth, &targetHeight);
+	}
+	const unsigned __int64 visitsBefore = g_walkVisitsAll;
+	const unsigned __int64 leftOutBefore = g_leftOutAll;
 	const unsigned __int64 t0 = __rdtsc();
 	const UInt32 eax = g_driver(self, nullptr, process);
-	g_walkTicks += __rdtsc() - t0;
+	const unsigned __int64 ticks = __rdtsc() - t0;
+	g_walkTicks += ticks;
+	if (g_driverLog) {
+		g_driverBook.Add(site, process != 0 ? ReadAt<UInt32>(process) : 0, targetWidth, targetHeight, begun, ticks, g_walkVisitsAll - visitsBefore,
+		                 g_leftOutAll - leftOutBefore);
+	}
 	g_walk = false;
 	if (g_passBegun) {
 		// The driver returned without its finish at the eye pass's site: the
@@ -878,6 +924,9 @@ void LogNodeLeftOut(UInt32 node) {
 // (a plain node or a fade node, by its +0x7C) is asked about like a draw;
 // hidden, it is not visited.
 void __fastcall CullVisit(void* self, void* /*edx*/, UInt32 object) {
+	if (g_driverLog && g_driverDepth == 1) {
+		++g_walkVisitsAll;
+	}
 	if (g_walk && g_driverDepth == 1 && object != 0) {
 		++g_nodeVisits;
 		const UInt32 onVisible = ReadAt<UInt32>(ReadAt<UInt32>(object) + kSlotOnVisible);
@@ -885,6 +934,7 @@ void __fastcall CullVisit(void* self, void* /*edx*/, UInt32 object) {
 			++g_nodesAsked;
 			if (DecideDraw(object, cull::DrawKind::kShape, false, true) == cull::Decision::kSkip) {
 				++g_nodesLeftOut;
+				++g_leftOutAll;
 				if (g_nodeBook.LeftOut(object, g_frame) && g_nodeLogLeft != 0) {
 					LogNodeLeftOut(object);
 				}
@@ -933,6 +983,8 @@ UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {
 	g_settings.maxMoveUnits = settings.occlusionCullMaxMove;
 	g_settings.maxTurnDegrees = settings.occlusionCullMaxTurn;
 	g_nodeLogLeft = settings.occlusionCullNodeLog;
+	g_driverLog = settings.occlusionCullDriverLog;
+	g_targetCheck = settings.occlusionCullEyeTarget;
 	g_trace.passes = settings.occlusionCullTrace;
 	g_trace.probeDepth = settings.occlusionCullTraceDepth;
 	g_flat = settings.occlusionCullFlat;
