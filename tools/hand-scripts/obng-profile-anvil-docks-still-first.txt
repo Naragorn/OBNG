@@ -24,7 +24,7 @@ ini Hands PhysicsRate=0
 ini Performance Enabled=1
 ini Performance GpuTiming=1
 ini Performance StartAfterSeconds=40
-ini Performance CaptureSeconds=130
+ini Performance CaptureSeconds=90
 ini Performance MaxRecords=262144
 ini Performance Sampler=1
 console-at ready player.moveto 0000BCB9

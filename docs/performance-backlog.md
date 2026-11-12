@@ -1256,3 +1256,29 @@ frame, 6-8 near ones taken by the view rule, 3 530 references left out). The who
 morning's docks runs (27-61 frames a second against 75; UpdateStep 16-30 ms against 13.2) - not explained; the
 OBVR.dll in the game changed between them (a59e316b) and nothing here separates that from other causes. This is
 what the Windows game now has on (the three keys are set there).
+
+### The arrival: first-time work, and how much depends on what is cached (measured 2026-11-12, three runs)
+
+The same still-first docks run three times in a row (Linux, Windows mod list, single pass):
+
+| run | after | the thirty seconds after the arrival | the actors' animation call | frames in 5 s |
+|---|---|---|---:|---:|
+| `...-still-first/20261112-134643` | OBVR's own runs with a new OBVR.dll | UpdateStep 41 ms, RenderFrame 20 ms; Input 0.18 ms and Sound 0.24 ms (0.03 later) | 1.8-6.4 ms a frame | 88-260 |
+| `...-still-first/20261112-140045` | the run above | UpdateStep 18-31 ms for about 25 s | 1.4-2.4 | 161-297 |
+| `...-still-first/20261112-140513` | the run above | none after the load's own window | 0.2-1.1 for 10 s | 341-376 (75 a second) |
+
+- Run 3 timed the animation update's callees (`obng-measure-docks-arrival.ini`): in the load's window and the ten
+  seconds after it the time is in 0x00474070 (22.5 ms a frame in the load's 26 frames, about 1 ms a frame after;
+  5 calls a frame) - the function that adds an animation to the actor's keyframe manager (its error string
+  "Unable to add '%s' to keyframe manager on '%s'", read in re/export/rea-all 0x474070.c): the actors' first
+  animations being set up on the main thread. The other callees stay under 0.1 ms.
+- Run 2 had `tools/thread-sampler.py` beside it (each thread's CPU time from /proc twice a second): in the
+  arrival the main thread ran 0.74 of each second against 0.81-0.87 later, the DXVK thread and the sound mixer
+  no more than later, and the machine was busier (35 % of its sixteen threads against 19-23 %) - the main thread
+  waited, on something outside the game's own threads. Input and Sound six times dearer in run 1 point the same
+  way (both are system calls under Wine). Derived, not measured: files not yet in the page cache (the Windows mod
+  list lives on an ntfs3 NVMe partition) and, for RenderFrame, first-time shader work.
+- So: the first arrival after other work is slow for up to half a minute, a second arrival at the same place
+  hardly. What a modern engine does instead: animations (and meshes, textures) streamed in on worker threads
+  before they are needed, not set up on the main thread on first use. Not measured on Windows; not yet measured
+  with a cold page cache on purpose (needs `drop_caches`, root).
