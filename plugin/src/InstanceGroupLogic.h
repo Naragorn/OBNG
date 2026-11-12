@@ -70,6 +70,17 @@ inline std::uint32_t HashWords(const std::uint32_t* words, std::size_t count) {
 	return h;
 }
 
+// FNV-1a over bytes (a program's bytecode, matched offline against the
+// shader packages' entries).
+inline std::uint32_t HashBytes(const std::uint8_t* bytes, std::size_t count) {
+	std::uint32_t h = 2166136261u;
+	for (std::size_t i = 0; i < count; ++i) {
+		h ^= bytes[i];
+		h *= 16777619u;
+	}
+	return h;
+}
+
 constexpr int kLevels = 3;  // mesh, props, effects
 
 struct Counts {
@@ -139,6 +150,9 @@ struct PassCoverage {
 	std::uint64_t forEighty = 0;    // passes needed for 80 % of those draws
 	std::uint64_t forNinety = 0;
 	std::uint64_t topShare[3] = {}; // draws of the three largest passes
+	static constexpr int kTop = 8;
+	std::uint32_t topPass[kTop] = {};   // the largest pass objects, by grouped draws
+	std::uint64_t topDraws[kTop] = {};
 };
 
 inline PassCoverage Coverage(std::vector<Key>& keys) {
@@ -173,6 +187,10 @@ inline PassCoverage Coverage(std::vector<Key>& keys) {
 		running += perPass[k].second;
 		if (k < 3) {
 			out.topShare[k] = perPass[k].second;
+		}
+		if (k < static_cast<std::size_t>(PassCoverage::kTop)) {
+			out.topPass[k] = perPass[k].first;
+			out.topDraws[k] = perPass[k].second;
 		}
 		if (out.forEighty == 0 && running * 10 >= out.grouped * 8) {
 			out.forEighty = k + 1;

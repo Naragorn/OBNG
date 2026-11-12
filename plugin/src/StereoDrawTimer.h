@@ -22,6 +22,10 @@ namespace route = stereo_draw_route;
 // false when a read faulted.
 bool ReadInstanceWords(std::uint32_t propertyState, std::uint32_t pass, std::uint32_t* words);
 
+// The device's current vertex and pixel programs noted for this pass object
+// (once per pass object; StereoDrawTimer.cpp).
+void CaptureShaders(std::uint32_t device, std::uint32_t pass);
+
 struct Timers {
 	bool on = false;
 	std::uint64_t deviceCalls = 0;
@@ -37,6 +41,41 @@ struct Timers {
 	std::vector<instance_groups::Key> keys;
 	instance_groups::Totals instances;
 	std::uint64_t unreadable = 0;  // pass setups whose words faulted (not noted)
+	std::uint32_t currentPass = 0;  // the pass object of the pass setup in flight (noted frames)
+	// The programs of each pass object seen in a noted frame, and the grouped
+	// draws of the largest pass objects summed over the window.
+	struct Captured {
+		std::uint32_t pass = 0;
+		std::uint32_t vsSize = 0;
+		std::uint32_t vsHash = 0;
+		std::uint32_t psSize = 0;
+		std::uint32_t psHash = 0;
+	};
+	static constexpr std::uint32_t kCaptured = 256;
+	Captured captured[kCaptured];
+	std::uint32_t capturedCount = 0;
+	struct PassDraws {
+		std::uint32_t pass = 0;
+		std::uint64_t draws = 0;
+	};
+	static constexpr std::uint32_t kPassDraws = 64;
+	PassDraws passDraws[kPassDraws];
+	std::uint32_t passDrawsCount = 0;
+	void AddPassDraws(const instance_groups::PassCoverage& c) {
+		for (int k = 0; k < instance_groups::PassCoverage::kTop && c.topPass[k] != 0; ++k) {
+			std::uint32_t i = 0;
+			while (i < passDrawsCount && passDraws[i].pass != c.topPass[k]) {
+				++i;
+			}
+			if (i == passDrawsCount) {
+				if (passDrawsCount == kPassDraws) {
+					continue;
+				}
+				passDraws[passDrawsCount++].pass = c.topPass[k];
+			}
+			passDraws[i].draws += c.topDraws[k];
+		}
+	}
 
 	static constexpr std::uint32_t kGeometryDataOffset = 0xB4;     // NiGeometry's model data (xOBSE NiObjects.h geomData; read 0x00722AE5)
 	static constexpr std::uint32_t kShaderPassOffset = 0x3C;       // what slot 12 0x0077A1B0 calls slot 2 of (re/export/rea-all 0x77a1b0.c)
@@ -51,6 +90,7 @@ struct Timers {
 		instance_groups::Key k;
 		k.data = Word(geometry + kGeometryDataOffset);
 		k.pass = Word(shader + kShaderPassOffset);
+		currentPass = k.pass;
 		if (!ReadInstanceWords(propertyState, k.pass, k.words)) {
 			++unreadable;
 			return;
@@ -67,7 +107,9 @@ struct Timers {
 	// The eye data of a new frame: the noted frame before it counted.
 	void FrameBoundary() {
 		if (noteFrame && !keys.empty()) {
-			instances.AddCoverage(instance_groups::Coverage(keys));
+			const instance_groups::PassCoverage coverage = instance_groups::Coverage(keys);
+			instances.AddCoverage(coverage);
+			AddPassDraws(coverage);
 			instances.Add(instance_groups::Count(keys));
 		}
 		keys.clear();
@@ -94,6 +136,26 @@ struct Timers {
 		log(line);
 		instance_groups::Format(instances, line, sizeof(line));
 		log(line);
+		// The largest pass objects of the window with their programs.
+		for (std::uint32_t n = 0; n < 8 && passDrawsCount != 0; ++n) {
+			std::uint32_t best = 0;
+			for (std::uint32_t i = 1; i < passDrawsCount; ++i) {
+				best = passDraws[i].draws > passDraws[best].draws ? i : best;
+			}
+			if (passDraws[best].draws == 0) {
+				break;
+			}
+			const Captured* found = nullptr;
+			for (std::uint32_t i = 0; i < capturedCount; ++i) {
+				found = captured[i].pass == passDraws[best].pass ? &captured[i] : found;
+			}
+			std::snprintf(line, sizeof(line), "Route: stereo draw instance groups - pass 0x%08X: %llu grouped draws in the noted passes; vertex program %u bytes FNV %08X, pixel program %u bytes FNV %08X",
+			              passDraws[best].pass, static_cast<unsigned long long>(passDraws[best].draws), found ? found->vsSize : 0, found ? found->vsHash : 0,
+			              found ? found->psSize : 0, found ? found->psHash : 0);
+			log(line);
+			passDraws[best].draws = 0;
+		}
+		passDrawsCount = 0;
 		if (unreadable != 0) {
 			std::snprintf(line, sizeof(line), "Route: stereo draw instance groups - %llu pass setups not noted (a read faulted)", static_cast<unsigned long long>(unreadable));
 			log(line);
@@ -132,6 +194,9 @@ template <class Ports, class IndexedDraw, class PlainDraw>
 struct TimedDevice {
 	const Ports* inner;
 	void DrawIndexedPrimitive(const IndexedDraw& d) const {
+		if (g_timers.noteFrame && g_timers.eyeDraw && g_timers.currentPass != 0) {
+			CaptureShaders(static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(inner->renderer->device)), g_timers.currentPass);
+		}
 		const std::uint64_t t0 = __rdtsc();
 		inner->DrawIndexedPrimitive(d);
 		g_timers.deviceTicks += __rdtsc() - t0;

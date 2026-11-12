@@ -91,6 +91,9 @@ int main() {
 		Check(c.grouped == 10 && c.passes == 2, "ten grouped draws in two pass objects; the single draw left out");
 		Check(c.forEighty == 1 && c.forNinety == 2 && c.topShare[0] == 8 && c.topShare[1] == 2 && c.topShare[2] == 0,
 		      "the largest pass covers 80 %, both are needed for 90 %");
+		Check(c.topPass[0] == 100 && c.topDraws[0] == 8 && c.topPass[1] == 200 && c.topDraws[1] == 2 && c.topPass[2] == 0, "the largest passes named, in order");
+		const std::uint8_t bytes[2] = {0x61, 0x62};  // "ab"
+		Check(HashBytes(bytes, 2) == 0x4D2505CAu && HashBytes(bytes, 0) == 2166136261u, "FNV-1a over bytes, as the offline matcher computes it");
 		Totals t;
 		t.Add(Count(keys));
 		t.AddCoverage(c);

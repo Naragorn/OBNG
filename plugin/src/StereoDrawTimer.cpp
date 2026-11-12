@@ -2,6 +2,10 @@
 
 #include <windows.h>
 
+#include <d3d9.h>
+
+#include <vector>
+
 namespace obng::plugin::draw_timer {
 
 namespace {
@@ -73,6 +77,57 @@ bool ReadInstanceWords(std::uint32_t propertyState, std::uint32_t pass, std::uin
 	} __except (EXCEPTION_EXECUTE_HANDLER) {
 		return false;
 	}
+}
+
+namespace {
+// The programs of a shader, as the device holds them: size and FNV-1a of the
+// bytecode, 0 when none is bound or it cannot be read.
+struct Program {
+	std::uint32_t size = 0;
+	std::uint32_t hash = 0;
+};
+
+template <class Shader>
+Program ProgramOf(Shader* shader) {
+	Program out;
+	if (shader == nullptr) {
+		return out;
+	}
+	UINT size = 0;
+	if (SUCCEEDED(shader->GetFunction(nullptr, &size)) && size != 0 && size < (1u << 20)) {
+		std::vector<std::uint8_t> code(size);
+		if (SUCCEEDED(shader->GetFunction(code.data(), &size))) {
+			out.size = size;
+			out.hash = instance_groups::HashBytes(code.data(), size);
+		}
+	}
+	shader->Release();
+	return out;
+}
+}  // namespace
+
+void CaptureShaders(std::uint32_t device, std::uint32_t pass) {
+	if (device == 0 || pass == 0 || g_timers.capturedCount >= Timers::kCaptured) {
+		return;
+	}
+	for (std::uint32_t i = 0; i < g_timers.capturedCount; ++i) {
+		if (g_timers.captured[i].pass == pass) {
+			return;
+		}
+	}
+	auto* d = reinterpret_cast<IDirect3DDevice9*>(static_cast<std::uintptr_t>(device));
+	IDirect3DVertexShader9* vs = nullptr;
+	IDirect3DPixelShader9* ps = nullptr;
+	d->GetVertexShader(&vs);
+	d->GetPixelShader(&ps);
+	const Program v = ProgramOf(vs);
+	const Program p = ProgramOf(ps);
+	Timers::Captured& c = g_timers.captured[g_timers.capturedCount++];
+	c.pass = pass;
+	c.vsSize = v.size;
+	c.vsHash = v.hash;
+	c.psSize = p.size;
+	c.psHash = p.hash;
 }
 
 }  // namespace obng::plugin::draw_timer
