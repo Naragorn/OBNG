@@ -21,6 +21,7 @@
 #include "GpuPassTimer.h"
 #include "ReferenceAnimRate.h"
 #include "ActorShadowRest.h"
+#include "PassListKeep.h"
 #include "ProcessProbe.h"
 #include "TimedCalls.h"
 #include "FastConstantArrange.h"
@@ -339,6 +340,7 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 		obng::plugin::InstallActorFarUpdate(path, &Log);  // before the census: the route has the entry first
 		obng::plugin::InstallReferenceAnimRate(path, &Log);  // before the [Timed] lines: the route has the entry first
 		obng::plugin::InstallActorShadowRest(path, &Log);   // call sites and two patches inside the actor shadow step, no entry
+		obng::plugin::InstallPassListKeep(path, &Log);      // the relight's two call sites and three vtable slots, no entry
 	}
 	obng::plugin::InstallActorCensus(settings, &Log);
 	obng::plugin::InstallLockProbe(settings, &Log);  // its two detours are not among the counted ones

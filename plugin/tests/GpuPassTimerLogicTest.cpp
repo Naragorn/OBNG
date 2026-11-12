@@ -91,5 +91,16 @@ int main() {
 		Check(std::string(line).find("1 frames read back") != std::string::npos && std::string(line).find("#0 16.000") != std::string::npos,
 		      "the line: frames and finish 0's time");
 	}
+	Section("MostRecordsLists: the lists by records, the most first");
+	{
+		static Totals t;
+		Span spans[4] = {List(3, 132, 0, 1, 300), List(3, 375, 1, 2, 150), List(3, 141, 2, 9, 30), List(1, 132, 9, 10, 40)};
+		t.AddFrame(spans, 4, 1000);
+		std::uint32_t order[3];
+		const std::uint32_t n = MostRecordsLists(t, order, 3);
+		Check(n == 3 && t.list[order[0]].key == ((3u << 16) | 132u) && t.list[order[1]].key == ((3u << 16) | 375u) &&
+		          t.list[order[2]].key == ((1u << 16) | 132u),
+		      "by records, not by time: 300, 150, 40 - the slow list of 30 records left out");
+	}
 	return Failures();
 }

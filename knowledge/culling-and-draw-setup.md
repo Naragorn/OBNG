@@ -851,7 +851,17 @@ vtables by their RTTI names in the EXE's data (2026-11-12). Names are proposals.
   more than two lights); and **one pass per actor-shadow light on the geometry** (+0xF4 set: 0x177..0x17A, 375 =
   0x177 among them). Each pass is three heap allocations (the record, its light array, the list node); the
   list's old records are freed first.
-- **Measured** (run obng-profile-market/20261112-195635, the render sampler's stack words, approximate): inside
-  the eye pass, GetRenderPasses is on the stack of 8.3 % of the samples (about 0.77 ms a frame), the builder
-  0x0085AE20 4.3 %, the record constructor 0x007E2370 3.7 %, the actor-shadow pass add 0x0085AAC0 1.5 %, the
-  free 0x007E24C0 1.2 % - the passes are rebuilt for a large share of the town's geometry every frame.
+- **Measured, first from the sampler and then counted - the count wins.** The render sampler's stack words
+  (run obng-profile-market/20261112-195635) put GetRenderPasses on the stack of 8.3 % of the eye pass's samples, the
+  builder 0x0085AE20 on 4.3 % and the record constructor 0x007E2370 on 3.7 %, read then as "the passes are rebuilt
+  for much of the town every frame". Counted by OBNG's `[Route] PassListKeep=1` (run
+  obng-profile-market/20261112-205225, the routes as played): in the steady windows the getter is called about
+  1 000 times a frame (400 000-550 000 calls in 10 s) and **builds only 300-3 400 times in 10 s - one to seven
+  builds a frame, 3-6 us each, under 0.05 ms a frame**; 1 300-1 480 relights in 10 s, nearly all of them leaving
+  the key as it was (the geometry had no light the relight drops and adds back). The stack words above were stale
+  return addresses (knowledge/render-thread-outside-the-pass.md warns of them); the 4.3 % and 3.7 % are not
+  builds. The getter's own cost a call (its two interlocked calls through 0x00405760, the LOD fades with a square
+  root when the flags ask for them) is not measured.
+- Correction: 0x007D21F0 (a hidden shadow light) does not leave its geometry list intact - after dropping itself
+  from each geometry's property it empties the lists at +0xE4 and +0x134 (0x00573880, read 2026-11-12), so a light
+  that stays hidden drops its geometry once (knowledge/shadow-light-list-remove.md says otherwise).

@@ -317,6 +317,18 @@ void WriteSummaryIfRequested() {
 		                      name, static_cast<double>(l.records) / frames);
 	}
 	g_log("%s", line);
+	constexpr UInt32 kCensus = 40;
+	UInt32 most[kCensus];
+	const UInt32 m = gp::MostRecordsLists(g_totals, most, kCensus);
+	used = std::snprintf(line, sizeof(line), "Probe: GPU passes - the pass lists with the most records, records a frame (finish/pass id: class):");
+	for (UInt32 i = 0; i < m && used > 0 && static_cast<std::size_t>(used) < sizeof(line); ++i) {
+		const gp::Totals::List& l = g_totals.list[most[i]];
+		char name[48];
+		ClassName(l.shader, name, sizeof(name));
+		used += std::snprintf(line + used, sizeof(line) - static_cast<std::size_t>(used), " #%u/%u %.1f (%s);", l.key >> 16, l.key & 0xFFFFu,
+		                      static_cast<double>(l.records) / frames, name);
+	}
+	g_log("%s", line);
 	if (g_totals.listsDropped != 0) {
 		g_log("Probe: GPU passes - %llu list spans not kept (the table full)", static_cast<unsigned long long>(g_totals.listsDropped));
 	}

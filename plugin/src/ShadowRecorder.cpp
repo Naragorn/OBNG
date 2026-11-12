@@ -16,6 +16,7 @@
 #include "GpuPassTimer.h"
 #include "ReferenceAnimRate.h"
 #include "ActorShadowRest.h"
+#include "PassListKeep.h"
 #include "ProcessProbe.h"
 #include "TimedCalls.h"
 #include "FastConstantArrange.h"
@@ -135,6 +136,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogActorFarUpdateSummary();
 	LogReferenceAnimRateSummary();
 	LogActorShadowRestSummary();
+	LogPassListKeepSummary();
 	LogTimedCallsSummary();
 	LogConstantArrangeSummary();
 	LogOcclusionCullSummary();

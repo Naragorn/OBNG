@@ -581,8 +581,8 @@ window (it made "on" look slower at first).
 | Far actors' skeletons at a lower rate (`[Route] ActorFarEvery`) | C | measured at the docks with 98 actors, 75 of them beyond 6000 units, every 4th call: the skeleton updates 2.67 -> 1.52 ms a frame, the actors' frame 8.77 -> 7.45 | built 2026-11-11, off; the headset look (a far figure at a quarter rate), and what reads a far actor's bones between two updates, are open | built, not accepted | this file |
 | 0x00471C00 before ApplyAnimData | ? | 0.74-0.78 ms with 117 actors (6-7 us a call) | small to look | not started | knowledge/threading.md |
 | Actor shadows at rest (`[Route] ActorShadowEvery`) | C | measured in the Market District at every 4th step: the step 0.70 -> 0.42 ms (0.28 ms a frame; lights drawn 2.5 -> 1.3 a step) | built 2026-11-12, off; a long run and the headset look are open | built, not accepted | this file |
-| Keep a geometry's render passes when its light set did not change (RelightGeometry re-attaching the same lights, a fade that changes no pass) | A | the pass lists' rebuild is on the stack of 5-8 % of the Market's eye pass, 0.5-0.8 ms a frame (sampler, approximate) | medium: what else +0x24 = 0 stands for must be read; a gate rebuilds and compares | not started | knowledge/culling-and-draw-setup.md |
-| The render pass records from a pool instead of three heap allocations each | A | part of the allocator's 0.49 ms in the Market's eye pass | small to medium | not started | knowledge/culling-and-draw-setup.md |
+| Keep a geometry's render passes when its light set did not change (`[Route] PassListKeep`) | A | counted in the Market: one to seven pass builds a frame, 3-6 us each - under 0.05 ms; nearly every relight leaves the key as it was (the sampler's 5-8 % were stale stack words) | built 2026-11-12, off | put back: nothing to gain | knowledge/culling-and-draw-setup.md |
+| The render pass records from a pool instead of three heap allocations each | A | one to seven builds a frame make few records (counted 2026-11-12); who calls the allocator 0.49 ms a frame in the eye pass is open | small to medium | put back | knowledge/culling-and-draw-setup.md |
 | Fewer passes: lights merged into fewer passes, the actor shadow folded into the base pass | C | about half of the eye pass's draws are further passes of a geometry (922 of 1 801 asked in the Market), about 5 us each | large to huge: own shader programs | not started | knowledge/culling-and-draw-setup.md |
 
 ## Far actors: the engine's own process levels and where the frame time comes from (2026-11-11, read)
@@ -1686,3 +1686,19 @@ under the per-draw shader setup (0x009A56D0, 0x0077A1B0, 0x0075FBA0, 0x007830C0,
 about 0.5-1 ms; 7-8 ms are the draws - 1 801 asked a pass, 294 left out by the culler, 922 of them repeats of a
 geometry already drawn in an earlier pass of the list; each draw goes to Direct3D twice (the two eyes, about 1 560
 eye switches a frame). About 5 us of the main thread a draw.
+
+## 2026-11-12: L1/L2 - the render passes kept through a relight (`[Route] PassListKeep`, built, off; class A) - nothing to gain
+
+Built after E1's sampler reading (the pass lists rebuilt for much of the town every frame): `plugin/src/PassListKeep.{h,cpp}`,
+decisions in `src/engine/render/PassListKeepLogic.h` (tests/PassListKeepLogicTest.cpp, every flow). It patches the two calls
+of RelightGeometry 0x007C6100 in RelightSubtree 0x007C7050 (0x007C70F0, 0x007C716E - the entry is OBVR's relight clock) and the
+pass getter's vtable slot +0x5C of BSShaderPPLightingProperty, SpeedTreeBranchShaderProperty and
+SpeedTreeShaderPPLightingProperty (all 0x007D85D0); a relight that ends with the property's lights exactly as before gives the
+cache key back (2), or marks it for a rebuild that is compared with the cached passes (1).
+
+Measured with the check (run obng-profile-market/20261112-205225, `tools/hand-scripts/obng-measure-market-passkeep-verify.ini`,
+the routes as played; harness passed): in the town's steady windows 1 300-1 480 relights in 10 s, nearly all "key not cleared" -
+the relight left the passes valid by itself; the getter about 1 000 calls a frame but **one to seven builds a frame, 3-6 us
+each**; one compared rebuild, the same. The sampler's reading (8.3 % under the getter, 4.3 % under the builder) came from stale
+stack words. L1 and L2 are put back; the route stays in the code, off, as the counter it turned out to be.
+

@@ -164,4 +164,25 @@ inline std::uint32_t LargestLists(const Totals& t, std::uint32_t* order, std::ui
 	return n;
 }
 
+// The lists by records, the most first: index order into t.list (for the
+// census of which passes a frame draws, beside LargestLists' time order).
+inline std::uint32_t MostRecordsLists(const Totals& t, std::uint32_t* order, std::uint32_t capacity) {
+	std::uint32_t n = 0;
+	for (std::uint32_t i = 0; i < t.listCount; ++i) {
+		std::uint32_t at = n < capacity ? n++ : capacity;
+		if (at == capacity) {
+			if (t.list[i].records <= t.list[order[capacity - 1]].records) {
+				continue;
+			}
+			at = capacity - 1;
+		}
+		while (at > 0 && t.list[order[at - 1]].records < t.list[i].records) {
+			order[at] = order[at - 1];
+			--at;
+		}
+		order[at] = i;
+	}
+	return n;
+}
+
 }  // namespace obng::plugin::gpu_passes
