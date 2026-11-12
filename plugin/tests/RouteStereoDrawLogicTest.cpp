@@ -14,6 +14,34 @@ using obng::plugin::RouteSettings;
 using obng::plugin::StereoEyesFromIni;
 
 int main() {
+	Section("[Route] StereoDrawTimer: the pass setups' repeats");
+	{
+		static route::PassRepeats r;
+		char line[400];
+		route::FormatPassRepeats(r, line, sizeof(line));
+		Check(std::string(line) == "Route: stereo draw pass setups - none seen", "no call: said so");
+		r.Note(0, 0, 0);
+		Check(r.calls == 1 && r.samePass == 0, "the first call repeats nothing, even with a null pass");
+		r.Note(0x100, 1, 2);
+		r.Note(0x100, 1, 2);
+		Check(r.samePass == 1 && r.samePassAndStates == 1, "the same pass and states as the call before");
+		r.Note(0x100, 9, 2);
+		r.Note(0x100, 9, 3);
+		Check(r.samePass == 3 && r.samePassAndStates == 1, "the same pass with another property or effect state counts as the pass only");
+		r.Note(0x200, 9, 3);
+		r.Note(0x100, 9, 3);
+		Check(r.samePass == 3 && r.passCount == 3, "another pass between breaks the run; three distinct passes (0, 0x100, 0x200)");
+		route::FormatPassRepeats(r, line, sizeof(line));
+		Check(std::string(line) == "Route: stereo draw pass setups (slot 12, the whole draw's) - 7 calls, 3 (42.9 %) with the pass object of the call "
+		                           "before, 1 (14.3 %) with its property and effect state too; 3 distinct pass objects",
+		      "the line");
+		for (std::uint32_t n = 0; n < route::PassRepeats::kPasses + 5; ++n) {
+			r.Note(0x1000 + n, 0, 0);
+		}
+		Check(r.passCount == route::PassRepeats::kPasses && r.passesFull, "the table of distinct passes fills and says so");
+		route::FormatPassRepeats(r, line, sizeof(line));
+		Check(std::string(line).find("64 or more distinct pass objects") != std::string::npos, "the line says 'or more'");
+	}
 	Section("[Route] StereoDrawTimer: the steps' line");
 	{
 		route::StepTimes t;

@@ -118,6 +118,8 @@ LogFn g_log = nullptr;
 RouteSettings g_settings;
 std::uint64_t g_deviceDrawCalls = 0;
 route::StepTimes g_stepTimes;
+route::PassRepeats g_passRepeats;
+constexpr std::uint32_t kShaderCurrentPassOffset = 0x3C;  // what slot 12 0x0077A1B0 calls slot 2 of (pseudocode, re/export/rea-all 0x77a1b0.c)
 std::uint64_t g_deviceDrawTicks = 0;
 
 // The eye data: the interface's (render thread only, by its contract) or
@@ -172,6 +174,9 @@ void FlushSummaryIfRequested() {
 		route::FormatStepTimes(g_stepTimes, ticksPerMillisecond, line, sizeof(line));
 		g_log("%s", line);
 		g_stepTimes = route::StepTimes{};
+		route::FormatPassRepeats(g_passRepeats, line, sizeof(line));
+		g_log("%s", line);
+		g_passRepeats = route::PassRepeats{};
 	}
 }
 
@@ -679,6 +684,9 @@ struct RecordingShaderPort {
 		}
 		if (!g_settings.stereoDrawTimer) {
 			return engine->Slot(shader, call);
+		}
+		if (call.slot == 12 && shader != 0) {
+			g_passRepeats.Note(ReadAt<std::uint32_t>(shader + kShaderCurrentPassOffset), call.arguments[3], call.arguments[4]);
 		}
 		const std::uint64_t t0 = __rdtsc();
 		const std::uint32_t result = engine->Slot(shader, call);

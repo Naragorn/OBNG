@@ -944,3 +944,16 @@ Slots 11 and 12 (about 1 ms together) had no timer before. The draw side scales 
 2.6 us each, so fewer shapes (the culler, instancing) reach every step at once, while a faster single step reaches
 0.3-0.6 ms at best. Not measured: how often slot 12 sets a pass the device already holds from the shape before.
 Linux and DXVK only.
+
+### Slot 12 mostly repeats the pass object, hardly ever the states (measured 2026-11-12, run obng-profile-anvil-docks/20261112-104249)
+
+The same switch counts, at every slot-12 call of the whole draw, whether the pass object (shader+0x3C) is the one
+of the call before, and whether the property and effect state handed in (the renderer's +0x0C and +0x10) are the
+same too. Eight windows at the docks: 90-91 % of the calls meet the pass object of the call before, 1.6-3.4 % also
+its two states; 30-34 distinct pass objects a window. Upper bounds - skinned and direct draws between two whole
+draws are not seen.
+
+So a plain "the same as before, leave it out" in front of slot 12 reaches 2-3 % of its calls (about 0.015 ms a
+frame): not worth building. What stays open is whether the pass setup has a part that depends on the pass object
+alone (its render states) beside a part that depends on the shape's states (its textures) - then nine in ten calls
+could leave the first part out. That needs slot 2 of the pass object read (not done), not another count.

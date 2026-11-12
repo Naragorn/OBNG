@@ -142,6 +142,59 @@ struct StepTimes {
 	}
 };
 
+// [Route] StereoDrawTimer: how often the pass setup (shader slot 12) meets
+// the pass the call before it set - the upper bound of what a check before
+// the setup could leave out. Only the whole draw's calls are seen: a skinned
+// or direct draw between two of them is not, so the counts are upper bounds.
+struct PassRepeats {
+	static constexpr unsigned kPasses = 64;
+	std::uint64_t calls = 0;
+	std::uint64_t samePass = 0;           // the same pass object as the call before
+	std::uint64_t samePassAndStates = 0;  // and the same property and effect state
+	std::uint32_t passes[kPasses] = {};   // the distinct pass objects of the window
+	unsigned passCount = 0;
+	bool passesFull = false;
+	std::uint32_t lastPass = 0;
+	std::uint32_t lastProperty = 0;
+	std::uint32_t lastEffect = 0;
+
+	void Note(std::uint32_t pass, std::uint32_t propertyState, std::uint32_t effectState) {
+		if (calls != 0 && pass == lastPass) {
+			++samePass;
+			if (propertyState == lastProperty && effectState == lastEffect) {
+				++samePassAndStates;
+			}
+		}
+		++calls;
+		lastPass = pass;
+		lastProperty = propertyState;
+		lastEffect = effectState;
+		for (unsigned i = 0; i < passCount; ++i) {
+			if (passes[i] == pass) {
+				return;
+			}
+		}
+		if (passCount == kPasses) {
+			passesFull = true;
+			return;
+		}
+		passes[passCount++] = pass;
+	}
+};
+
+inline int FormatPassRepeats(const PassRepeats& r, char* out, std::size_t capacity) {
+	if (r.calls == 0) {
+		return std::snprintf(out, capacity, "Route: stereo draw pass setups - none seen");
+	}
+	const double percent = 100.0 / static_cast<double>(r.calls);
+	return std::snprintf(out, capacity,
+	                     "Route: stereo draw pass setups (slot 12, the whole draw's) - %llu calls, %llu (%.1f %%) with the pass object of the call "
+	                     "before, %llu (%.1f %%) with its property and effect state too; %u%s distinct pass objects",
+	                     static_cast<unsigned long long>(r.calls), static_cast<unsigned long long>(r.samePass),
+	                     static_cast<double>(r.samePass) * percent, static_cast<unsigned long long>(r.samePassAndStates),
+	                     static_cast<double>(r.samePassAndStates) * percent, r.passCount, r.passesFull ? " or more" : "");
+}
+
 inline int FormatStepTimes(const StepTimes& t, double ticksPerMillisecond, char* out, std::size_t capacity) {
 	if (t.wholeCalls == 0 || ticksPerMillisecond <= 0.0) {
 		return std::snprintf(out, capacity, "Route: stereo draw steps - none timed");
