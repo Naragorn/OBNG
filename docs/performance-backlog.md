@@ -1042,3 +1042,25 @@ second; the ranking holds, single numbers are inflated):
   (`ActorFarWhole`) already leaves the controller out for far actors with the rest of the update.
 - 0x00471C00 and the animation update differ by a factor between the runs (1.6-7.6 and 3.1-6.2 us): they depend on
   what the actors do, not only on their number.
+
+### The character controller's parts at the docks (measured 2026-11-12, run obng-profile-anvil-docks/20261112-112300)
+
+The existing `[Probe] ProcessManager=1` (`tools/hand-scripts/obng-measure-actors-probes.ini`: no far throttle, no
+culler) with the docks script; six windows with 56-67 actors a frame:
+
+| | per update | share of the updates |
+|---|---:|---:|
+| the controller's update 0x00896000 | 20-22 us | 100 % |
+| the support check 0x008AE890 | 10 us | 100 % |
+| the integrate 0x008902B0 | 13-14 us | 60-71 % |
+| the moving bit set | | 50-67 % |
+
+Per frame with 64 actors: the controller 1.41 ms, of it the support check 0.64 ms and the integrate about 0.59 ms
+(derived from the calls and means; the means are printed to a microsecond). The same split as in the crowd scenario
+of 2026-11-10/11 (knowledge/threading.md).
+
+What that says about "no support check for a standing actor" (Put back): the actors whose integrate the engine
+already leaves out are 29-40 % of the updates here, so the skip reaches 0.19-0.26 ms a frame at the docks without
+the far throttle (derived), and less with it. Medium cost, and a standing actor must still notice the ground
+leaving - it stays put back. The support check of the moving two thirds (about 0.4 ms) is the ground under a
+walking actor and is not a repeat.
