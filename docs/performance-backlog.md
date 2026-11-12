@@ -957,3 +957,30 @@ So a plain "the same as before, leave it out" in front of slot 12 reaches 2-3 % 
 frame): not worth building. What stays open is whether the pass setup has a part that depends on the pass object
 alone (its render states) beside a part that depends on the shape's states (its textures) - then nine in ten calls
 could leave the first part out. That needs slot 2 of the pass object read (not done), not another count.
+
+### What slot 12's pass setup does (read 2026-11-12; no run)
+
+Slot 12 0x0077A1B0 calls slot 2 of the object at shader+0x3C. For an NiD3DPass (vtable 0x00A882DC by RTTI
+`.?AVNiD3DPass@@`, slot 2 = 0x0075FD90, read in the image; that the object is always of this class is unverified -
+RTTI names no class derived from it) the body is 0x0075FD90..0x0075FE20 (read in the instructions; the export has
+no file for it, the vtable is its only reference):
+
+- It ends in `ret 20h` and reads none of its eight arguments: the setup depends on the pass object and on global
+  state alone, not on the geometry or the property and effect state handed in. So the 2-3 % of "the same states"
+  measured above was the wrong question - the arguments do not matter.
+- Step 1: the pass's shader program at +0x58 (its slot +0x50 gives a handle) or the byte at +0x5C goes to slot +0xEC
+  of the object at [0x00B42040].
+- Step 2: when +0x30 is set, 0x007726C0 walks two linked lists of (state, value) pairs and hands each to slot +0x64
+  of the object at [0x00B427A4] (pseudocode): the pass's render states and sampler states.
+- Step 3: for each of the +0x2A (word) stages in the array at +0x24, 0x00772400 configures the stage: 0x007721E0
+  sets the stage's texture (stage+4, prepared through the renderer's object at +0x8B8) with slot +0xE0 of
+  [0x00B42758] and then the stage's states (pseudocode).
+- Step 4: 0x00771790 switches the stages after the last one off, up to the limits at 0x00B28CB0 / 0x00B28CB8.
+
+Derived: steps 1, 2 and 4 depend on the pass object's own fields; step 3 depends on the stages' textures, which
+change from shape to shape while the pass object stays (the shader writes them before slot 12; where, is
+unverified). With 90 % of the calls on the pass object of the call before, steps 1, 2 and 4 are repeats in nine of
+ten calls - if the objects behind 0x00B42040 / 0x00B427A4 / 0x00B42758 do not already drop a state the device
+holds (unverified; then the repeats cost only their loops). What share of the 0.6 ms a frame steps 1, 2 and 4
+hold is not measured. A skip would be class C, and its risk is a render state left over from a draw this count
+does not see (the skinned and direct draws, the eye switch).
