@@ -1448,3 +1448,14 @@ A crash in the Market District run (the first of its kind in the artifacts): an 
 script data hitting a bad node, after the scripted head turns. Not attributed: OBNG's code in that run only read
 (the count under SEH, the timers); the far actors' route was on; OBVR.dll was its new build a59e316b (the "Yield"
 and "Stagger watch" lines just before), Walkers and the Windows mod list's quests were loaded.
+
+## 2026-11-12: W1 - the programs of the groupable draws (measured, read)
+
+The instance count names the largest pass objects with the device's programs (runs
+`obng-profile-anvil-docks/20261112-160123`, `obng-profile-market/20261112-160355`); the bytecode matched against the
+shader packages and disassembled - the table and what it means in `knowledge/draw-instancing.md`. The largest pass
+(56-81 % of the grouped draws at both places) draws with SLS2003.vso (33 instructions) and SLS2003.pso (22): a
+directional light with fog and a projected map. Per instance: the world transform and an alpha. The instanced path
+sized (derived): instanced versions of 1 (most of the gain) to 4-5 program pairs of 22-43 vertex and 22-88 pixel
+instructions (SM3LL011.pso with 185 is the exception, 4 % in the town), plus the collecting draw path - large, no
+longer huge.
