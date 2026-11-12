@@ -1486,3 +1486,14 @@ Derived: as it stands the path is worth about 0.2 ms a frame where copies of sin
 in a town; the barrier is the multi-pass geometry. Next lever: clip positions bit-identical to the engine's
 (ModelViewProj per copy and eye computed with the engine's own matrix calls), so that multi-pass geometries may wait
 too - not built, not measured.
+
+### A0: what multi-pass geometry would add in the Market District (measured 2026-11-12, run obng-profile-market/20261112-180719)
+
+Mode 1 with `DrawInstancingMultiPass=1` (`tools/hand-scripts/obng-measure-instancing-multipass.ini`): every record
+that could wait if bit-identical positions were built. Steady windows: 640-830 records a frame in the pass lists,
+212-279 waited, in groups that leave 56 records a frame out at most (last window: 182 474 records in 140 526 groups,
+748 frames); the rest at once - other programs than SLS2003 ("pass not predicted") 270-310 a frame, skinned 64-194,
+first of list 33. Every constant check clean for the multi-pass copies too (ModelViewProj largest 8e-5, ShadowProj as
+the copy's world rows exact). Derived: the bit-identical positions (option A) would reach about 56 draws a frame
+here, at about 2-3 us each 0.1-0.15 ms before their own overhead - not worth building; the town's draws are other
+programs and skinned bodies. Draw instancing stays off by default, worth about 0.2 ms at the docks; put back.
