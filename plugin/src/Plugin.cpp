@@ -23,6 +23,7 @@
 #include "ActorShadowRest.h"
 #include "PassListKeep.h"
 #include "ShadowReceiverFilter.h"
+#include "ActorThreads.h"
 #include "ProcessProbe.h"
 #include "TimedCalls.h"
 #include "FastConstantArrange.h"
@@ -343,6 +344,7 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 		obng::plugin::InstallActorShadowRest(path, &Log);   // call sites and two patches inside the actor shadow step, no entry
 		obng::plugin::InstallPassListKeep(path, &Log);      // the relight's two call sites and three vtable slots, no entry
 		obng::plugin::InstallShadowReceiverFilter(path, &Log);  // AddGeometry's entry (not with [Shadow] RangeWalk)
+		obng::plugin::InstallActorThreads(path, &Log);           // inside the actors' batch (needs it installed: the routes come first)
 	}
 	obng::plugin::InstallActorCensus(settings, &Log);
 	obng::plugin::InstallLockProbe(settings, &Log);  // its two detours are not among the counted ones

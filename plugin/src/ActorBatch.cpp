@@ -1,4 +1,5 @@
 #include "ActorBatch.h"
+#include "ActorThreads.h"
 
 #include "FastSceneUpdate.h"
 #include "Memory.h"
@@ -358,7 +359,13 @@ struct EnginePort {
 		return true;
 	}
 	void Down(const ab::Job& job) { RunActorSubtreeDown(g_orders.find(job.root)->second, job.timeBits); }
-	void Up(const ab::Job& job) { RunActorSubtreeUp(g_orders.find(job.root)->second); }
+	void Up(const ab::Job& job) {
+		const void* order = g_orders.find(job.root)->second;
+		if (actor_threads::Active()) {
+			actor_threads::BeforeUp(job, order);  // the waiting collision updates, or the down pass the threads left
+		}
+		RunActorSubtreeUp(order);
+	}
 	void Whole(const ab::Job& job) { RunActorUpdateOriginal(job.root, job.timeBits); }
 };
 
@@ -400,11 +407,20 @@ void __fastcall ApplyReplacement(void* self, void* /*edx*/) {
 	reinterpret_cast<ApplyFn>(g_applyOriginal)(self, nullptr);
 }
 
+const void* OrderOf(std::uint32_t root) {
+	auto it = g_orders.find(root);
+	return it != g_orders.end() ? it->second : nullptr;
+}
+
 void RunBatch() {
 	EnginePort port;
 	g_orders.clear();
 	HoldActorOrders(true);
 	g_batch.Flush(port, [&](const std::vector<std::size_t>& split) {
+		if (actor_threads::Active()) {
+			actor_threads::RunDowns(g_batch.Jobs(), split, &OrderOf);
+			return;
+		}
 		LARGE_INTEGER start;
 		LARGE_INTEGER end;
 		QueryPerformanceCounter(&start);
@@ -501,6 +517,8 @@ UInt32 InstallRouteActorBatch(const RouteSettings& settings, LogFn log) {
 	    kLoopName);
 	return made;
 }
+
+bool ActorBatchInstalled() { return g_installed; }
 
 void LogActorBatchSummary() {
 	if (!g_installed || g_log == nullptr) {

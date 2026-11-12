@@ -87,3 +87,29 @@ move behind the down pass.
 `[Probe] ProcessManager=1` times the whole of 0x00678510 a frame - the size
 of the actors' frame in real play, which the scenario's 97 actors do not
 give.
+
+## The collision object's classes and the threads (read and built 2026-11-12)
+
+Read in the instructions (re/export/actor-threads/0x0088EDC0, 0x0088F3D0, 0x00607840): 0x0088EDC0 returns at once in
+mode 3 ([0x00BA7A8C]), with flags +0x0C bit 6 runs 0x0089EAE0 (unread; nothing in mode 2), with bit 0 clear returns,
+and calls slot +0x64 when the body +0x10 is in the world (0x00607840: body, body+8, (body+8)+8 all set) or the blend
++0x14 is below 1 or the motion type +0x1C is 1. The blend object's 0x0088F3D0: blend 0 -> nothing in mode 1, else case 1
+(the hard set: the body from the node) when the previous blend +0x18 is 0 or +0x0D bit 0 is set, else case 0; blend 1
+-> nothing in mode 2, else case 2 (+0x68: the node from the body) wanting motion type 6; between (NaN included) -> case
+1 in mode 2, else case 0, wanting motion type 1. A motion type other than the wanted one changes first - from 6 through
++0x68 (the node written), else through the global list 0x00BA7A40 and 0x0089ED20. Case 0 writes the node through +0x78
+in mode 0, and keys the body. So a living actor's bone at rest (blend 0, previous 0, keyframed) takes the hard set and
+leaves its node alone (derived), which fits the 86 % of skeletons `[Probe] CollisionWrites` found without a node written.
+
+Built (`src/engine/scene/ActorThreadsLogic.h` with `tests/ActorThreadsLogicTest.cpp`; `plugin/src/ActorThreads.{h,cpp}`,
+two hooks in ActorBatch.cpp): every split job of the batch is planned on the loop's thread - every collision object put
+in a class (nothing, hard set, keyframe only, blended write, node from body, motion from 6, motion change, bit 6, other
+class); the job is safe when all are in the first three and no subtree the engine runs itself (Kind::Other) holds a
+collision object. `[Route] ActorThreads=n` runs the safe jobs' down passes on n workers and the loop's thread, the
+collision updates noted instead of run; before each split job's upward pass, in the batch's order, the loop's thread
+runs its noted collision updates (or, for an unsafe job, its whole down pass). The workers take the loop thread's x87
+control word and MXCSR; the loop's thread returns when every worker has left its drain. `[Probe] ActorThreadsCheck=1`
+runs no threads: it classifies, compares every collision update's node before and after (the classes that write, and
+"mispredicted" for a safe job's write) and copies the EXE's .data before and after the down passes in one batch of 16
+(the statics they write, by how often). Class B. Not run in the game yet.
+

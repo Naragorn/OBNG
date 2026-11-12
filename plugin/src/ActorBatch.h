@@ -22,6 +22,7 @@
 namespace obng::plugin {
 
 UInt32 InstallRouteActorBatch(const RouteSettings& settings, LogFn log);
+bool ActorBatchInstalled();
 
 // The batch's summary line (loops, bodies deferred and run in place by
 // reason, the time in the loop and in the run after it); nothing when off.
