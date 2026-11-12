@@ -18,6 +18,7 @@
 #include "ActorCensus.h"
 #include "ActorFarUpdate.h"
 #include "DrawInstancing.h"
+#include "GpuPassTimer.h"
 #include "ReferenceAnimRate.h"
 #include "ProcessProbe.h"
 #include "TimedCalls.h"
@@ -318,6 +319,7 @@ uint32_t InstallRouteStereoDrawSideEffect(const obng::plugin::RouteSettings& set
 	const uint32_t made = obng::plugin::InstallRouteStereoDraw(settings, &Log) + obng::plugin::InstallOcclusionCull(settings, &Log);
 	char path[MAX_PATH] = {};
 	if (ActiveIniPath(path, sizeof(path))) {
+		obng::plugin::InstallGpuPassTimer(path, &Log);  // before the instancing: its pass list hook serves the timer too
 		obng::plugin::InstallDrawInstancing(path, settings, &Log);  // below the culler: its two patches are not among the counted ones
 	}
 	return made;

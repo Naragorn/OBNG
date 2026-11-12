@@ -1531,3 +1531,53 @@ Derived: in a town at the Dream Air's size the GPU is the first wall - 14.6 ms o
 against 11.1 ms at 90 Hz, the same hardware on Windows (unverified there) - and the main thread the second, 14-18 ms
 against 11.1. Neither is one item: the GPU needs about a quarter off, the main thread about a third. What fills the
 GPU's 9.75 ms is not measured (OBVR's timer gave zeros).
+
+## 2026-11-12: G1, G0, C1, C2 - the Market District's GPU by step, two frame sizes, the actors, the eye pass's draws
+
+### G1: the GPU time by step (`[Probe] GpuPasses`, built; measured, run obng-profile-market/20261112-183740)
+
+`plugin/src/GpuPassTimer.{h,cpp}`, `GpuPassTimerLogic.h`: Direct3D 9 timestamp queries around the actor shadows step
+0x004073D0, every non-empty pass list of every accumulator finish (by finish, pass id, records, the first record's
+shader class by RTTI) and the image space step 0x007B48E0, one frame of four, read back without waiting
+(`tools/hand-scripts/obng-measure-market-gpu.ini`). 0 frames lost, 0 disjoint. Per frame, the routes as played, the
+Dream Air's frame size:
+
+| window | frames in 10 s | actor shadows | eye pass's lists | all lists | image space | first stamp to last |
+|---|---:|---:|---:|---:|---:|---:|
+| heavy (w03-w05) | 236-449 | 1.67-2.26 | 2.81-4.38 | 5.82-7.76 | 0.39-0.42 | the frame's length |
+| steady (w10-w12) | 749-750 | 1.08-1.22 | 1.15-2.30 | 3.23-3.50 | 0.35 | 13.3 |
+
+The span from the first stamp to the last is the frame's length in every window: the GPU's timeline has long gaps
+between the stamped steps, and a step's time is an upper bound of the GPU's work in it (a stamp is written when
+the GPU gets there; inside a step it can wait for the CPU's next commands). Derived: the GPU waits for the CPU in
+this town - **P1's "the GPU is the first wall" is withdrawn**: the compositor's 9.75 ms before submit hold those
+waits too.
+
+### G0: the Beyond's frame size against the Dream Air's (measured, run obng-profile-market-beyond/20261112-184108)
+
+The same INI with an eye of 2568x2568 (`tools/hand-scripts/obng-profile-market-beyond.txt`): the image space 0.21
+ms against 0.35-0.36 (it goes with the pixels, 1.7 times for 2.07 times the pixels); the eye pass's lists 0.6-3.5
+ms against 0.9-4.4 - not with the pixels; the heavy windows drop to 437-579 frames in 10 s at the small size as at
+the large one (the AI makes each run's crowd its own). Derived: the town is bound by the main thread at both sizes.
+
+### C1: the actors (measured, run obng-profile-market/20261112-184435, the timers inflate)
+
+`tools/hand-scripts/obng-measure-market-actors.ini`. The heaviest window (655 frames, 31.4 high updates and 25.9
+skeleton updates a frame), ms a frame: the process manager 3.70, the high actors' loop 3.19, the high update
+0x00605770 2.88 (92 us a call); inside it the skeleton update ApplyAnimData 1.35 (52 us an actor - 31-34 at the
+docks), the character controller 0.48 (19.5 us), the animation step 0.47 (18.9 us), 0x005F6540 0.32, the high
+process's slot 4 0.32 (10.5 us), slot 8 0.14 (1 614 calls), 0x00471C00 0.12; once a frame UpdateHighProcesses
+0.50; the cells 1.4 (grid update 0.49, the references' animation 0.50, the selected nodes 0.44).
+
+### C2: the eye pass's draws (measured, the culler's lines and G1's lists, heavy windows)
+
+Whole shapes 804-896 drawn a pass (206-217 left out by the culler), skinned 97-217, direct strips 99-101 (49-50
+left out), direct shapes 16. By pass id (records a frame): 132 (ShadowLightShader, SLS2003) 338-392, **375 =
+0x177 (ShadowLightShader) 126-201**, 139 29-70, 141 (SkinShader) 28-63, 185 35-42, 367 0-59, 287 0-68, 14
+(SpeedTreeLeafShader) 13-16. Passes 0x177..0x17A are the ones SetupTransformations gives six clip planes from the
+shadow light (knowledge/culling-and-draw-setup.md, step 8): the receivers of the actors' projected shadows, drawn
+again in their own pass - 126-201 draws a frame beside the shadow maps themselves (the actor shadows step, finishes
+#0-#1, 256x256 targets).
+
+Derived: the town's frame is the main thread's - the actors (3.7 ms), the eye pass (about 1 300 draws with the
+culler) and the actor shadows (their step and the receiver pass, together the largest item not looked at yet).

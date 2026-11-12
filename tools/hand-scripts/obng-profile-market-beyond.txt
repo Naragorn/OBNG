@@ -1,0 +1,103 @@
+# G0 (2026-11-12): obng-profile-market.txt at the Beyond's frame size, an eye of 2568x2568 instead of the Dream Air's
+# 4036x3376 - how much of the GPU time goes with the pixels.
+# obng-profile-anvil-docks.txt moved into a WALLED town: the Imperial City's Market District (coc
+# ICMarketDistrict01, where the game puts the player), the same head turns and settings, AI on (a
+# passer-by's greeting can open the Dialog menu and stop the world - then the actors' lines read 0 calls).
+# For the view rule's hidden part: how many actors inside the cone stand behind walls there.
+# Anvil's docks with the Windows mod list (Better Cities, Unique Landscapes), standing in front of
+# The Flowing Bowl, at the Dream Air's frame size (an eye of 4036x3376). The spot is where the
+# tavern's door puts the player outside: the interior door 000308EA of AnvilTheFlowingBowl
+# (000308D2) teleports to the exterior door 0000BCB9 at -193234 -32705 245, heading -142 degrees
+# (read from Oblivion.esm, the REFR's XTEL; Better Cities Full.esp does not touch that cell).
+# The head goes through eight directions for three seconds apiece, then the player stands still
+# for forty seconds looking where the door let them out. Noon, the weather fixed (00038EEE), the
+# time stopped, so that runs compare.
+# Run with the Windows mod list for the run:
+#   python3 tools/run-with-windows-mods.py -- tools/shadow-run.sh \
+#     --ini tools/hand-scripts/obng-measure-docks-all.ini \
+#     tools/hand-scripts/obng-profile-anvil-docks.txt --save OBVRHarnessMOO --run-timeout 480
+ini Render SinglePassStereo=1
+ini SelfCheck ShowPanel=0
+ini Render GameResolutionWidth=2568
+ini Render GameResolutionHeight=2568
+expect Single-pass stereo: OBNG took the eyes ok (0)
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Hands BodyCollision=1
+ini Hands PhysicsRate=0
+ini Performance Enabled=1
+ini Performance GpuTiming=1
+ini Performance StartAfterSeconds=40
+ini Performance CaptureSeconds=90
+ini Performance MaxRecords=262144
+ini Performance Sampler=1
+console-at ready coc ICMarketDistrict01
+console-at placed set gamehour to 12
+console-at placed set timescale to 0
+console-at placed fw 00038EEE
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+
+# A message box (a mod's "Quest added", seen in run 20261112-124259 thirteen seconds in) pauses the world:
+# closed from the console at every mark.
+console-at s1 CloseAllMenus
+console-at s1-y0 CloseAllMenus
+console-at s1-y-45 CloseAllMenus
+console-at s1-y-90 CloseAllMenus
+console-at s1-y-135 CloseAllMenus
+console-at s1-y180 CloseAllMenus
+console-at s1-y135 CloseAllMenus
+console-at s1-y90 CloseAllMenus
+console-at s1-y45 CloseAllMenus
+console-at still CloseAllMenus
+expect HandScript: finished
+expect Performance: capture armed, it starts in 40 seconds
+expect Performance: capture 1 started
+expect Performance: export
+reject Performance: export partial
+reject menu Container
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 12
+mark placed
+wait 10
+mark s1
+wait 4
+head yaw 0
+wait 0.3
+mark s1-y0
+wait 3
+head yaw -45
+wait 0.3
+mark s1-y-45
+wait 3
+head yaw -90
+wait 0.3
+mark s1-y-90
+wait 3
+head yaw -135
+wait 0.3
+mark s1-y-135
+wait 3
+head yaw 180
+wait 0.3
+mark s1-y180
+wait 3
+head yaw 135
+wait 0.3
+mark s1-y135
+wait 3
+head yaw 90
+wait 0.3
+mark s1-y90
+wait 3
+head yaw 45
+wait 0.3
+mark s1-y45
+wait 3
+head yaw 0
+wait 1
+mark still
+wait 40
+mark done

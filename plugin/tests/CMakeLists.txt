@@ -138,3 +138,8 @@ add_executable(DrawInstancingLogicTest DrawInstancingLogicTest.cpp)
 target_include_directories(DrawInstancingLogicTest PRIVATE ../src ../../tests)
 target_compile_options(DrawInstancingLogicTest PRIVATE -Wall -Wextra -Werror)
 add_test(NAME DrawInstancingLogicTest COMMAND DrawInstancingLogicTest)
+
+add_executable(GpuPassTimerLogicTest GpuPassTimerLogicTest.cpp)
+target_include_directories(GpuPassTimerLogicTest PRIVATE ../src ../../tests)
+target_compile_options(GpuPassTimerLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME GpuPassTimerLogicTest COMMAND GpuPassTimerLogicTest)

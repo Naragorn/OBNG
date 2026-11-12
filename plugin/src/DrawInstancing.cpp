@@ -8,6 +8,7 @@
 
 #include "DrawInstancingLogic.h"
 #include "EntryDetour.h"
+#include "GpuPassTimer.h"
 #include "Memory.h"
 #include "OcclusionProbe.h"
 
@@ -25,6 +26,7 @@ constexpr UInt8 kRenderPassListBytes[] = {0x83, 0xEC, 0x0C, 0x80, 0x3D, 0xE8, 0x
 constexpr UInt32 kLists = 0x104;
 constexpr UInt32 kListStride = 0x14;
 constexpr UInt32 kListHead = 0x04;
+constexpr UInt32 kListCount = 0x10;
 constexpr UInt32 kNodeNext = 0x00;
 constexpr UInt32 kNodeItem = 0x08;
 constexpr UInt32 kWalkLookahead = 256;  // nodes the culler may have left out between two records that reach the site
@@ -692,12 +694,20 @@ UInt32 __fastcall RenderPassList(void* self, void* /*edx*/, UInt32 pass, UInt32 
 	const UInt32 accumulator = static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(self));
 	g_list.depth = outer.depth + 1;
 	g_list.accumulator = accumulator;
-	g_list.head = Dword(accumulator + kLists + kListStride * (pass & 0xFFFFu) + kListHead);
+	const UInt32 list = accumulator + kLists + kListStride * (pass & 0xFFFFu);
+	g_list.head = Dword(list + kListHead);
 	g_list.cursor = g_list.head;
+	const bool stamped = gpu_passes::g_on && g_list.depth == 1;
+	if (stamped) {
+		gpu_passes::ListBegin(accumulator, pass, Dword(list + kListCount), g_list.head != 0 ? Dword(Dword(g_list.head + kNodeItem)) : 0);
+	}
 	const UInt32 eax = g_renderPassList(self, nullptr, pass, mode);
 	if (g_list.depth == 1) {
 		Flush(di::Flush::kListEnd);
 		g_counts.listTicks[g_onNow ? 1 : 0] += __rdtsc() - t0;
+	}
+	if (stamped) {
+		gpu_passes::ListEnd();
 	}
 	g_list = outer;
 	return eax;
@@ -810,10 +820,12 @@ void InstallDrawInstancing(const char* iniPath, const RouteSettings& route, LogF
 	if (!known) {
 		log("Route: draw instancing - [Route] DrawInstancing is not 0, 1 or 2; off");
 	}
-	if (g_mode == di::Mode::kOff) {
+	// The pass list hook also serves [Probe] GpuPasses (GpuPassTimer.h), with the instancing off.
+	const bool instancing = g_mode != di::Mode::kOff;
+	if (!instancing && !gpu_passes::g_on) {
 		return;
 	}
-	if (!route.stereoDraw) {
+	if (instancing && !route.stereoDraw) {
 		log("Route: draw instancing needs [Route] StereoDraw=1 (the instanced draw takes the whole draw's device call); not installed");
 		return;
 	}
@@ -829,6 +841,9 @@ void InstallDrawInstancing(const char* iniPath, const RouteSettings& route, LogF
 	                        sizeof(kRenderPassListBytes), reinterpret_cast<const void*>(&RenderPassList), reinterpret_cast<void**>(&g_renderPassList), log,
 	                        DetourRole::Route)) {
 		return;
+	}
+	if (!instancing) {
+		return;  // the list hook only, for the GPU pass timer
 	}
 	if (!PatchRecordStep()) {
 		return;  // the list hook runs on; nothing reaches the record step, nothing waits
