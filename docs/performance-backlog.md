@@ -877,3 +877,13 @@ walk were 0.0 a call in the windows measured, so probably not at this place).
 Also answered (Oblivion Walkers, 2026-11-12): run 182322 of 2026-11-11 had three times the far actors of the later
 runs because a Walkers deploy at 18:53:54 (`[Horde] GateHordesMost=1`) sends all but one horde a gate out of the
 loaded grid (the deploy is measured by its file time; the effect on the count is derived).
+
+### The frame's pass apart: walk against finish (derived from run 20261112-085817's own lines, no further run)
+
+Per frame at the docks: the driver's call 4.06-4.47 ms (measured, driver log); the eye pass's finish with the culler
+3.70-3.74 ms (measured, the cull summary's "eye pass", which also holds the 0.17 ms of collecting before the
+driver's timer starts). So the cull walk over 2995 objects is about 0.5-0.9 ms and the finish about 3.5 ms, of which
+the culler's own work is 0.68 ms (decide 0.26, end tests 0.25, collect 0.17) and the drawing of about 1130 draws
+about 2.9 ms (derived: about 2.5 us a draw). A rebuild of the frame's pass has to start at the drawing, not at the
+walk. Linux (DXVK, headless) only; the Windows build with `OcclusionCullDriverLog=1` was put into the Windows game
+on 2026-11-12 so that Nadi's next Windows session gives the same split there.
