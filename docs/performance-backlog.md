@@ -1159,3 +1159,22 @@ hidden (Nadi's condition, 2026-11-12: "not at gratings one can see through").
   (00032A18) at the same place. Nobody else: the count of calls taken equals one actor a frame, so the prisoner
   in the cell opposite, behind the bars, was never taken as hidden. Not shown: the Blades standing at the bars
   (the run does not say that they came that far), and Windows, where the bars defect of 2026-11-11 is still open.
+
+### The hidden part in a walled town: the Market District (measured 2026-11-12, run obng-profile-market/20261112-124619) - put back
+
+`tools/hand-scripts/obng-profile-market.txt` (the docks script's head turns at `coc ICMarketDistrict01`, the
+Windows mod list, single pass), the cone rule on, the hidden part alternating. The first run (20261112-124259)
+stood still after thirteen seconds: a mod's "Quest added" box pauses the world; the script closes menus at every
+mark since. Ten windows:
+
+- 20-34 near actors a frame and none far (the district is its own world space); 8-18 of them inside the cone, and
+  2-8 of those nearer than 1000 units, where the rule takes nobody.
+- Inside the cone and left out by the culler: 0.05-1.9 a frame. The part took 0.2-1.8 a frame in its windows.
+- ProcessManager::Update with the part 3.10-4.06 ms a frame, without 2.61-5.46: the spread between windows (a fight
+  began in the second half: up to 5 911 calls a window kept for combat) is larger than anything the part could
+  gain - at one to two actors and three quarters of 80 us that is about 0.1 ms.
+
+With the docks (0.3-2.7 a frame) that is two places where the culler's node cull leaves out one or two actors of
+the ten to eighteen inside the cone. The part works and holds Nadi's condition at the bars on Linux, and gains
+about 0.1 ms: it stays off and is put back. What would change the picture is a count of actors hidden as a whole
+that the node cull does not reach (it asks only nodes whose draws were all hidden before) - not looked at.
