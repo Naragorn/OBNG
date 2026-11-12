@@ -1392,3 +1392,28 @@ results' read 0.17; run 20261112-085817): ~1 000 tests a pass, 82 % of them conf
   readers are the render thread's). Derived from the instruction counts: 0.05-0.1 ms a frame at 1 410 switches.
   Not shown by measurement: the baseline run with the previous DLL (`...-152303`) had an eye pass of 3.69-3.85 ms
   in its steady windows against 3.67 in the new run's paused ones - within what two runs differ by.
+
+## 2026-11-12: U1 - how many of an eye pass's draws could be one instanced draw (measured)
+
+`[Route] StereoDrawTimer`'s instance count (`plugin/src/InstanceGroupLogic.h`, `StereoDrawTimer.h`): every eighth
+frame, every pass setup (slot 12) of the whole draw for the eyes, keyed by the geometry's model data (+0xB4) and the
+pass object (shader+0x3C), then also by the property state's ten slots and the effect state's five dwords. The culler
+off (`obng-measure-docks-switch-steps.ini`). Runs `obng-profile-anvil-docks/20261112-153638`,
+`obng-profile-market/20261112-153910` and `-154248`:
+
+| place | pass setups a pass | groups by mesh and pass | draws in groups of 4+ | largest | and the same property pointers |
+|---|---:|---:|---:|---:|---:|
+| Anvil docks | 1 078-1 113 | 655-718 (34-39 % fewer) | 226-345 | 12 | 0-1 % fewer |
+| Market District | 758-979 | 462-550 (39-44 % fewer) | 172-351 | 25-30 | 4-8 % fewer |
+
+Which property differs between two draws of one mesh and pass (Market District, 23 495 and 30 299 pairs): the
+material property (slot 2) in 86-93 %, the shader property (slot 4) in 84-91 % - but its class (vtable) in 0 % -, the
+alpha property in 22-23 %, vertex colour 18-20 %, stencil 13-15 %, the texturing property (slot 6) in 2 %. So the
+copies of a mesh share their textures and their shader class; each has its own material and shader property object
+(whether their contents differ is not read). The effect state adds nothing beyond the properties.
+
+Derived: instancing could merge about a third to two fifths of the eye pass's whole draws (groups up to 12 at the
+docks, 30 in the town), about 0.9-1.1 ms a frame at the measured 2.6 us a draw - if the merged draw runs its own
+vertex and pixel shaders that take per instance what the engine uploads per draw now: the world transform, the
+lights in model space (0x007C9140), the material and the shader property's values. That shader work is what makes it
+huge; the textures do not stand in the way.
