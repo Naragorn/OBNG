@@ -580,7 +580,7 @@ window (it made "on" look slower at first).
 | The loose skeleton's unused bones left out (`[Route] ActorUnusedBones`) | C | not shown: between nothing and about 7 us a large tree (0.3 ms a frame at the docks at best); the 0.75 ms derived before was wrong - the bones left out are the cheap ones | built 2026-11-11, off; an alternation inside one run would measure it | built, not accepted | this file |
 | Far actors' skeletons at a lower rate (`[Route] ActorFarEvery`) | C | measured at the docks with 98 actors, 75 of them beyond 6000 units, every 4th call: the skeleton updates 2.67 -> 1.52 ms a frame, the actors' frame 8.77 -> 7.45 | built 2026-11-11, off; the headset look (a far figure at a quarter rate), and what reads a far actor's bones between two updates, are open | built, not accepted | this file |
 | 0x00471C00 before ApplyAnimData | ? | 0.74-0.78 ms with 117 actors (6-7 us a call) | small to look | not started | knowledge/threading.md |
-| Actor shadows at rest (`[Route] ActorShadowEvery`) | C | the step 0x004073D0 is at most 1.1-2.3 ms a frame in the Market District (G1, an upper bound); what resting saves of it is not measured | built 2026-11-12, off; the alternating run, a long run and the headset look are open | built, not accepted | this file |
+| Actor shadows at rest (`[Route] ActorShadowEvery`) | C | measured in the Market District at every 4th step: the step 0.70 -> 0.42 ms (0.28 ms a frame; lights drawn 2.5 -> 1.3 a step) | built 2026-11-12, off; a long run and the headset look are open | built, not accepted | this file |
 
 ## Far actors: the engine's own process levels and where the frame time comes from (2026-11-11, read)
 
@@ -1613,9 +1613,30 @@ the step 0x0040C91B (numbers and times the step), the reset's release 0x007C5C61
 the maps' render's call 0x00407A4B and its call of a light's map 0x007C6943. Not the step's entry (OBVR's shadow
 share and `[Probe] GpuPasses` take it).
 
-Measured: nothing yet. Unit tests: 61 checks over the flows of the logic. Not run in the game. Open: the run with
-`tools/hand-scripts/obng-measure-market-shadows.ini` (ActorShadowEvery=4, alternating in blocks of four steps: the
-step's own time on and off in one run, the lights drawn and at rest a step, the reasons a light was not kept); a
-device Reset while lights rest (their maps' content after it is unverified); the headset look. What resting cannot
-touch: the receivers' pass (0x177, 126-201 draws a frame in the Market) draws every frame.
+Unit tests: 61 checks over the flows of the logic.
+
+### Measured (run obng-profile-market/20261112-195635, Linux, the Dream Air's frame size)
+
+`tools/hand-scripts/obng-measure-market-shadows.ini` (the routes as played, ActorShadowEvery=4, ActorShadowStill=4,
+alternating in blocks of four steps), `tools/hand-scripts/obng-profile-market.txt`, OBNG.dll 0c6b27ff178c07b5. The
+harness passed, no crash. Ten windows in the town (w03-w12, 2 663 steps on and 2 660 off), ms a step and lights a
+step:
+
+| | the step's own time (TSC) | lights drawn | at rest |
+|---|---:|---:|---:|
+| off | 0.696 | 2.51 | - |
+| on | 0.415 | 1.34 | 1.18 |
+
+By window the step saves 0.19-0.44 ms (0.28 over the ten). Derived from the two sides: about 0.24 ms of the main
+thread a drawn light (its placement, fade, the walk over the scene for its geometry and its map) and about 0.09 ms
+for the step's fixed part. G1's 1.1-2.3 ms for the step (GPU timestamps) were mostly the GPU waiting for these
+commands, as G1 already suspected. The shadow scene's list held about 25 lights a step, nearly all of them hidden
+lights of casters not accepted ("new" in the reasons); a kept light was never left without rest (released 0), a
+light fading out was drawn into its own map 0-3 times a window. Steps after a gap over 100 ms kept nothing (23-72
+light questions a window).
+
+Derived: 0.28 ms a frame in a town at every 4th step - small against the 3-7 ms the town's frame is over 11.1 ms.
+Open: a long run, the headset look (a standing figure's shadow up to three frames old; a walking one within 4
+units), a device Reset while lights rest. What resting cannot touch: the receivers' pass (0x177, 126-201 draws a
+frame in the Market) draws every frame.
 
