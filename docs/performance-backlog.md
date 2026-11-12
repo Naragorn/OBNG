@@ -1640,3 +1640,46 @@ Open: a long run, the headset look (a standing figure's shadow up to three frame
 units), a device Reset while lights rest. What resting cannot touch: the receivers' pass (0x177, 126-201 draws a
 frame in the Market) draws every frame.
 
+
+## 2026-11-12: E1 - the eye pass's 9 ms in the Market District, by kind of work (measured, from the sampler)
+
+Run obng-profile-market/20261112-195635 (S1's run: the routes as played, the Dream Air's frame size, Linux), phase
+"still" to "done" (40 s, about 50 frames a second). OBVR's render sampler: 16 299 of its samples (882 a second) fell
+inside the scene pass - about 9.2 ms a frame, matching the culler's driver lines (the eye pass 8.7 ms a call, the
+1024x1024 reflection pass 0.38). Exclusive samples (the eip is exact; the eight stack words can be stale,
+knowledge/render-thread-outside-the-pass.md), ms a frame derived as share x 9.2:
+
+| Kind | Share | ms a frame |
+|---|---:|---:|
+| the engine's own code | 48.8 % | 4.5 |
+| - of it the allocator (MemoryHeap 0x00402480 and its wrappers) | 5.4 % | 0.49 |
+| - plane tests (the cull walk 0x0070DFD3, the shadow lights' range 0x007D2EA0, 0x0047DA70) | 5.2 % | 0.48 |
+| - memcpy | 2.4 % | 0.22 |
+| - the constant maps (0x009A56D0, 0x009A8E30) | 1.7 % | 0.16 |
+| - the skinning palette (0x0053D7A0, 0x007655F0, 0x00718A80) | 1.7 % | 0.16 |
+| - the rest, spread over hundreds of functions (none above 1.3 %) | 33.5 % | 3.1 |
+| OBNG.dll | 17.3 % | 1.6 |
+| D3D9.DLL (DXVK), winevulkan, d3dx9_27 | 18.3 % | 1.7 |
+| kernel32, ntdll (critical sections, interlocked) | 4.3 % | 0.40 |
+| Oblivion Frame Fixes (the stream pack's copier) | 4.1 % | 0.38 |
+| OBVR.dll | 3.6 % | 0.33 |
+| FoliageAA | 1.2 % | 0.11 |
+
+OBNG.dll's 17.3 % by function (build-plugin/OBNG.map, the run's DLL 0c6b27ff178c07b5): the stereo route (the eye
+switch 2.7 %, RouteDrawPrimitive, RouteDrawSkinned, the routed device, constant re-apply) 5.9 % = 0.54 ms; the
+culler (CullDrawRenderPass, DecideDraw, its table, BoundRect, CullVisit) 4.3 % = 0.40 ms; memcmp 3.0 % = 0.27 ms,
+all of it under the volatile pack's PackerReplacement (the heads' positions compared with their last pack); draw
+instancing (ReadFacts, the node book, the list hook, DecideRecord) 2.4 % = 0.22 ms - which saves nothing in the
+Market District (P2's measurement).
+
+The allocator's callers in the pass: 0x007E2370 (a small record that allocates an array of its argument count of
+dwords, read in the pseudocode) is on the stack of 3.6 % of the pass's samples, called from 0x0085AAC0, 0x00859880
+and 0x00857750 under 0x0085AE20 and 0x007D85D0 - records built anew every frame (unverified what they are; names
+owed).
+
+Walk against draws (from the stack words, approximate): the cull walk's functions in 5.6 % of the samples, the
+finish's (0x007AE070, 0x007AD270, 0x007ACF40, 0x007AC9A0, 0x007A9820, 0x0077A310) in 48.5 %, and most of the rest
+under the per-draw shader setup (0x009A56D0, 0x0077A1B0, 0x0075FBA0, 0x007830C0, 0x007721E0). Derived: the walk is
+about 0.5-1 ms; 7-8 ms are the draws - 1 801 asked a pass, 294 left out by the culler, 922 of them repeats of a
+geometry already drawn in an earlier pass of the list; each draw goes to Direct3D twice (the two eyes, about 1 560
+eye switches a frame). About 5 us of the main thread a draw.
