@@ -1005,3 +1005,40 @@ under 0.25 ms a frame, of which nine in ten calls repeat. A stage's configure co
 so the engine's state objects do drop most of what the device already holds (derived from the cost, not read).
 Verdict: a skip of the pass-only part is worth 0.2 ms a frame at the very best against the risk of a left-over
 render state - put back. The draw side's lever stays the number of shapes.
+
+## 2026-11-12: the actors one level down at the docks, without the far throttle (measured)
+
+`tools/hand-scripts/obng-measure-docks-actors-down.ini`: the far actors' routes off (they hold 0x00603CA0's and
+0x00476D10's entries), `[Timed]` on the per-actor chain. Read first: the high actors' loop 0x00677EC0 calls the
+actor's slot +0x1C0, which is 0x00605770 for Character (vtable 0x00A6FC9C), Creature (0x00A710F4) and
+PlayerCharacter (0x00A73A0C) (read in the image by RTTI); 0x00605770 calls Actor::Update 0x00603CA0 and, on the
+actor's process (+0x58), the HighProcess's (vtable 0x00A71814) slots 3 / 4 (0x0063BA30 / 0x0063A210) and 8
+(0x00643640), and the actor's slot +0x368 (0x005FAAE0) (pseudocode).
+
+Run `artifacts/shadow/obng-profile-anvil-docks/20261112-111142`, a window of 589 frames with 73 actors a frame;
+run `-111523`, a window of 730 frames with 47-49 actors a frame (the timers took the first run to 48-60 frames a
+second; the ranking holds, single numbers are inflated):
+
+| item | ms a frame (73 actors) | us an actor (run 1 / run 2) |
+|---|---:|---:|
+| ProcessManager::Update 0x00678510 | 6.66 | |
+| the skeleton update, ApplyAnimData 0x00471F20 (the flat route inside) | 2.27 | 31 / 34 |
+| the character controller 0x00896000 | 1.34 | 20.2 / 20.1 |
+| the animation step 0x00603500 | 0.72 | 10.8 / 12.8 |
+| the animation update 0x00476D10 | 0.56 | 6.2 / 3.1 |
+| 0x00471C00 | 0.55 | 7.6 / 1.6 |
+| the high process's slot 4 0x0063A210 (run 2 only) | 0.40 at 47 actors | - / 8.5 |
+| UpdateHighProcesses 0x00673C10 | 0.34 | |
+| 0x005F6540 | 0.33 | 5.0 / 5.3 |
+| Actor::Update 0x00603CA0 itself | 0.17 | 2.3 / 2.5 |
+| the actor's slot +0x368 0x005FAAE0 (run 2 only) | 0.10 at 47 actors | - / 2.1 |
+
+- The 0.90 ms a frame that 0x00605770 held without a timed callee in run 1 (12.7 us an actor) are the high
+  process's slot 4 (8.5 us), the actor's slot +0x368 (2.1 us) and the timers of slot 8's 38 calls an actor (run 2:
+  0x00605770's own part is 0.02 ms a frame).
+- The character controller is the largest item nobody has worked on: 20 us an actor in both runs, 1.34 ms a frame
+  with 73 actors - more than the animation step and 0x005F6540 together. The two entries in "Put back" (no support
+  check for a standing actor, far or unseen actors on a lower rate) now have a measured base; the far throttle
+  (`ActorFarWhole`) already leaves the controller out for far actors with the rest of the update.
+- 0x00471C00 and the animation update differ by a factor between the runs (1.6-7.6 and 3.1-6.2 us): they depend on
+  what the actors do, not only on their number.
