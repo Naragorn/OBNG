@@ -1459,3 +1459,30 @@ directional light with fog and a projected map. Per instance: the world transfor
 sized (derived): instanced versions of 1 (most of the gain) to 4-5 program pairs of 22-43 vertex and 22-88 pixel
 instructions (SM3LL011.pso with 185 is the exception, 4 % in the town), plus the collecting draw path - large, no
 longer huge.
+
+## 2026-11-12: Y1 M2/M3 - the instanced draw of SLS2003 groups (`[Route] DrawInstancing`, built, off by default; class C)
+
+What is built and what it must share: `knowledge/draw-instancing.md`, "The instanced path as built". Runs (Linux,
+DXVK, the Windows mod list, single pass, the routes as played):
+
+| run | what | result |
+|---|---|---|
+| `obng-profile-anvil-docks/20261112-170441` | mode 1, every light in the key | 631 of 915 records a frame waited; ModelViewProj, light, pixel constants, textures, programs equal for every copy; ShadowProj derived apart for 22 % |
+| `-171014` | the first light only | nothing more apart; splits: vertex colour 75 032, stencil 3 720, alpha 2 232 records split off their mesh by property pointer |
+| `-171607`, `-171912` | small properties by value, both shadow forms | groups at the mesh's limit (280 732 against 279 995 by pass and mesh); ShadowProj = the copy's own world rows, error 0; c7.y (fog) apart for 734 |
+| `-172316` | the record's dword in the key | every check clean; the one ModelViewProj case over 1e-4 in the run 2.0e-4 |
+| `-173641` | mode 2, on in every second frame | 109 instanced groups a frame for 360 copies, 0 fallbacks; the pass lists' draws 0.25-0.27 ms a frame less in the frames with it on (2.85-3.76 against 3.10-4.01 ms) |
+| `obng-anvil-bc-eyedump/20261112-173950` | the eye frames, alternating | the barrels' iron bands apart (their highlight pass) |
+| `obng-anvil-bc-eyedump/20261112-174831` | geometries with more passes drawn at once | no difference beyond frame-to-frame noise |
+| `obng-profile-anvil-docks/20261112-175454` | mode 2 as it stands | 0.15-0.26 ms a frame less (3.62-4.29 against 3.84-4.49 ms), 4-6 %; 81 records a frame left out as multi-pass |
+| `obng-profile-market/20261112-175728` | the same in the Market District | no gain (-0.07 to +0.07 ms): of 341 records a frame 108 multi-pass and 79 skinned, 87 waited |
+
+Costs inside (docks): the record step 0.10-0.18 ms a frame, an instanced device call 0.8 us with everything it sets
+and puts back (two a group, one an eye). The earlier window-by-window comparison (`-172611`, `-173157`) showed the
+eye pass 0.3 ms slower in the on windows - the windows differ in what the camera looks at; the frame-by-frame split
+of one window is the comparison that holds.
+
+Derived: as it stands the path is worth about 0.2 ms a frame where copies of single-pass meshes dominate and nothing
+in a town; the barrier is the multi-pass geometry. Next lever: clip positions bit-identical to the engine's
+(ModelViewProj per copy and eye computed with the engine's own matrix calls), so that multi-pass geometries may wait
+too - not built, not measured.

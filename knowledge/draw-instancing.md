@@ -80,3 +80,53 @@ order a pass has 134-182 (docks) and 281-298 (town) runs of consecutive draws wi
 fewer draws at the docks, 50-51 % in the town). So an instanced path that only reorders inside a run - which keeps
 every additive pass after the pass it adds to - loses nothing. (Skinned and direct draws between two whole draws are
 not in the count: an upper bound.)
+
+## The instanced path as built (2026-11-12, `[Route] DrawInstancing`, off by default)
+
+`plugin/src/DrawInstancing{,Logic,Device}.{h,cpp}`, `plugin/src/RoutedDrawDevice.h`,
+`plugin/shaders/SLS2003Instanced.hlsl` (bytecode by `tools/build-shaders.sh`). Two patches: the entry of
+BSShaderAccumulator::RenderPassList 0x007AC9A0 (the list's begin and end) and DrawRenderPass 0x007A9820's step
+0x007A983B (`mov [0x00B42EB8],esi`: after it published its pass id and record, before the record's light constants
+and draw). A record waits when it is the walk's item but not the list's first, not skinned, opaque (shader property
+and material alpha 1, no blending alpha property), writes depth, has one render pass, and its shader, pass id and
+shader flags drew with SLS2003 before (learned per key from the records drawn at once; a key seen with two pass
+objects or programs is never predicted again). At the list's end each group of two or more is drawn once: the
+leader goes through DrawRenderPass's own body again (a trampoline of its original entry bytes, past the culler's
+detour) and the whole draw's device call becomes one instanced draw; singles go through DrawRenderPass again as
+they were. Mode 1 draws every record itself in the new order and compares the constants.
+
+What the copies of a group must share (the group key), read and measured:
+
+- the pass id, the mesh, the shader; the fog, renderer-specific, texturing and wireframe properties by pointer;
+  alpha, stencil, vertex colour and z-buffer properties **by value** (each copy may own an equal object - by pointer
+  they split 16 % of the records, measured in the splits line);
+- the shader property's class, flags and light scale (+0x94), the material's values, the effect state's words;
+- the record's lights (2 all, 1 the first: `DrawInstancingLights`; with the first only nothing in mode 1 came out
+  apart - the SLS2003 pass reads no point light);
+- **the record's dword at +0x04**: its byte +0x07 at 0 turns the pixel program's fog off - `Toggles` (c7) is the
+  global 0x00B46688 (registered by name in 0x007CC280), and 0x007C9F30's end writes `Toggles.y = 0` when
+  `[current record]+7 == 0` (read in the pseudocode; measured: 734 members of one key apart in c7.y alone until the
+  dword went into the key).
+
+What the instanced draw rebuilds (measured in mode 1, runs below; class C):
+
+- ModelViewProj: the leader's c0..c3 times the inverse of its packed world (0x00761AE0: rotation times scale,
+  translation minus the origin 0x00B3F92C, read) on each copy's packed world: largest row error 3e-6 to 9e-6 over
+  103 000 to 181 000 copies a window; once in a run 2e-4 (a rock 13 000 units off, scale 1.12 against 0.92).
+- LightDirection c13: taken back by the leader's rotation and scale, normalised in the program: 1 - cos <= 3e-14.
+- **c28..c31 ("ShadowProj") are the draw's own world rows** in the pass these draws are in (pass id 132): the
+  rotation without the scale, the absolute translation, last row (0, 0, 0, scale) - 0x00B45560 of 0x007C9230's B40,
+  while its shadow projection 0x00B45498 was not computed (the descriptor 0x00B4501C's byte +8 at 0). Exactly equal
+  for every copy checked (largest error 0); not one affine map of the packed world for copies of other scale (22 %
+  of the copies 2e-3 to 0.59 apart when derived from the leader). The instanced program computes them per copy from
+  a fourth instance row (absolute translation, scale) when the leader's registers have that form (ShadowMode c34).
+- fog and shadow data, pixel constants c1, c2, c7, textures of stages 0, 1, 6, 7, programs and declaration: equal
+  for every copy.
+
+**Geometries with more render passes cannot wait** (measured): their later passes, in other lists, test against the
+depth this pass writes, and the instanced positions are not the engine's bit for bit - Anvil's barrels lost the
+highlight on their iron bands in the instanced frames (run `obng-anvil-bc-eyedump/20261112-173950`, frames alternating
+on and off: the bands apart only across the two kinds of frame); with those geometries drawn at once the difference
+was gone (`20261112-174831`: in the barrels' region the instanced-against-plain difference no larger than between two
+frames of one kind; the pixels left apart across the kinds sit on animated people, leaves and clouds). Allowing them
+needs clip positions bit-identical to the engine's (the ModelViewProj per copy and eye computed as the engine does).

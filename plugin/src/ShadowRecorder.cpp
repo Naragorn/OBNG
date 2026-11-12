@@ -12,6 +12,7 @@
 #include "LockProbe.h"
 #include "ActorCensus.h"
 #include "ActorFarUpdate.h"
+#include "DrawInstancing.h"
 #include "ReferenceAnimRate.h"
 #include "ProcessProbe.h"
 #include "TimedCalls.h"
@@ -134,6 +135,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogTimedCallsSummary();
 	LogConstantArrangeSummary();
 	LogOcclusionCullSummary();
+	LogDrawInstancingSummary();
 	if (planner != nullptr && g_settings.havokPlanner && sample.frames != 0) {
 		const float stepSeconds = *reinterpret_cast<volatile float*>(0x00BA790C);
 		g_log("Probe: Havok planner over %u frames - update type %u, steps per frame 0:%u 1:%u 2:%u 3+:%u, last step %.6f s",

@@ -365,7 +365,7 @@ void EnsureResetHook(IDirect3DDevice9* device) {
 	}
 	void** vtable = *reinterpret_cast<void***>(device);
 	void* hook = reinterpret_cast<void*>(&HookedReset);
-	if (vtable[kDeviceResetSlot] == hook) {
+	if (vtable[kDeviceResetSlot] == hook || g_originalReset != nullptr) {  // once: a re-hook over another's hook would call itself
 		return;
 	}
 	g_originalReset = reinterpret_cast<ResetFn>(vtable[kDeviceResetSlot]);

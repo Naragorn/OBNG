@@ -133,3 +133,8 @@ add_executable(InstanceGroupLogicTest InstanceGroupLogicTest.cpp)
 target_include_directories(InstanceGroupLogicTest PRIVATE ../src ../../tests)
 target_compile_options(InstanceGroupLogicTest PRIVATE -Wall -Wextra -Werror)
 add_test(NAME InstanceGroupLogicTest COMMAND InstanceGroupLogicTest)
+
+add_executable(DrawInstancingLogicTest DrawInstancingLogicTest.cpp)
+target_include_directories(DrawInstancingLogicTest PRIVATE ../src ../../tests)
+target_compile_options(DrawInstancingLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME DrawInstancingLogicTest COMMAND DrawInstancingLogicTest)

@@ -17,6 +17,7 @@
 #include "LogKeepLogic.h"
 #include "ActorCensus.h"
 #include "ActorFarUpdate.h"
+#include "DrawInstancing.h"
 #include "ReferenceAnimRate.h"
 #include "ProcessProbe.h"
 #include "TimedCalls.h"
@@ -314,7 +315,12 @@ uint32_t InstallRouteRangeWalkSideEffect(const obng::plugin::RouteSettings& sett
 uint32_t InstallRouteStereoDrawSideEffect(const obng::plugin::RouteSettings& settings) {
 	// The culler sits above the route (Do_RenderShape, the finish) and asks it
 	// for the eye data; Load calls this only with the route on.
-	return obng::plugin::InstallRouteStereoDraw(settings, &Log) + obng::plugin::InstallOcclusionCull(settings, &Log);
+	const uint32_t made = obng::plugin::InstallRouteStereoDraw(settings, &Log) + obng::plugin::InstallOcclusionCull(settings, &Log);
+	char path[MAX_PATH] = {};
+	if (ActiveIniPath(path, sizeof(path))) {
+		obng::plugin::InstallDrawInstancing(path, settings, &Log);  // below the culler: its two patches are not among the counted ones
+	}
+	return made;
 }
 
 bool StartSummaryTimerSideEffect(const obng::plugin::ShadowSettings&) {

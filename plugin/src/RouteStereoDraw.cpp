@@ -35,7 +35,7 @@
 
 #include "Probes.h"
 #include "RouteStereoDrawLogic.h"
-#include "StereoDrawTimer.h"
+#include "RoutedDrawDevice.h"
 #include "EntryDetour.h"
 #include "EyeConstantsTraceLogic.h"
 #include "GrassFadeFix.h"
@@ -714,10 +714,10 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
 	const whole::DrawInput in{geometry, data, skin, world, worldBound, record};
 	const auto plan = route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode()));
 	draw_timer::g_timers.eyeDraw = eyes != nullptr;
-	draw_timer::TimedDevice<whole_engine::EnginePorts, whole::IndexedDraw, whole::PlainDraw> timedDevice{&ports};
+	const RoutedDevice<whole_engine::EnginePorts, whole::IndexedDraw, whole::PlainDraw> routedDevice{&ports, &shader.lastShader, geometry};
 	const std::uint64_t wholeStart = __rdtsc();
-	const whole::Outcome outcome = draw_timer::g_timers.on ? whole::Draw(in, plan, ports, shader, timedDevice, timedDevice, timed)
-	                                                          : whole::Draw(in, plan, ports, shader, ports, ports, timed);
+	const whole::Outcome outcome = RoutedDeviceWanted() ? whole::Draw(in, plan, ports, shader, routedDevice, routedDevice, timed)
+	                                                     : whole::Draw(in, plan, ports, shader, ports, ports, timed);
 	if (draw_timer::g_timers.on) {
 		draw_timer::g_timers.steps.wholeTicks += __rdtsc() - wholeStart;
 		++draw_timer::g_timers.steps.wholeCalls;
