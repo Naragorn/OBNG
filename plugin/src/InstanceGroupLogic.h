@@ -26,11 +26,19 @@
 
 namespace obng::plugin::instance_groups {
 
+// The property state's ten slots (by the property's type, knowledge/
+// shadow-light-list-remove.md: 0 alpha, 1 fog, 2 material, 3 renderer
+// specific, 4 shade / shader, 5 stencil, 6 texturing, 7 vertex colour,
+// 8 wireframe, 9 z-buffer) and, as an eleventh word, the vtable of slot 4's
+// property - which property makes two draws of one mesh differ.
+constexpr int kPropertyWords = 11;
+
 struct Key {
 	std::uint32_t data = 0;
 	std::uint32_t pass = 0;
 	std::uint32_t props = 0;    // a hash of the property state's contents
 	std::uint32_t effects = 0;  // a hash of the effect state's contents
+	std::uint32_t words[kPropertyWords] = {};
 };
 
 // FNV-1a over dwords: equal contents give equal hashes (a collision can only
@@ -53,6 +61,10 @@ struct Counts {
 	std::uint64_t groups[kLevels] = {};     // distinct keys at each level
 	std::uint64_t inFour[kLevels] = {};     // draws in a group of four or more
 	std::uint64_t largest[kLevels] = {};
+	// Within the groups by mesh and pass: the draws compared with their
+	// group's first, and how often each property word differs.
+	std::uint64_t compared = 0;
+	std::uint64_t wordDiffers[kPropertyWords] = {};
 };
 
 namespace detail {
@@ -85,6 +97,14 @@ inline Counts Count(std::vector<Key>& keys) {
 				++j;
 			}
 			const std::uint64_t size = j - i;
+			if (level == 0) {
+				for (std::size_t m = i + 1; m < j; ++m) {
+					++c.compared;
+					for (int w = 0; w < kPropertyWords; ++w) {
+						c.wordDiffers[w] += keys[m].words[w] != keys[i].words[w] ? 1u : 0u;
+					}
+				}
+			}
 			++c.groups[level];
 			c.inFour[level] += size >= 4 ? size : 0;
 			c.largest[level] = std::max(c.largest[level], size);
@@ -105,6 +125,10 @@ struct Totals {
 			sum.inFour[level] += c.inFour[level];
 			sum.largest[level] = std::max(sum.largest[level], c.largest[level]);
 		}
+		sum.compared += c.compared;
+		for (int w = 0; w < kPropertyWords; ++w) {
+			sum.wordDiffers[w] += c.wordDiffers[w];
+		}
 	}
 };
 
@@ -122,6 +146,13 @@ inline int Format(const Totals& t, char* out, std::size_t capacity) {
 		at += std::snprintf(out + at, capacity - at, " %s %.0f groups (%.0f %% fewer draws), %.0f draws in groups of four or more, the largest %llu;",
 		                    kNames[level], groups, 100.0 * (draws - groups) / draws, static_cast<double>(t.sum.inFour[level]) * per,
 		                    static_cast<unsigned long long>(t.sum.largest[level]));
+	}
+	if (at >= 0 && static_cast<std::size_t>(at) < capacity && t.sum.compared != 0) {
+		at += std::snprintf(out + at, capacity - at, " within the mesh groups %llu draws compared with their group's first, the property word differing in %%:",
+		                    static_cast<unsigned long long>(t.sum.compared));
+		for (int w = 0; w < kPropertyWords && at >= 0 && static_cast<std::size_t>(at) < capacity; ++w) {
+			at += std::snprintf(out + at, capacity - at, " %d:%.0f", w, 100.0 * static_cast<double>(t.sum.wordDiffers[w]) / static_cast<double>(t.sum.compared));
+		}
 	}
 	return at;
 }

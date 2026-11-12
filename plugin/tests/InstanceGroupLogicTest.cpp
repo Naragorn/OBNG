@@ -49,6 +49,30 @@ int main() {
 		Check(n.groups[0] == 3 && n.largest[0] == 5 && n.inFour[0] == 5, "by mesh and pass: three groups, five draws in the largest");
 		Check(n.groups[1] == 4 && n.largest[1] == 4 && n.inFour[1] == 4, "and properties: four groups, the largest four");
 		Check(n.groups[2] == 5 && n.largest[2] == 3 && n.inFour[2] == 0, "and effect state: five groups, none of four or more");
+		Check(n.compared == 4, "within the mesh groups four draws compared with their group's first (four in the group of five)");
+	}
+
+	Section("Count: which property word differs within a mesh group");
+	{
+		Key first = K(10, 1, 7, 9);
+		first.words[4] = 0x100;
+		first.words[6] = 0x600;
+		first.words[10] = 0xA0;
+		Key sameTextureOtherShaderProperty = first;
+		sameTextureOtherShaderProperty.words[4] = 0x101;  // its own shader property object, the same class
+		Key otherTexture = first;
+		otherTexture.words[6] = 0x601;
+		std::vector<Key> keys = {first, sameTextureOtherShaderProperty, otherTexture};
+		const Counts n = Count(keys);
+		Check(n.compared == 2 && n.wordDiffers[4] == 1 && n.wordDiffers[6] == 1 && n.wordDiffers[10] == 0 && n.wordDiffers[0] == 0,
+		      "slot 4 differs once, slot 6 once, the shader property's class never");
+		Totals t;
+		t.Add(n);
+		char line[900];
+		Format(t, line, sizeof(line));
+		Check(std::string(line).find("within the mesh groups 2 draws compared with their group's first, the property word differing in %: 0:0 1:0 2:0 3:0 4:50 5:0 6:50") !=
+		          std::string::npos,
+		      "the share of each word written");
 	}
 
 	Section("Totals and the line");

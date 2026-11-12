@@ -47,11 +47,11 @@ struct Timers {
 		instance_groups::Key k;
 		k.data = Word(geometry + kGeometryDataOffset);
 		k.pass = Word(shader + kShaderPassOffset);
-		std::uint32_t words[kPropertyWords] = {};
 		if (propertyState != 0) {
-			std::memcpy(words, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(propertyState + kPropertyWordsOffset)), sizeof(words));
+			std::memcpy(k.words, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(propertyState + kPropertyWordsOffset)), kPropertyWords * 4);
+			k.words[kPropertyWords] = k.words[4] != 0 ? Word(k.words[4]) : 0;  // the shader property's vtable
 		}
-		k.props = instance_groups::HashWords(words, kPropertyWords);
+		k.props = instance_groups::HashWords(k.words, kPropertyWords);
 		std::uint32_t effects[kEffectWords] = {};
 		if (effectState != 0) {
 			std::memcpy(effects, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(effectState + kEffectWordsOffset)), sizeof(effects));
