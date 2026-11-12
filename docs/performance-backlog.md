@@ -1497,3 +1497,37 @@ first of list 33. Every constant check clean for the multi-pass copies too (Mode
 the copy's world rows exact). Derived: the bit-identical positions (option A) would reach about 56 draws a frame
 here, at about 2-3 us each 0.1-0.15 ms before their own overhead - not worth building; the town's draws are other
 programs and skinned bodies. Draw instancing stays off by default, worth about 0.2 ms at the docks; put back.
+
+### P2: draw instancing on in the Windows game (2026-11-12)
+
+OBNG.dll of 1bdaca1 (md5 990d8837...) into the Windows game, `[Route] DrawInstancing=2` in its OBNG.ini (backups
+of the DLL of a014c88 and the INI before the change in the session's scratchpad). Untested on Windows and in the
+headset until Nadi says otherwise. Whether the Windows build of the stack answers the device's Get calls (the
+instanced draw reads the vertex registers back) is unverified there; where it does not, every group falls back to
+single draws (the summary's "fell back: device").
+
+## 2026-11-12: P1 - the Market District's frame as played (measured, run obng-profile-market/20261112-182234)
+
+The routes as played on Windows after P2 (`tools/hand-scripts/obng-measure-market-play.ini`), the Dream Air's frame
+size (an eye of 4036x3376), Linux and the Beyond at 75 Hz, `tools/thread-sampler.py` beside the run, OBVR's capture
+and render sampler.
+
+- **Frame rate**: 41-72 frames a second by window (411-723 frames in 10 s) - the town does not hold 75 Hz here; the
+  compositor showed 40 % of the frames more than once.
+- **GPU** (the compositor's frame timing, 4 765 frames): the application's GPU time before submit 9.75 ms median
+  (p75 11.2, p95 14.0), after submit 4.2 ms, in all 14.6 ms median (p95 20.8) - over the 13.3 ms of 75 Hz and far
+  over the 11.1 ms of 90 Hz. OBVR's own GPU timing (`GpuTiming=1`) wrote zero durations in this run (for OBVR).
+- **Main thread** (thread sampler, steady phase): 0.68-0.78 s of CPU a second at 41-57 frames a second - 14-18 ms of
+  work a frame (the docks: 10.5 ms).
+- **Where the main thread's frame goes** (the [Timed] lines, a steady window of 418 frames, ms a frame): UpdateStep
+  23.8 in all, of it RenderFrame 10.9 (the driver - cull walk and finish - 7.9, of that the eye pass's finish 6.0
+  with 1 364 draws a pass and 291 left out by the culler; the rest of the render 3.0), the actors' process manager 4.5
+  (the high actors' loop 4.25, ApplyAnimData 1.48 for 25 actors), the cells 1.8 (grid update 0.67, the references'
+  animation 0.59, the selected nodes 0.55), 0x004424D0 0.68; the waits (the poses 3.9 ms mean) fill the rest.
+- **The render sampler** (in-pass samples of the steady phase, 14 194): the engine's own code 45 %, D3D9 (DXVK)
+  18 %, OBNG.dll 16 %, Oblivion Frame Fixes' copier 4 %, OBVR 4 %.
+
+Derived: in a town at the Dream Air's size the GPU is the first wall - 14.6 ms of the application's GPU work a frame
+against 11.1 ms at 90 Hz, the same hardware on Windows (unverified there) - and the main thread the second, 14-18 ms
+against 11.1. Neither is one item: the GPU needs about a quarter off, the main thread about a third. What fills the
+GPU's 9.75 ms is not measured (OBVR's timer gave zeros).
