@@ -1123,3 +1123,18 @@ actor that comes near. It rides on `ActorFarWhole=1` (the same detour of Actor::
 - Open: the look in the headset on a head turn (an actor that enters the cone has stood still for up to sixteen
   frames and then moves that time's way at once); a run with a fight behind the player; occlusion (an actor behind
   a wall inside the cone is not taken).
+
+### The view rule with a fight behind the player (measured 2026-11-12, run obng-view-rule-combat/20261112-120131)
+
+`tools/hand-scripts/obng-view-rule-combat.txt` on the Gold Road (the Linux mod list, Walkers' hordes about): the
+rule always on. The ten of the opening's cast placed 1500 units behind the player did not fight - from their
+placement on, 7 440-7 510 calls a window stood behind in the 1000-3000 band and the calls at the lower rate rose by
+about as many: the rule took them, as it should take actors that stand about. But a fight was already going on
+behind the player beyond 3000 units (not placed by the script; which actors is not read - the hordes of this mod
+list are the likely ones): for five windows 5 483-9 012 calls a window were kept at the full rate for combat (7 to
+12 actors a frame), falling to 343 and 0 as that fight ended, while the calls at the lower rate rose by the same
+amount. So the exception works in the game: an actor the engine counts as in combat is not taken, and it is taken
+again when its combat ends. Not shown: that the fight went as it does without the rule (no comparison run); an
+actor that flees or is attacked without a combat package (not read).
+
+Put into the Windows game on 2026-11-12 with `ActorViewRule=1` (Nadi's go), cone 75 degrees, from 1000 units.

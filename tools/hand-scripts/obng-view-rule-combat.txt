@@ -1,0 +1,37 @@
+# The view rule's combat exception ([Route] ActorViewRule): a fight BEHIND the player must go on at
+# the full rate. The Gold Road's spot 2 (cow Tamriel -27 -3, as obng-actors-count.txt), the player
+# standing still in god mode and looking along the road (heading 90); at the mark "fight" ten of the
+# opening's cast (00023F2A 00023F2B 0002349F 00023F2E 00025200, two each - they fight each other, as in
+# obng-actors-count.txt) are placed 1500 units behind the player (PlaceAtMe's direction 1), so the rule
+# would take every one of them by place. Read in OBNG.log per 10 s window: "near actors' view rule - N
+# calls at the far actors' rate, M kept at the full rate for combat" - M must carry the fighters while
+# they fight, and the count line says where the near actors stand.
+# Run with: tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-view-rule-combat.ini \
+#   tools/hand-scripts/obng-view-rule-combat.txt --save OBVRHarnessMOO --run-timeout 480
+ini SelfCheck ShowPanel=0
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Hands BodyCollision=1
+ini Hands PhysicsRate=0
+console-at ready cow Tamriel -27 -3
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at ready tgm
+console-at s2 player.setangle z 90
+console-at fight player.placeatme 00023F2A 2 1500 1
+console-at fight player.placeatme 00023F2B 2 1500 1
+console-at fight player.placeatme 0002349F 2 1500 1
+console-at fight player.placeatme 00023F2E 2 1500 1
+console-at fight player.placeatme 00025200 2 1500 1
+expect HandScript: finished
+reject menu Container
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 14
+mark s2
+wait 22
+mark fight
+wait 60
+mark done
+wait 2
