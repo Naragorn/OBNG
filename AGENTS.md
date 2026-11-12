@@ -9,6 +9,7 @@
 - Keep changes focused and minimal.
 - Do not hide unexpected failures or claim coverage that was not run.
 - Code, comments, documentation, and Git commit messages must be in English.
+- No giant functions or files. A new function stays at or under 100 lines and a new file at or under 1000 lines; put new logic in its own small unit (a pure logic header plus a thin caller) instead of growing a big one. Functions and files already over those limits may only shrink. (The same rule as OBVR's. OBVR enforces it with `function_sizes_test` and `tests/function-sizes.txt`; this repository has no such test yet - until it has, the rule is held by review.)
 
 ## Reading Oblivion.exe
 
