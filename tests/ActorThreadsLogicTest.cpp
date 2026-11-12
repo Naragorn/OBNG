@@ -62,7 +62,7 @@ int main() {
 
 	Section("0x0088F3D0 at blend 0");
 	{
-		Check(Classify(Living()) == CollisionClass::kHardSet, "blend 0, previous 0: case 1, the hard set (the body from the node)");
+		Check(Classify(Living()) == CollisionClass::kHardSet, "blend 0, previous 0: case 1, the hard set 0x0089EA70 (the node from the body)");
 		CollisionFields f = Living();
 		f.previous = 0.5f;
 		Check(Classify(f) == CollisionClass::kBlendWrite, "previous not 0, mode 0: case 0 - the blended transform written to the node (+0x78)");
@@ -114,7 +114,8 @@ int main() {
 
 	Section("Which classes leave the node alone");
 	{
-		Check(Safe(CollisionClass::kNothing) && Safe(CollisionClass::kHardSet) && Safe(CollisionClass::kKeyframeOnly), "nothing, hard set, keyframe only");
+		Check(Safe(CollisionClass::kNothing) && Safe(CollisionClass::kKeyframeOnly), "nothing, keyframe only");
+		Check(!Safe(CollisionClass::kHardSet), "the hard set 0x0089EA70 writes the node from the body (read 2026-11-12; measured: 13-45 % of its calls change it)");
 		Check(!Safe(CollisionClass::kBlendWrite) && !Safe(CollisionClass::kNodeFromBody) && !Safe(CollisionClass::kMotionFrom6) &&
 		          !Safe(CollisionClass::kMotionChange) && !Safe(CollisionClass::kBit6) && !Safe(CollisionClass::kOtherClass),
 		      "the rest not");

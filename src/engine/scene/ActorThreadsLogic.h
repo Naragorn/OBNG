@@ -17,8 +17,8 @@
 //   the body +0x10 is in the world (0x00607840: body, body+8, (body+8)+8) or
 //   the blend +0x14 is below 1 or the motion type +0x1C is 1.
 //   0x0088F3D0: blend 0 -> in mode 1 nothing, else case 1 (the hard set, the
-//   body from the node) when the previous blend +0x18 is 0 or +0x0D bit 0 is
-//   set, else case 0; blend 1 -> in mode 2 nothing, else case 2 (+0x68, the
+//   node written from the body, 0x0089EA70) when the previous blend +0x18 is 0
+//   or +0x0D bit 0 is set, else case 0; blend 1 -> in mode 2 nothing, else case 2 (+0x68, the
 //   node from the body) wanting motion type 6; between (and NaN) -> case 1
 //   in mode 2, else case 0, wanting motion type 1. A motion type other than
 //   the wanted one changes first: from 6 through +0x68 (the node written),
@@ -26,7 +26,7 @@
 //   +0x78 in mode 0 and keys the body.
 //
 // A skeleton whose collision objects are all in a safe class (nothing, the
-// hard set, the keyframe alone) leaves its nodes to the down pass: its
+// keyframe alone) leaves its nodes to the down pass: its
 // collision updates can wait until after the parallel down passes and run
 // on the loop's thread in the batch's order. Any other skeleton runs whole on
 // that thread in its place.
@@ -51,7 +51,7 @@ struct CollisionFields {
 
 enum class CollisionClass : std::uint8_t {
 	kNothing,
-	kHardSet,       // case 1: the body from the node
+	kHardSet,       // case 1: 0x0089EA70, the node from the body
 	kKeyframeOnly,  // case 0 outside mode 0: the body keyed, the node left
 	kBlendWrite,    // case 0 in mode 0: the blended transform written to the node
 	kNodeFromBody,  // case 2
@@ -65,8 +65,12 @@ enum class CollisionClass : std::uint8_t {
 constexpr const char* kClassName[static_cast<int>(CollisionClass::kCount)] = {
 	"nothing", "hard set", "keyframe only", "blended write", "node from body", "motion from 6", "motion change", "bit 6", "other class"};
 
+// The hard set 0x0089EA70 reads the body's transform (0x004D6950, 0x004D6900)
+// and writes the node with it through slot +0x78 (read 2026-11-12; the reading
+// of 2026-11-10 had it the other way) - measured to change the node in 13-45 %
+// of its calls in the Market District (run obng-profile-market/20261112-221344).
 constexpr bool Safe(CollisionClass c) {
-	return c == CollisionClass::kNothing || c == CollisionClass::kHardSet || c == CollisionClass::kKeyframeOnly;
+	return c == CollisionClass::kNothing || c == CollisionClass::kKeyframeOnly;
 }
 
 inline CollisionClass Classify(const CollisionFields& f) {

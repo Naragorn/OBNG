@@ -69,7 +69,7 @@ and 0x00607840 says so) or the blend +0x14 is below 1.0 or the motion type
 +0x1C is 1.
 
 The blend object's +0x64, 0x0088F3D0: by the blend +0x14 - at 0.0 the hard
-set 0x0089EA70 (the Havok body from the node; skipped in mode 1), at 1.0 the
+set 0x0089EA70 (corrected 2026-11-12: the node written from the Havok body; skipped in mode 1), at 1.0 the
 virtual +0x68 (the node from the body; skipped in mode 2), between them the
 blended transform, written to the node through the virtual +0x78 in mode 0
 and to the body through the keyframe 0x008A34C0. Before that, when the
@@ -94,12 +94,12 @@ Read in the instructions (re/export/actor-threads/0x0088EDC0, 0x0088F3D0, 0x0060
 mode 3 ([0x00BA7A8C]), with flags +0x0C bit 6 runs 0x0089EAE0 (unread; nothing in mode 2), with bit 0 clear returns,
 and calls slot +0x64 when the body +0x10 is in the world (0x00607840: body, body+8, (body+8)+8 all set) or the blend
 +0x14 is below 1 or the motion type +0x1C is 1. The blend object's 0x0088F3D0: blend 0 -> nothing in mode 1, else case 1
-(the hard set: the body from the node) when the previous blend +0x18 is 0 or +0x0D bit 0 is set, else case 0; blend 1
+(the hard set 0x0089EA70: the node written from the body) when the previous blend +0x18 is 0 or +0x0D bit 0 is set, else case 0; blend 1
 -> nothing in mode 2, else case 2 (+0x68: the node from the body) wanting motion type 6; between (NaN included) -> case
 1 in mode 2, else case 0, wanting motion type 1. A motion type other than the wanted one changes first - from 6 through
 +0x68 (the node written), else through the global list 0x00BA7A40 and 0x0089ED20. Case 0 writes the node through +0x78
-in mode 0, and keys the body. So a living actor's bone at rest (blend 0, previous 0, keyframed) takes the hard set and
-leaves its node alone (derived), which fits the 86 % of skeletons `[Probe] CollisionWrites` found without a node written.
+in mode 0, and keys the body. (The first reading here had a bone at rest take a hard set that leaves its node alone;
+the hard set's own instructions say otherwise, see below.)
 
 Built (`src/engine/scene/ActorThreadsLogic.h` with `tests/ActorThreadsLogicTest.cpp`; `plugin/src/ActorThreads.{h,cpp}`,
 two hooks in ActorBatch.cpp): every split job of the batch is planned on the loop's thread - every collision object put
@@ -112,4 +112,33 @@ control word and MXCSR; the loop's thread returns when every worker has left its
 runs no threads: it classifies, compares every collision update's node before and after (the classes that write, and
 "mispredicted" for a safe job's write) and copies the EXE's .data before and after the down passes in one batch of 16
 (the statics they write, by how often). Class B. Not run in the game yet.
+
+## The check in the game: no skeleton can go to a thread as built (measured 2026-11-12)
+
+Run obng-profile-market/20261112-221344 (`tools/hand-scripts/obng-measure-market-threads-check.ini`: the routes as
+played, ActorBatch=1, [Probe] ActorThreadsCheck=1; harness passed). Steady windows, 600-750 batches and 8 000-14 000
+skeletons in 10 s:
+
+- **0 safe skeletons.** Every skeleton carries about three collision objects of another class: bhkBlendCollisionObject
+  AddRotation (vtable 0x00A96384, its UpdateWorldData 0x0088E9F0 not 0x0088EDC0; RTTI read in the EXE), 24 000-42 000
+  updates a window, 2-10 % of them changing their node.
+- Per skeleton about 15 blend objects do nothing (110 000-210 000 updates, none changed a node).
+- **The hard set writes the node**: 0x0089EA70 reads the body's transform (0x004D6950, 0x004D6900) and hands it to the
+  node through slot +0x78 (read). In the game 3 400-11 200 hard sets a window, 13-45 % of them changed their node.
+  The 2026-11-10 reading ("the body from the node") was wrong.
+- The other collision classes of the EXE (RTTI): bhkCollisionObject, bhkNiCollisionObject, bhkPCollisionObject and
+  bhkSPCollisionObject share UpdateWorldData 0x00897510.
+- .data written during the down passes (one batch of 16 probed): 0x00B3FC88/8C most often - the time controller's scaled
+  time memo of 0x007155A0 (NiTimeController's), held under its own critical section 0x00B3FCA0 (pseudocode), so safe
+  for threads; 0x00B33EAC (referenced by 0x0044D770/D810/D880, 0x00730D30, 0x007A9C30), 0x00B02048, 0x00B0203C and a few
+  process manager fields (no direct code reference: written through pointers; whether by the down passes or by another
+  thread in the same window is open).
+- The down phase on one thread with the check: 0.57-1.56 ms a frame.
+
+Derived: as built the threads would run nothing. A skeleton's node writes come from its collision objects reading their
+bodies, inside the down pass, in the order the children depend on. What could still run in parallel: the down passes
+with every collision update left for the loop's thread, and a repair there - after a collision update changed its node,
+that node's subtree's world transforms recomputed (the controllers have run), the skeleton's geometry bounds redone.
+Its gain is what remains of 0.6-1.6 ms after the loop's thread keeps every collision update and the repairs: about
+0.3-0.6 ms in the Market (derived, rough). Not built.
 
