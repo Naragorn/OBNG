@@ -1417,3 +1417,34 @@ docks, 30 in the town), about 0.9-1.1 ms a frame at the measured 2.6 us a draw -
 vertex and pixel shaders that take per instance what the engine uploads per draw now: the world transform, the
 lights in model space (0x007C9140), the material and the shader property's values. That shader work is what makes it
 huge; the textures do not stand in the way.
+
+## 2026-11-12: V1 - what an instanced path would have to carry per instance (measured)
+
+The instance count extended (`plugin/src/StereoDrawTimer.cpp`, read under SEH; `InstanceGroupLogic.h`): within a
+group of one mesh and pass, besides the ten property slots, the material's values (NiMaterialProperty +0x1C..+0x53,
+xOBSE NiProperties.h), the shader property's flags (+0x1C) and alpha (+0x20), its lights (BSShaderLightingProperty's
+list, head +0x70, count +0x78; walked with Gamebryo's node layout next +0 / element +8 - unverified), and the pass's
+two programs (pass +0x44 / +0x58). Runs `obng-profile-market/20261112-155012` and `obng-profile-anvil-docks/20261112-155207`:
+
+| differs within a group of one mesh and pass | Market District | Anvil docks |
+|---|---:|---:|
+| the material object / its values | 79-90 % / 20-35 % | 91-92 % / 16-17 % |
+| the shader property object / its class / its flags / its alpha | 77-90 % / 0 / 0 / 19-35 % | 96-97 % / 0 / 0 / 16-17 % |
+| the lights (set / count) | 0-2 % / 0-1 % | 7-11 % / 7-11 % |
+| the textures (texturing property) | 0-2 % | 0 % |
+| the programs | 0 % | 0 % |
+
+The grouped draws' pass objects: up to 8-17 a pass; 2-4 of them cover 80 % and 3-6 cover 90 % of the grouped
+draws, the largest alone 56-81 %.
+
+Derived: the copies of a mesh mostly share textures, programs and lights; what differs per instance is the world
+transform, the lights' model-space positions that follow from it (0x007C9140), and - for a sixth to a third of them
+- the alpha (material and shader property together: fading objects). An instanced path would need instanced
+versions of the programs of two to six pass objects, taking the world transform and an alpha per instance and the
+lights in world space once. Not yet read: which programs those are (their names and constant maps).
+
+A crash in the Market District run (the first of its kind in the artifacts): an access violation reading 0x5A4 at
+0x0048E811 in 0x0048E740, called from TESObjectREFR::RunScripts 0x004D7190 (xOBSE) - a list walk on a reference's
+script data hitting a bad node, after the scripted head turns. Not attributed: OBNG's code in that run only read
+(the count under SEH, the timers); the far actors' route was on; OBVR.dll was its new build a59e316b (the "Yield"
+and "Stagger watch" lines just before), Walkers and the Windows mod list's quests were loaded.
