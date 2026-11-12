@@ -15,6 +15,29 @@ bool Near(double a, double b) { return a - b < 1e-6 && b - a < 1e-6; }
 }  // namespace
 
 int main() {
+	Section("The view rule's hidden part: who is taken, and by which part");
+	{
+		const float eye[3] = {0.0f, 0.0f, 0.0f};
+		const float ahead[3] = {0.0f, 1.0f, 0.0f};
+		const float inFront[3] = {0.0f, 2000.0f, 0.0f};
+		const float nearInFront[3] = {0.0f, 500.0f, 0.0f};
+		const float behind[3] = {0.0f, -2000.0f, 0.0f};
+		const float bad[3] = {std::numeric_limits<float>::quiet_NaN(), 2000.0f, 0.0f};
+		ViewRule rule;
+		rule.on = true;
+		Check(TakenByViewOrHidden(rule, true, true, false, true, inFront, eye, ahead) == Taken::Hidden, "inside the cone and left out by the culler: hidden");
+		Check(TakenByViewOrHidden(rule, true, true, false, false, inFront, eye, ahead) == Taken::No, "inside the cone and not left out: not taken");
+		Check(TakenByViewOrHidden(rule, false, true, false, true, inFront, eye, ahead) == Taken::No, "the hidden part off: not taken");
+		Check(TakenByViewOrHidden(rule, true, true, true, true, inFront, eye, ahead) == Taken::No, "in combat: not taken");
+		Check(TakenByViewOrHidden(rule, true, false, false, true, inFront, eye, ahead) == Taken::No, "no camera: not taken");
+		Check(TakenByViewOrHidden(rule, true, true, false, true, nearInFront, eye, ahead) == Taken::No, "nearer than the distance: not taken");
+		Check(TakenByViewOrHidden(rule, true, true, false, true, bad, eye, ahead) == Taken::No, "a place that is not a number: not taken");
+		Check(TakenByViewOrHidden(rule, true, true, false, true, behind, eye, ahead) == Taken::OutsideCone &&
+		          TakenByViewOrHidden(rule, false, true, false, false, behind, eye, ahead) == Taken::OutsideCone,
+		      "outside the cone: taken by the cone, whatever the culler says");
+		rule.on = false;
+		Check(TakenByViewOrHidden(rule, true, true, false, true, inFront, eye, ahead) == Taken::No, "the view rule off: the hidden part is off with it");
+	}
 	Section("The view rule: who is taken");
 	{
 		const float eye[3] = {0.0f, 0.0f, 0.0f};

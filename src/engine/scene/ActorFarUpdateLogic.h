@@ -324,6 +324,29 @@ inline bool TakenByView(const ViewRule& rule, bool cameraKnown, bool inCombat, c
 	return ViewOfActor(actor, eye, direction, rule.coneCosine).side != ViewSide::Inside;
 }
 
+// The view rule's second part ([Route] ActorViewHidden): an actor inside the
+// cone that the occlusion culler left out of the scene's walk - its node's
+// bound drew no pixel against the frame's depth, so nothing of it shows, and
+// what shows through a grating's gaps is not hidden by that test - gets a
+// lower rate of its own (gentler than the far one: it can come round a corner
+// with no margin of angle). Where the culler does not run there is no such
+// answer and only the cone decides.
+enum class Taken : std::uint8_t { No, OutsideCone, Hidden };
+
+inline Taken TakenByViewOrHidden(const ViewRule& rule, bool hiddenOn, bool cameraKnown, bool inCombat, bool leftOutByCuller, const float actor[3],
+                                 const float eye[3], const float direction[3]) {
+	if (TakenByView(rule, cameraKnown, inCombat, actor, eye, direction)) {
+		return Taken::OutsideCone;
+	}
+	if (!rule.on || !hiddenOn || !cameraKnown || inCombat || !leftOutByCuller) {
+		return Taken::No;
+	}
+	const float x = actor[0] - eye[0];
+	const float y = actor[1] - eye[1];
+	const float z = actor[2] - eye[2];
+	return x * x + y * y + z * z >= rule.minDistance * rule.minDistance ? Taken::Hidden : Taken::No;
+}
+
 struct ViewCounts {
 	std::uint64_t inside[kViewBands] = {};
 	std::uint64_t outside[kViewBands] = {};  // in front, outside the cone

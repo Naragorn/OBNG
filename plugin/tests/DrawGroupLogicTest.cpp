@@ -95,6 +95,17 @@ void TestNodeBook() {
 	Check(fresh.LeftOut(7, 1000), "the first leaving out of a node says so (the node log's line)");
 	Check(!fresh.LeftOut(7, 1001), "the next one does not");
 	Check(fresh.Candidate(7, 1001, 2) && !fresh.Candidate(8, 1001, 2), "a node first heard of by being left out; its neighbour is none");
+	Section("NodeBook: left out lately, for a reader outside the walk");
+	static NodeBook lately;
+	Check(!lately.LeftOutWithin(900, 10, 2), "a node the book does not know: no");
+	lately.Note(900, 10, true);
+	lately.Note(900, 10, true);
+	Check(!lately.LeftOutWithin(900, 11, 2), "noted hidden but never left out: no");
+	lately.LeftOut(900, 12);
+	Check(lately.LeftOutWithin(900, 12, 0) && lately.LeftOutWithin(900, 13, 2) && lately.LeftOutWithin(900, 14, 2),
+	      "left out in pass 12: yes in 12, and within an age of two until 14");
+	Check(!lately.LeftOutWithin(900, 15, 2) && !lately.LeftOutWithin(900, 13, 0), "beyond the age: no");
+	Check(!lately.LeftOutWithin(901, 12, 2), "its neighbour: no");
 	Section("NodeBook: a full probe run drops the note, a stale slot is taken over");
 	static NodeBook full;
 	// Nodes that share a home: multiples of 2^32 / kSlots collide after the multiply only by luck, so fill by search.

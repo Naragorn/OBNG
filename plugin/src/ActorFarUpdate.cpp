@@ -45,7 +45,19 @@ bool g_viewCount = false;
 // transform (OBVR src/camera/CameraHook.cpp, read by the OBVR session
 // 2026-11-12), and the engine leaves the frame's camera there.
 far_update::ViewRule g_viewRule;
-bool g_viewAlternate = false;      // [Route] ActorViewAlternate: the view rule only in every second summary window (a measurement)
+UINT g_viewAlternate = 0;          // [Route] ActorViewAlternate: 1 the view rule, 2 its hidden part only in every second summary window (a measurement)
+// [Route] ActorViewHidden: the rule's second part - an actor inside the cone
+// whose scene node the occlusion culler left out gets every
+// ActorViewHiddenEvery-th call (TakenByViewOrHidden).
+bool g_viewHidden = false;
+std::uint32_t g_viewHiddenEvery = 4;
+volatile LONG g_viewHiddenOnNow = 1;
+volatile LONG64 g_viewHiddenCalls = 0;  // calls of actors the hidden part took
+volatile LONG64 g_viewHiddenSeen = 0;   // the count: calls of near actors inside the cone whose node the culler left out
+constexpr UInt32 kRefNode = 0x3C;       // the reference's scene node (ActorCensus.cpp)
+constexpr UInt32 kRefBase = 0x1C;       // its base form, and a form's id (ActorCensus.cpp)
+constexpr UInt32 kFormId = 0x0C;
+unsigned g_viewHiddenLogLeft = 0;       // with the count: sample lines of actors taken as hidden left in this window
 volatile LONG g_viewOnNow = 1;
 volatile LONG64 g_viewCalls = 0;   // calls of near actors the rule took
 volatile LONG64 g_viewCombat = 0;  // calls it would have taken but for combat
@@ -297,14 +309,32 @@ void __fastcall Update(void* self, void*, float time) {
 				      static_cast<double>(here[0]), static_cast<double>(here[1]), static_cast<double>(here[2]));
 			}
 		}
+		const bool leftOut = (g_viewHidden || g_viewCount) && OcclusionCullNodeLeftOut(Dword(actor + kRefNode));
+		if (g_viewCount && leftOut && known && far_update::ViewOfActor(here, eye, direction, g_viewRule.coneCosine).side == far_update::ViewSide::Inside) {
+			InterlockedIncrement64(&g_viewHiddenSeen);
+		}
 		// Combat is asked only for an actor the rule would take: one virtual call.
-		if (g_viewOnNow != 0 && far_update::TakenByView(g_viewRule, known, false, here, eye, direction)) {
+		const far_update::Taken by = g_viewOnNow != 0 ? far_update::TakenByViewOrHidden(g_viewRule, g_viewHidden && g_viewHiddenOnNow != 0, known, false,
+		                                                                               leftOut, here, eye, direction)
+		                                              : far_update::Taken::No;
+		if (by != far_update::Taken::No) {
 			if (InCombat(actor)) {
 				InterlockedIncrement64(&g_viewCombat);
-			} else {
+			} else if (by == far_update::Taken::OutsideCone) {
 				taken = true;
 				InterlockedIncrement64(&g_viewCalls);
 				every = g_onNow != 0 ? g_every : 1;
+			} else {
+				taken = true;
+				InterlockedIncrement64(&g_viewHiddenCalls);
+				every = g_viewHiddenEvery;
+				if (g_viewCount && g_viewHiddenLogLeft != 0) {
+					--g_viewHiddenLogLeft;
+					const UInt32 base = Dword(actor + kRefBase);
+					g_log("Route: near actors' hidden sample - actor %08X (form %08X, base form %08X) node %08X at %.0f %.0f %.0f taken as hidden",
+					      actor, Dword(actor + kFormId), base != 0 ? Dword(base + kFormId) : 0, Dword(actor + kRefNode), static_cast<double>(here[0]),
+					      static_cast<double>(here[1]), static_cast<double>(here[2]));
+				}
 			}
 		}
 	}
@@ -367,7 +397,12 @@ void InstallActorFarUpdate(const char* iniPath, LogFn log) {
 		g_viewRule.coneCosine = degrees >= 90 ? 0.0f : static_cast<float>(std::cos(static_cast<double>(degrees) * 3.14159265358979323846 / 180.0));
 		g_viewRule.minDistance = static_cast<float>(GetPrivateProfileIntA("Route", "ActorViewMinDistance", 1000, iniPath));
 	}
-	g_viewAlternate = GetPrivateProfileIntA("Route", "ActorViewAlternate", 0, iniPath) != 0;
+	g_viewAlternate = GetPrivateProfileIntA("Route", "ActorViewAlternate", 0, iniPath);
+	g_viewHidden = g_viewRule.on && GetPrivateProfileIntA("Route", "ActorViewHidden", 0, iniPath) != 0;
+	{
+		const UINT hiddenEvery = GetPrivateProfileIntA("Route", "ActorViewHiddenEvery", 4, iniPath);
+		g_viewHiddenEvery = hiddenEvery < 1 ? 1 : hiddenEvery > 64 ? 64 : hiddenEvery;
+	}
 	if (!InstallEntryDetour(kName, kAddress, kBytes, sizeof(kBytes), reinterpret_cast<const void*>(&Update), &g_original, log, DetourRole::Route)) {
 		return;
 	}
@@ -388,7 +423,12 @@ void InstallActorFarUpdate(const char* iniPath, LogFn log) {
 		log("Route %s: the view rule is on - a near actor outside a cone of cosine %.4f around the main camera's direction, from %.0f units, and not "
 		    "in combat, gets the same rate%s",
 		    kName, static_cast<double>(g_viewRule.coneCosine), static_cast<double>(g_viewRule.minDistance),
-		    g_viewAlternate ? "; alternating: only in every second summary window" : "");
+		    g_viewAlternate == 1 ? "; alternating: only in every second summary window" : "");
+		if (g_viewHidden) {
+			log("Route %s: the view rule's hidden part is on - a near actor inside the cone whose scene node the occlusion culler left out gets every "
+			    "%u. call (only where the culler's node cull runs)%s",
+			    kName, g_viewHiddenEvery, g_viewAlternate == 2 ? "; alternating: only in every second summary window" : "");
+		}
 	}
 	log("Route %s: the whole update of an actor beyond %.0f units on every %u. call, with the summed time%s", kName,
 	    static_cast<double>(g_distance), g_every, g_alternate ? "; alternating: only in every second summary window" : "");
@@ -421,16 +461,21 @@ void LogActorFarUpdateSummary() {
 	}
 	if (g_viewRule.on) {
 		const bool viewWasOn = g_viewOnNow != 0;
-		if (g_viewAlternate) {
+		const bool hiddenWasOn = g_viewHidden && g_viewHiddenOnNow != 0;
+		if (g_viewAlternate == 1) {
 			InterlockedExchange(&g_viewOnNow, viewWasOn ? 0 : 1);
+		} else if (g_viewAlternate == 2) {
+			InterlockedExchange(&g_viewHiddenOnNow, g_viewHiddenOnNow != 0 ? 0 : 1);
 		}
 		g_log("Route: near actors' view rule (outside a cone of cosine %.4f, from %.0f units, %s in this window) - %lld calls at the far actors' rate, "
-		      "%lld kept at the full rate for combat",
+		      "%lld kept at the full rate for combat; hidden part (every %u. call, %s in this window) - %lld calls of actors the culler left out",
 		      static_cast<double>(g_viewRule.coneCosine), static_cast<double>(g_viewRule.minDistance), viewWasOn ? "on" : "off",
-		      InterlockedExchange64(&g_viewCalls, 0), InterlockedExchange64(&g_viewCombat, 0));
+		      InterlockedExchange64(&g_viewCalls, 0), InterlockedExchange64(&g_viewCombat, 0), g_viewHiddenEvery, hiddenWasOn ? "on" : "off",
+		      InterlockedExchange64(&g_viewHiddenCalls, 0));
 	}
 	if (g_viewCount) {
 		g_viewLogLeft = 6;  // six sample lines a window
+		g_viewHiddenLogLeft = 12;
 		const far_update::ViewCounts c = g_viewCounts;
 		g_viewCounts = far_update::ViewCounts{};
 		const LONG64 noCamera = g_viewNoCamera;
@@ -439,6 +484,7 @@ void LogActorFarUpdateSummary() {
 		      "%llu / %llu; in front outside it %llu / %llu / %llu; behind %llu / %llu / %llu; %lld calls without a camera",
 		      static_cast<double>(g_viewRule.coneCosine), c.All(), c.inside[0], c.inside[1], c.inside[2], c.outside[0], c.outside[1], c.outside[2], c.behind[0],
 		      c.behind[1], c.behind[2], noCamera);
+		g_log("Route: near actors inside the cone whose node the culler left out - %lld calls", InterlockedExchange64(&g_viewHiddenSeen, 0));
 	}
 	if (g_probe) {
 		const double stoodFor = static_cast<double>(InterlockedExchange64(&g_controllerSummedMicros, 0)) / 1000000.0;

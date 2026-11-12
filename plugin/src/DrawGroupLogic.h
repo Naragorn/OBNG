@@ -162,6 +162,14 @@ public:
 		return first;
 	}
 
+	// Whether the node was left out in one of the last `age` passes (0: in this
+	// pass only): what "hidden behind something" means for a reader outside the
+	// walk. A node the book does not know, or never left out: false.
+	bool LeftOutWithin(std::uint32_t node, std::uint32_t pass, std::uint32_t age) const {
+		const Slot* s = Find(node);
+		return s != nullptr && s->everLeftOut && pass - s->leftOutPass <= age;
+	}
+
 	bool Candidate(std::uint32_t node, std::uint32_t pass, std::uint32_t maxAge) const {
 		const Slot* s = Find(node);
 		if (s == nullptr) {

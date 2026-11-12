@@ -37,6 +37,11 @@ void OcclusionCullNoteDraw(UInt32 geometry);
 // direction, world space); false before the first one or with the culler off.
 bool OcclusionCullLastCamera(float position[3], float direction[3]);
 
+// Whether the culler left this scene node out of the walk in one of the last
+// two eye passes: its bound drew no pixel against the depth of the frame.
+// False with the culler or its node cull off (dual pass, the route off).
+bool OcclusionCullNodeLeftOut(UInt32 node);
+
 // Asks for the culler's summary line; the render thread writes it at its
 // next eye pass (the counts since the last line, then reset). Nothing when
 // the culler is off.

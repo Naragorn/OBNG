@@ -951,6 +951,10 @@ void __fastcall CullVisit(void* self, void* /*edx*/, UInt32 object) {
 
 }  // namespace
 
+bool OcclusionCullNodeLeftOut(UInt32 node) {
+	return g_on && g_nodeCull && node != 0 && g_nodeBook.LeftOutWithin(node, g_frame, 2);
+}
+
 bool OcclusionCullLastCamera(float position[3], float direction[3]) {
 	if (!g_on || !g_lastCameraSet) {
 		return false;

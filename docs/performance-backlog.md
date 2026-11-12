@@ -1138,3 +1138,24 @@ again when its combat ends. Not shown: that the fight went as it does without th
 actor that flees or is attacked without a combat package (not read).
 
 Put into the Windows game on 2026-11-12 with `ActorViewRule=1` (Nadi's go), cone 75 degrees, from 1000 units.
+
+### The view rule's hidden part (`[Route] ActorViewHidden`, built 2026-11-12, off by default; class C)
+
+An actor inside the cone whose scene node (the reference's +0x3C) the occlusion culler left out of the walk in one
+of the last two eye passes - its bound drew no pixel against the frame's depth - gets every
+`ActorViewHiddenEvery`-th call (4; gentler than the far rate, because it can come round a corner with no margin of
+angle), from the same distance on and not in combat. Only where the culler's node cull runs (the single pass, or
+the flat game with `OcclusionCullFlat=1`); elsewhere the cone alone decides. `ActorViewAlternate=2` switches only
+this part by summary window. The answer comes from the depth test, so what shows through a grating's gaps is not
+hidden (Nadi's condition, 2026-11-12: "not at gratings one can see through").
+
+- The docks, single pass, the part alternating (run `obng-profile-anvil-docks/20261112-120931`, measured): of
+  13-17 near actors a frame inside the cone the culler left out 0.3-2.7; ProcessManager::Update in the standing
+  windows 2.31 / 2.32 ms with the part against 2.51 / 2.30 without - no gain that shows (two actors at three
+  quarters of 80 us would be 0.12 ms). The docks are an open place; a walled town or an interior is not measured.
+- The new game's prison (run `obng-cull-newgame-bars/20261112-121203`, measured, the distance set to 0 for the
+  run): the part took one actor a frame throughout - Baurus (00032A17), waiting behind the walls, which is also the
+  "one node a pass" the node log of 2026-11-11 left open - and for a window each Glenroy (00032A16) and the Emperor
+  (00032A18) at the same place. Nobody else: the count of calls taken equals one actor a frame, so the prisoner
+  in the cell opposite, behind the bars, was never taken as hidden. Not shown: the Blades standing at the bars
+  (the run does not say that they came that far), and Windows, where the bars defect of 2026-11-11 is still open.
