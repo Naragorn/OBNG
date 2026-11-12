@@ -293,6 +293,37 @@ inline ViewOf ViewOfActor(const float actor[3], const float camera[3], const flo
 	return out;
 }
 
+// ---- The view rule ([Route] ActorViewRule) -----------------------------------
+//
+// A near actor that stands outside the cone around the camera's direction,
+// at least a distance away, is updated at the far actors' rate. It cannot be
+// on screen there; when it enters the cone its next call runs (with the time
+// it missed), as for an actor that comes near. An actor in combat is never
+// taken: a fight behind the player goes on at the full rate. Class C, like
+// the distance rule.
+struct ViewRule {
+	bool on = false;
+	float coneCosine = 0.2588f;   // 75 degrees half angle: wider than a headset's view by 20 degrees
+	float minDistance = 1000.0f;  // nearer than this an actor is never taken
+};
+
+// Whether the view rule takes this actor. No camera, the rule off, the actor
+// in combat or nearer than the distance: no. A place the count cannot read
+// (ViewOfActor's cases) counts as inside the cone: no.
+inline bool TakenByView(const ViewRule& rule, bool cameraKnown, bool inCombat, const float actor[3], const float eye[3], const float direction[3]) {
+	if (!rule.on || !cameraKnown || inCombat) {
+		return false;
+	}
+	const float x = actor[0] - eye[0];
+	const float y = actor[1] - eye[1];
+	const float z = actor[2] - eye[2];
+	const float squared = x * x + y * y + z * z;
+	if (!(squared >= rule.minDistance * rule.minDistance)) {
+		return false;
+	}
+	return ViewOfActor(actor, eye, direction, rule.coneCosine).side != ViewSide::Inside;
+}
+
 struct ViewCounts {
 	std::uint64_t inside[kViewBands] = {};
 	std::uint64_t outside[kViewBands] = {};  // in front, outside the cone

@@ -15,6 +15,35 @@ bool Near(double a, double b) { return a - b < 1e-6 && b - a < 1e-6; }
 }  // namespace
 
 int main() {
+	Section("The view rule: who is taken");
+	{
+		const float eye[3] = {0.0f, 0.0f, 0.0f};
+		const float ahead[3] = {0.0f, 1.0f, 0.0f};
+		const float behind[3] = {0.0f, -2000.0f, 0.0f};
+		const float beside[3] = {2000.0f, 100.0f, 0.0f};
+		const float inFront[3] = {0.0f, 2000.0f, 0.0f};
+		const float nearBehind[3] = {0.0f, -999.0f, 0.0f};
+		const float atDistance[3] = {0.0f, -1000.0f, 0.0f};
+		ViewRule rule;
+		Check(!TakenByView(rule, true, false, behind, eye, ahead), "the rule off: nobody");
+		rule.on = true;
+		Check(TakenByView(rule, true, false, behind, eye, ahead), "behind the camera and far enough: taken");
+		Check(TakenByView(rule, true, false, beside, eye, ahead), "in front but outside the cone: taken");
+		Check(!TakenByView(rule, true, false, inFront, eye, ahead), "inside the cone: not taken");
+		Check(!TakenByView(rule, true, false, nearBehind, eye, ahead), "nearer than the distance: not taken, wherever it stands");
+		Check(TakenByView(rule, true, false, atDistance, eye, ahead), "at the distance exactly: taken");
+		Check(!TakenByView(rule, true, true, behind, eye, ahead), "in combat: not taken");
+		Check(!TakenByView(rule, false, false, behind, eye, ahead), "no camera: not taken");
+		const float none[3] = {0.0f, 0.0f, 0.0f};
+		Check(!TakenByView(rule, true, false, behind, eye, none), "a direction of no length: not taken");
+		const float bad[3] = {std::numeric_limits<float>::quiet_NaN(), -2000.0f, 0.0f};
+		Check(!TakenByView(rule, true, false, bad, eye, ahead), "a place that is not a number: not taken");
+		rule.coneCosine = 0.0f;  // 90 degrees: only what is behind
+		Check(!TakenByView(rule, true, false, beside, eye, ahead) && TakenByView(rule, true, false, behind, eye, ahead),
+		      "a cone of 90 degrees takes only what stands behind");
+		rule.minDistance = 3000.0f;
+		Check(!TakenByView(rule, true, false, behind, eye, ahead), "a larger distance leaves the nearer one alone");
+	}
 	Section("Near actors by where the camera looks");
 	{
 		const float camera[3] = {100.0f, 200.0f, 50.0f};

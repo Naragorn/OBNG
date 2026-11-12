@@ -1096,3 +1096,30 @@ the cone counts as inside). Open before anything is built: an actor outside the 
 few frames of a head turn (the cone's 20 degrees of margin are five frames at 300 degrees a second), so it must
 run at once when it enters the cone; and an actor in combat behind the player must not fight at a sixteenth of the
 rate.
+
+## 2026-11-12: the view rule for near actors (`[Route] ActorViewRule`, built, off by default; class C)
+
+A near actor that stands outside a cone around the main camera's direction (`ActorViewConeDegrees`, 75; 90 = only
+behind), at least `ActorViewMinDistance` units away (1000) and not in combat gets the far actors' rate (`ActorFarEvery`,
+with the summed time and the summed animation steps); when it enters the cone its next call runs, as for a far
+actor that comes near. It rides on `ActorFarWhole=1` (the same detour of Actor::Update 0x00603CA0).
+`ActorViewAlternate=1` switches it by summary window for a measurement.
+
+- The direction's source is the world scene graph's camera ([0x00B333CC]+0xDC; its world rotation at +0x64, first
+  column, and its world translate at +0x88), not a render pass - so the rule does not depend on the culler, the
+  stereo route or the pass mode. Measured in three docks runs with the head turned through eight directions:
+  single pass (`obng-profile-anvil-docks/20261112-114811`: equal to the last eye pass's direction in every
+  sample), dual pass (`obng-profile-anvil-docks-dual/20261112-115118`) and the flat game with `[Render] Enabled=0`
+  (`obng-profile-anvil-docks-flat/20261112-115350`): the same sequence of directions in all three, the place the
+  player's plus about 110 units. OBVR writes the head into that node (read by the OBVR session in its
+  src/camera/CameraHook.cpp). Not run: the game without OBVR.dll at all.
+- Combat: the actor's slot +0x334 (xOBSE: Actor::IsInCombat(bool), slot 0xCD; 0x005E6110 for Character and
+  Creature, read: the process's package of type 0x0C or 0x0D), asked only for an actor the rule would take. No
+  actor fought in the runs (0 kept for combat): the exception is covered by the unit flows and the read, not by a
+  game run.
+- Gain, single pass, alternating by window (measured): ProcessManager::Update 2.70-3.19 ms a frame with the rule
+  against 3.35-3.69 without, about 0.6 ms; it took 6.4-10.9 of about 20 near actors a frame (and 41-47 far ones
+  were throttled already).
+- Open: the look in the headset on a head turn (an actor that enters the cone has stood still for up to sixteen
+  frames and then moves that time's way at once); a run with a fight behind the player; occlusion (an actor behind
+  a wall inside the cone is not taken).
