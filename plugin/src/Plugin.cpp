@@ -234,6 +234,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	r.stereoRestoreDirect = GetPrivateProfileIntA("Route", "StereoRestoreDirect", 1, path) != 0;
 	r.stereoParticles = GetPrivateProfileIntA("Route", "StereoParticles", 1, path) != 0;
 	r.stereoCarryConstants = GetPrivateProfileIntA("Route", "StereoCarryConstants", 1, path) != 0;
+	r.stereoDrawTimer = GetPrivateProfileIntA("Route", "StereoDrawTimer", 0, path) != 0;
 	r.stereoTraceConstants = GetPrivateProfileIntA("Route", "StereoTraceConstants", 0, path) != 0;
 	r.occlusionCull = GetPrivateProfileIntA("Route", "OcclusionCull", 0, path) != 0;
 	r.occlusionCullMaxAge = obng::plugin::occlusion_cull::MaxAgeFromIni(GetPrivateProfileIntA("Route", "OcclusionCullMaxAge", 2, path));

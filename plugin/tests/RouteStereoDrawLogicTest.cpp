@@ -14,6 +14,36 @@ using obng::plugin::RouteSettings;
 using obng::plugin::StereoEyesFromIni;
 
 int main() {
+	Section("[Route] StereoDrawTimer: the steps' line");
+	{
+		route::StepTimes t;
+		char line[600];
+		route::FormatStepTimes(t, 1000.0, line, sizeof(line));
+		Check(std::string(line) == "Route: stereo draw steps - none timed", "no draw: said so");
+		Check(!t.AddSlot(9, 5) && !t.AddSlot(20, 5), "a slot outside 10..19 is not added");
+		Check(t.AddSlot(10, 500) && t.AddSlot(19, 250) && t.AddSlot(19, 250), "slots 10 and 19 are the ends");
+		t.wholeCalls = 4;
+		t.wholeTicks = 8000;
+		t.stateCalls = 3;
+		t.stateTicks = 1500;
+		route::FormatStepTimes(t, 0.0, line, sizeof(line));
+		Check(std::string(line) == "Route: stereo draw steps - none timed", "no calibration: said so");
+		route::FormatStepTimes(t, 1000.0, line, sizeof(line));
+		Check(std::string(line) == "Route: stereo draw steps (the whole draw's) - 4 draws, 8.000 ms in all; render state calls 3, 1.500 ms; slot 10 1 "
+		                           "calls, 0.500 ms; slot 19 2 calls, 0.500 ms",
+		      "the draws, the render state's calls and only the slots that ran");
+	}
+	Section("[Route] StereoDrawTimer: the device calls' line");
+	{
+		char line[200];
+		route::FormatDeviceDraws(2000, 3000, 1000.0, line, sizeof(line));
+		Check(std::string(line) == "Route: stereo draw device calls (the whole draw's) - 2000 calls, 3.000 ms in all, 1.50 us each",
+		      "calls, the time in all and the time a call");
+		route::FormatDeviceDraws(0, 3000, 1000.0, line, sizeof(line));
+		Check(std::string(line) == "Route: stereo draw device calls - none timed", "no call: said so, no division");
+		route::FormatDeviceDraws(5, 3000, 0.0, line, sizeof(line));
+		Check(std::string(line) == "Route: stereo draw device calls - none timed", "no calibration: said so");
+	}
 	Section("[Route] StereoEyes: 1 and 2 are known, anything else reads as 1 and is flagged");
 	bool known = false;
 	Check(StereoEyesFromIni(1, &known) == 1 && known, "1 -> one eye, known");

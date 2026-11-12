@@ -116,6 +116,9 @@ DrawSkinnedEntryFn g_originalDrawSkinned = nullptr;
 bool g_on = false;
 LogFn g_log = nullptr;
 RouteSettings g_settings;
+std::uint64_t g_deviceDrawCalls = 0;
+route::StepTimes g_stepTimes;
+std::uint64_t g_deviceDrawTicks = 0;
 
 // The eye data: the interface's (render thread only, by its contract) or
 // none; the test mode is a setting.
@@ -161,7 +164,46 @@ void FlushSummaryIfRequested() {
 	route::FormatStats(g_stats, ticksPerMillisecond, line, sizeof(line));
 	g_stats.Reset();
 	g_log("%s", line);
+	if (g_settings.stereoDrawTimer) {
+		route::FormatDeviceDraws(g_deviceDrawCalls, g_deviceDrawTicks, ticksPerMillisecond, line, sizeof(line));
+		g_log("%s", line);
+		g_deviceDrawCalls = 0;
+		g_deviceDrawTicks = 0;
+		route::FormatStepTimes(g_stepTimes, ticksPerMillisecond, line, sizeof(line));
+		g_log("%s", line);
+		g_stepTimes = route::StepTimes{};
+	}
 }
+
+// [Route] StereoDrawTimer: the whole draw's device port with a timer around
+// each device call.
+struct TimedDevice {
+	const whole_engine::EnginePorts* inner;
+	void DrawIndexedPrimitive(const whole::IndexedDraw& d) const {
+		const std::uint64_t t0 = __rdtsc();
+		inner->DrawIndexedPrimitive(d);
+		g_deviceDrawTicks += __rdtsc() - t0;
+		++g_deviceDrawCalls;
+	}
+	void DrawPrimitive(const whole::PlainDraw& d) const {
+		const std::uint64_t t0 = __rdtsc();
+		inner->DrawPrimitive(d);
+		g_deviceDrawTicks += __rdtsc() - t0;
+		++g_deviceDrawCalls;
+	}
+	void SubObjectSlot1() const {
+		const std::uint64_t t0 = __rdtsc();
+		inner->SubObjectSlot1();
+		g_stepTimes.stateTicks += __rdtsc() - t0;
+		++g_stepTimes.stateCalls;
+	}
+	void SetDrawFlag(std::uint32_t value) const {
+		const std::uint64_t t0 = __rdtsc();
+		inner->SetDrawFlag(value);
+		g_stepTimes.stateTicks += __rdtsc() - t0;
+		++g_stepTimes.stateCalls;
+	}
+};
 
 // The ticks one draw call's switches took, split by the re-apply.
 struct SwitchTicks {
@@ -635,7 +677,13 @@ struct RecordingShaderPort {
 			lastShader = shader;
 			lastSetup = call;
 		}
-		return engine->Slot(shader, call);
+		if (!g_settings.stereoDrawTimer) {
+			return engine->Slot(shader, call);
+		}
+		const std::uint64_t t0 = __rdtsc();
+		const std::uint32_t result = engine->Slot(shader, call);
+		g_stepTimes.AddSlot(call.slot, __rdtsc() - t0);
+		return result;
 	}
 
 	static void Reapply(void* context) {
@@ -680,8 +728,15 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
 	trace.on = TraceThisDraw(eyes != nullptr, eyeSwitch.viewportOnly);
 	TimedEyeSwitch timed{&eyeSwitch, &ticks, &trace};
 	const whole::DrawInput in{geometry, data, skin, world, worldBound, record};
-	const whole::Outcome outcome =
-	    whole::Draw(in, route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode())), ports, shader, ports, ports, timed);
+	const auto plan = route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode()));
+	TimedDevice timedDevice{&ports};
+	const std::uint64_t wholeStart = __rdtsc();
+	const whole::Outcome outcome = g_settings.stereoDrawTimer ? whole::Draw(in, plan, ports, shader, timedDevice, timedDevice, timed)
+	                                                          : whole::Draw(in, plan, ports, shader, ports, ports, timed);
+	if (g_settings.stereoDrawTimer) {
+		g_stepTimes.wholeTicks += __rdtsc() - wholeStart;
+		++g_stepTimes.wholeCalls;
+	}
 	g_stats.AddWhole(outcome);
 	FinishTrace(trace, "whole draw", geometry, geometry != 0 ? ReadAt<std::uint32_t>(geometry + kTraceShaderCandidateOffset) : 0u, false);
 	g_stats.AddSwitches(counters);

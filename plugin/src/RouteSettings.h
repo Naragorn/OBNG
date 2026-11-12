@@ -91,6 +91,7 @@ struct RouteSettings {
 	StereoReapply stereoReapply = StereoReapply::kView;  // the second eye's constants re-apply
 	bool stereoRestoreDirect = true;  // [Route] StereoRestoreDirect: the direct entries re-apply the first eye's view constants after the second eye's draw; 0 for the comparison
 	bool stereoParticles = true;  // [Route] StereoParticles: the particle renderer's device call (0x007667F6) runs through the eye plan; 0 leaves the game's call, particles in the first eye only
+	bool stereoDrawTimer = false;      // [Route] StereoDrawTimer: the whole draw's device calls timed and logged a summary window; a measurement
 	bool stereoCarryConstants = true;  // [Route] StereoCarryConstants: the second eye also gets the view-dependent registers an earlier setup left on the device (the terrain's later texture passes draw with the first pass's ModelViewProj), and the switch back restores every changed register by value (StereoEyeSwitchLogic.h RegisterPairs); 0 for the comparison
 	bool stereoTraceConstants = false;  // [Route] StereoTraceConstants: in every sixteenth single-pass frame the device's vertex registers are read back around each routed draw's eye switch, and a line per shader class and pass says which registers the second eye's draw has of its own (EyeConstantsTraceLogic.h); off in play
 	bool stereoFollowers = true;  // [Route] StereoFollowers: geometry below the camera-following roots (the sky) gets the second eye's viewport without the view shift; 0 for the comparison

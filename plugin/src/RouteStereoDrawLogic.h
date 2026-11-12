@@ -107,6 +107,59 @@ struct Stats {
 	}
 };
 
+// [Route] StereoDrawTimer: the whole draw's device calls of a summary
+// window, timed - what the device's draw itself costs beside the eye switch.
+inline int FormatDeviceDraws(std::uint64_t calls, std::uint64_t ticks, double ticksPerMillisecond, char* out, std::size_t capacity) {
+	if (calls == 0 || ticksPerMillisecond <= 0.0) {
+		return std::snprintf(out, capacity, "Route: stereo draw device calls - none timed");
+	}
+	const double ms = static_cast<double>(ticks) / ticksPerMillisecond;
+	return std::snprintf(out, capacity, "Route: stereo draw device calls (the whole draw's) - %llu calls, %.3f ms in all, %.2f us each",
+	                     static_cast<unsigned long long>(calls), ms, ms * 1000.0 / static_cast<double>(calls));
+}
+
+// [Route] StereoDrawTimer: the whole draw's steps of a summary window - the
+// draw as a whole, the shader's slots 10..19 and the render state's two
+// calls - so that what is neither the device's draw nor the eye switch has a
+// name.
+struct StepTimes {
+	static constexpr unsigned kFirstSlot = 10;
+	static constexpr unsigned kSlots = 10;  // 10..19
+	std::uint64_t wholeCalls = 0;
+	std::uint64_t wholeTicks = 0;
+	std::uint64_t slotCalls[kSlots] = {};
+	std::uint64_t slotTicks[kSlots] = {};
+	std::uint64_t stateCalls = 0;  // SubObjectSlot1 and SetDrawFlag
+	std::uint64_t stateTicks = 0;
+	// False: no slot of the draw's ten, nothing added.
+	bool AddSlot(unsigned slot, std::uint64_t ticks) {
+		if (slot < kFirstSlot || slot >= kFirstSlot + kSlots) {
+			return false;
+		}
+		++slotCalls[slot - kFirstSlot];
+		slotTicks[slot - kFirstSlot] += ticks;
+		return true;
+	}
+};
+
+inline int FormatStepTimes(const StepTimes& t, double ticksPerMillisecond, char* out, std::size_t capacity) {
+	if (t.wholeCalls == 0 || ticksPerMillisecond <= 0.0) {
+		return std::snprintf(out, capacity, "Route: stereo draw steps - none timed");
+	}
+	const auto ms = [ticksPerMillisecond](std::uint64_t ticks) { return static_cast<double>(ticks) / ticksPerMillisecond; };
+	int at = std::snprintf(out, capacity, "Route: stereo draw steps (the whole draw's) - %llu draws, %.3f ms in all; render state calls %llu, %.3f ms",
+	                       static_cast<unsigned long long>(t.wholeCalls), ms(t.wholeTicks), static_cast<unsigned long long>(t.stateCalls),
+	                       ms(t.stateTicks));
+	for (unsigned i = 0; i < StepTimes::kSlots && at >= 0 && static_cast<std::size_t>(at) < capacity; ++i) {
+		if (t.slotCalls[i] == 0) {
+			continue;
+		}
+		at += std::snprintf(out + at, capacity - at, "; slot %u %llu calls, %.3f ms", StepTimes::kFirstSlot + i,
+		                    static_cast<unsigned long long>(t.slotCalls[i]), ms(t.slotTicks[i]));
+	}
+	return at;
+}
+
 // One device draw under the eye plan: the call as the game made it; with a
 // plan of two eyes the second eye's state, the same call again, the first
 // eye's state back. The result is the first draw's (what the game's call

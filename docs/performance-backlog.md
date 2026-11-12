@@ -915,3 +915,32 @@ constants) and two device draws; what each of them costs is not measured apart. 
 slots once for both eyes (0.97 us a shape here) and the rest twice. The finish outside Do_RenderShape is about
 1.1 ms (the list walk, DrawRenderPass, the shader states' begin and end, the skinned draws, the probe's own
 timers). Linux and DXVK; the culler off, so about 13 % more draws than in play.
+
+### The whole draw by step (measured 2026-11-12, runs obng-profile-anvil-docks/20261112-101334 and -101722)
+
+`[Route] StereoDrawTimer=1` (a measurement, off by default) times, inside the route's whole draw, the device's
+draw calls, every shader slot 10..19 and the render state's two calls
+(`tools/hand-scripts/obng-measure-docks-draw-timer.ini`: the culler and the pass-steps probe off). Three steady
+windows of 747-750 frames, about 1 190-1 240 whole draws a frame, per frame:
+
+| step | ms a frame | us a draw | what it is |
+|---|---:|---:|---|
+| the whole draw (RouteDrawPrimitive's rebuild of 0x007672F0) | 3.06-3.17 | 2.57-2.58 | |
+| slot 12 | 0.61-0.63 | 0.51 | 0x0077A1B0 for the three commonest shader classes (read in their vtables 0x00A90634, 0x00A9405C, 0x00A92844): a call of slot 2 of the object at shader+0x3C with a trailing 0 (pseudocode; Gamebryo's SetupRenderingPass, a proposal) |
+| slot 14 SetupShaderPrograms 0x0077A1F0 | 0.47-0.50 | 0.40 | the constant maps |
+| the device's draws (two eyes) | 0.48-0.50 | 0.19 a call, about 2 550-2 700 calls | DXVK |
+| the eye switch | about 0.4 (derived: 0.35-0.37 us a switch) | | OBNG's own |
+| slot 15 PrepareGeometry 0x0077A310 | 0.34-0.38 | 0.29 | the packing |
+| slot 11 | 0.33-0.34 | 0.28 | 0x007C9F30 for the commonest class (vtable 0x00A90634, read), 0x008067F0 and 0x007F13B0 for the next two; Gamebryo's UpdatePipeline, a proposal |
+| slot 13 SetupTransformations | 0.13-0.14 | 0.11 | |
+| slot 10 | 0.06 | 0.05 | |
+| slots 16-19 together | 0.05 | | |
+| the render state's two calls | 0.02 | | |
+| not named (the logic, the timers) | about 0.15 | | derived |
+
+What that settles: the device's draw is cheap here (0.19 us a call), so one draw for both eyes is worth at most
+0.25 ms at this place; the eye switch is 0.4 ms; and no single step holds the draw - six steps of 0.3-0.6 ms each.
+Slots 11 and 12 (about 1 ms together) had no timer before. The draw side scales with the number of shapes at about
+2.6 us each, so fewer shapes (the culler, instancing) reach every step at once, while a faster single step reaches
+0.3-0.6 ms at best. Not measured: how often slot 12 sets a pass the device already holds from the shape before.
+Linux and DXVK only.
