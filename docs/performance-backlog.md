@@ -1328,3 +1328,14 @@ rule; 74.6 frames a second, the harness's 75 Hz cap): the main thread used 0.78 
 standing / turning / standing - 10.5 / 9.8 / 10.7 ms a frame against the 11.1 ms of 90 Hz. Unverified: whether a
 part of that is a spin-wait (OBVR's frame clock, a driver) rather than work; on Windows nothing of this is
 measured.
+
+### The main thread's 10.5 ms are work, not a spin (derived 2026-11-12, no further run)
+
+OBVR's capture of the same warm run (`.../20261112-140513/OBVR-performance-1-2-report/report.md`) has the frame's
+waits: `poses_wait` (WaitGetPoses) 2.50 ms mean, `present` 1.01 ms, `pacing_vsync` 3.09 ms - the last is not a
+wait but an interval OBVR marks from the poses to the predicted vsync (read in OBVR's src/render/
+HeadsetRenderer.cpp, the Mark call with posesTick and m_vsyncTick). At 74.6 frames a second the frame is 13.4 ms;
+the main thread was off the CPU 2.7-3.6 ms of it (the sampler: 0.73-0.80 s of CPU a second), which is the poses
+wait and a part of the present - so the waits block, they do not spin, and the 9.8-10.7 ms a frame are the
+game's, OBNG's and OBVR's work. At the docks on Linux that leaves 0.4-1.3 ms to 11.1 ms. Also in the capture:
+`present` p99 12.6 ms and `scene_pass` max 50 ms - single long frames, not looked at.
