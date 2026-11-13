@@ -1,4 +1,4 @@
-# Written by tools/make-newgame-bars.py (skip-intro 1, back 0.0 s, forward 0.1 s, 4 rounds) - do not edit by hand.
+# Written by tools/make-newgame-bars.py (skip-intro 1, back 0.0 s, forward 0.1 s, 6 rounds) - do not edit by hand.
 # Run with the Windows mod list:
 #   python3 tools/run-with-windows-mods.py -- tools/shadow-run.sh --ini <an OBNG INI> <this file> \
 #     --save continue --run-timeout 480
@@ -15,8 +15,8 @@ expect Single-pass stereo: OBNG took the eyes ok (0)
 # world (OBVR's newgame run of 2026-11-11 15:32 stood in one): closed from the console in the
 # prison and every twenty seconds after. The state line at each mark says whether a menu is up.
 console-at prison CloseAllMenus
-console-at prison player.setpos x 402.0
-console-at prison player.setpos y -97.8
+console-at prison player.setpos x 379.7
+console-at prison player.setpos y -103.3
 console-at prison player.setpos z -30.0
 console-at at-door setstage charactergen 6
 console-at w010 CloseAllMenus
@@ -32,6 +32,8 @@ console-at r0-s0 CloseAllMenus
 console-at r1-s0 CloseAllMenus
 console-at r2-s0 CloseAllMenus
 console-at r3-s0 CloseAllMenus
+console-at r4-s0 CloseAllMenus
+console-at r5-s0 CloseAllMenus
 # The scene begins once the movement tutorial is done - the player moved and turned - which sets
 # stage 6 of the quest CharacterGen: Valen Dreth talks, his line sets stage 9 (the guards come)
 # (OBVR's newgame fork, read from the stage's SCTX in Oblivion.esm, 2026-11-11). Set from the console.
@@ -241,6 +243,8 @@ wait 0.5
 wait 9.5
 mark w090
 wait 0.5
+head yaw 180
+wait 0.5
 head pos 0.0 1.6 0.0
 wait 0.4
 mark r0-s0
@@ -281,6 +285,8 @@ head pos 0.02 1.6 0.0
 wait 0.4
 mark r0-s9
 wait 0.6
+head yaw 160
+wait 0.5
 head pos 0.0 1.6 0.0
 wait 0.4
 mark r1-s0
@@ -321,6 +327,8 @@ head pos 0.02 1.6 0.0
 wait 0.4
 mark r1-s9
 wait 0.6
+head yaw 140
+wait 0.5
 head pos 0.0 1.6 0.0
 wait 0.4
 mark r2-s0
@@ -361,6 +369,8 @@ head pos 0.02 1.6 0.0
 wait 0.4
 mark r2-s9
 wait 0.6
+head yaw 180
+wait 0.5
 head pos 0.0 1.6 0.0
 wait 0.4
 mark r3-s0
@@ -400,5 +410,89 @@ wait 0.6
 head pos 0.02 1.6 0.0
 wait 0.4
 mark r3-s9
+wait 0.6
+head yaw 160
+wait 0.5
+head pos 0.0 1.6 0.0
+wait 0.4
+mark r4-s0
+wait 0.6
+head pos 0.04 1.6 0.0
+wait 0.4
+mark r4-s1
+wait 0.6
+head pos 0.08 1.6 0.0
+wait 0.4
+mark r4-s2
+wait 0.6
+head pos 0.04 1.6 -0.05
+wait 0.4
+mark r4-s3
+wait 0.6
+head pos 0.0 1.6 -0.1
+wait 0.4
+mark r4-s4
+wait 0.6
+head pos -0.04 1.6 -0.05
+wait 0.4
+mark r4-s5
+wait 0.6
+head pos -0.08 1.6 0.0
+wait 0.4
+mark r4-s6
+wait 0.6
+head pos -0.04 1.58 0.0
+wait 0.4
+mark r4-s7
+wait 0.6
+head pos 0.0 1.56 0.0
+wait 0.4
+mark r4-s8
+wait 0.6
+head pos 0.02 1.6 0.0
+wait 0.4
+mark r4-s9
+wait 0.6
+head yaw 140
+wait 0.5
+head pos 0.0 1.6 0.0
+wait 0.4
+mark r5-s0
+wait 0.6
+head pos 0.04 1.6 0.0
+wait 0.4
+mark r5-s1
+wait 0.6
+head pos 0.08 1.6 0.0
+wait 0.4
+mark r5-s2
+wait 0.6
+head pos 0.04 1.6 -0.05
+wait 0.4
+mark r5-s3
+wait 0.6
+head pos 0.0 1.6 -0.1
+wait 0.4
+mark r5-s4
+wait 0.6
+head pos -0.04 1.6 -0.05
+wait 0.4
+mark r5-s5
+wait 0.6
+head pos -0.08 1.6 0.0
+wait 0.4
+mark r5-s6
+wait 0.6
+head pos -0.04 1.58 0.0
+wait 0.4
+mark r5-s7
+wait 0.6
+head pos 0.0 1.56 0.0
+wait 0.4
+mark r5-s8
+wait 0.6
+head pos 0.02 1.6 0.0
+wait 0.4
+mark r5-s9
 wait 0.6
 mark done

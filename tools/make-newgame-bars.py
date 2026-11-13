@@ -37,6 +37,7 @@ def main() -> int:
     p.add_argument("--back", type=float, default=0.0)
     p.add_argument("--forward", type=float, default=0.1)
     p.add_argument("--rounds", type=int, default=6)
+    p.add_argument("--yaws", default="180", help="the head's yaw of each sway round in turn, comma separated (180 faces the door)")
     p.add_argument("--guards", type=float, default=0.0,
                    help="seconds to wait at the door for the Emperor and the Blades before the sway (a mark every ten seconds)")
     p.add_argument("--inside", type=float, default=-1.0,
@@ -78,7 +79,9 @@ def main() -> int:
         waited += 10
         out += ["wait 9.5", f"mark w{waited:03d}", "wait 0.5"]
         consoles.append(f"console-at w{waited:03d} CloseAllMenus")
+    yaws = [float(y) for y in a.yaws.split(",")]
     for r in range(a.rounds):
+        out += [f"head yaw {yaws[r % len(yaws)]:g}", "wait 0.5"]
         for k, (x, y, z) in enumerate(SWAY):
             name = f"r{r}-s{k}"
             out += [f"head pos {x} {y} {z}", "wait 0.4", f"mark {name}", "wait 0.6"]
