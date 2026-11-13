@@ -12,6 +12,7 @@ blue floor and missing body parts behind the bars only).
 
 --skip-intro 1 (the default) presses Escape four seconds into the intro movie instead of after twenty-five.
 --inside UNITS: the player placed that far inside the cell from its door by the console (exact; the stick is not).
+--guards SECONDS: wait that long at the door before the sway, for the Emperor and the Blades to come and stand there.
 --forward / --back: how long the left stick is held forwards (away from the door) or backwards from where the game
 puts the player, which is at the door.
 """
@@ -36,6 +37,8 @@ def main() -> int:
     p.add_argument("--back", type=float, default=0.0)
     p.add_argument("--forward", type=float, default=0.1)
     p.add_argument("--rounds", type=int, default=6)
+    p.add_argument("--guards", type=float, default=0.0,
+                   help="seconds to wait at the door for the Emperor and the Blades before the sway (a mark every ten seconds)")
     p.add_argument("--inside", type=float, default=-1.0,
                    help="place the player this many units inside the cell from its door with player.setpos (the stick is then not used)")
     a = p.parse_args()
@@ -67,6 +70,14 @@ def main() -> int:
         out += ["left stick 0 1", f"wait {a.forward}", "left stick 0 0", "wait 1"]
     out += ["wait 2", "mark at-door", "head yaw 180", "wait 1", "mark bars-before"]
     consoles = place + ["console-at at-door setstage charactergen 6"]
+    # The Emperor and the Blades come down the hall once Valen Dreth has spoken (stage 9 of CharacterGen; in the
+    # run of 2026-11-11 they stood at the door sixty seconds after stage 6) and wait there: the pictures from then
+    # on show four actors in armour through the bars.
+    waited = 0
+    while waited < a.guards:
+        waited += 10
+        out += ["wait 9.5", f"mark w{waited:03d}", "wait 0.5"]
+        consoles.append(f"console-at w{waited:03d} CloseAllMenus")
     for r in range(a.rounds):
         for k, (x, y, z) in enumerate(SWAY):
             name = f"r{r}-s{k}"
