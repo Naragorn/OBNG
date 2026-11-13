@@ -167,6 +167,21 @@ constexpr std::uint32_t FreshAnimData(const Entry& entry, std::uint32_t frame) {
 	return entry.hasRootMotion && frame - entry.rootFrame <= 1 ? entry.animData : 0;
 }
 
+// Where the summed step may be written: the noted animation data when the
+// note is fresh and the actor's own animation data (its virtual +0x164, asked
+// at the write) is still that object; else 0. The note alone is a pointer of
+// a frame ago - the object can be freed or replaced since.
+constexpr std::uint32_t RootMotionTarget(const Entry& entry, std::uint32_t frame, std::uint32_t liveAnimData) {
+	const std::uint32_t noted = FreshAnimData(entry, frame);
+	return noted != 0 && noted == liveAnimData ? noted : 0;
+}
+
+// A fresh note whose animation data is not the actor's any more (counted).
+constexpr bool RootMotionStale(const Entry& entry, std::uint32_t frame, std::uint32_t liveAnimData) {
+	const std::uint32_t noted = FreshAnimData(entry, frame);
+	return noted != 0 && noted != liveAnimData;
+}
+
 // The summed step for an update that runs with summed time; the sum is gone
 // after it either way. False (out untouched) when nothing was noted or the
 // actor's animation data is not the one the steps came from.

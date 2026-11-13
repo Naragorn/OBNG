@@ -293,6 +293,19 @@ int main() {
 	Check(FreshAnimData(fr, 12) == 0, "older: none");
 	Check(!TakeRootMotion(fr, FreshAnimData(fr, 12), sum), "so a stale sum is not taken");
 
+	Section("Root motion: written only into the animation data the actor has now");
+	Entry lv;
+	lv.actor = 0x1000;
+	Check(RootMotionTarget(lv, 10, 0x5000) == 0, "nothing noted: no target");
+	AddRootMotion(lv, 0x5000, step1, 10);
+	Check(RootMotionTarget(lv, 11, 0x5000) == 0x5000, "fresh and the actor's own: it");
+	Check(RootMotionTarget(lv, 11, 0x6000) == 0, "the actor has other animation data now (the noted one may be freed): no target");
+	Check(RootMotionTarget(lv, 11, 0) == 0, "the actor has none now: no target");
+	Check(RootMotionTarget(lv, 12, 0x5000) == 0, "the note is older than a frame: no target");
+	Check(RootMotionStale(lv, 11, 0x6000) && RootMotionStale(lv, 11, 0), "a fresh note of other data than the actor's counts as stale");
+	Check(!RootMotionStale(lv, 11, 0x5000) && !RootMotionStale(lv, 12, 0x6000), "the actor's own, or no fresh note: not stale");
+	Check(!TakeRootMotion(lv, RootMotionTarget(lv, 11, 0x6000), sum), "so nothing is taken for data that is not the actor's");
+
 	Section("A far actor's rate: the full rate in combat");
 	Check(FarEvery(true, false, true, 16) == 16, "far, not in combat, on: every 16th");
 	Check(FarEvery(true, true, true, 16) == 1, "far and in combat: every call (Windows crash 2026-11-12 in a fight's follow logic; a fighting actor must not skip updates)");

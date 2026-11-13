@@ -129,6 +129,8 @@ void __fastcall Controller(void* self, void*, float* step) {
 constexpr UInt32 kAnimUpdate = 0x00476D10;
 constexpr UInt8 kAnimUpdateBytes[] = {0x55, 0x8B, 0xEC, 0x83, 0xE4, 0xF8};  // push ebp; mov ebp, esp; and esp, -8 (read)
 using AnimUpdateFn = void(__thiscall*)(void* self, UInt32 actor, float step, float time);
+using AnimDataFn = UInt32(__thiscall*)(void* self);
+constexpr UInt32 kActorAnimDataSlot = 0x164;  // the actor's animation data (read 0x00603CA0: [vtable+0x164]() beside the node's +0x154)
 void* g_animOriginal = nullptr;
 volatile LONG64 g_animCalls[3] = {};   // 0, 1 as the controller's kinds; 2: a far actor's, outside its update
 volatile LONG64 g_animMicros[3] = {};
@@ -144,6 +146,7 @@ far_update::Table g_table;
 bool g_rootMotion = true;              // [Route] ActorFarRootMotion: the animation's steps summed for the update that runs
 volatile LONG64 g_rootTaken = 0;       // updates run with summed time that got the summed step
 volatile LONG64 g_rootMissing = 0;     // ... that had none to get
+volatile LONG64 g_rootStale = 0;       // ... whose noted animation data was not the actor's any more (nothing written)
 constexpr UInt32 kAnimRootMotion = 0x0C;  // the animation data's step of its last update, three floats (read 0x00476D10, 0x004723A0)
 
 void __fastcall AnimUpdate(void* self, void*, UInt32 actor, float step, float time) {
@@ -362,7 +365,13 @@ void __fastcall Update(void* self, void*, float time) {
 	}
 	InterlockedIncrement64(&g_summed);
 	// The way to go: the animation's steps of the frames this update stands for.
-	const UInt32 animData = far_update::FreshAnimData(entry, g_clock.frame);
+	// Written only into the animation data the actor has now (its virtual +0x164, read 0x00603CA0): the noted
+	// pointer is a frame old and its object can be freed or replaced since.
+	const UInt32 live = reinterpret_cast<AnimDataFn>(Dword(Dword(actor) + kActorAnimDataSlot))(reinterpret_cast<void*>(actor));
+	if (far_update::RootMotionStale(entry, g_clock.frame, live)) {
+		InterlockedIncrement64(&g_rootStale);
+	}
+	const UInt32 animData = far_update::RootMotionTarget(entry, g_clock.frame, live);
 	float way[3];
 	if (far_update::TakeRootMotion(entry, animData, way)) {
 		std::memcpy(reinterpret_cast<void*>(animData + kAnimRootMotion), way, sizeof(way));
@@ -463,7 +472,10 @@ void LogActorFarUpdateSummary() {
 	{
 		const LONG64 taken = InterlockedExchange64(&g_rootTaken, 0);
 		const LONG64 missing = InterlockedExchange64(&g_rootMissing, 0);
-		g_log("Route: far actors' way - %lld updates run with summed time got the animation's summed step, %lld had none", taken, missing);
+		const LONG64 stale = InterlockedExchange64(&g_rootStale, 0);
+		g_log("Route: far actors' way - %lld updates run with summed time got the animation's summed step, %lld had none, %lld of them because the noted "
+		      "animation data was not the actor's any more",
+		      taken, missing, stale);
 	}
 	if (g_viewRule.on) {
 		const bool viewWasOn = g_viewOnNow != 0;

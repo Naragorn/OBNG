@@ -1,0 +1,87 @@
+# The stress flight for the crashes of obng-profile-ride-anvil.txt (two in five runs with OBNG's routes, both on a
+# background thread with memory written by someone else; docs/performance-backlog.md, 2026-11-13): the same level
+# flight without collision from the cell -33 -4, but six legs of forty seconds, west and east in turn, so that the
+# cells load and unload for four minutes and the player never comes to x = -166 900, where the game stood paused
+# in three of eight runs. A turn is a console line at a mark (it takes the sticks for about eight seconds).
+# Run with the Windows mod list, the routes by the INI:
+#   python3 tools/run-with-windows-mods.py -- tools/shadow-run.sh \
+#     --ini tools/hand-scripts/obng-measure-ride.ini \
+#     tools/hand-scripts/obng-stress-ride.txt --save OBVRHarnessMOO --run-timeout 600
+ini Render SinglePassStereo=1
+ini SelfCheck ShowPanel=0
+ini Render GameResolutionWidth=4036
+ini Render GameResolutionHeight=3376
+expect Single-pass stereo: OBNG took the eyes ok (0)
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Hands BodyCollision=1
+ini Hands PhysicsRate=0
+ini Performance Enabled=1
+ini Performance GpuTiming=1
+ini Performance StartAfterSeconds=45
+ini Performance CaptureSeconds=130
+ini Performance MaxRecords=262144
+ini Performance Sampler=1
+console-at ready cow Tamriel -33 -4
+console-at ready set gamehour to 12
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at placed CloseAllMenus
+console-at placed player.setangle z 258
+console-at placed tcl
+console-at placed player.setav speed 200
+console-at turn-1 player.setangle z 78
+console-at turn-2 player.setangle z 258
+console-at turn-3 player.setangle z 78
+console-at turn-4 player.setangle z 258
+console-at turn-5 player.setangle z 78
+expect HandScript: finished
+expect Performance: capture armed, it starts in 45 seconds
+expect Performance: capture 1 started
+expect Performance: export
+reject Performance: export partial
+reject menu Container
+reject HandScript: WARNING
+reject CRASH:
+
+wait 12
+mark ready
+wait 16
+mark placed
+wait 12
+head yaw 0
+mark leg-1
+left stick 0 1
+wait 40
+left stick 0 0
+mark turn-1
+wait 10
+mark leg-2
+left stick 0 1
+wait 40
+left stick 0 0
+mark turn-2
+wait 10
+mark leg-3
+left stick 0 1
+wait 40
+left stick 0 0
+mark turn-3
+wait 10
+mark leg-4
+left stick 0 1
+wait 40
+left stick 0 0
+mark turn-4
+wait 10
+mark leg-5
+left stick 0 1
+wait 40
+left stick 0 0
+mark turn-5
+wait 10
+mark leg-6
+left stick 0 1
+wait 40
+left stick 0 0
+mark done
+wait 3
