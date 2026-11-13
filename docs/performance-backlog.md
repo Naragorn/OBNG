@@ -1832,3 +1832,31 @@ over 20 ms to call chains. Runs obng-profile-ride-anvil/20261113-142230, -142737
 Derived: the Windows session's hitches of 15-28 ms inside the process manager are reproduced on Linux by the probe
 but not explained by the sampler. Owed: a probe that names, for a process manager call over 3 ms, the actor and the
 step that took the time.
+
+### The same ride with Oblivion Walkers' replacement off (measured 2026-11-13, runs -144403 and -144605)
+
+Nadi's question: do the hitches come from Oblivion Walkers or its log? The three runs above had `[Replace] Enabled=1`,
+MaxCount 10 (read in the runs' Walkers logs; the 0 first read in the Linux INI was the Walkers session's own test
+value). Two more runs with `[Replace] Enabled=0` (`OBNG_GAME_INI=<OblivionWalkers.ini> tools/with-game-ini.sh
+Replace:Enabled=0 -- ...`, the file back byte for byte, md5 checked):
+
+| run | replacement | frames over 20 ms | process manager: calls over 3 ms / longest | end |
+|---|---|---:|---:|---|
+| 142230 | on | 37 (1 722 ms) | 26 / 64.6 ms | passed |
+| 142737 | on | - | 155 / 17.3 ms | crash, 0x0055E020 on thread 584 |
+| 143121 | on | 42 (1 340 ms) | 57 / 56.7 ms | passed |
+| 144403 | off | - | 125 / 155.4 ms | crash, 0x004025D2 on thread 588 |
+| 144605 | off | 58 (2 688 ms) | 86 / 18.0 ms | passed |
+
+- **The replacement does not make the hitches** (derived from five runs with a wide spread): they are no fewer with
+  it off. OblivionWalkers.dll is on the eip or the twelve stack words of at most 0.7 % of the long frames' samples
+  (`tools/re/long-frame-modules.py`, new).
+- **The log**: Walkers' build of the Windows session of 2026-11-12 opened, wrote and closed its log file for every
+  line (the Walkers session, its commit 3d73866 of 2026-11-13 ends that; its own measurement: spikes of up to 6.7 ms).
+  That session's Walkers log has 6 392 lines in 16 minutes, 900 of them in the last stretch at Anvil. Whether that was
+  felt on Windows is not measured; it is gone from the build deployed there on 2026-11-13.
+- **Two crashes in five runs, both off the render thread and of different kinds**: the second an access violation
+  writing 0x5FA80825 at 0x004025D2 (inside the heap's small-block pool 0x00402480) on thread 588, 40 s into the flight.
+  A corrupted map node in the first and a corrupted free list in the second (derived: memory written by someone else,
+  or a race of the background loader). Not known: whether the original game does this on such a flight, or one of
+  OBNG's routes, or another plugin. Owed first: the same flight with OBNG's routes off.
