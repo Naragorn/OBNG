@@ -1887,3 +1887,28 @@ Walkers' replacement on as in the first three runs.
 
 Owed: a flight that turns back before x = -166 000 and lasts four minutes, three runs with the routes off and then
 the routes switched on by halves; beside it a read of every route for engine pointers kept across a cell's unloading.
+
+### The crashes do not need OBNG's routes (measured 2026-11-13, 24 runs of the flight to Anvil)
+
+`tools/hand-scripts/obng-stress-ride.txt` with `tools/stress-ride.sh` (150 s west in god mode - without it the
+tutorial's "Your Fatigue is low" box pauses the game after a minute, which is what stopped three of the first eight
+runs at x = -166 900 - then 60 s back), the Windows mod list, the Dream Air's frame size. A run counts as ended when
+the game is gone before the script's end, with a crash record or without.
+
+| routes | runs | ended early | where |
+|---|---:|---:|---|
+| as played, the DLL of 13:20 (first version of the flight: forty-second legs between x = -135 000 and -149 800) | 3 | 0 | - |
+| as played, the DLL of 13:20 | 1 | 1 | kernel32's InterlockedDecrement on 0xFFFFFFFE+4, from ~BSShaderPPLightingProperty 0x007D7490 (its third texture array's first entry) |
+| as played, the DLL with the far actors' animation data fix (304c4a2) | 3 | 1 | 0x004025D2 (the heap's small-block pool) |
+| as played but the actor shadows' rest off | 6 | 4 | 0x0043E2B8, 0x00560944, 0x00517449, one without a record |
+| every route off but the stereo draw (obng-measure-ride-plain.ini) | 6 | 4 | 0x006FF9F0, three times 0x004025D2 |
+
+- **With OBNG's routes off the game ends as often** (4 of 6) and in the same place (the heap's pool at 0x004025D2,
+  a free-list link two below an aligned address in several of the records - a count taken down twice in a freed
+  block, derived). The three clean runs without the routes on the first ride were chance on a shorter flight. The
+  stereo draw, the probes and OBNG.dll itself were in every run; so were OBVR, Oblivion Walkers and the Windows mod
+  list.
+- The far actors' fix (304c4a2) stays: the stale case it closes was counted 0 times in three runs.
+- Not known: whether the original game alone ends on such a flight (fast travel across cells with the background
+  loader), or a plugin or mod does it. The next cut is not OBNG's alone: the flight without OBNG.dll (OBVR's dual
+  pass or flat), without Oblivion Walkers, with the Linux mod list.
