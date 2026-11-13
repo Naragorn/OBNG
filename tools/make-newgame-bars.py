@@ -11,6 +11,7 @@ blue floor and missing body parts behind the bars only).
   tools/make-newgame-bars.py [--skip-intro 0|1] [--back SECONDS] [--rounds N] > script.txt
 
 --skip-intro 1 (the default) presses Escape four seconds into the intro movie instead of after twenty-five.
+--inside UNITS: the player placed that far inside the cell from its door by the console (exact; the stick is not).
 --forward / --back: how long the left stick is held forwards (away from the door) or backwards from where the game
 puts the player, which is at the door.
 """
@@ -35,6 +36,8 @@ def main() -> int:
     p.add_argument("--back", type=float, default=0.0)
     p.add_argument("--forward", type=float, default=0.1)
     p.add_argument("--rounds", type=int, default=6)
+    p.add_argument("--inside", type=float, default=-1.0,
+                   help="place the player this many units inside the cell from its door with player.setpos (the stick is then not used)")
     a = p.parse_args()
     base = (Path(__file__).parent / "hand-scripts" / "obng-cull-newgame-bars.txt").read_text().splitlines()
     start = next(i for i, l in enumerate(base) if l.startswith("start main-menu"))
@@ -48,12 +51,22 @@ def main() -> int:
     out += way
     # The game puts the player at the cell's door (358 -109, measured 2026-11-13: three seconds backwards move three
     # units); with the head turned to the bars the eyes stand in them. So a step forward, away from the door, first.
+    # The door's spot and the way into the cell (measured 2026-11-13: the player at the door 358.3 -108.6 -38.7,
+    # deep in the cell 567.9 -53.6 -108.0; the heading 76.2 degrees looks into the cell). Placed a little above the
+    # door's floor: the cell's floor falls away behind the door and the player drops onto it.
+    if a.inside >= 0:
+        dx, dy = 0.971, 0.239
+        x, y, z = 358.3 + a.inside * dx, -108.6 + a.inside * dy, -30.0
+        a.back = a.forward = 0
+        place = [f"console-at prison player.setpos x {x:.1f}", f"console-at prison player.setpos y {y:.1f}", f"console-at prison player.setpos z {z:.1f}"]
+    else:
+        place = []
     if a.back > 0:
         out += ["left stick 0 -1", f"wait {a.back}", "left stick 0 0", "wait 1"]
     if a.forward > 0:
         out += ["left stick 0 1", f"wait {a.forward}", "left stick 0 0", "wait 1"]
-    out += ["mark at-door", "head yaw 180", "wait 1", "mark bars-before"]
-    consoles = ["console-at at-door setstage charactergen 6"]
+    out += ["wait 2", "mark at-door", "head yaw 180", "wait 1", "mark bars-before"]
+    consoles = place + ["console-at at-door setstage charactergen 6"]
     for r in range(a.rounds):
         for k, (x, y, z) in enumerate(SWAY):
             name = f"r{r}-s{k}"

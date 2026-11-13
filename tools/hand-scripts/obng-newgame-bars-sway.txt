@@ -15,6 +15,9 @@ expect Single-pass stereo: OBNG took the eyes ok (0)
 # world (OBVR's newgame run of 2026-11-11 15:32 stood in one): closed from the console in the
 # prison and every twenty seconds after. The state line at each mark says whether a menu is up.
 console-at prison CloseAllMenus
+console-at prison player.setpos x 402.0
+console-at prison player.setpos y -97.8
+console-at prison player.setpos z -30.0
 console-at at-door setstage charactergen 6
 console-at r0-s0 CloseAllMenus
 console-at r1-s0 CloseAllMenus
@@ -197,10 +200,7 @@ wait 4
 # In the prison.
 wait 2
 mark prison
-left stick 0 1
-wait 0.1
-left stick 0 0
-wait 1
+wait 2
 mark at-door
 head yaw 180
 wait 1
