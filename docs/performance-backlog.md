@@ -1998,3 +1998,24 @@ cost another time there). The timers inflate every timed call; the spikes' share
 
 Also in these four runs: two more ended by the heap fault (0x004025D2; -203927, -204509) - with OBVR's and Oblivion
 Walkers' builds of the evening, so neither deploy ended the crashes; the nineteen clean runs before were not a fix.
+
+## 2026-11-13: the voice lines' decode off the main thread (`[Route] VoiceDecode`, built, on by default; classes B and C) - not yet run
+
+Measured before (Linux, runs obng-stress-ride/20261113-205845 and -210328, `[Probe] VoiceLines`): 75 calls of the
+voice player 0x006A9E00 over 1 ms in two flights, 420 ms together; median 3.9 ms, mean 5.6, the longest 27.8 - all
+the game's own voices (oblivion.esm 72, knights.esp 3), greetings and idle conversations for the most part, the time
+with the line's length. Read: the function decodes the line's whole MP3 into its DirectSound buffer before it returns
+(knowledge/voice-lines.md).
+
+Built (plugin/src/VoiceDecode.cpp, src/engine/sound/VoiceDecodeLogic.h and Mp3Frames.h, third_party/minimp3): the
+same buffer and returned duration, the line's first 150 ms decoded at the call, the rest on one worker thread into
+the playing buffer; mode 1 with the game's decoder (class B), mode 2 with minimp3 (class C), mode 2 the default
+(Nadi: "Wir bauen A und B mit default erstmal B"). The sound's destructor is hooked to take the worker off a dying
+buffer. Unit tests: the path, the buffer's size and flags, the duration, the lead, the slots, the summary, minimp3's
+frames on a tone in the voice files' format.
+
+**After: not measured.** Nadi asked for no further harness runs and tests on Windows; the DLL there has the route
+on. The numbers owed: the call's time a line from the route's summary line ("the call N ms a line (longest N)"),
+against the 5.6 ms mean and 27.8 ms longest above; the expected call is the file's read, the buffer's creation and
+six frames - under a millisecond (derived, not measured). Open: DirectSound from a second thread, the line's start
+against the lips, mode 2's samples against the game's (`VoiceDecodeCheck=1`).
