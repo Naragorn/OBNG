@@ -1794,3 +1794,41 @@ Sources: `OBNG-logs/OBNG-2026-11-12_22-48-35.log` (84 ten-second windows), `OBVR
 Derived: on the target system the draw path is not the first item - the hitches of the actors' loop and the half rate
 they set off are, then the actors' steady load in a crowd. Owed: a capture or [Timed] lines from the slow places on
 Windows (OBVR's capture ends after two minutes of a session; a later start or a larger record count would cover them).
+
+## 2026-11-13: A - the ride towards Anvil on Linux, the long frames by call chain (measured, three runs)
+
+`tools/hand-scripts/obng-profile-ride-anvil.txt` with `obng-measure-ride.ini` (the routes as played, the process
+manager probe, no [Timed] lines), the Windows mod list, the Dream Air's frame size, the Beyond at 75 Hz: the player
+flies level without collision (tcl, z 11 100) from the cell -33 -4 on the heading 258 degrees at 350-550 units a second,
+32 000-40 000 units in all. `tools/re/long-frame-chains.py` (new) resolves the render sampler's samples of the frames
+over 20 ms to call chains. Runs obng-profile-ride-anvil/20261113-142230, -142737 (crashed, no capture), -143121.
+
+| | run 142230 (the first of the day) | run 143121 |
+|---|---:|---:|
+| frames over 20 ms in the capture's 130 s | 37 (six over 60 ms, the longest 184) | 42 |
+| their time | 1 722 ms | 1 340 ms |
+| samples: the main thread waiting in the task manager's lock 0x004322B0 | 23 % | 4 % |
+| - through the texture load 0x00442890 < 0x0052D2C0 | 126 | 46 |
+| - through the model loader's lookups 0x00439FF0 / 0x00439EB0 (under 0x00475D80, 0x004E3490, 0x0041A610) | 201 | 0 |
+| samples under Havok's 0x008E4590 (the broad phase, knowledge/cell-change-hitches.md) | 9 % | 11 % |
+| samples under the draw (0x0070AB40, 0x007AD270, 0x0077A1B0, 0x007693E0) | 12 % | 13 % |
+| samples under the grid's move 0x00444FB0 (the heap's free 0x004021A3 first) | 5 % | 6 % |
+| samples with the process manager on the eight stack words | 1 % | 3 % |
+
+- **The lock** (read, re/export/rea-all/functions/0x4322b0.c): 0x004322B0 raises the manager's pause count and waits
+  for every IO worker's event - the main thread stands until the worker's running task (a NIF parse, a texture) is
+  done. It is taken whenever the main thread's lookup misses the model cache or loads a texture itself
+  (knowledge/background-loading.md). The share falls from 23 % to 4 % between the day's first run and the third
+  (derived: the page cache - the worker's tasks are shorter when the files are in memory; unverified).
+- **The process manager's own long calls** are in the probe's lines (the longest 16.4, 64.6, 56.7, 18.1, 17.3 ms; 3-14
+  calls over 3 ms a window on the ride, up to 67 in run 142737) but not in the chains: eight stack words do not reach
+  0x00678510 from a leaf. What they do is not attributed.
+- **Not one cause.** No chain holds more than 9 % of the long frames' samples apart from the lock in the cold run.
+- **A crash, one run of three** (142737, at -167 400 -19 500, after 95 s of flight): an access violation reading
+  0x00000005 at 0x0055E020 (NiTPointerMap's lookup 0x0055E000 walking a bucket with the node 0x00000001) called from
+  0x004637C0 ("TESSaveLoadGame::LoadForm"), the form 0x000629CF in ebx and ecx, on thread 584 - not the render thread
+  404. Cause not known; whether it needs OBNG's routes is not tested.
+
+Derived: the Windows session's hitches of 15-28 ms inside the process manager are reproduced on Linux by the probe
+but not explained by the sampler. Owed: a probe that names, for a process manager call over 3 ms, the actor and the
+step that took the time.

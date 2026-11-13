@@ -1,0 +1,63 @@
+# The ride from below Kvatch towards Anvil, for the hitches of the actors' loop (Nadi's Windows session of
+# 2026-11-12: single calls of the process manager 0x00678510 of 15-28 ms on that ride, each followed by
+# SteamVR's half rate; docs/performance-backlog.md). The player flies level without collision (tcl) from the
+# cell -33 -4 at a raised speed on the heading 258 degrees, so that cells and their actors arrive as on a
+# horse and no slope or wall stops the run; what is seen differs from a ride on the road, what loads does not.
+# OBVR's capture with the render sampler covers the flight: tools/re/capture-frames.py --samples 13-60
+# --pass out names the functions of the long frames.
+# Run with the Windows mod list:
+#   python3 tools/run-with-windows-mods.py -- tools/shadow-run.sh \
+#     --ini tools/hand-scripts/obng-measure-ride.ini \
+#     tools/hand-scripts/obng-profile-ride-anvil.txt --save OBVRHarnessMOO --run-timeout 480
+ini Render SinglePassStereo=1
+ini SelfCheck ShowPanel=0
+ini Render GameResolutionWidth=4036
+ini Render GameResolutionHeight=3376
+expect Single-pass stereo: OBNG took the eyes ok (0)
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Hands BodyCollision=1
+ini Hands PhysicsRate=0
+ini Performance Enabled=1
+ini Performance GpuTiming=1
+ini Performance StartAfterSeconds=45
+ini Performance CaptureSeconds=130
+ini Performance MaxRecords=262144
+ini Performance Sampler=1
+console-at ready cow Tamriel -33 -4
+console-at ready set gamehour to 12
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at placed CloseAllMenus
+console-at placed player.setangle z 258
+console-at placed tcl
+console-at placed player.setav speed 200
+expect HandScript: finished
+expect Performance: capture armed, it starts in 45 seconds
+expect Performance: capture 1 started
+expect Performance: export
+reject Performance: export partial
+reject menu Container
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 16
+mark placed
+wait 12
+head yaw 0
+mark ride
+left stick 0 1
+wait 30
+mark ride-30
+left stick 0 1
+wait 30
+mark ride-60
+left stick 0 1
+wait 30
+mark ride-90
+left stick 0 1
+wait 30
+mark ride-120
+left stick 0 0
+mark done
+wait 3
