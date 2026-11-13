@@ -1958,3 +1958,43 @@ Windows list, `OBNG_WITHOUT_PLUGINS="LivingOblivion.esp"` (tools/run-with-window
 - **The ends without a record** (four in all) are at x = -220 000 on the way back in runs that flew fast (570 units a
   second), far west of Anvil over the sea: a different fault, not looked at.
 - The probe for the process manager's long calls is built (`[Timed] SpikeName`, commit 0b7c0b0), not yet run.
+
+## 2026-11-13: the process manager's long calls named - a voice line's MP3 decode, one actor's character controller, a catch-up loop (measured)
+
+The `[Timed]` spike watch (`SpikeName=actors:ProcessManager`, `SpikeMs=8`, `SpikeActor=actors:HighUpdate-0x00605770`;
+plugin/src/TimedCalls.cpp, TimedCallLogic.h; `tools/hand-scripts/obng-measure-ride-spikes.ini`) writes every call of
+0x00678510 over 8 ms with what the 28 timed actor functions did inside it, the reference of the longest high update
+and the call's end on the performance counter; `tools/re/spike-samples.py` reads OBVR's render sampler inside those
+spans, `tools/re/esm-form.py` names the forms. The flight to Anvil with the Windows mod list, four runs
+(obng-stress-ride/20261113-203418, -203927, -204509, -204823): 17, 19, 70 and 21 spikes. Three kinds:
+
+1. **One actor's AI step starts a voice line and the engine decodes the MP3 on the main thread: 7-20 ms.** The high
+   process's slot 4 0x0063A210 holds the spike in one call (e.g. 18.05 of 19.51 ms; its usual cost is 10 us). The
+   samples inside these spikes (195 in 20 spikes of runs -204509 and -204823) lie to three quarters in 0x006B5840,
+   0x006B57E0, 0x006B32F0, 0x006B4820, 0x006B1EA0, 0x006AF750 under 0x006B66A0 < 0x006B3AE0 < 0x006A9E00, and
+   0x006A9E00 is the voice player (read: its strings "CreateSoundBuffer failed while playing voice %s", "MP3 file
+   '%s' is not compatible with current decoder", "MP3 file '%s' not found"). Whose: Oblivion Walkers' camp people
+   (`WalkersCampKit0Person00`.. of `WalkersRefugee00`.., refs xx000A04-xx000A19) in most of them, a dynamic reference
+   of the base 0003DC42 and the Walkers' dungeon runner in others - any actor that speaks does it. About two thirds
+   of the spikes of the three runs without kind 2.
+2. **One actor's character controller 0x00896000 takes 18-28 ms a call, call after call**: 60 of run -204509's 70
+   spikes, 1 273 ms, all by the reference xx010E1F of Better Cities Full.esp - `BANAnvilCargoShipSailor03`, a sailor
+   placed at -190146 -37089 272 on Anvil's cargo ship. The samples inside lie in Havok's 0x008CE690 and 0x008CE770
+   under 0x008CED20 < 0x00935C20 < 0x00935CC0 (a query against a shape; not read). One run of four.
+3. **A catch-up**: one call of UpdateHighProcesses 0x00673C10 with 1 188-2 471 calls of the high update inside it
+   (9-19 ms), the same counts in every run (1 596, 1 188, 2 471, 2 306) - derived: the scenario's console lines (the
+   clock set to noon, the cell change); in play the same would come with waiting, sleeping and fast travel
+   (unverified).
+
+Derived: the hitches of the Windows session's ride (single calls of 15-28 ms) have this shape. Kind 1 is the engine's
+own - a synchronous decode whenever a line starts - and Oblivion Walkers' camps make it frequent; kind 2 is one
+actor in one mod's cell. Not measured: how often each comes in play on the ground, and on Windows (the decoder may
+cost another time there). The timers inflate every timed call; the spikes' shares are what was read.
+
+| lever | class | gain | cost |
+|---|---|---|---|
+| The voice line's MP3 decoded off the main thread (or the decoded lines kept) | C | 7-20 ms a line started, a whole frame's hitch each | medium to large: 0x006A9E00 and the decoder 0x006B3AE0 to read first; the risk is the line's start against the lip sync |
+| The sailor's controller: why a query takes 20 ms (the shape he stands in) | - | 18-28 ms a frame while he is in high process | small to read (0x00896000's query, the ship's collision); the fix may be the mod's data |
+
+Also in these four runs: two more ended by the heap fault (0x004025D2; -203927, -204509) - with OBVR's and Oblivion
+Walkers' builds of the evening, so neither deploy ended the crashes; the nineteen clean runs before were not a fix.
