@@ -166,8 +166,113 @@ void TestThunks() {
 
 }  // namespace
 
+void TestSpikes() {
+	Section("A watched function's long call: what ran inside it");
+	{
+		Calls c;
+		Spike spike;
+		c.Watch(0, 100);
+		Check(!c.TakeSpike(&spike), "nothing yet");
+		// A short call of the watched function: no spike.
+		c.Enter(0, 0x9000, 0xA, kStub, 0);
+		c.Enter(1, 0x8000, 0xB, kStub, 10);
+		c.Exit(0x8004, 30);
+		c.Exit(0x9004, 60);
+		Check(!c.TakeSpike(&spike), "60 ticks against a threshold of 100: none");
+		// A long one: function 1 twice (20 and 150 ticks), function 2 once inside the second.
+		c.Enter(0, 0x9000, 0xA, kStub, 1000);
+		c.Enter(1, 0x8000, 0xB, kStub, 1010);
+		c.Exit(0x8004, 1030);
+		c.Enter(1, 0x8000, 0xB, kStub, 1040);
+		c.Enter(2, 0x7000, 0xC, kStub, 1050);
+		c.Exit(0x7004, 1150);
+		c.Exit(0x8004, 1190);
+		c.Exit(0x9004, 1200);
+		Check(c.TakeSpike(&spike), "200 ticks: a spike");
+		Check(spike.root == 0 && spike.rootTicks == 200, "the watched function and its ticks");
+		Check(spike.of[1].calls == 2 && spike.of[1].ticks == 170 && spike.of[1].longestTicks == 150, "function 1: two calls, 170 ticks, the longest 150");
+		Check(spike.of[2].calls == 1 && spike.of[2].ticks == 100 && spike.of[2].longestTicks == 100, "function 2: one call of 100");
+		Check(spike.of[0].calls == 1 && spike.of[0].ticks == 200, "the watched function itself counts once");
+		Check(spike.of[3].calls == 0 && spike.of[3].ticks == 0, "a function not called inside: nothing");
+		Check(!c.TakeSpike(&spike), "taken once: gone");
+	}
+
+	Section("What ran before the watched call does not count; the longest of two spikes not taken is kept");
+	{
+		Calls c;
+		Spike spike;
+		c.Watch(0, 100);
+		c.Enter(1, 0x8000, 0xB, kStub, 0);
+		c.Exit(0x8004, 500);  // outside the watched function
+		c.Enter(0, 0x9000, 0xA, kStub, 1000);
+		c.Exit(0x9004, 1150);
+		c.Enter(0, 0x9000, 0xA, kStub, 2000);
+		c.Enter(1, 0x8000, 0xB, kStub, 2010);
+		c.Exit(0x8004, 2020);
+		c.Exit(0x9004, 2400);
+		c.Enter(0, 0x9000, 0xA, kStub, 3000);
+		c.Exit(0x9004, 3120);
+		Check(c.SpikesSeen() == 3, "three long calls seen");
+		Check(c.TakeSpike(&spike) && spike.rootTicks == 400 && spike.of[1].calls == 1 && spike.of[1].ticks == 10, "the longest waits, with its own inside counts only");
+	}
+
+	Section("The watched function inside itself, dropped, or not watched at all");
+	{
+		Calls c;
+		Spike spike;
+		c.Watch(0, 100);
+		c.Enter(0, 0x9000, 0xA, kStub, 0);
+		c.Enter(0, 0x8000, 0xB, kStub, 10);  // recursion: the outer call is the watched one
+		c.Exit(0x8004, 160);
+		Check(!c.TakeSpike(&spike), "the inner call's return ends nothing");
+		c.Exit(0x9004, 300);
+		Check(c.TakeSpike(&spike) && spike.rootTicks == 300 && spike.of[0].calls == 2, "the outer call: 300 ticks, the function counted twice");
+		// The watched frame is dropped (an exception passed through): no spike, the next call is watched afresh.
+		c.Enter(0, 0x9000, 0xA, kStub, 1000);
+		c.Enter(1, 0x9800, 0xB, kStub, 2000);  // a call at a higher slot: the frame at 0x9000 is gone
+		c.Exit(0x9804, 2010);
+		Check(!c.TakeSpike(&spike), "a dropped watched call gives no spike");
+		c.Enter(0, 0x9000, 0xA, kStub, 3000);
+		c.Exit(0x9004, 3200);
+		Check(c.TakeSpike(&spike) && spike.rootTicks == 200 && spike.of[1].calls == 0, "and the next one starts clean");
+		Calls plain;
+		plain.Enter(0, 0x9000, 0xA, kStub, 0);
+		plain.Exit(0x9004, 100000);
+		Check(!plain.TakeSpike(&spike) && plain.SpikesSeen() == 0, "nothing watched: never a spike");
+		c.Watch(kFunctionsAtMost, 1);
+		c.Enter(0, 0x9000, 0xA, kStub, 5000);
+		c.Exit(0x9004, 9000);
+		Check(!c.TakeSpike(&spike), "an index out of range watches nothing");
+	}
+
+	Section("The spike's line");
+	{
+		Spike spike;
+		spike.root = 0;
+		spike.rootTicks = 20000;
+		spike.of[0] = {1, 20000, 20000};
+		spike.of[1] = {25, 1500, 200};
+		spike.of[2] = {1, 15000, 15000};
+		spike.of[3] = {4, 40, 20};
+		const char* names[4] = {"actors:ProcessManager", "actors:ApplyAnimData", "actors:HighUpdate", "tiny"};
+		char line[512];
+		FormatSpike(spike, names, 4, 1000.0, 0.05, line, sizeof(line));
+		std::printf("    %s\n", line);
+		const std::string text(line);
+		Check(text.find("Timed spike: actors:ProcessManager 20.000 ms") == 0, "the watched function first");
+		const std::size_t high = text.find("actors:HighUpdate 15.000 ms (1 call, longest 15.000)");
+		const std::size_t anim = text.find("actors:ApplyAnimData 1.500 ms (25 calls, longest 0.200)");
+		Check(high != std::string::npos && anim != std::string::npos && high < anim, "then the functions inside by their time, the largest first");
+		Check(text.find("tiny") == std::string::npos, "one below the least share is left out");
+		char small[40];
+		FormatSpike(spike, names, 4, 1000.0, 0.1, small, sizeof(small));
+		Check(std::strlen(small) < sizeof(small), "a small buffer is not overrun");
+	}
+}
+
 int main() {
 	TestCalls();
+	TestSpikes();
 	TestWindowAndFormat();
 	TestSpec();
 	TestThunks();

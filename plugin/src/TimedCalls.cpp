@@ -4,6 +4,8 @@
 #include <windows.h>
 
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 #include "Memory.h"
 #include "ShadowTimeInfo.h"
@@ -25,6 +27,74 @@ LogFn g_log = nullptr;
 unsigned long long g_lastStamp = 0;
 LARGE_INTEGER g_lastClock{};
 LARGE_INTEGER g_frequency{};
+// The spike watch ([Timed] SpikeName, SpikeMs, SpikeLines): a long call of one listed function, written at once by
+// the timed thread with what the other listed functions did inside it.
+bool g_spikes = false;
+double g_ticksPerMs = 0.0;       // measured once at install
+volatile LONG g_spikeLines = 0;  // lines written in this summary window
+LONG g_spikeLinesAtMost = 20;
+constexpr double kSpikeLeastShare = 0.03;
+
+void WriteSpike(const timed::Spike& spike) {
+	if (InterlockedIncrement(&g_spikeLines) > g_spikeLinesAtMost) {
+		return;
+	}
+	const char* names[timed::kFunctionsAtMost] = {};
+	for (UInt32 i = 0; i < g_count; ++i) {
+		names[i] = g_spec[i].name;
+	}
+	char line[900];
+	timed::FormatSpike(spike, names, g_count, g_ticksPerMs, kSpikeLeastShare, line, sizeof(line));
+	g_log("%s", line);
+}
+
+// The time stamp counter's ticks in a millisecond, over five milliseconds of the performance counter.
+double MeasureTicksPerMs() {
+	LARGE_INTEGER frequency;
+	LARGE_INTEGER from;
+	LARGE_INTEGER now;
+	QueryPerformanceFrequency(&frequency);
+	QueryPerformanceCounter(&from);
+	const unsigned long long stamp = __rdtsc();
+	const LONGLONG span = frequency.QuadPart / 200;
+	do {
+		QueryPerformanceCounter(&now);
+	} while (now.QuadPart - from.QuadPart < span);
+	const double ms = static_cast<double>(now.QuadPart - from.QuadPart) * 1000.0 / static_cast<double>(frequency.QuadPart);
+	return ms > 0.0 ? static_cast<double>(__rdtsc() - stamp) / ms : 0.0;
+}
+
+// [Timed] SpikeName=<a listed function's name> SpikeMs=<its call longer than this> SpikeLines=<at most a window>.
+void InstallSpikeWatch(const char* iniPath, LogFn log) {
+	char name[96] = {};
+	if (GetPrivateProfileStringA("Timed", "SpikeName", "", name, sizeof(name), iniPath) == 0) {
+		return;
+	}
+	UInt32 root = g_count;
+	for (UInt32 i = 0; i < g_count; ++i) {
+		if (std::strcmp(g_spec[i].name, name) == 0) {
+			root = i;
+		}
+	}
+	if (root == g_count) {
+		log("Timed: SpikeName \"%s\" is not a timed function's name; no spike watch", name);
+		return;
+	}
+	char value[32] = {};
+	GetPrivateProfileStringA("Timed", "SpikeMs", "8", value, sizeof(value), iniPath);
+	const double ms = std::strtod(value, nullptr);
+	g_ticksPerMs = MeasureTicksPerMs();
+	if (!(ms > 0.0) || !(g_ticksPerMs > 0.0)) {
+		log("Timed: SpikeMs \"%s\" is not a time above 0 (or the counter could not be measured); no spike watch", value);
+		return;
+	}
+	const UINT lines = GetPrivateProfileIntA("Timed", "SpikeLines", 20, iniPath);
+	g_spikeLinesAtMost = static_cast<LONG>(lines > 1000 ? 1000 : lines);
+	g_calls.Watch(root, static_cast<unsigned long long>(ms * g_ticksPerMs));
+	g_spikes = true;
+	log("Timed: spike watch - a call of %s over %.1f ms is written with what the timed functions did inside it, at most %ld lines a window",
+	    name, ms, g_spikeLinesAtMost);
+}
 
 // The thread's id from its TEB (FS:[0x24]) - no call, nothing clobbered.
 UInt32 ThisThread() { return __readfsdword(0x24); }
@@ -37,6 +107,15 @@ void __cdecl Enter(UInt32 index, UInt32* slot) {
 	if (g_thread != thread) {
 		if (index != 0 || InterlockedCompareExchange(&g_thread, thread, 0) != 0) {
 			return;
+		}
+	}
+	if (g_spikes) {
+		// A spike that ended since the last entry is written here, not in Exit: the line needs floating point, and
+		// at a call the x87 stack is empty and the vector registers are the callee's to use - at a return a float
+		// result lies there. Static: the record is over a kilobyte, and the timed thread alone comes here.
+		static timed::Spike spike;
+		if (g_calls.TakeSpike(&spike)) {
+			WriteSpike(spike);
 		}
 	}
 	if (g_calls.Enter(index, reinterpret_cast<UInt32>(slot), *slot, g_stub, __rdtsc())) {
@@ -130,6 +209,7 @@ UInt32 InstallTimedCalls(const char* iniPath, LogFn log) {
 		++g_count;
 	}
 	log("Timed: %u of %u functions timed at entry and return, on the thread that first calls the first of them", g_count, asked);
+	InstallSpikeWatch(iniPath, log);
 	return g_count;
 }
 
@@ -144,6 +224,12 @@ void LogTimedCallsSummary() {
 	const double ticksPerMs = ms > 0.0 ? static_cast<double>(stamp - g_lastStamp) / ms : 0.0;
 	g_lastClock = clock;
 	g_lastStamp = stamp;
+	if (g_spikes) {
+		const LONG lines = InterlockedExchange(&g_spikeLines, 0);
+		if (lines > g_spikeLinesAtMost) {
+			g_log("Timed: %ld more spikes in this window not written", lines - g_spikeLinesAtMost);
+		}
+	}
 	char line[320];
 	for (UInt32 i = 0; i < g_count; ++i) {
 		// Read while the main thread counts: a torn 64-bit read is caught by

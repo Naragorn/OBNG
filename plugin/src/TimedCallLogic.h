@@ -41,8 +41,44 @@ struct Totals {
 	std::uint64_t refused = 0;  // calls not timed: the frames were full
 };
 
+// A long call of the watched function (Calls::Watch): what the timed
+// functions did inside it - calls, ticks in all (a function inside itself
+// counts twice) and the longest single call.
+struct SpikePart {
+	std::uint64_t calls = 0;
+	std::uint64_t ticks = 0;
+	std::uint64_t longestTicks = 0;
+};
+
+struct Spike {
+	std::size_t root = 0;
+	std::uint64_t rootTicks = 0;
+	SpikePart of[kFunctionsAtMost] = {};
+};
+
 class Calls {
 public:
+	// From now on a call of function `root` (its outermost one) that takes
+	// more than `thresholdTicks` is kept as a spike with what ran inside it;
+	// an index out of range watches nothing.
+	void Watch(std::size_t root, std::uint64_t thresholdTicks) {
+		watch_ = root < kFunctionsAtMost ? root : kFunctionsAtMost;
+		threshold_ = thresholdTicks;
+		open_ = false;
+	}
+
+	// The longest spike since the last one taken; false when there is none.
+	bool TakeSpike(Spike* out) {
+		if (!hasPending_) {
+			return false;
+		}
+		*out = pending_;
+		hasPending_ = false;
+		return true;
+	}
+
+	std::uint64_t SpikesSeen() const { return seen_; }
+
 	// A timed function was entered: `slot` is where its return address lies,
 	// `returnAddress` what lies there, `stub` the exit stub's address. True:
 	// the caller must put the stub's address into the slot. False: the call
@@ -65,6 +101,7 @@ public:
 			const std::uint32_t real = frames_[depth_ - 1].returnAddress;
 			Close(now);
 			frames_[depth_++] = Frame{index, slot, real, now, 0};
+			OpenWatch(index);
 			return false;  // the stub is in the slot already
 		}
 		DropBelow(slot + 1);  // a frame at this slot or below it is gone
@@ -73,6 +110,7 @@ public:
 			return false;
 		}
 		frames_[depth_++] = Frame{index, slot, returnAddress, now, 0};
+		OpenWatch(index);
 		return true;
 	}
 
@@ -126,6 +164,49 @@ private:
 		if (depth_ > 0) {
 			frames_[depth_ - 1].childTicks += inclusive;
 		}
+		if (open_) {
+			NoteInside(frame.index, inclusive);
+		}
+	}
+
+	// The frame just pushed is the watched function's and none of its is
+	// open: what runs from here counts as inside it.
+	void OpenWatch(std::size_t index) {
+		if (open_ || index != watch_) {
+			return;
+		}
+		open_ = true;
+		openAt_ = depth_ - 1;
+		for (SpikePart& part : inside_) {
+			part = SpikePart{};
+		}
+	}
+
+	// A call ended while the watched one is open; when it is the watched
+	// call itself, the watch ends and a long one is kept (the longest waits).
+	void NoteInside(std::size_t index, std::uint64_t inclusive) {
+		SpikePart& part = inside_[index];
+		++part.calls;
+		part.ticks += inclusive;
+		if (inclusive > part.longestTicks) {
+			part.longestTicks = inclusive;
+		}
+		if (depth_ != openAt_) {
+			return;
+		}
+		open_ = false;
+		if (inclusive <= threshold_) {
+			return;
+		}
+		++seen_;
+		if (!hasPending_ || inclusive > pending_.rootTicks) {
+			pending_.root = index;
+			pending_.rootTicks = inclusive;
+			for (std::size_t i = 0; i < kFunctionsAtMost; ++i) {
+				pending_.of[i] = inside_[i];
+			}
+			hasPending_ = true;
+		}
 	}
 
 	void DropBelow(std::uint32_t limit) {
@@ -139,6 +220,9 @@ private:
 	void Drop() {
 		const Frame frame = frames_[--depth_];
 		++totals_[frame.index].dropped;
+		if (open_ && depth_ == openAt_) {
+			open_ = false;  // the watched call is gone without a return
+		}
 		if (depth_ > 0) {
 			frames_[depth_ - 1].childTicks += frame.childTicks;
 		}
@@ -147,7 +231,56 @@ private:
 	Frame frames_[kDepthAtMost] = {};
 	std::size_t depth_ = 0;
 	Totals totals_[kFunctionsAtMost] = {};
+	std::size_t watch_ = kFunctionsAtMost;
+	std::uint64_t threshold_ = 0;
+	bool open_ = false;
+	std::size_t openAt_ = 0;
+	SpikePart inside_[kFunctionsAtMost] = {};
+	Spike pending_;
+	bool hasPending_ = false;
+	std::uint64_t seen_ = 0;
 };
+
+// "Timed spike: <watched> N.NNN ms - <name> N.NNN ms (N calls, longest
+// N.NNN), ..." - the functions inside by their time, the largest first,
+// those under `leastShare` of the watched call's time left out.
+inline int FormatSpike(const Spike& spike, const char* const* names, std::size_t count, double ticksPerMs, double leastShare, char* out,
+                       std::size_t capacity) {
+	if (capacity == 0) {
+		return 0;
+	}
+	out[0] = 0;
+	const double toMs = ticksPerMs > 0.0 ? 1.0 / ticksPerMs : 0.0;
+	std::size_t at = 0;
+	auto add = [&](int written) {
+		if (written > 0) {
+			at = at + static_cast<std::size_t>(written) < capacity ? at + static_cast<std::size_t>(written) : capacity - 1;
+		}
+	};
+	add(std::snprintf(out, capacity, "Timed spike: %s %.3f ms -", spike.root < count ? names[spike.root] : "?",
+	                  static_cast<double>(spike.rootTicks) * toMs));
+	bool used[kFunctionsAtMost] = {};
+	const double least = leastShare * static_cast<double>(spike.rootTicks);
+	for (;;) {
+		std::size_t best = kFunctionsAtMost;
+		for (std::size_t i = 0; i < count && i < kFunctionsAtMost; ++i) {
+			if (i == spike.root || used[i] || spike.of[i].calls == 0 || static_cast<double>(spike.of[i].ticks) < least) {
+				continue;
+			}
+			if (best == kFunctionsAtMost || spike.of[i].ticks > spike.of[best].ticks) {
+				best = i;
+			}
+		}
+		if (best == kFunctionsAtMost || at + 1 >= capacity) {
+			break;
+		}
+		used[best] = true;
+		const SpikePart& part = spike.of[best];
+		add(std::snprintf(out + at, capacity - at, " %s %.3f ms (%llu call%s, longest %.3f),", names[best], static_cast<double>(part.ticks) * toMs,
+		                  static_cast<unsigned long long>(part.calls), part.calls == 1 ? "" : "s", static_cast<double>(part.longestTicks) * toMs));
+	}
+	return static_cast<int>(at);
+}
 
 // The difference of two readings of a function's totals (the summary's
 // window); the longest is the later reading's, which the caller resets by
