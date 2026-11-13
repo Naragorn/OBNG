@@ -1769,3 +1769,28 @@ pass's samples, about 1.5 ms a frame. By function and what can be had:
 Derived: of the 1.5 ms about 0.2 ms can be had with small work; E1's "0.5-0.8 ms" was too high. Put back as small gains
 (Nadi's order: the large items first).
 
+
+## 2026-11-13: the Windows session of 2026-11-12 22:32-22:48 read (Dream Air, 90 Hz, the full mod list; measured from its logs)
+
+Sources: `OBNG-logs/OBNG-2026-11-12_22-48-35.log` (84 ten-second windows), `OBVR-logs/OBVR-2026-11-12_22-48-39.log`,
+`OBVR-performance-1-43/` and `-44/` in the Windows game folder. No run of mine.
+
+- **The captures do not cover the slow places.** 43 is the session before (menus, 174 s); 44 starts 120 s after the
+  start and ends at its record capacity after 122 s - the tutorial dungeon: 94 % of its frames in time, the GPU 2.7 ms
+  before submit (p95 3.7), 22 of 10 619 frames shown more than once. Nothing to gain there.
+- **The eye pass on Windows is half the Linux one.** The driver (cull walk and finish) per eye pass: 4.9-5.6 ms at
+  1 200-1 360 draws a pass with 896-900 passes in 10 s (windows 18-19: 90 frames a second held), 3.0-5.7 ms in the open
+  world of the session's end. Linux, the Market District: 8.7 ms at about 1 500.
+- **Where the frames are lost** (windows of play under 880 passes): about 5 600 frames in all, 3 400 of them in the last
+  17 windows (the ride to Anvil and Anvil). OBVR's log counts 59 episodes of SteamVR's half rate with 3 366 frames
+  shown twice (the longest 507 frames) - derived, not aligned by time: about 60 % of the lost frames are the half rate
+  that follows a dropped frame, not frames that were themselves late.
+- **Two different states at the end.** Windows 70-78 (the open world, 3 000-3 900 objects visited a pass): the process
+  manager 1.2-2.4 ms mean, but single calls of 15-28 ms, 2-61 calls over 3 ms a window - hitches. Windows 79-85
+  (Anvil, 17-50 character controllers a frame): the process manager over 3 ms in 375 of 455, 299 of 299, 335 of 669
+  calls, mean 2.4-5.4 ms, beside a driver of 2.8-5.7 ms - a steady load. What fills the rest of those frames is not in
+  the logs (no [Timed] lines in play, no capture there).
+
+Derived: on the target system the draw path is not the first item - the hitches of the actors' loop and the half rate
+they set off are, then the actors' steady load in a crowd. Owed: a capture or [Timed] lines from the slow places on
+Windows (OBVR's capture ends after two minutes of a session; a later start or a larger record count would cover them).
