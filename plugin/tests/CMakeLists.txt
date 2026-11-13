@@ -143,3 +143,8 @@ add_executable(GpuPassTimerLogicTest GpuPassTimerLogicTest.cpp)
 target_include_directories(GpuPassTimerLogicTest PRIVATE ../src ../../tests)
 target_compile_options(GpuPassTimerLogicTest PRIVATE -Wall -Wextra -Werror)
 add_test(NAME GpuPassTimerLogicTest COMMAND GpuPassTimerLogicTest)
+
+add_executable(VoiceProbeLogicTest VoiceProbeLogicTest.cpp)
+target_include_directories(VoiceProbeLogicTest PRIVATE ../src ../../tests)
+target_compile_options(VoiceProbeLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME VoiceProbeLogicTest COMMAND VoiceProbeLogicTest)

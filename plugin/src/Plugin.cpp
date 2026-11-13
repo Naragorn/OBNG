@@ -25,6 +25,7 @@
 #include "ShadowReceiverFilter.h"
 #include "ActorThreads.h"
 #include "ProcessProbe.h"
+#include "VoiceProbe.h"
 #include "TimedCalls.h"
 #include "FastConstantArrange.h"
 #include "RouteRangeWalk.h"
@@ -340,6 +341,7 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 	char path[MAX_PATH] = {};
 	const bool havePath = ActiveIniPath(path, sizeof(path));
 	if (havePath) {
+		obng::plugin::InstallVoiceProbe(path, &Log);
 		obng::plugin::InstallActorFarUpdate(path, &Log);  // before the census: the route has the entry first
 		obng::plugin::InstallReferenceAnimRate(path, &Log);  // before the [Timed] lines: the route has the entry first
 		obng::plugin::InstallActorShadowRest(path, &Log);   // call sites and two patches inside the actor shadow step, no entry

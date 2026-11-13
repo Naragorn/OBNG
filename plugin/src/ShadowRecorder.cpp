@@ -20,6 +20,7 @@
 #include "ShadowReceiverFilter.h"
 #include "ActorThreads.h"
 #include "ProcessProbe.h"
+#include "VoiceProbe.h"
 #include "TimedCalls.h"
 #include "FastConstantArrange.h"
 #include "RouteStereoDraw.h"
@@ -134,6 +135,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogHeapProbeSummary();
 	LogLockProbeSummary();
 	LogProcessProbeSummary();
+	LogVoiceProbeSummary();
 	LogActorCensusSummary();
 	LogActorFarUpdateSummary();
 	LogReferenceAnimRateSummary();
