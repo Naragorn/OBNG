@@ -1912,3 +1912,24 @@ the game is gone before the script's end, with a crash record or without.
 - Not known: whether the original game alone ends on such a flight (fast travel across cells with the background
   loader), or a plugin or mod does it. The next cut is not OBNG's alone: the flight without OBNG.dll (OBVR's dual
   pass or flat), without Oblivion Walkers, with the Linux mod list.
+
+### The flight's crashes come with the Windows mod list (measured 2026-11-13, twelve more runs)
+
+| variant (the routes as played, the DLL of 304c4a2) | runs | ended early |
+|---|---:|---:|
+| without OblivionWalkers.dll (`tools/without-plugin-dll.sh`), the Windows mod list | 6 | 3 (0x7BE7FCA1 from kernel32's InterlockedDecrement on address 2, 0x0040163F, one without a record) |
+| the Linux game's own mod list (`OBNG_STRESS_MODS=linux tools/stress-ride.sh`), Oblivion Walkers in | 6 | 0 |
+
+- **Oblivion Walkers is not the cause**: the flight ends as often without its DLL. (The Walkers session read its own
+  source for kept references and found none that takes a count down; its follow packages' raw pointer to a horde's
+  leader stays an open point of its own.)
+- **With the Linux mod list the flight runs through six times in six**, with OBNG's routes, OBVR and Oblivion Walkers
+  all in; at the Windows list's rate of about one run in two that is chance in under 1 % of the cases. Derived: the
+  crashes need what `tools/run-with-windows-mods.py` adds - the 32 plugins of the Windows list (Better Cities,
+  Unique Landscapes and the rest), their 11 407 linked files, or the mix itself: the save OBVRHarnessMOO was made
+  under the Linux list and is loaded with 32 plugins it does not know, in an order set by file times.
+- Not known: which of the 32, and whether the Windows game with its own saves does this at all - the only evidence
+  from there is the one crash of 2026-11-12 (0x006450DA). OBVR's DLL was a test build (042f8c82) in these twelve
+  runs; it exports no capture at the window's end, so the runs read FAIL for the missing "Performance: export" alone.
+- For the measurements: a run with the Windows mod list on the Linux game can end by this fault at any time; a
+  missing run is not a finding about the route measured.

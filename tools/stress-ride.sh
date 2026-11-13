@@ -8,9 +8,12 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ini="$1"; runs="${2:-3}"
 cd "$root" || exit 2
 stop="${TMPDIR:-/tmp}/obng-stress-stop"
+# OBNG_STRESS_MODS=linux: the Linux game's own mod list instead of the Windows one linked in for the run.
+mods=(python3 tools/run-with-windows-mods.py --)
+[[ "${OBNG_STRESS_MODS:-windows}" == "linux" ]] && mods=(env)
 for ((i = 1; i <= runs; i++)); do
 	[[ -e "$stop" ]] && { echo "held before run $i ($stop exists)"; break; }
-	python3 tools/run-with-windows-mods.py -- tools/shadow-run.sh --ini "$ini" tools/hand-scripts/obng-stress-ride.txt \
+	"${mods[@]}" tools/shadow-run.sh --ini "$ini" tools/hand-scripts/obng-stress-ride.txt \
 		--save OBVRHarnessMOO --run-timeout 600 > /dev/null 2>&1
 	code=$?
 	run="$(ls -dt artifacts/shadow/obng-stress-ride/* | head -1)"
