@@ -14,6 +14,9 @@ for ((i = 1; i <= runs; i++)); do
 		--save OBVRHarnessMOO --run-timeout 600 > /dev/null 2>&1
 	code=$?
 	run="$(ls -dt artifacts/shadow/obng-stress-ride/* | head -1)"
+	# Oblivion Walkers flushes its log line by line: its last lines say what it did before the game ended.
+	walkers="${OBNG_GAME_DIR:-$HOME/.local/share/Steam/steamapps/common/Oblivion}/OblivionWalkers.log"
+	[[ -f "$walkers" ]] && cp -p "$walkers" "$run/OblivionWalkers.log"
 	crash="$(grep -m1 -o 'access violation.*thread [0-9]*' "$run/OBVR.log" || echo none)"
 	calls="$(grep 'Probe: process manager' "$run/OBNG.log" | sed -E 's/.* - ([0-9]+) calls.*/\1/' | awk '{c += $1} END {print c + 0}')"
 	west="$(grep -o 'the feet at [-0-9.]*' "$run/OBVR.log" | awk '{if ($4 < w) w = $4} END {printf "%d", w}')"
