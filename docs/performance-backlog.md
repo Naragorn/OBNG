@@ -1933,3 +1933,28 @@ the game is gone before the script's end, with a crash record or without.
   runs; it exports no capture at the window's end, so the runs read FAIL for the missing "Performance: export" alone.
 - For the measurements: a run with the Windows mod list on the Linux game can end by this fault at any time; a
   missing run is not a finding about the route measured.
+
+### Living Oblivion left out, and the crashes gone either way (measured 2026-11-13 evening, eleven more runs)
+
+Nadi's guess: Living Oblivion (the Windows crash of 2026-11-12 was at one of its creatures). The flight with the
+Windows list, `OBNG_WITHOUT_PLUGINS="LivingOblivion.esp"` (tools/run-with-windows-mods.py), then with it again:
+
+| variant | time | runs | with a crash record | ended without one |
+|---|---|---:|---:|---:|
+| the Windows list, all variants before | 14:27-17:36 | 22 | 11 | 3 |
+| the Linux list | 17:41-18:12 | 6 | 0 | 0 |
+| the Windows list, from a loaded game (the new-game script's clicks missed) | 18:15 | 1 | 0 | 0 |
+| the Windows list without LivingOblivion.esp | 18:43-19:13 | 6 | 0 | 1 |
+| the Windows list with it | 19:13-19:34 | 4 | 0 | 0 |
+
+- **Leaving Living Oblivion out is not what ends the crashes**: the four runs with it are as clean, at the same
+  builds. Whether it has a part cannot be told from these runs.
+- **Since about 17:40 the flight does not crash with the Windows list either** (eleven runs; at the earlier rate of
+  one in two that is chance in 0.05 % of the cases). What changed in the game in that time: OBVR.dll at 18:12
+  (cac356a8, its ring capture made opt-in) and Oblivion Walkers' DLL and ESP at 18:33 (8dee2d4); the one run between
+  the two (18:15) ran through. Not known which of them, if either, it is - or the machine's load: a race of the
+  background loader would depend on timing. So "the crashes come with the Windows mod list" holds for the builds
+  before 17:40 only; the Linux list's six clean runs fall into the clean time as well and prove less than it seemed.
+- **The ends without a record** (four in all) are at x = -220 000 on the way back in runs that flew fast (570 units a
+  second), far west of Anvil over the sea: a different fault, not looked at.
+- The probe for the process manager's long calls is built (`[Timed] SpikeName`, commit 0b7c0b0), not yet run.
