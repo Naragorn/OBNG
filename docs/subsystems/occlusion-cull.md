@@ -413,3 +413,38 @@ pass's median moved less (the on runs lie within 0.28 ms, the off runs
 within 0.47), but the pairs are weaker than they looked. With the weather
 and hour fixed (the scenario since 17:08) a run with the nodes has the
 scene pass at 2.68-2.71 ms; the off side at fixed weather is not run yet.
+
+## The prison bars defect: a blended surface that writes depth (found and fixed 2026-11-13)
+
+Nadi on Windows, 2026-11-11 and -12: behind the cell's bars in a new game's prison the floor was blue and NPCs lacked
+body parts, fine with the head through the bars; gone with `OcclusionCull=0`. Reproduced on Linux with
+`tools/hand-scripts/obng-newgame-bars-sway.txt` (from `tools/make-newgame-bars.py --inside 45`: a new game clicked
+through, the player placed 45 units inside the cell from its door by the console, the head turned to the bars and
+swayed, both eyes dumped at 40 marks) - earlier scenarios stood in the door or deep in the cell and showed nothing.
+
+Measured (the left eye's dumps, pixels of the clear colour (18, 27, 27) in the right half):
+
+| Run | Settings | Clear-colour pixels at four marks |
+|---|---|---|
+| 20261113-124456 | the routes as played, culler with nodes | 12 749, 12 933, 13 034, 0 |
+| 20261113-130048 | culler without the nodes | 2 641, 3 089, 2 852, 2 523 |
+| 20261113-124907 | culler off | 0, 0, 0, 0 |
+| 20261113-131610 | culler with nodes, the tests before the first blended record | 0, 0, 0, 0 |
+
+With the defect the cell opposite, its gate and Valen Dreth behind it were left out (the node log names them at the
+frame the player was placed: `(0001FC43) -> Valen Dreth`, two `prisonCell02` nodes, the gate's `FadeNode Anim`), their
+tests reading 0 pixels. The trace's control rectangles found **no depth beyond 0.99 anywhere in the picture** (0 pixels
+at z 0.99 and above) although the picture showed the clear colour there: something had written depth without colour
+over the doorway. With the fix the controls read 1 988 436 pixels at 0.99 and 600 114 at 0.995.
+
+Cause (derived from those two readings; which mesh it is was not looked up): a blended surface with depth write in
+the cell's doorway. The tests ran after the whole finish, the blended records included, so they took a see-through
+surface for cover - once what stood behind it was left out, nothing drew there and the clear colour showed through.
+The check inside the pass ("skips confirmed hidden") could not see it: it reads the same depth.
+
+Fix (`[Route] OcclusionCullBeforeBlend`, on by default; `EndsTestsBefore` in OcclusionCullLogic.h with its test): the
+pass's tests go out before the first record whose NiAlphaProperty has the blend bit (flags bit 0), so they read the
+opaque geometry's depth alone. What is asked after that gets no test in the pass and therefore no hidden verdict. In
+the prison the tests went out early in every pass (746-750 of 750 a window); 45 of 1 014 draws a pass were still left
+out there. Not measured yet: what the culler still saves in a town with this (the blended records come late in the
+finish, so most of the opaque depth is there), and Windows itself.

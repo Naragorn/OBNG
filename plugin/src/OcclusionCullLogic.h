@@ -912,4 +912,17 @@ inline int FormatPassIds(std::uint32_t frame, const PassIds& ids, const Batch& b
 	return line.at;
 }
 
+// Whether the pass's tests go out before this record is drawn: at the first
+// record whose NiAlphaProperty blends (flags bit 0). The tests then read the
+// depth of the opaque geometry alone. A blended surface that writes depth - in
+// the new game's prison something in the cell's doorway did, the hall behind
+// it and Valen Dreth were tested hidden and left out (run
+// obng-newgame-bars-sway/20261113-124456: the control rectangles found no
+// depth beyond 0.99 while the picture showed the clear colour there) - is
+// see-through and must not count as cover. What is asked after that gets no
+// test in this pass, so no hidden verdict: it is drawn.
+constexpr bool EndsTestsBefore(bool option, bool hasAlpha, std::uint32_t alphaFlags, bool endedThisPass) {
+	return option && !endedThisPass && hasAlpha && (alphaFlags & 1u) != 0;
+}
+
 }  // namespace obng::plugin::occlusion_cull

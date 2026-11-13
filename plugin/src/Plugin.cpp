@@ -247,6 +247,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	r.occlusionCullMaxAge = obng::plugin::occlusion_cull::MaxAgeFromIni(GetPrivateProfileIntA("Route", "OcclusionCullMaxAge", 2, path));
 	r.occlusionCullMargin = obng::plugin::occlusion_cull::MarginFromIni(GetPrivateProfileIntA("Route", "OcclusionCullMargin", 2, path));
 	{
+		r.occlusionCullBeforeBlend = GetPrivateProfileIntA("Route", "OcclusionCullBeforeBlend", 1, path) != 0;
 		const UINT every = GetPrivateProfileIntA("Route", "OcclusionCullVisibleEvery", 1, path);
 		r.occlusionCullVisibleEvery = every < 1 ? 1 : every > 16 ? 16 : every;
 	}

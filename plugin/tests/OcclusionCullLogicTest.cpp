@@ -675,5 +675,11 @@ int main() {
 	TestListLeaders();
 	TestFlat();
 	TestTrace();
+	Section("The tests go out before the first blended record: a see-through surface that writes depth hides nothing");
+	Check(obng::plugin::occlusion_cull::EndsTestsBefore(true, true, 0x00ED, false), "the option on, an alpha property with the blend bit, tests not out yet: now");
+	Check(!obng::plugin::occlusion_cull::EndsTestsBefore(true, true, 0x00EC, false), "the blend bit clear (alpha test only): not yet");
+	Check(!obng::plugin::occlusion_cull::EndsTestsBefore(true, false, 0x00ED, false), "no alpha property: not yet");
+	Check(!obng::plugin::occlusion_cull::EndsTestsBefore(true, true, 0x00ED, true), "already out this pass: not again");
+	Check(!obng::plugin::occlusion_cull::EndsTestsBefore(false, true, 0x00ED, false), "the option off: at the finish's end as before");
 	return Failures();
 }

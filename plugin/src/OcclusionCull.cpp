@@ -81,6 +81,9 @@ constexpr UInt32 kRendererInverseViewOffset = 0xA00;
 constexpr UInt32 kOriginGlobal = 0x00B3F92C;
 constexpr UInt32 kGeometryBoundOffset = 0x20;
 constexpr UInt32 kGeometrySkinOffset = 0xB8;
+constexpr UInt32 kGeometryPropertyStateOffset = 0xAC;  // NiGeometry's property state (DrawInstancing.cpp)
+constexpr UInt32 kPropertyStateSlotsOffset = 0x08;     // its property pointers by type; the alpha property is type 0
+constexpr UInt32 kPropertyFlagsOffset = 0x18;
 constexpr UInt32 kObjectNameOffset = 0x08;  // NiObjectNET's name (the probe's)
 constexpr UInt32 kObjectParentOffset = 0x1C;  // NiAVObject's parent (the probe's)
 
@@ -107,6 +110,9 @@ cull::TraceSettings g_trace;
 UInt32 g_traced = 0;  // passes traced so far
 cull::PassIds g_passIds;  // the traced pass's renderer draws by pass id
 cull::ListTracker g_lists;  // which record leads its pass list
+bool g_beforeBlend = true;  // [Route] OcclusionCullBeforeBlend: the tests go out before the first blended record
+bool g_testsEnded = false;  // this pass's tests are out
+std::uint64_t g_endedEarly = 0;
 bool g_forceDraw = false;   // a list's first record is being drawn whatever its verdict
 IDirect3DQuery9* g_earlyQueries[cull::kTraceTests] = {};
 IDirect3DQuery9* g_queries[cull::kBatches][cull::kMaxTests] = {};
@@ -204,6 +210,10 @@ void FlushSummaryIfRequested() {
 		return;
 	}
 	InterlockedExchange(&g_summaryRequested, 0);
+	if (g_beforeBlend) {
+		g_log("Route: occlusion cull tests - out before a blended record in %llu passes of this window", static_cast<unsigned long long>(g_endedEarly));
+		g_endedEarly = 0;
+	}
 	const probe::ClockPair now = ReadClocks();
 	LARGE_INTEGER frequency{};
 	QueryPerformanceFrequency(&frequency);
@@ -550,7 +560,7 @@ cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind, bool countRepeat
 	if (decided.newThisFrame && testKind == cull::TestKind::kTest && !due) {
 		++g_visibleTestsLeftOut;
 	}
-	if (decided.newThisFrame && testKind == cull::TestKind::kTest && due) {
+	if (decided.newThisFrame && testKind == cull::TestKind::kTest && due && !g_testsEnded) {
 		if (g_batch->count < cull::kMaxTests) {
 			if (decided.verdict != nullptr) {
 				decided.verdict->testedFrame = g_frame;
@@ -796,6 +806,7 @@ UInt32 __fastcall CullFinish(void* self, void* /*edx*/) {
 	const unsigned __int64 t0 = __rdtsc();
 	g_notePass = g_groupStats && (g_frame % 8) == 0;
 	g_active = true;
+	g_testsEnded = false;
 	InterlockedExchange(&g_inEyePass, 1);
 	const UInt32 eax = g_finish(self, nullptr);
 	InterlockedExchange(&g_inEyePass, 0);
@@ -809,7 +820,10 @@ UInt32 __fastcall CullFinish(void* self, void* /*edx*/) {
 	if (!g_cameraSet) {
 		NoteCamera();  // no draw asked: the ring still gets this frame's camera
 	}
-	EndTests();
+	if (!g_testsEnded) {
+		EndTests();
+	}
+	g_testsEnded = false;
 	g_stats.passTicks += __rdtsc() - t0 + g_beginTicks;
 	return eax;
 }
@@ -825,6 +839,16 @@ UInt32 __fastcall CullDrawRenderPass(void* self, void* /*edx*/, UInt32 record, U
 		return g_drawRenderPass(self, nullptr, record, pass);
 	}
 	const cull::DrawKind kind = ReadAt<UInt32>(geometry + kGeometrySkinOffset) != 0 ? cull::DrawKind::kSkinned : cull::DrawKind::kShape;
+	if (g_beforeBlend && !g_testsEnded) {
+		// The geometry's property state (+0xAC), its alpha property (slot 0 at +0x08... DrawInstancing.cpp's reading), flags +0x18.
+		const UInt32 state = ReadAt<UInt32>(geometry + kGeometryPropertyStateOffset);
+		const UInt32 alpha = state != 0 ? ReadAt<UInt32>(state + kPropertyStateSlotsOffset) : 0;
+		if (cull::EndsTestsBefore(true, alpha != 0, alpha != 0 ? ReadAt<UInt16>(alpha + kPropertyFlagsOffset) : 0, false)) {
+			EndTests();
+			g_testsEnded = true;
+			++g_endedEarly;
+		}
+	}
 	const bool first = g_lists.First(pass & 0xFFFFu);
 	if (DecideDraw(geometry, kind, true) == cull::Decision::kDraw) {
 		return g_drawRenderPass(self, nullptr, record, pass);
@@ -1021,6 +1045,8 @@ UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {
 	g_settings.maxAge = settings.occlusionCullMaxAge;
 	g_settings.margin = settings.occlusionCullMargin;
 	g_visibleEvery = settings.occlusionCullVisibleEvery;
+	g_beforeBlend = settings.occlusionCullBeforeBlend;
+	log("Route: occlusion cull - the tests go out %s", g_beforeBlend ? "before the pass's first blended record (opaque depth only)" : "at the finish's end");
 	g_visibleAlternate = settings.occlusionCullVisibleAlternate;
 	g_settings.maxMoveUnits = settings.occlusionCullMaxMove;
 	g_settings.maxTurnDegrees = settings.occlusionCullMaxTurn;
