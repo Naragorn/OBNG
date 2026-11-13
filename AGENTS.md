@@ -11,6 +11,14 @@
 - Code, comments, documentation, and Git commit messages must be in English.
 - No giant functions or files. A new function stays at or under 100 lines and a new file at or under 1000 lines; put new logic in its own small unit (a pure logic header plus a thin caller) instead of growing a big one. Functions and files already over those limits may only shrink. (The same rule as OBVR's. OBVR enforces it with `function_sizes_test` and `tests/function-sizes.txt`; this repository has no such test yet - until it has, the rule is held by review.)
 
+## Performance
+
+- Build everything extremely performant, and make what already exists faster too - whatever can be optimized is optimized, new code and old (Nadi, 2026-11-13). The game runs in VR: a frame has about 11 ms for everything, and a single long frame is a stutter in the headset.
+- Cost first: before writing a feature, decide what must run every frame, what once a second and what only on an event. Per frame only what has to be: no allocation, no file I/O, no console line, no lookup that can be kept, no loop over n x m.
+- Measure, never guess: every optimization carries a number from before and one from after, taken under the same load; the mean and the worst frame both count. An instrument's own cost is measured too.
+- Here: this is the project's purpose - profile runs under the harness with the original against the rebuilt path, the same scene and settings for both.
+- Write each measured result where the project keeps its findings (the spec or the knowledge files), with the commit, so the next change can be compared against it.
+
 ## Reading Oblivion.exe
 
 Every function of the EXE is already decompiled in `re/export/rea-all/functions/0x<address>.c` (see `re/README.md`; on the shared disk only, not in Git). Grep it before starting a Ghidra or REA session; start one only for what the files do not answer (assembly, cross-references, data).
