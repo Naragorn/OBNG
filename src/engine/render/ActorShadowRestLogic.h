@@ -42,6 +42,7 @@ struct LightView {
 	float fadeTimer = 0.0f;    // +0xE0, the time since the target was set
 	float fadeTime = 1.0f;     // [0x00B2C680]
 	bool actorKind = false;    // +0xF5 == 0: drawn by 0x007D46C0, as 0x007C6C30 makes the casters' lights
+	float source[3] = {};      // the light's NiLight (+0x100) world translate (+0x88), where the placement put it
 };
 
 struct Settings {
@@ -63,12 +64,13 @@ enum class Why : std::uint8_t {
 	kFaint,          // fade below 0.05: the walk would hide it
 	kFading,         // fading in or out
 	kMoved,          // its caster moved more than `still`
+	kLightMoves,     // its source moved against the caster between its last draws (a carried torch)
 	kTurn,           // its turn to be drawn
 	kCount
 };
 
 constexpr const char* kWhyName[static_cast<int>(Why::kCount)] = {
-	"kept", "off", "unsafe step", "other kind", "new", "caster changed", "no map", "not in view", "faint", "fading", "moved", "its turn"};
+	"kept", "off", "unsafe step", "other kind", "new", "caster changed", "no map", "not in view", "faint", "fading", "moved", "light moves", "its turn"};
 
 // Whether the rest is on in a step: always, or with the alternation in the
 // first n of every 2n steps.
@@ -102,6 +104,13 @@ class Table {
 public:
 	static constexpr std::uint32_t kSlots = 32;
 	static constexpr std::uint32_t kNoTurn = 0xFFFFFFFFu;
+	// The light's source against its caster: moved more than kSourceStill
+	// units between two draws, the light is drawn every step until kCalmDraws
+	// draws in a row found it standing (Nadi, Windows 2026-11-12: the shadows
+	// of NPCs carrying a torch flickered - a shadow redrawn every 4th step
+	// jumps when its light moves).
+	static constexpr float kSourceStill = 1.0f;
+	static constexpr std::uint32_t kCalmDraws = 30;
 
 	explicit Table(const Settings& settings) : settings_(settings) {}
 
@@ -174,6 +183,21 @@ public:
 		e->center[0] = v.center[0];
 		e->center[1] = v.center[1];
 		e->center[2] = v.center[2];
+		const float offset[3] = {v.source[0] - v.center[0], v.source[1] - v.center[1], v.source[2] - v.center[2]};
+		if (e->drawnOnce) {
+			const float dx = offset[0] - e->offset[0];
+			const float dy = offset[1] - e->offset[1];
+			const float dz = offset[2] - e->offset[2];
+			if (!(dx * dx + dy * dy + dz * dz <= kSourceStill * kSourceStill)) {
+				e->restless = kCalmDraws;  // NaN counts as moved
+			} else if (e->restless != 0) {
+				--e->restless;
+			}
+		}
+		e->offset[0] = offset[0];
+		e->offset[1] = offset[1];
+		e->offset[2] = offset[2];
+		e->drawnOnce = true;
 		e->seen = step_;
 		++counts.drawn[on_ ? 1 : 0];
 	}
@@ -213,6 +237,9 @@ private:
 		std::uint32_t light = 0;
 		std::uint32_t caster = 0;
 		float center[3] = {};
+		float offset[3] = {};      // the source less the caster's centre at its last draw
+		bool drawnOnce = false;
+		std::uint32_t restless = 0;  // draws still to come before it may rest again
 		std::uint32_t turn = 0;
 		std::uint32_t seen = 0;    // the last step it was drawn or at rest in
 		std::uint32_t kept = 0;    // the step its map was kept through the reset
@@ -253,6 +280,9 @@ private:
 		const float dz = v.center[2] - e->center[2];
 		if (!(dx * dx + dy * dy + dz * dz <= settings_.still * settings_.still)) {
 			return Why::kMoved;  // NaN counts as moved
+		}
+		if (e->restless != 0) {
+			return Why::kLightMoves;
 		}
 		if ((step_ + e->turn) % settings_.every == 0) {
 			return Why::kTurn;

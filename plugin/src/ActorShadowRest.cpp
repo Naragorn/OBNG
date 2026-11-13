@@ -49,6 +49,7 @@ constexpr UInt32 kLightMapHeld = 0x114;
 constexpr UInt32 kLightInView = 0x118;         // 0xFF: out of the camera's view
 constexpr UInt32 kLightCaster = 0x130;
 constexpr UInt32 kNodeFlags = 0x18;            // bit 0: app-culled
+constexpr UInt32 kNodeWorldTranslate = 0x88;   // NiAVObject's world translate (the world transform +0x64: rotation 0x24 bytes, then this)
 constexpr UInt32 kNodeBound = 0x20;            // the world bound's centre, then its radius
 constexpr double kMaxGapMs = 100.0;
 
@@ -98,6 +99,12 @@ rest::LightView ReadLight(UInt32 light) {
 	v.fadeTimer = Float(light + kLightFadeTimer);
 	v.fadeTime = Float(kFadeTime);
 	v.actorKind = *reinterpret_cast<const UInt8*>(light + kLightKind) == 0;
+	const UInt32 source = Dword(light + kLightSource);
+	if (source != 0) {
+		v.source[0] = Float(source + kNodeWorldTranslate);
+		v.source[1] = Float(source + kNodeWorldTranslate + 4);
+		v.source[2] = Float(source + kNodeWorldTranslate + 8);
+	}
 	return v;
 }
 

@@ -288,6 +288,55 @@ int main() {
 		Check(t.TurnOf(0x9000) != Table::kNoTurn, "two steps later the old slots are free again");
 	}
 
+	Section("A light whose source moves against its caster (a carried torch) is drawn every step");
+	{
+		Table t(Every(4));
+		LightView v = Still(0x1000);
+		v.source[0] = 100.0f;
+		v.source[1] = 200.0f;
+		v.source[2] = 500.0f;
+		RunStep(t, 1, v);
+		int rests = 0;
+		for (std::uint32_t step = 2; step <= 9; ++step) {
+			rests += RunStep(t, step, v) ? 1 : 0;
+		}
+		Check(rests == 6, "a source that stands (the sun, a lamp): at rest three steps of four");
+		// The source flickers: three units off at one draw.
+		std::uint32_t step = 10;
+		while ((step + t.TurnOf(0x1000)) % 4 != 0) {
+			RunStep(t, step++, v);
+		}
+		v.source[0] += 3.0f;
+		Check(!RunStep(t, step++, v), "its turn: drawn, and the source seen moved");
+		t.BeginStep(step, true, true);
+		Check(t.Keep(v) == Why::kLightMoves, "the next step: not kept - the light moves");
+		t.Drawn(v);
+		++step;
+		int restsWhileMoving = 0;
+		for (std::uint32_t i = 0; i < 20; ++i, ++step) {
+			v.source[0] += (i % 2 == 0) ? 3.0f : -3.0f;
+			restsWhileMoving += RunStep(t, step, v) ? 1 : 0;
+		}
+		Check(restsWhileMoving == 0, "while it keeps moving: drawn every step");
+		int calm = 0;
+		int restsAfter = 0;
+		for (std::uint32_t i = 0; i < Table::kCalmDraws + 12; ++i, ++step) {
+			const bool rested = RunStep(t, step, v);
+			calm += rested ? 0 : 1;
+			restsAfter += rested ? 1 : 0;
+		}
+		Check(restsAfter > 0 && calm >= static_cast<int>(Table::kCalmDraws), "after kCalmDraws draws with the source standing: at rest again");
+		LightView sun = Still(0x2000, 0x6000);
+		sun.source[2] = 5000.0f;
+		RunStep(t, step, sun);
+		sun.source[0] += 0.5f;
+		t.BeginStep(step + 1, true, true);
+		t.Drawn(sun);
+		t.BeginStep(step + 2, true, true);
+		Check(t.Keep(sun) != Why::kLightMoves, "half a unit (the sun's creep): not moving");
+		Check(t.counts.notKept[static_cast<int>(Why::kLightMoves)] >= 1, "the reason counted");
+	}
+
 	Section("The counts and the summary line");
 	{
 		Table t(Every(2, 4.0f));

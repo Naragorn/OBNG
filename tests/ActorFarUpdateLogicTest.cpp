@@ -293,5 +293,11 @@ int main() {
 	Check(FreshAnimData(fr, 12) == 0, "older: none");
 	Check(!TakeRootMotion(fr, FreshAnimData(fr, 12), sum), "so a stale sum is not taken");
 
+	Section("A far actor's rate: the full rate in combat");
+	Check(FarEvery(true, false, true, 16) == 16, "far, not in combat, on: every 16th");
+	Check(FarEvery(true, true, true, 16) == 1, "far and in combat: every call (Windows crash 2026-11-12 in a fight's follow logic; a fighting actor must not skip updates)");
+	Check(FarEvery(true, false, false, 16) == 1, "off in this window: every call");
+	Check(FarEvery(false, false, true, 16) == 1, "not far: every call");
+
 	return Failures();
 }

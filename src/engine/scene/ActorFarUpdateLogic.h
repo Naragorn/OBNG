@@ -301,6 +301,15 @@ inline ViewOf ViewOfActor(const float actor[3], const float camera[3], const flo
 // it missed), as for an actor that comes near. An actor in combat is never
 // taken: a fight behind the player goes on at the full rate. Class C, like
 // the distance rule.
+// The rate of an actor beyond the far distance: every n-th call, but every
+// call while it is in combat - a fighting actor's update left out fifteen
+// times of sixteen and then run with the summed time is not a look question
+// any more (it reacts late, and what its update frees or swaps others may
+// hold).
+constexpr std::uint32_t FarEvery(bool isFar, bool inCombat, bool onNow, std::uint32_t every) {
+	return isFar && !inCombat && onNow ? every : 1u;
+}
+
 struct ViewRule {
 	bool on = false;
 	float coneCosine = 0.2588f;   // 75 degrees half angle: wider than a headset's view by 20 degrees

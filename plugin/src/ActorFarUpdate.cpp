@@ -76,6 +76,7 @@ bool g_alternate = false;
 DWORD g_thread = 0;                // the thread of the first call: the only one whose calls are left out
 volatile LONG g_onNow = 1;         // with the alternation: whether this summary window uses the lower rate
 volatile LONG64 g_farCalls = 0;    // calls of far actors
+volatile LONG64 g_farCombat = 0;   // of them in combat: at the full rate
 volatile LONG64 g_skipped = 0;     // of them left out
 volatile LONG64 g_summed = 0;      // calls run with summed time
 // The travel measurement: the far actors' way between their updates that ran
@@ -277,7 +278,11 @@ void __fastcall Update(void* self, void*, float time) {
 	const bool isFar = IsFar(actor, player);
 	if (isFar) {
 		InterlockedIncrement64(&g_farCalls);
-		every = g_onNow != 0 ? g_every : 1;
+		const bool combat = InCombat(actor);
+		if (combat) {
+			InterlockedIncrement64(&g_farCombat);
+		}
+		every = far_update::FarEvery(true, combat, g_onNow != 0, g_every);
 	}
 	bool taken = false;
 	if ((g_viewCount || g_viewRule.on) && !isFar) {
@@ -445,8 +450,9 @@ void LogActorFarUpdateSummary() {
 	if (g_alternate) {
 		InterlockedExchange(&g_onNow, wasOn ? 0 : 1);
 	}
-	g_log("Route: far actors' whole update (every %u. call beyond %.0f units, %s in this window) - %lld calls of far actors, %lld left out, %lld run with summed time",
-	      g_every, static_cast<double>(g_distance), wasOn ? "on" : "off", farCalls, skipped, summed);
+	g_log("Route: far actors' whole update (every %u. call beyond %.0f units, %s in this window) - %lld calls of far actors (%lld of them in combat, at the "
+	      "full rate), %lld left out, %lld run with summed time",
+	      g_every, static_cast<double>(g_distance), wasOn ? "on" : "off", farCalls, InterlockedExchange64(&g_farCombat, 0), skipped, summed);
 	const double travelUnits = static_cast<double>(InterlockedExchange64(&g_travelUnits, 0)) / 1000.0;
 	const double travelSeconds = static_cast<double>(InterlockedExchange64(&g_travelMicros, 0)) / 1000000.0;
 	const double movingUnits = static_cast<double>(InterlockedExchange64(&g_movingUnits, 0)) / 1000.0;
