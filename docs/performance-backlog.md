@@ -1860,3 +1860,30 @@ Replace:Enabled=0 -- ...`, the file back byte for byte, md5 checked):
   A corrupted map node in the first and a corrupted free list in the second (derived: memory written by someone else,
   or a race of the background loader). Not known: whether the original game does this on such a flight, or one of
   OBNG's routes, or another plugin. Owed first: the same flight with OBNG's routes off.
+
+### The same ride with OBNG's routes off (measured 2026-11-13, runs -145036, -145408, -145740)
+
+`tools/hand-scripts/obng-measure-ride-plain.ini`: every route off but the stereo draw (OBVR's single pass needs it),
+Walkers' replacement on as in the first three runs.
+
+| | routes as played (five runs) | routes off (three runs) |
+|---|---:|---:|
+| crashes | 2 | 0 |
+| seconds of flight in all | 435 | 240 |
+| frames over 20 ms a run | 37, 42, 58 | 39, 43, 50 |
+| the process manager's mean call | 0.81-1.19 ms | 1.66-2.11 ms |
+| its calls over 3 ms a run | 26-155 | 177-1 954 |
+| its longest call | 17-155 ms | 16-22 ms |
+
+- **The hitches are neither made nor removed by OBNG's routes**: the frames over 20 ms are as many with them off.
+- **The routes halve the actors' loop** on this ride (0.8-1.2 ms against 1.7-2.1 ms a call).
+- **The crashes are not settled.** At one crash in 217 s of flight, 240 s without one happen in a third of the cases
+  by chance. Both crashes show memory written by someone else (a map node of 0x00000001, a broken free list in the
+  heap's small-block pool) on a background thread; a route that keeps an engine pointer past the object's unloading
+  and writes through it would look like this (unverified; no route is shown to do it).
+- **Three of the eight runs stopped flying after about 60 s at x = -166 900** (the process manager's calls end there:
+  6 790-6 806 against 10 700-10 860): the game is paused there in some runs (derived: a message box; the script
+  closes menus only at the start). Those runs have 60 s of flight, not 120.
+
+Owed: a flight that turns back before x = -166 000 and lasts four minutes, three runs with the routes off and then
+the routes switched on by halves; beside it a read of every route for engine pointers kept across a cell's unloading.
