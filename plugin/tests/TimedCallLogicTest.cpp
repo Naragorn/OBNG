@@ -245,6 +245,24 @@ void TestSpikes() {
 		Check(!c.TakeSpike(&spike), "an index out of range watches nothing");
 	}
 
+	Section("The longest call's tags (who it was) and the spike's end");
+	{
+		Calls c;
+		Spike spike;
+		c.Watch(0, 100);
+		c.Enter(0, 0x9000, 0xA, kStub, 1000);
+		c.Enter(1, 0x8000, 0xB, kStub, 1010, 0x11, 0x12);
+		c.Exit(0x8004, 1030);
+		c.Enter(1, 0x8000, 0xB, kStub, 1040, 0x21, 0x22);
+		c.Exit(0x8004, 1190);
+		c.Enter(1, 0x8000, 0xB, kStub, 1191, 0x31, 0x32);
+		c.Exit(0x8004, 1195);
+		c.Exit(0x9004, 1200);
+		Check(c.TakeSpike(&spike) && spike.endTicks == 1200, "the spike ends at the watched call's return");
+		Check(spike.of[1].longestTagA == 0x21 && spike.of[1].longestTagB == 0x22, "function 1's longest call was the second: its tags");
+		Check(spike.of[0].longestTagA == 0 && spike.of[0].longestTagB == 0, "a call entered without tags has none");
+	}
+
 	Section("The spike's line");
 	{
 		Spike spike;
@@ -264,6 +282,13 @@ void TestSpikes() {
 		const std::size_t anim = text.find("actors:ApplyAnimData 1.500 ms (25 calls, longest 0.200)");
 		Check(high != std::string::npos && anim != std::string::npos && high < anim, "then the functions inside by their time, the largest first");
 		Check(text.find("tiny") == std::string::npos, "one below the least share is left out");
+		spike.of[2].longestTagA = 0x00012345;
+		spike.of[2].longestTagB = 0x000ABCDE;
+		FormatSpike(spike, names, 4, 1000.0, 0.05, line, sizeof(line), 987654321ull);
+		std::printf("    %s\n", line);
+		const std::string tagged(line);
+		Check(tagged.find("actors:HighUpdate 15.000 ms (1 call, longest 15.000 by 00012345 of 000ABCDE)") != std::string::npos, "the longest call's tags after it");
+		Check(tagged.find("Timed spike: actors:ProcessManager 20.000 ms ending at tick 987654321 -") == 0, "the end's tick when given");
 		char small[40];
 		FormatSpike(spike, names, 4, 1000.0, 0.1, small, sizeof(small));
 		Check(std::strlen(small) < sizeof(small), "a small buffer is not overrun");

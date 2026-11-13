@@ -34,6 +34,11 @@ double g_ticksPerMs = 0.0;       // measured once at install
 volatile LONG g_spikeLines = 0;  // lines written in this summary window
 LONG g_spikeLinesAtMost = 20;
 constexpr double kSpikeLeastShare = 0.03;
+// [Timed] SpikeActor: a listed function whose ECX is an actor (or any reference) - its calls carry the reference's
+// form id and its base's, so that a spike names the one whose call was the longest.
+UInt32 g_tagIndex = timed::kFunctionsAtMost;
+constexpr UInt32 kFormId = 0x0C;   // TESForm's id (ActorCensus.cpp)
+constexpr UInt32 kRefBase = 0x1C;  // the reference's base form
 
 void WriteSpike(const timed::Spike& spike) {
 	if (InterlockedIncrement(&g_spikeLines) > g_spikeLinesAtMost) {
@@ -43,8 +48,15 @@ void WriteSpike(const timed::Spike& spike) {
 	for (UInt32 i = 0; i < g_count; ++i) {
 		names[i] = g_spec[i].name;
 	}
+	// The spike's end on the performance counter (OBVR's captures count in its ticks): now, less the time since.
+	LARGE_INTEGER clock;
+	QueryPerformanceCounter(&clock);
+	const unsigned long long stamp = __rdtsc();
+	const double sinceMs = stamp > spike.endTicks ? static_cast<double>(stamp - spike.endTicks) / g_ticksPerMs : 0.0;
+	const double since = sinceMs * static_cast<double>(g_frequency.QuadPart) / 1000.0;
+	const unsigned long long end = static_cast<unsigned long long>(clock.QuadPart) - static_cast<unsigned long long>(since);
 	char line[900];
-	timed::FormatSpike(spike, names, g_count, g_ticksPerMs, kSpikeLeastShare, line, sizeof(line));
+	timed::FormatSpike(spike, names, g_count, g_ticksPerMs, kSpikeLeastShare, line, sizeof(line), end);
 	g_log("%s", line);
 }
 
@@ -90,6 +102,16 @@ void InstallSpikeWatch(const char* iniPath, LogFn log) {
 	}
 	const UINT lines = GetPrivateProfileIntA("Timed", "SpikeLines", 20, iniPath);
 	g_spikeLinesAtMost = static_cast<LONG>(lines > 1000 ? 1000 : lines);
+	char actor[96] = {};
+	GetPrivateProfileStringA("Timed", "SpikeActor", "", actor, sizeof(actor), iniPath);
+	for (UInt32 i = 0; i < g_count && actor[0] != 0; ++i) {
+		if (std::strcmp(g_spec[i].name, actor) == 0) {
+			g_tagIndex = i;
+		}
+	}
+	if (actor[0] != 0 && g_tagIndex == timed::kFunctionsAtMost) {
+		log("Timed: SpikeActor \"%s\" is not a timed function's name; the spikes name no one", actor);
+	}
 	g_calls.Watch(root, static_cast<unsigned long long>(ms * g_ticksPerMs));
 	g_spikes = true;
 	log("Timed: spike watch - a call of %s over %.1f ms is written with what the timed functions did inside it, at most %ld lines a window",
@@ -118,7 +140,18 @@ void __cdecl Enter(UInt32 index, UInt32* slot) {
 			WriteSpike(spike);
 		}
 	}
-	if (g_calls.Enter(index, reinterpret_cast<UInt32>(slot), *slot, g_stub, __rdtsc())) {
+	UInt32 tagA = 0;
+	UInt32 tagB = 0;
+	if (index == g_tagIndex) {
+		// The thunk pushed EAX, ECX and EDX below the return address: ECX is two slots under it.
+		const UInt32 reference = slot[-2];
+		if (reference != 0) {
+			tagA = *reinterpret_cast<const UInt32*>(reference + kFormId);
+			const UInt32 base = *reinterpret_cast<const UInt32*>(reference + kRefBase);
+			tagB = base != 0 ? *reinterpret_cast<const UInt32*>(base + kFormId) : 0;
+		}
+	}
+	if (g_calls.Enter(index, reinterpret_cast<UInt32>(slot), *slot, g_stub, __rdtsc(), tagA, tagB)) {
 		*slot = g_stub;
 	}
 }
