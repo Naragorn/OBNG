@@ -16,7 +16,7 @@ OBSE plugins) and Data/menus (the harness reads the Linux interface).
 A manifest of what was linked is kept beside Plugins.txt until the restore,
 so that a run that was killed can be undone with --undo.
 
-Usage: run-with-windows-mods.py [--dry-run] -- command [args...]
+Usage: [OBNG_WITHOUT_PLUGINS="A.esp;B.esp"] run-with-windows-mods.py [--dry-run] -- command [args...]
        run-with-windows-mods.py --undo"""
 import json, os, subprocess, sys
 HOME = os.path.expanduser('~')
@@ -92,7 +92,16 @@ if os.path.exists(MANIFEST):
     sys.exit(2)
 links, dirs = plan()
 have = {p.lower() for p in plugin_names(PLUGINS)}
-extra = [p for p in plugin_names(WINDOWS_PLUGINS) if p.lower() not in have]
+# OBNG_WITHOUT_PLUGINS="A.esp;B.esp": plugins of the Windows list left out of the run's list (their files are linked
+# all the same; a plugin not in Plugins.txt is not loaded) - for finding which of them a fault needs.
+without = {p.strip().lower() for p in os.environ.get('OBNG_WITHOUT_PLUGINS', '').split(';') if p.strip()}
+unknown = without - {p.lower() for p in plugin_names(WINDOWS_PLUGINS)}
+if unknown:
+    print(f"OBNG_WITHOUT_PLUGINS names plugins the Windows list does not have: {', '.join(sorted(unknown))}", file=sys.stderr)
+    sys.exit(2)
+extra = [p for p in plugin_names(WINDOWS_PLUGINS) if p.lower() not in have and p.lower() not in without]
+if without:
+    print(f"left out: {', '.join(sorted(without))}")
 print(f"{len(links)} files to link, {len(dirs)} folders to make, {len(extra)} plugins to add: {', '.join(extra)}")
 if dry or not command:
     by_top = {}
@@ -103,7 +112,7 @@ if dry or not command:
     sys.exit(0)
 original = open(PLUGINS, 'rb').read()
 # The run's load order: the Windows list, then what only Linux has; masters first.
-windows_order = plugin_names(WINDOWS_PLUGINS)
+windows_order = [p for p in plugin_names(WINDOWS_PLUGINS) if p.lower() not in without]
 linux_only = [p for p in plugin_names(PLUGINS) if p.lower() not in {w.lower() for w in windows_order}]
 order = windows_order + linux_only
 order = [p for p in order if p.lower().endswith('.esm')] + [p for p in order if not p.lower().endswith('.esm')]

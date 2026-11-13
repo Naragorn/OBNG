@@ -1,0 +1,239 @@
+# The stress flight to Anvil (obng-stress-ride.txt) from a new game instead of the save OBVRHarnessMOO: that save
+# was made under the Linux mod list, and the flight ends early in about one run of two only when the Windows list's
+# 32 plugins are added for the run (docs/performance-backlog.md, 2026-11-13). Here the game's own data are made
+# under whatever list the run has: the way into the prison is obng-newgame-bars-sway.txt's (New, Yes, the movie
+# skipped, the name, the race menu's Done, Yes), then the console takes the player from the cell to the cell
+# -33 -4 and the flight is the same. A run whose menu clicks miss does not reach "leg-1" and is not counted.
+# Run: OBNG_STRESS_SCRIPT=obng-stress-ride-newgame.txt OBNG_STRESS_SAVE=continue tools/stress-ride.sh <ini> <runs>
+start main-menu
+ini Render SinglePassStereo=1
+ini SelfCheck ShowPanel=0
+ini Render GameResolutionWidth=4036
+ini Render GameResolutionHeight=3376
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Hands BodyCollision=1
+ini Hands PhysicsRate=0
+ini Performance Enabled=1
+ini Performance GpuTiming=1
+ini Performance StartAfterSeconds=150
+ini Performance CaptureSeconds=130
+ini Performance MaxRecords=262144
+ini Performance Sampler=1
+console-at prison CloseAllMenus
+console-at ready cow Tamriel -33 -4
+console-at ready set gamehour to 12
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at placed CloseAllMenus
+console-at placed player.setangle z 258
+console-at placed tcl
+console-at placed tgm
+console-at placed player.setav speed 200
+console-at turn-1 player.setangle z 78
+expect the tile under it "main_new"
+expect Chargen view: the race menu is up - the eyes
+expect the tile under it "race_button_done"
+expect Message box: "Are you sure you want to be
+expect the tile under it "button_2"
+expect HandScript: finished
+expect Single-pass stereo: OBNG took the eyes ok (0)
+reject HandScript: WARNING
+reject CRASH:
+
+wait 6
+mark menu
+right pos 0.15 -0.25 -0.35
+right rot 41 19 0
+wait 2
+mark new-lit
+right trigger 1
+wait 0.3
+right trigger 0
+wait 2
+right rot 62.0 5 0
+wait 1.5
+mark yes-62.0
+right trigger 1
+wait 0.3
+right trigger 0
+wait 0.7
+right rot 60.5 5 0
+wait 1.5
+mark yes-60.5
+right trigger 1
+wait 0.3
+right trigger 0
+wait 0.7
+right rot 59.0 5 0
+wait 1.5
+mark yes-59.0
+right trigger 1
+wait 0.3
+right trigger 0
+wait 0.7
+right rot 57.5 5 0
+wait 1.5
+mark yes-57.5
+right trigger 1
+wait 0.3
+right trigger 0
+wait 0.7
+right rot 56.0 5 0
+wait 1.5
+mark yes-56.0
+right trigger 1
+wait 0.3
+right trigger 0
+wait 0.7
+right rot 54.5 5 0
+wait 1.5
+mark yes-54.5
+right trigger 1
+wait 0.3
+right trigger 0
+wait 0.7
+right rot 53.0 5 0
+wait 1.5
+mark yes-53.0
+right trigger 1
+wait 0.3
+right trigger 0
+wait 0.7
+right rot 51.5 5 0
+wait 1.5
+mark yes-51.5
+right trigger 1
+wait 0.3
+right trigger 0
+wait 0.7
+right rot 50.0 5 0
+wait 1.5
+mark yes-50.0
+right trigger 1
+wait 0.3
+right trigger 0
+wait 0.7
+wait 4
+mark movie
+key 0x1B 1
+wait 0.2
+key 0x1B 0
+wait 5
+mark racemenu
+# The name first (the Done refuses without one: "You must first enter a
+# valid name.", 2026-11-11 10:26): the name line at pitch 69 (70 at yaw 31 hit
+# the panel's background just above it, 2026-11-11 probe), pulled; the
+# name's edit box (TextEditMenu) takes the keys, Enter keeps it.
+right pos 0.15 -0.25 -0.35
+right rot 68.5 31 0
+wait 1.5
+mark name-a
+right rot 69.0 31.5 0
+wait 1.5
+mark name-aim
+right trigger 1
+wait 0.3
+right trigger 0
+wait 1.5
+mark name-box
+key 0x41 1
+wait 0.1
+key 0x41 0
+wait 0.2
+key 0x42 1
+wait 0.1
+key 0x42 0
+wait 0.2
+key 0x0D 1
+wait 0.1
+key 0x0D 0
+wait 1.5
+mark named
+# The Done button: three looks around the aim before the pull.
+right pos 0.15 -0.25 -0.35
+right rot 37.5 24.5 0
+wait 1.5
+mark done-a
+right rot 40.0 27.0 0
+wait 1.5
+mark done-b
+right rot 38.7 25.8 0
+wait 1.5
+mark done-aim
+right trigger 1
+wait 0.3
+right trigger 0
+wait 2
+mark confirm
+right rot 52.0 5 0
+wait 1.5
+mark yes-52.0
+right trigger 1
+wait 0.3
+right trigger 0
+wait 0.7
+right rot 53.0 5 0
+wait 1.5
+mark yes-53.0
+right trigger 1
+wait 0.3
+right trigger 0
+wait 0.7
+right rot 54.0 5 0
+wait 1.5
+mark yes-54.0
+right trigger 1
+wait 0.3
+right trigger 0
+wait 0.7
+right rot 55.0 5 0
+wait 1.5
+mark yes-55.0
+right trigger 1
+wait 0.3
+right trigger 0
+wait 0.7
+right rot 56.0 5 0
+wait 1.5
+mark yes-56.0
+right trigger 1
+wait 0.3
+right trigger 0
+wait 0.7
+wait 4
+# In the prison.
+wait 2
+mark prison
+wait 10
+mark ready
+wait 16
+mark placed
+wait 12
+head yaw 0
+mark leg-1
+left stick 0 1
+wait 30
+mark west-30
+left stick 0 1
+wait 30
+mark west-60
+left stick 0 1
+wait 30
+mark west-90
+left stick 0 1
+wait 30
+mark west-120
+left stick 0 1
+wait 30
+left stick 0 0
+mark turn-1
+wait 10
+mark leg-2
+left stick 0 1
+wait 30
+mark east-30
+left stick 0 1
+wait 30
+left stick 0 0
+mark done
+wait 3
