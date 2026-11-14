@@ -129,3 +129,10 @@ picks one at random - read). A sound played is a DirectSound buffer made, and on
   76 to 97 % of a core, no busy mixer thread of Wine's. Caveat: Oblivion Walkers deployed a new build (530c4972,
   corpses disabled) just before this run, so the horde is not the same as in the runs before it; a control run with
   Wine's DirectSound under that build is still owed. Sounds were not listened to (headless).
+- **The pair under the same builds** (Walkers 530c4972, FoliageAA 2, OBVR 5e063804; runs
+  obng-profile-gate-guards/20261114-194253 with Wine's DirectSound and -194615 with DSOAL, one after the other):
+  Wine 18.6 frames a second, median 48.8 ms, p90 80.4, p99 130.2, 2.5 % of the samples waiting under DirectSound;
+  DSOAL 18.7, median 50.6, p90 70.9, p99 146.4, 0.0 % waiting. **Under this Walkers build the wait is small and
+  DSOAL changes the mean nothing**; the p90 is 10 ms lower with it, the p99 16 ms higher - one run each, within the
+  runs' spread. The heavy waits (69 and 46 % of the samples) came with the build before it, whose corpses stayed;
+  whether those are what made the buffers is not shown. Not installed: nothing here decides for it yet.
