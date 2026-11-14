@@ -26,4 +26,11 @@ void LogProbeSummary();
 // ([Probe] ViewConstants); a store, nothing else.
 void SetProbeEyePhase(UInt8 phase);
 
+// [Probe] SkinnedCensus (SkinnedCensus.cpp): the skinned draw entry's note -
+// the occlusion culler's draw note (OcclusionCullNoteDraw) and, with the probe
+// on, the call counted by actor, part and shader class.
+void InstallSkinnedCensus(const char* iniPath, LogFn log);
+void SkinnedCensusNote(UInt32 geometry, UInt32 skin);
+void LogSkinnedCensusSummary();
+
 }  // namespace obng::plugin

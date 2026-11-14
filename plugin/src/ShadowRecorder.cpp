@@ -130,6 +130,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	}
 	g_log("%s", line);
 	LogProbeSummary();
+	LogSkinnedCensusSummary();
 	LogRangeWalkSummary();
 	LogRouteSummary();
 	LogStereoDrawSummary();

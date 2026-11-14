@@ -740,7 +740,7 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
 
 UInt32 __fastcall RouteDrawSkinned(void* self, void* /*edx*/, UInt32 geometry, UInt32 data, UInt32 skin, UInt32 world, UInt32 worldBound) {
 	const RoutedDrawScope routed{self};
-	OcclusionCullNoteDraw(geometry);
+	SkinnedCensusNote(geometry, skin);  // the culler's draw note, and [Probe] SkinnedCensus
 	eye::SwitchCounters counters;
 	ReapplySeen seen_;
 	SkinnedEnginePorts ports{static_cast<skinned_engine::NiDX9RendererView*>(self), nullptr, &seen_};
