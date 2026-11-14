@@ -42,6 +42,7 @@
 
 #include "Memory.h"
 #include "DrawGroupLogic.h"
+#include "OcclusionCullAct.h"
 #include "OcclusionCullGuard.h"
 #include "OcclusionCullGuardLogic.h"
 #include "OcclusionCullLogic.h"
@@ -222,7 +223,7 @@ void FlushSummaryIfRequested() {
 	const double ticksPerMillisecond = probe::TicksPerMillisecond(g_summaryClock, now, static_cast<std::uint64_t>(frequency.QuadPart));
 	g_summaryClock = now;
 	char line[1400];
-	cull::FormatSummary(g_stats, g_settings, ticksPerMillisecond, now.qpc, line, sizeof(line));
+	OcclusionCullActSummary(g_stats, g_settings, ticksPerMillisecond, now.qpc, line, sizeof(line));
 	g_log("%s", line);
 	OcclusionCullGuardSummary(g_stats, g_settings.lodRule);
 	g_stats.Reset();
@@ -515,9 +516,8 @@ cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind, bool countRepeat
 	oc::RectKind kinds[2];
 	const cull::TestKind testKind =
 	    cull::RectsFor(bound, origin, view0, view1, proj, g_ports, static_cast<float>(g_settings.margin), &rects, kinds, g_eyeCount);
-	const cull::Decided decided =
-	    cull::Decide(g_table, geometry, g_frame, testKind, g_settings, g_cameras, &g_stats, OcclusionCullIdentity(geometry, node, bound.centre),
-	                 &OcclusionCullIsLod);
+	const cull::Decided decided = OcclusionCullActDecide(g_table, geometry, g_frame, testKind, g_settings, g_cameras, &g_stats,
+	                                                     OcclusionCullIdentity(geometry, node, bound.centre), &OcclusionCullIsLod);
 	if (!node) {
 		cull::Count(&g_stats, kind, decided.decision, testKind, decided.newThisFrame, kinds);
 	}
@@ -1003,8 +1003,8 @@ UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {
 	g_settings.maxTurnDegrees = settings.occlusionCullMaxTurn;
 	g_nodeLogLeft = settings.occlusionCullNodeLog;
 	g_settings.lodRule = cull::guard::LodRuleFromIni(settings.occlusionCullLod, cull::LodRule::kNeverSkip);
-	OcclusionCullGuardInit(log);
-	log("Route: occlusion cull - the far LOD (under LODRoot) is %s ([Route] OcclusionCullLod)", cull::guard::LodRuleName(g_settings.lodRule));
+	OcclusionCullGuardInit(log, g_settings.lodRule);
+	OcclusionCullActInit(log, settings.occlusionCullAct);
 	g_driverLog = settings.occlusionCullDriverLog;
 	g_targetCheck = settings.occlusionCullEyeTarget;
 	g_trace.passes = settings.occlusionCullTrace;

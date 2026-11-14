@@ -124,8 +124,9 @@ void OcclusionCullLogNode(UInt32 node, UInt32 frame, LogFn log) {
 	log("%s", line);
 }
 
-void OcclusionCullGuardInit(LogFn log) {
+void OcclusionCullGuardInit(LogFn log, cull::LodRule rule) {
 	g_log = log;
+	log("Route: occlusion cull - the far LOD (under LODRoot) is %s ([Route] OcclusionCullLod)", cull::guard::LodRuleName(rule));
 }
 
 }  // namespace obng::plugin

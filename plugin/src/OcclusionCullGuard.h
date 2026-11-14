@@ -36,6 +36,6 @@ void OcclusionCullGuardSummary(const occlusion_cull::Stats& window, occlusion_cu
 // vtable, its bound, three parents and its first children.
 void OcclusionCullLogNode(UInt32 node, UInt32 frame, LogFn log);
 
-void OcclusionCullGuardInit(LogFn log);
+void OcclusionCullGuardInit(LogFn log, occlusion_cull::LodRule rule);
 
 }  // namespace obng::plugin
