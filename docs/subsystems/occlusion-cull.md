@@ -311,10 +311,51 @@ tools/hand-scripts/obng-cull-flat.txt, runs obng-cull-flat/20261109-172113
   window).
 - Every gamescope picture at the marks 0.0 % pure blue, on and off
   (tools/cull-blue.py --pattern '*-game.png').
-- Not measured: the flat frame time off against on - OBVR's frame capture
-  needs the headset renderer. A test-only mode (verdicts never acted on)
-  would give the pass time without the skips from the culler's own clock;
-  cheap, not built.
+- The flat pass without and with the skips is measured below
+  ([Route] OcclusionCullAct, 2026-11-14); the frame time as a whole is not -
+  OBVR's frame capture needs the headset renderer.
+
+### What the skips save in the flat pass ([Route] OcclusionCullAct, 2026-11-14)
+
+`OcclusionCullAct=0` tests and decides every draw as ever and draws it all
+the same; `2` acts in every second summary window only
+(OcclusionCullActLogic.h; the decision is turned into a draw in the table
+too, the verdict stays as the tests left it, so an acting window finds it
+warm). The eye pass's own clock then has the pass with the culler's work,
+without and with its skips, under the same load. Run
+obng-cull-flat/20261114-092219 (Linux, headless, OBNG.dll `067ebbd5`,
+`tools/hand-scripts/obng-measure-cull-flat-act.ini`: the flat settings of
+obng-measure-cull-flat-on.ini, a summary every second, the far LOD never
+left out as it is since 2026-11-13), `tools/cull-summary.py`:
+
+| place | draws a pass | left out, acting | pass ms without the skips | with them | saved | the culler's own ms |
+|---|---:|---:|---:|---:|---:|---:|
+| Market District | 616 | 14 % | 2.810 | 2.712 | 0.098 (3 %) | 0.25 |
+| Talos Plaza | 325 / 362 | 33 % | 1.092 | 0.850 | 0.241 (22 %) | 0.14-0.16 |
+| Imperial Dungeon | 434 | 38 % | 1.165 | 0.844 | 0.321 (28 %) | 0.13 |
+| Weynon Priory house | 625 | 60 % | 1.360 | 0.656 | 0.704 (52 %) | 0.11 |
+| Gold Road | 1051 / 1088 | 42 % | 2.447 | 1.990 | 0.457 (19 %) | 0.44-0.47 |
+
+- **Measured**: the columns. Each place has about ten to fifteen windows of either kind
+  (888 to 1437 passes); the head turns every 2.5 s, so the two kinds do
+  not see exactly the same views - at the plaza the test-only windows had
+  11 % more draws asked a pass (362 against 325), at the road 4 %, the
+  others within 1 %. The plaza's saving is that much overstated.
+- **Derived, not measured**: the pass with the culler off altogether. Both
+  columns carry the culler's own work (decide, the tests, the collect); the
+  pass without the culler is about the test-only pass less that work, and
+  against it the culler gains at the house 0.59 ms (47 %), in the dungeon
+  0.19 ms (18 %), at the plaza 0.08 ms (9 %), at the road nothing (-0.01)
+  and at the market it costs 0.15 ms (6 %). The queries' cost on the GPU is
+  in neither number, and a run with the culler off has no pass clock to
+  check the subtraction against.
+- So in the flat game, one camera, the culler pays where much is hidden
+  behind walls and costs about what it saves in the open: half the single
+  pass's gain a draw (one eye's draws instead of two) for the same tests.
+  The market's 14 % left out is less than half of 2026-11-09's 32 % - the
+  far LOD and the guards of 2026-11-13 came between; which of them was not
+  taken apart here.
+- Every gamescope picture at the marks 0.0 % pure blue.
 
 ### The trace ([Route] OcclusionCullTrace=N, OcclusionCullTraceDepth)
 
