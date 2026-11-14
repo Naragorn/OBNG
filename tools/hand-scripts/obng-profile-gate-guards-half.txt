@@ -1,0 +1,57 @@
+# The horde at Anvil's main gate for the frame's breakdown: Oblivion Walkers' harness/gate-guards-21.txt (105
+# walkers placed at Tamriel -47 -7, Anvil's guards come out and fight; the recipe from the Walkers session,
+# 2026-11-14) at the Dream Air's frame size in the single pass, with OBVR's capture and render sampler over the
+# fight. The place Nadi's Windows session of 2026-11-14 was slow at (docs/performance-backlog.md: about a hundred
+# skeleton updates a frame, 34 ms a frame). 105 walkers are placed - the spawn replacement adds its own.
+# Run with the Windows mod list:
+#   python3 tools/run-with-windows-mods.py -- tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-gate-guards.ini \
+#       tools/hand-scripts/obng-profile-gate-guards-half.txt --save OBVRHarnessMOO --run-timeout 480
+# obng-profile-gate-guards.txt is the same at the full eye resolution: what the frame costs when the GPU has
+# a quarter of the pixels (the CPU's work the same).
+ini Render SinglePassStereo=1
+ini SelfCheck ShowPanel=0
+ini Render GameResolutionWidth=2018
+ini Render GameResolutionHeight=1688
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Debug GripTrace=0
+ini Performance Enabled=1
+ini Performance GpuTiming=1
+ini Performance StartAfterSeconds=75
+ini Performance CaptureSeconds=100
+ini Performance MaxRecords=262144
+ini Performance Sampler=1
+console-at ready tgm
+console-at ready cow Tamriel -47 -7
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at loaded player.placeatme {form:OblivionWalkers.esp:801} 105
+
+expect Single-pass stereo: OBNG took the eyes ok (0)
+expect HandScript: finished
+expect Performance: export
+reject Performance: export partial
+reject HandScript: WARNING
+reject CRASH:
+
+wait 12
+right pos 0.20 -0.40 -0.30
+left pos -0.20 -0.40 -0.30
+wait 1
+mark ready
+wait 20
+mark loaded
+wait 20
+mark t20
+wait 20
+mark t40
+wait 20
+mark t60
+wait 20
+mark t80
+wait 20
+mark t100
+wait 20
+mark t120
+wait 1
+mark end
+wait 1

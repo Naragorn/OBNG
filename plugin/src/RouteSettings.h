@@ -99,6 +99,7 @@ struct RouteSettings {
 	UInt32 occlusionCullMaxAge = 2;     // [Route] OcclusionCullMaxAge: frames a hidden verdict is acted on (1..8)
 	int occlusionCullAct = 1;  // [Route] OcclusionCullAct: the verdicts are 1 acted on, 0 only tested (every draw drawn), 2 acted on in every second summary window - the eye pass's time without and with the skips (OcclusionCullLogic.h ActRule)
 	int occlusionCullLod = 0;  // [Route] OcclusionCullLod: the far LOD is 0 never left out, 1 left out like the rest, 2 drawn and counted (OcclusionCullGuardLogic.h)
+	int occlusionCullQuick = 1;  // [Route] OcclusionCullQuick: a draw with a visible verdict and no test due is decided without its rectangles - 0 off, 1 on, 2 checked against the full decision, 3 on in every second summary window (OcclusionCullQuickLogic.h)
 	bool occlusionCullBeforeBlend = true;  // [Route] OcclusionCullBeforeBlend: the tests read the opaque depth only (OcclusionCullLogic.h EndsTestsBefore)
 	UInt32 occlusionCullVisibleEvery = 1;  // [Route] OcclusionCullVisibleEvery: a draw found visible is tested again in one frame of this many (1 = every frame, 1..16; OcclusionCullLogic.h TestDue)
 	bool occlusionCullVisibleAlternate = false;  // [Route] OcclusionCullVisibleAlternate: the lower test rate only in every second summary window (a measurement)
