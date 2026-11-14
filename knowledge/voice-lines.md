@@ -82,3 +82,35 @@ obng-stress-ride/20261114-081539); the route replaces the whole function, so eac
 Open in particular: DirectSound's Lock and Unlock from a second thread while the main thread plays or stops the
 buffer (Windows and Proton), the timing of a line's start against its lip movement, and mode 2's samples against
 the game's (the check).
+
+## Sounds by path under Proton: the main thread waits in Wine's DirectSound (measured 2026-11-14)
+
+Not the voice player but its neighbour, the WAV reader 0x006AABD0 (called by the sound's creation by path
+0x006AC610 for every sound that is not an MP3; before it 0x006A9CD0 lists the files matching `<path>*.wav` and
+picks one at random - read). A sound played is a DirectSound buffer made, and one released later.
+
+- **Measured** (Linux, Proton proton-cachyos-slr, the Windows mod list, 105 walkers placed at Anvil's main gate
+  with Anvil's guards coming out - `tools/hand-scripts/obng-profile-gate-guards.txt`, run
+  obng-profile-gate-guards/20261114-150327, OBVR's render sampler): 439 world frames in 98 s (4.5 a second). Of the
+  samples in frames over 60 ms **79 % have the eip in ntdll, 58 839 of them at one address**, ntdll+0xE0E0 =
+  `ZwWaitForAlertByThreadId`+0xC (the nearest export of Proton's ntdll.dll, read) - the thread is waiting. The first
+  return address outside ntdll is in DSOUND.dll (+0xB90B 43 221 times, +0xBA4B 12 440, +0x5EB7 2 950), the nearest
+  engine return address 0x006AABD0.
+- **Measured, the same run with `bSoundEnabled=0` in Oblivion.ini** (`tools/run-with-game-ini.py`, run
+  -151935): 1 794 world frames in 100 s (18.0 a second), ntdll 4.4 % of the samples. The sound cost about
+  170 ms of a frame of 223.
+- **Read** (wine-mirror/wine, dlls/dsound/mixer.c, master): the mixer thread `DSOUND_mixthread` takes
+  `dev->buffer_list_lock` shared around the whole of `DSOUND_PerformMix`, which mixes every playing buffer
+  (`DSOUND_MixToPrimary`, each through the FIR resampler `cp_fields_resample` when its rate is not the device's).
+  A buffer's making and removing take that lock exclusive (`DirectSoundDevice_AddBuffer` / `_RemoveBuffer`, per
+  DeepWiki's reading of the same tree; not read by me line for line). The locks are SRW locks, whose wait is
+  `NtWaitForAlertByThreadId` - the address measured.
+- **Derived**: with a horde's sounds playing the mixer is in its pass nearly all the time, and every sound the game
+  starts or ends waits for a pass to finish. On Windows the same path is a small part: in the horde of Nadi's
+  session of 2026-11-14 the render thread spent 6.4 ms of a 34 ms frame in ntdll, 6 % of that under DSOUND and
+  22 % under the sound update 0x006AE860 (docs/performance-backlog.md).
+- **Not decided** (Linux only, the Beyond; nothing for the Dream Air on Windows): fewer buffers made (a pool, or
+  a cap on the sounds started a frame), or another DirectSound under Proton (DSOAL over OpenAL Soft is the usual
+  replacement; not tried, not checked against the plugins that patch the voice player's buffer flags).
+- For measuring: a Linux profile of a crowd is the sound's, not the frame's. Fly it with the sound off
+  (`python3 tools/run-with-game-ini.py bSoundEnabled=0 -- ...`) and say so with the numbers.
