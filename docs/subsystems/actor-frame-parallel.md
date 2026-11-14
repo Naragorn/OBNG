@@ -154,3 +154,15 @@ Windows' own SysWOW64 ntdll.dll, read):
 - The sound's part: registry keys opened from the sound update, about a millisecond a frame in a horde - with the
   WAV reader's own 0.3 ms a candidate for a cache of sound buffers (derived: that a buffer's making opens the keys
   is not read; DirectSound's code is not in the capture).
+
+## The rest of Havok's time: not the collision objects, not the AI's casts (measured 2026-11-14 21:24)
+
+`obng-measure-gate-guards-havok-rest.ini`, run obng-profile-gate-guards/20261114-212444 (4 216 frames, 122 high
+updates a frame, ms a frame): the skeletons' collision objects together 0.34 (0x0088EDC0 0.14 at 1 982 calls,
+0x0088E9F0 0.11, 0x0088F3D0 0.07, 0x00897510 0.02); the AI's casts 0.56 (line of sight 0x005F2820 0.36 at 157 calls,
+the ray ahead 0x006814B0 0.20 at 476 calls). Neither is where the unassigned 4 ms of Havok are; what is left to hold
+them is the loop's own 3.5 ms and the update step's own 7.8 ms, both outside every timed function.
+
+The per-actor parts in the same run: the skeleton updates 4.26, the controllers 3.76, **vitals 0x005FAAE0 1.97 with
+a longest call of 50.8 ms**, 0x00471C00 0.94, detection 0.83, the package update 0.61, head tracking 0.58. The
+vitals' longest call is a hitch of its own (one actor, 50 ms): not read why.
