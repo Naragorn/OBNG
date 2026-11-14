@@ -3,6 +3,11 @@
 # obng-stress-ride-newgame/20261113-181553: every click missed, the menu stayed up, the console line loaded the
 # cell and the flight ran). So the run depends on no save made under another plugin list - the start for the cut
 # "Oblivion.esm alone" (tools/with-plugin-list.py) and for its control runs.
+# The main menu is closed ten seconds before the `cow`, as in that run. With the menu still up at the `cow` the
+# first frame of the game ends in xOBSE when a plugin's script calls GetMapMarkers (Maskar's Oblivion Overhaul,
+# Ultimate Leveling): obse_1_2_416.dll+4B976 reads the map menu's list through a null menu, the menus' array
+# 0x00B13974 entry 22 being empty (measured twice, obng-stress-ride-menu/20261114-123242 and -123346; the command
+# named by its table entry in the DLL, read).
 # Run: OBNG_STRESS_SCRIPT=obng-stress-ride-menu.txt OBNG_STRESS_SAVE=continue \
 #      OBNG_STRESS_MODS=only:Oblivion.esm OBNG_STRESS_WITHOUT_DLL=OblivionWalkers.dll tools/stress-ride.sh <ini> <runs>
 start main-menu
@@ -20,6 +25,7 @@ ini Performance StartAfterSeconds=60
 ini Performance CaptureSeconds=130
 ini Performance MaxRecords=262144
 ini Performance Sampler=1
+console-at menu CloseAllMenus
 console-at ready cow Tamriel -33 -4
 console-at ready set gamehour to 12
 console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
@@ -34,7 +40,9 @@ expect HandScript: finished
 reject HandScript: WARNING
 reject CRASH:
 
-wait 14
+wait 6
+mark menu
+wait 10
 mark ready
 wait 16
 mark placed
