@@ -215,3 +215,31 @@ What follows (derived):
 - **Vitals, detection and the package cast into the Havok world** and so share the stack area and the cast budget;
   they are in the same class as the controller, not "light parts". They go onto threads only together with the
   Havok conditions (a thread memory a worker, the world read-only, the budgets by rule).
+
+## The controller's time by its Havok calls (2026-11-14, measured, run obng-profile-gate-guards/20261114-215120)
+
+`tools/hand-scripts/obng-measure-gate-guards-controller.ini`, the last window: 171 frames of 58.2 ms, 185 controller
+updates a frame, sound off.
+
+| | calls a frame | ms a frame | of the controller |
+|---|---:|---:|---:|
+| controller update 0x00896000, all | 185 | 4.57 | 100 % |
+| 0x008AD070 (under the support check 0x008AE100), exclusive | 186 | 1.83 | 40 % |
+| 0x008AD7D0 (the proxy's integrate), exclusive | 128 | 1.85 | 41 % |
+| the phantom's broad-phase update 0x008DE950 (all callers) | 655 | 0.32 | 7 % |
+| the phantom's transform 0x008ABA40, with its broad-phase update | 185 | 0.19 | |
+| 0x008EC790 | 315 | 0.10 | |
+| the controller's own code | | 0.31 | 7 % |
+| pending world operations queued 0x008D8830 / run 0x00899210 | 2.1 / 1.3 | 0.002 | |
+
+- **Measured**: four fifths of a controller's time lie in two functions' own code and their untimed callees
+  (0x008AD070: 0x008A6E40, 0x008A75D0, 0x008AC3C0 ...; 0x008AD7D0: 0x008AC640, 0x008AF890, 0x008ABD40 ...), not in
+  the broad phase. The one part that changes the world for everyone - the broad phase's update - is 0.3 ms a frame.
+- **Derived**: a split in two is possible by the cost: the broad-phase updates on the main thread (0.3 ms), the
+  two heavy functions beside each other. What stands against it is what they write (knowledge/actor-frame-map.md):
+  0x008AD070 writes the world's tolerance `[world+0x74]+0x08` and puts it back, 0x008AD7D0 ends in
+  0x008ABAC0 -> 0x008DE950 (the broad phase again) and writes the cap `[0x00B2EFB8]`; both use Havok's one stack
+  area. The slice havok-thread-conditions reads what is under them.
+- The cast wrapper 0x0088B850 is called 579 times a frame and costs 0.25 ms in all: the AI's casts are cheap here,
+  the frame budget is what matters about them, not their time. 0x008B22F0 is never called in this scene.
+- The world is rarely locked while a phantom moves: two operations a frame are queued.
