@@ -97,6 +97,11 @@ target_include_directories(OcclusionCullQuickLogicTest PRIVATE ../src ../../test
 target_compile_options(OcclusionCullQuickLogicTest PRIVATE -Wall -Wextra -Werror)
 add_test(NAME OcclusionCullQuickLogicTest COMMAND OcclusionCullQuickLogicTest)
 
+add_executable(OcclusionCullStandDownLogicTest OcclusionCullStandDownLogicTest.cpp)
+target_include_directories(OcclusionCullStandDownLogicTest PRIVATE ../src ../../tests)
+target_compile_options(OcclusionCullStandDownLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME OcclusionCullStandDownLogicTest COMMAND OcclusionCullStandDownLogicTest)
+
 add_executable(CodePatchLogicTest CodePatchLogicTest.cpp)
 target_include_directories(CodePatchLogicTest PRIVATE ../src ../../tests)
 target_compile_options(CodePatchLogicTest PRIVATE -Wall -Wextra -Werror)

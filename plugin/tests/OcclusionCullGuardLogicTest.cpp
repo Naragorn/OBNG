@@ -299,8 +299,28 @@ void TestCellWatch() {
 
 }  // namespace
 
+void TestFillTest() {
+	Section("A test queued for a draw carries the verdict's identity");
+	cull::Verdict v;
+	v.identity = 4711;
+	v.lod = true;
+	cull::Test test;
+	test.control = true;  // the slot held a trace control before
+	cull::EyeRects rects;
+	rects.has[1] = true;
+	rects.rect[1].left = 12.0f;
+	guard::FillTest(&test, 0x1230, &v, 77, rects, true, cull::DrawKind::kSkinned);
+	Check(test.geometry == 0x1230 && test.identity == 4711 && test.lod && test.skipped && !test.control, "the geometry, the identity, the LOD mark, left out, no control");
+	Check(test.kind == static_cast<std::uint8_t>(cull::DrawKind::kSkinned) && test.rects.has[1] && test.rects.rect[1].left == 12.0f, "the kind and the rectangles");
+	Check(v.testedFrame == 77, "the verdict notes its test's frame");
+	cull::Test bare;
+	guard::FillTest(&bare, 0x1240, nullptr, 78, rects, false, cull::DrawKind::kShape);
+	Check(bare.geometry == 0x1240 && bare.identity == 0 && !bare.lod && !bare.skipped, "without a verdict (the table full): no identity, no LOD mark");
+}
+
 int main() {
 	TestIdentity();
+	TestFillTest();
 	TestCollect();
 	TestLod();
 	TestFormatGuards();

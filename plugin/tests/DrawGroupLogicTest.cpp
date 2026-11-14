@@ -106,6 +106,7 @@ void TestNodeBook() {
 	      "left out in pass 12: yes in 12, and within an age of two until 14");
 	Check(!lately.LeftOutWithin(900, 15, 2) && !lately.LeftOutWithin(900, 13, 0), "beyond the age: no");
 	Check(!lately.LeftOutWithin(901, 12, 2), "its neighbour: no");
+	Check(lately.DrawsBelow(900) == 2 && lately.DrawsBelow(901) == 0, "the draws noted below it: two, kept while it is left out; an unknown node none");
 	Section("NodeBook: a full probe run drops the note, a stale slot is taken over");
 	static NodeBook full;
 	// Nodes that share a home: multiples of 2^32 / kSlots collide after the multiply only by luck, so fill by search.

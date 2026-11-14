@@ -49,6 +49,23 @@ constexpr std::uint32_t Place(float x, float y) {
 	return static_cast<std::uint32_t>(SquareOf(x)) * 73856093u ^ static_cast<std::uint32_t>(SquareOf(y)) * 19349663u;
 }
 
+// A test queued for a draw: its rectangles, and which object they are for -
+// the verdict's identity, so that a result that comes back for another object
+// at the address is dropped (Table::Record). The verdict notes its test's
+// frame ([Route] OcclusionCullVisibleEvery).
+inline void FillTest(Test* test, std::uint32_t geometry, Verdict* verdict, std::uint32_t frame, const EyeRects& rects, bool skipped, DrawKind kind) {
+	test->geometry = geometry;
+	test->identity = verdict != nullptr ? verdict->identity : 0;
+	test->lod = verdict != nullptr && verdict->lod;
+	if (verdict != nullptr) {
+		verdict->testedFrame = frame;
+	}
+	test->rects = rects;
+	test->skipped = skipped;
+	test->control = false;
+	test->kind = static_cast<std::uint8_t>(kind);
+}
+
 // ---- The far LOD ------------------------------------------------------------------
 
 // A land LOD shape hangs four parents under "LODRoot" at most (the shape, its

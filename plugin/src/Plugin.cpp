@@ -255,6 +255,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 		r.occlusionCullLod = static_cast<int>(GetPrivateProfileIntA("Route", "OcclusionCullLod", 0, path));
 		r.occlusionCullAct = static_cast<int>(GetPrivateProfileIntA("Route", "OcclusionCullAct", 1, path));
 		r.occlusionCullQuick = static_cast<int>(GetPrivateProfileIntA("Route", "OcclusionCullQuick", 1, path));
+		r.occlusionCullStandDown = static_cast<int>(GetPrivateProfileIntA("Route", "OcclusionCullStandDown", 0, path));
 		const UINT every = GetPrivateProfileIntA("Route", "OcclusionCullVisibleEvery", 1, path);
 		r.occlusionCullVisibleEvery = every < 1 ? 1 : every > 16 ? 16 : every;
 	}

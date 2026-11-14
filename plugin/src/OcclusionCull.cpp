@@ -48,6 +48,7 @@
 #include "OcclusionCullGuardLogic.h"
 #include "OcclusionCullLogic.h"
 #include "OcclusionCullQuick.h"
+#include "OcclusionCullStandDown.h"
 #include "OcclusionRectDevice.h"
 #include "ProbeLogic.h"
 #include "RouteStereoDraw.h"
@@ -226,6 +227,7 @@ void FlushSummaryIfRequested() {
 	g_log("%s", line);
 	OcclusionCullGuardSummary(g_stats, g_settings.lodRule);
 	OcclusionCullQuickSummary(g_log, g_stats.eyePasses);
+	OcclusionCullStandDownSummary(g_log, g_stats, ticksPerMillisecond);
 	g_stats.Reset();
 	if (g_visibleEvery > 1) {
 		g_log("Route: occlusion cull visible draws - tested in one frame of %u (%s in this window): %llu tests of draws found visible left out",
@@ -483,6 +485,9 @@ void NoteCamera() {
 // under a DrawRenderPass that decided already counts as nothing - the record
 // was the draw.
 cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind, bool countRepeat, bool node = false) {
+	if (g_occlusionCullRests) {
+		return cull::Decision::kDraw;  // [Route] OcclusionCullStandDown: undecided, untested
+	}
 	const unsigned __int64 t0 = __rdtsc();
 	cull::Verdict* const seen = g_table.Find(geometry);
 	if (seen != nullptr && seen->seenFrame == g_frame) {
@@ -548,17 +553,7 @@ cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind, bool countRepeat
 	}
 	if (decided.newThisFrame && testKind == cull::TestKind::kTest && due && !g_testsEnded) {
 		if (g_batch->count < cull::kMaxTests) {
-			cull::Test& test = g_batch->tests[g_batch->count];
-			test.geometry = geometry;
-			test.identity = decided.verdict != nullptr ? decided.verdict->identity : 0;
-			test.lod = decided.verdict != nullptr && decided.verdict->lod;
-			if (decided.verdict != nullptr) {
-				decided.verdict->testedFrame = g_frame;
-			}
-			test.rects = rects;
-			test.skipped = decided.decision == cull::Decision::kSkip;
-			test.control = false;
-			test.kind = static_cast<std::uint8_t>(kind);
+			cull::guard::FillTest(&g_batch->tests[g_batch->count], geometry, decided.verdict, g_frame, rects, decided.decision == cull::Decision::kSkip, kind);
 			if (g_batch->traced && g_batch->count < cull::kTraceTests) {
 				OcclusionCullReadName(geometry, g_batch->names[g_batch->count]);
 				OcclusionCullReadName(ReadAt<UInt32>(geometry + kObjectParentOffset), g_batch->parents[g_batch->count]);
@@ -814,6 +809,7 @@ UInt32 __fastcall CullFinish(void* self, void* /*edx*/) {
 	}
 	g_testsEnded = false;
 	g_stats.passTicks += __rdtsc() - t0 + g_beginTicks;
+	OcclusionCullStandDownPass(g_stats);
 	return eax;
 }
 
@@ -931,6 +927,7 @@ void __fastcall CullVisit(void* self, void* /*edx*/, UInt32 object) {
 			if (DecideDraw(object, cull::DrawKind::kShape, false, true) == cull::Decision::kSkip) {
 				++g_nodesLeftOut;
 				++g_leftOutAll;
+				OcclusionCullStandDownNode(g_nodeBook.DrawsBelow(object));
 				if (g_nodeBook.LeftOut(object, g_frame) && g_nodeLogLeft != 0) {
 					--g_nodeLogLeft;
 					OcclusionCullLogNode(object, g_frame, g_log);
@@ -1001,6 +998,7 @@ UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {
 	OcclusionCullGuardInit(log, g_settings.lodRule);
 	OcclusionCullActInit(log, settings.occlusionCullAct);
 	OcclusionCullQuickInit(log, settings.occlusionCullQuick);
+	OcclusionCullStandDownInit(log, settings.occlusionCullStandDown);
 	g_driverLog = settings.occlusionCullDriverLog;
 	g_targetCheck = settings.occlusionCullEyeTarget;
 	g_trace.passes = settings.occlusionCullTrace;

@@ -170,6 +170,14 @@ public:
 		return s != nullptr && s->everLeftOut && pass - s->leftOutPass <= age;
 	}
 
+	// The draws noted below the node in the last pass it was noted in: what
+	// leaving it out saves the pass, at least (a draw is noted at its three
+	// nearest ancestors only). A node the book does not know: 0.
+	std::uint32_t DrawsBelow(std::uint32_t node) const {
+		const Slot* s = Find(node);
+		return s != nullptr ? s->all : 0u;
+	}
+
 	bool Candidate(std::uint32_t node, std::uint32_t pass, std::uint32_t maxAge) const {
 		const Slot* s = Find(node);
 		if (s == nullptr) {
