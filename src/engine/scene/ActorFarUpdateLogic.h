@@ -33,6 +33,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "ActorFarGlideLogic.h"
 #include "ActorFarRateLogic.h"
 
 namespace obng::engine::scene::actor_far_update {
@@ -77,6 +78,7 @@ struct Entry {
 	float rootMotion[3] = {};     // the animation's steps since the actor's last update that ran
 	bool hasRootMotion = false;
 	std::uint32_t rootFrame = 0;  // the clock at the last step noted
+	actor_far_glide::State glide; // the actor shown on its way between its updates (ActorFarGlideLogic.h)
 };
 
 // One call's verdict.

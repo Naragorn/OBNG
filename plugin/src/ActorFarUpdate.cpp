@@ -1,4 +1,5 @@
 #include "ActorFarUpdate.h"
+#include "ActorFarGlide.h"
 
 #include <windows.h>
 
@@ -353,10 +354,19 @@ void __fastcall Update(void* self, void*, float time) {
 	const far_update::Step step = far_update::Decide(entry, isNew, every, g_clock, *frameSeconds);
 	if (!step.runs) {
 		InterlockedIncrement64(&g_skipped);
+		if (isFar) {
+			ActorFarGlideSkipped(entry, actor);
+		}
 		return;
 	}
-	NoteTravel(entry, actor, lower && !isNew, since);
+	if (!isFar && entry.glide.hasLast) {
+		entry.glide = {};  // a near actor is updated every frame or is out of sight: nothing to show between
+	}
 	if (!step.summed) {
+		if (isFar) {
+			ActorFarGlideAtUpdate(entry, actor, nullptr);
+		}
+		NoteTravel(entry, actor, lower && !isNew, since);
 		far_update::DropRootMotion(entry);
 		g_inFar = lower;
 		Original(self, time);
@@ -373,7 +383,12 @@ void __fastcall Update(void* self, void*, float time) {
 	}
 	const UInt32 animData = far_update::RootMotionTarget(entry, g_clock.frame, live);
 	float way[3];
-	if (far_update::TakeRootMotion(entry, animData, way)) {
+	const bool took = far_update::TakeRootMotion(entry, animData, way);
+	if (isFar) {
+		ActorFarGlideAtUpdate(entry, actor, took ? way : nullptr);
+	}
+	NoteTravel(entry, actor, lower && !isNew, since);
+	if (took) {
 		std::memcpy(reinterpret_cast<void*>(animData + kAnimRootMotion), way, sizeof(way));
 		InterlockedIncrement64(&g_rootTaken);
 	} else {
@@ -428,6 +443,7 @@ void InstallActorFarUpdate(const char* iniPath, LogFn log) {
 		                                     reinterpret_cast<const void*>(&AnimUpdate), &g_animOriginal, log, DetourRole::Route);
 		g_rootMotion = g_rootMotion && anim;
 	}
+	ActorFarGlideInit(g_rootMotion && GetPrivateProfileIntA("Route", "ActorFarGlide", 1, iniPath) != 0, log);
 	log("Route %s: the animation's steps of the frames left out %s", kName, g_rootMotion ? "are summed for the update that runs" : "are NOT summed (the actor goes one frame's way an update)");
 	if (probe) {
 		g_probe = InstallEntryDetour("character controller update 0x00896000 (far actors' probe)", kController, kControllerBytes, sizeof(kControllerBytes),
@@ -476,6 +492,7 @@ void LogActorFarUpdateSummary() {
 		g_log("Route: far actors' way - %lld updates run with summed time got the animation's summed step, %lld had none, %lld of them because the noted "
 		      "animation data was not the actor's any more",
 		      taken, missing, stale);
+		LogActorFarGlideSummary();
 	}
 	if (g_viewRule.on) {
 		const bool viewWasOn = g_viewOnNow != 0;
