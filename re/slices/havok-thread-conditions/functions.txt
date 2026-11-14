@@ -1,0 +1,15 @@
+0x0088B070 # Havok start (thread memory and stack area)
+0x008A7060 # Thread memory constructor (proposal)
+0x008BBA80 # Havok base system init (proposal)
+0x0088B850 # Cast wrapper with a frame budget
+0x008B22F0 # Under the cast wrapper (proposal: the world's ray cast entry)
+0x008B21F0 # Under 0x008B22F0
+0x008BA1B0 # Called twice by the cast wrapper and by 0x008987E0
+0x00898ED0 # Under the cast wrapper; calls 0x008D95A0
+0x008D95A0 # Under 0x00898ED0
+0x008EC790 # Called by the proxy's support check 0x008AE100 and integrate 0x008AD7D0
+0x008EC340 # Under 0x008EC790
+0x008D9870 # Called by 0x008ECC60 (set position and linear cast) beside the broad-phase update 0x008DE950
+0x008D8830 # Queue a pending world operation (proposal)
+0x00899210 # Execute the pending world operations (proposal)
+0x008D8BF0 # Under 0x00899210: the pending operations' loop (proposal)

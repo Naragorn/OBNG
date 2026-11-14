@@ -1,0 +1,163 @@
+{
+  "slice": "havok-thread-conditions",
+  "subsystem": "actors",
+  "sharedHeaders": [],
+  "purpose": "The third slice for docs/subsystems/actor-frame-parallel.md: what must be true before several threads may run the character controllers' and the AI's Havok queries at once. Three conditions are known: a thread memory and stack area per thread (Havok's stack area 0x00B47900 is one static block), the casts' frame budget in 0x0088B850 (shared counters, order-dependent), and the world used read-only (the phantom's broad-phase update 0x008DE950 changes the world, or queues a record when the world is locked). Map and refute only; nothing is rebuilt. Read knowledge/actor-frame-map.md, re/functions/0x008DE950.md and re/functions/0x008ECC60.md first. Class names come from the binary's RTTI (re/symbols/xobse.csv); Havok's SDK source is not public - a method name taken from memory of the SDK is 'unverified'.",
+  "functions": [
+    {
+      "address": "0x0088B070",
+      "name": "Havok start (thread memory and stack area)",
+      "mapOnly": true,
+      "known": "Pseudocode: makes a 0x2C-byte object (0x008A7060, vtable 0x00A95C70), hands it to 0x008BBA80, then calls slot 0 of the object in the thread's TLS block at +0x19C (or the global at 0x00BA7D9C) with (&0x00B47900, 0x60000). Measured: the character controller writes 0x00B47900.. in 96 % of its calls ([Timed] WritesOf, docs/subsystems/actor-frame-parallel.md).",
+      "questions": [
+        "What exactly a second thread needs before it may run a Havok query: which object must sit in its TLS slot +0x19C, how that object is made and initialised, how a stack area is given to it, and what the fallback to 0x00BA7D9C means for a thread without one",
+        "Which TLS index and offset are used and where else the EXE sets that slot (other threads: the loader, the sound)",
+        "Skip the long list of class registrations; say only that it is there"
+      ]
+    },
+    {
+      "address": "0x008A7060",
+      "name": "Thread memory constructor (proposal)",
+      "mapOnly": true,
+      "known": "Called by 0x0088B070 on the fresh 0x2C-byte block before the vtable 0x00A95C70 is written.",
+      "questions": [
+        "The object's layout (every field it initialises) and its base vtable's slots as far as the constructor shows them"
+      ]
+    },
+    {
+      "address": "0x008BBA80",
+      "name": "Havok base system init (proposal)",
+      "mapOnly": true,
+      "known": "Called by 0x0088B070 with (thread memory, 0, printf, 0).",
+      "questions": [
+        "What it stores where (globals, the TLS slot), and what a second thread would have to repeat of it"
+      ]
+    },
+    {
+      "address": "0x0088B850",
+      "name": "Cast wrapper with a frame budget",
+      "mapOnly": true,
+      "known": "Pseudocode: unless byte 0x00BA790A is set, every call counts 0x00BA7924 up and by the low 6 bits of [arg+0x24] one of 0x00BA7928/2C/30 or stores 0x00BA7934; when 0x00BA7924 exceeds 0x00B2E2F4 (or 0x00BA7928 reaches 0x1F) it sets [arg+0x50]=0 and [arg+0x44]=1.0 and skips the cast. Measured: written in 34 % of the vitals' calls, 6.6 % of detection's.",
+      "questions": [
+        "The budget rule exactly: every counter, every limit, every exit, and what the caller sees when the cast is skipped",
+        "Where the counters are reset each frame (find the writer of 0x00BA7924..0x00BA7934 and of 0x00BA790A by cross-reference; it may address them through a base pointer)",
+        "What the cast itself is: which world function it calls, with which object, and everything that call path writes outside its own arguments",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other objects of the same kind, (c) the Havok world, its bodies, phantoms, broad phase and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap and Havok's stack area 0x00B47900; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x008B22F0",
+      "name": "Under the cast wrapper (proposal: the world's ray cast entry)",
+      "mapOnly": true,
+      "known": "Called once by 0x0088B850; calls 0x008B21F0.",
+      "questions": [
+        "What it is and whether it writes anything on the world or the broad phase",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other objects of the same kind, (c) the Havok world, its bodies, phantoms, broad phase and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap and Havok's stack area 0x00B47900; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x008B21F0",
+      "name": "Under 0x008B22F0",
+      "mapOnly": true,
+      "known": "",
+      "questions": [
+        "What it is; does it lock, count or queue on the world",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other objects of the same kind, (c) the Havok world, its bodies, phantoms, broad phase and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap and Havok's stack area 0x00B47900; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x008BA1B0",
+      "name": "Called twice by the cast wrapper and by 0x008987E0",
+      "mapOnly": true,
+      "known": "81 lines of pseudocode.",
+      "questions": [
+        "What it is",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other objects of the same kind, (c) the Havok world, its bodies, phantoms, broad phase and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap and Havok's stack area 0x00B47900; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x00898ED0",
+      "name": "Under the cast wrapper; calls 0x008D95A0",
+      "mapOnly": true,
+      "known": "",
+      "questions": [
+        "What it is",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other objects of the same kind, (c) the Havok world, its bodies, phantoms, broad phase and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap and Havok's stack area 0x00B47900; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x008D95A0",
+      "name": "Under 0x00898ED0",
+      "mapOnly": true,
+      "known": "",
+      "questions": [
+        "What it is",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other objects of the same kind, (c) the Havok world, its bodies, phantoms, broad phase and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap and Havok's stack area 0x00B47900; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x008EC790",
+      "name": "Called by the proxy's support check 0x008AE100 and integrate 0x008AD7D0",
+      "mapOnly": true,
+      "known": "153 lines; calls 0x008EC340. Proposal: the shape phantom's linear cast against its overlap list.",
+      "questions": [
+        "Does it read only the phantom's own overlap list and the bodies in it, or does it go to the world's broad phase",
+        "Every write outside its arguments and the phantom",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other objects of the same kind, (c) the Havok world, its bodies, phantoms, broad phase and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap and Havok's stack area 0x00B47900; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x008EC340",
+      "name": "Under 0x008EC790",
+      "mapOnly": true,
+      "known": "",
+      "questions": [
+        "What it is",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other objects of the same kind, (c) the Havok world, its bodies, phantoms, broad phase and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap and Havok's stack area 0x00B47900; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x008D9870",
+      "name": "Called by 0x008ECC60 (set position and linear cast) beside the broad-phase update 0x008DE950",
+      "mapOnly": true,
+      "known": "33 lines.",
+      "questions": [
+        "What it is",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other objects of the same kind, (c) the Havok world, its bodies, phantoms, broad phase and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap and Havok's stack area 0x00B47900; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x008D8830",
+      "name": "Queue a pending world operation (proposal)",
+      "mapOnly": true,
+      "known": "Reached from 0x008DE950 through 0x00898820 when [world+0x88]+[world+0x8C] != 0, with a record {type 0x11, phantom, aabb}; pseudocode shows a critical section and [world+0x84]++ (re/functions/0x008DE950.md).",
+      "questions": [
+        "Is the queue safe for several threads at once (which lock, held over what)",
+        "The record's layout for type 0x11 and what is copied (the AABB by value or by pointer)",
+        "Every operation type the switch knows, one line each",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other objects of the same kind, (c) the Havok world, its bodies, phantoms, broad phase and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap and Havok's stack area 0x00B47900; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x00899210",
+      "name": "Execute the pending world operations (proposal)",
+      "mapOnly": true,
+      "known": "Called by 0x008DE950 when [world+0x88] falls to 0 with [world+0x84] != 0 and byte [world+0x90] == 0; calls 0x008D8BF0.",
+      "questions": [
+        "The order in which queued operations run (FIFO?), and what type 0x11 does when run",
+        "What sets and clears [world+0x88], [world+0x8C] and [world+0x90] elsewhere (cross-references to functions that write them: the world's lock and unlock)",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other objects of the same kind, (c) the Havok world, its bodies, phantoms, broad phase and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap and Havok's stack area 0x00B47900; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x008D8BF0",
+      "name": "Under 0x00899210: the pending operations' loop (proposal)",
+      "mapOnly": true,
+      "known": "A caller of 0x008DE950 too (re/functions/0x008DE950.md).",
+      "questions": [
+        "How it runs a type 0x11 record and whether an operation queued during the loop runs in the same loop",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other objects of the same kind, (c) the Havok world, its bodies, phantoms, broad phase and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap and Havok's stack area 0x00B47900; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    }
+  ]
+}

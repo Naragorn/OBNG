@@ -136,3 +136,27 @@ picks one at random - read). A sound played is a DirectSound buffer made, and on
   DSOAL changes the mean nothing**; the p90 is 10 ms lower with it, the p99 16 ms higher - one run each, within the
   runs' spread. The heavy waits (69 and 46 % of the samples) came with the build before it, whose corpses stayed;
   whether those are what made the buffers is not shown. Not installed: nothing here decides for it yet.
+
+## The sound update's cost on Windows: the listener's commit, not the buffers' making (2026-11-14)
+
+Capture OBVR-performance-3 of Nadi's session (Windows, the Walkers siege at Anvil; 2 662 world frames, 31.8 ms a
+frame in the mean, 41 530 samples). The samples outside the EXE by the nearest engine return address (w0):
+
+| return address | the call (read) | samples | ms a frame |
+|---|---|---:|---:|
+| 0x006AEB05 | `[manager+0x78]` vtable +0x44, after +0x38 and +0x34 on the same object | 950 | 0.73 |
+| 0x006AF5C1 | the same call, after the update's loop over the playing sounds | 294 | 0.23 |
+| 0x006AAF28 | `[+0x08]` vtable +0x0C in the WAV reader 0x006AABD0 | 154 | 0.12 |
+
+- **Read**: `[manager+0x78]` is the IDirectSound3DListener - the slots fit dsound.h's order (+0x34
+  SetOrientation with six floats and a flag, +0x38 SetPosition with three and a flag, +0x44
+  CommitDeferredSettings with none). The sound update 0x006AE860 commits the deferred 3D settings twice a frame:
+  at 0x006AEB03 after the listener's position and orientation, at 0x006AF5BF after the playing sounds' loop.
+  0x006AAF26 is IDirectSound::CreateSoundBuffer (+0x0C).
+- **Measured**: 93 % of these samples have the eip in ntdll, nearly all in ZwOpenKeyEx (1 337 of 1 453 with
+  KERNELBASE above): Windows' DirectSound opens registry keys inside the commit. Why is not read (DSOUND.dll's code
+  is not in the capture).
+- **Corrects** docs/subsystems/actor-frame-parallel.md ("a candidate for a cache of sound buffers"): the buffers'
+  making is 0.12 ms a frame here, the two commits 0.96 ms. A cache of buffers gains a tenth of a millisecond on
+  Windows; what costs is the commit.
+
