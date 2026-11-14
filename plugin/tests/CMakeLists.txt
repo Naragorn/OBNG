@@ -102,6 +102,11 @@ target_include_directories(OcclusionCullStandDownLogicTest PRIVATE ../src ../../
 target_compile_options(OcclusionCullStandDownLogicTest PRIVATE -Wall -Wextra -Werror)
 add_test(NAME OcclusionCullStandDownLogicTest COMMAND OcclusionCullStandDownLogicTest)
 
+add_executable(TimedWritesLogicTest TimedWritesLogicTest.cpp)
+target_include_directories(TimedWritesLogicTest PRIVATE ../src ../../tests)
+target_compile_options(TimedWritesLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME TimedWritesLogicTest COMMAND TimedWritesLogicTest)
+
 add_executable(SkinnedCensusLogicTest SkinnedCensusLogicTest.cpp)
 target_include_directories(SkinnedCensusLogicTest PRIVATE ../src ../../tests)
 target_compile_options(SkinnedCensusLogicTest PRIVATE -Wall -Wextra -Werror)

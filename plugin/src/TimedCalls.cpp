@@ -10,6 +10,7 @@
 #include "Memory.h"
 #include "ShadowTimeInfo.h"
 #include "TimedCallLogic.h"
+#include "TimedWrites.h"
 
 namespace obng::plugin {
 
@@ -151,9 +152,11 @@ void __cdecl Enter(UInt32 index, UInt32* slot) {
 			tagB = base != 0 ? *reinterpret_cast<const UInt32*>(base + kFormId) : 0;
 		}
 	}
-	if (g_calls.Enter(index, reinterpret_cast<UInt32>(slot), *slot, g_stub, __rdtsc(), tagA, tagB)) {
+	const bool pushed = g_calls.Enter(index, reinterpret_cast<UInt32>(slot), *slot, g_stub, __rdtsc(), tagA, tagB);
+	if (pushed) {
 		*slot = g_stub;
 	}
+	timed_writes::Entered(index, g_calls.Depth(), pushed);  // [Timed] WritesOf
 }
 
 // Called by the exit stub with the room for the real return address, which
@@ -161,6 +164,7 @@ void __cdecl Enter(UInt32 index, UInt32* slot) {
 // Integer code only: a float result is on the x87 stack.
 void __cdecl Exit(UInt32* room) {
 	*room = g_calls.Exit(reinterpret_cast<UInt32>(room) + 4, __rdtsc());
+	timed_writes::Exited(g_calls.Depth());  // [Timed] WritesOf: copies and compares memory, no floating point
 }
 
 }  // namespace
@@ -243,6 +247,7 @@ UInt32 InstallTimedCalls(const char* iniPath, LogFn log) {
 	}
 	log("Timed: %u of %u functions timed at entry and return, on the thread that first calls the first of them", g_count, asked);
 	InstallSpikeWatch(iniPath, log);
+	timed_writes::Install(iniPath, g_spec, g_count, log);
 	return g_count;
 }
 
@@ -280,6 +285,7 @@ void LogTimedCallsSummary() {
 		timed::FormatTimed(g_spec[i].name, g_spec[i].address, window, ticksPerMs, line, sizeof(line));
 		g_log("%s", line);
 	}
+	timed_writes::LogSummary();
 }
 
 }  // namespace obng::plugin

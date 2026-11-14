@@ -14,6 +14,9 @@
 // costs two reads of the time stamp counter and some bookkeeping, about 50
 // ns - not for functions called thousands of times a frame. A function
 // another detour already holds is refused. A measurement.
+//
+// WritesOf=<name>[,<name>...] and WritesEvery=<n>: which statics of the EXE
+// the named functions' calls write (TimedWrites.h).
 
 #include "ShadowTimeInfo.h"
 #include "Types.h"

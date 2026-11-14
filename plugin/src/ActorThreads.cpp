@@ -9,6 +9,7 @@
 #include <memory>
 #include <unordered_map>
 
+#include "ExeDataSection.h"
 #include "FastSceneUpdate.h"
 #include "engine/scene/ActorThreadsLogic.h"
 #include "engine/scene/SceneUpdate.h"
@@ -29,8 +30,8 @@ constexpr UInt32 kCollisionUpdate = 0x0088EDC0;  // bhkNiCollisionObject::Update
 constexpr UInt32 kBlendUpdate = 0x0088F3D0;      // the blend object's slot +0x64
 constexpr UInt32 kSlotBlendUpdate = 0x64;
 constexpr UInt32 kSlotAsNode = 0x08;             // NiObject's node cast (the range walk's vt[+0x08], re/functions/0x007D59E0.md)
-constexpr UInt32 kDataStart = 0x00B02000;        // .data of Oblivion.exe 1.2.0.416 (its section header)
-constexpr UInt32 kDataDwords = 0xA9C1C / 4;
+constexpr UInt32 kDataStart = exe_data::kStart;
+constexpr UInt32 kDataDwords = exe_data::kDwords;
 constexpr UInt32 kProbeEvery = 16;
 constexpr UInt32 kMaxRuns = 512;
 constexpr UInt32 kMaxWorkers = 7;

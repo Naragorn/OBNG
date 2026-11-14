@@ -166,3 +166,52 @@ them is the loop's own 3.5 ms and the update step's own 7.8 ms, both outside eve
 The per-actor parts in the same run: the skeleton updates 4.26, the controllers 3.76, **vitals 0x005FAAE0 1.97 with
 a longest call of 50.8 ms**, 0x00471C00 0.94, detection 0.83, the package update 0.61, head tracking 0.58. The
 vitals' longest call is a hitch of its own (one actor, 50 ms): not read why.
+
+## Step 3, first part: the statics the per-actor parts write (2026-11-14, measured, [Timed] WritesOf)
+
+Run `artifacts/shadow/obng-profile-gate-guards/20261114-214301` (the gate horde, Linux, the Windows mod list, sound
+off, `tools/hand-scripts/obng-measure-gate-guards-writes.ini`): every 8th call of six functions with the EXE's
+.data (0x00B02000, 0xA9C1C bytes) copied at its entry and its return (plugin/src/TimedWrites.h). The probe sees the
+statics only, not what a call writes into heap objects; what another thread wrote during a probed call is counted
+too; the tally keeps 1024 places a function, and three functions filled it (the counts of their rarer places are
+low by that). "Share" is the probed calls in which the place differed.
+
+| function | probed calls | written most often (share) |
+|---|---|---|
+| vitals 0x005FAAE0 | 63 151 | 0x00BA7924 34 %; 0x00B3BAAC 6 %; Havok's stack area 2 % a place |
+| detection 0x005F6540 | 88 608 | 0x00B333C0 81 %; 0x00B333BC, 0x00BA7924, 0x00BA792C 6.6 % each; 0x00B47904 6 % |
+| package 0x0063A210 | 54 530 | 0x00B3BAAC 8 %; 0x00BA7924 2.4 %; 0x00B3BAB8 2.1 %; 0x00B02048 2 % |
+| head tracking 0x00603500 | 48 724 | 0x00B02048 0.6 %; all others under 0.2 % (196 places, 859 runs in all) |
+| 0x00471C00 | 52 449 | nothing above 0.1 % (32 places, 280 runs in all) |
+| character controller 0x00896000 | 48 608 | 0x00B47900 96 %, 0x00B47934 74 %, 0x00B48910 62 % and 750 more places of that area |
+
+What the places are (read, re/export/rea-all/functions):
+
+- **0x00B47900 .. 0x00BA7900: Havok's stack area of the main thread.** 0x0088B070 (Havok's start) hands
+  `(&DAT_00B47900, 0x60000)` to the thread memory found in the thread's TLS slot +0x19C (or the global one at
+  0x00BA7D9C). Every Havok query writes there: the controller in 96 % of its calls, detection, vitals and the package
+  through their casts. A thread that runs a Havok query needs a thread memory and a stack area of its own first -
+  with the world used read-only, the second known condition of the controllers' casts on threads.
+- **0x00BA7924, 0x00BA7928, 0x00BA792C, 0x00BA7930, 0x00BA7934: the frame's cast counters** in the cast wrapper
+  0x0088B850: every cast counts 0x00BA7924 up, by the caster's layer the others; with the count above 0x00B2E2F4
+  (set at 0x00441970 from 0x00B05224) the cast is not done and returns "nothing hit" (+0x50 = 0, +0x44 = 1.0). This
+  is a budget of casts a frame shared by all actors: who gets a cast depends on the order of the actors. On threads
+  the counter needs a rule that does not depend on timing (a share an actor, or the budget handed out before the
+  threads start); a plain atomic counter would make which actor loses its casts a race.
+- **0x00B333C0, 0x00B333BC: detection's counters** (0x005F2820 the line of sight: 0x00B333BC counted up per cast and
+  compared with a limit from 0x00B148FC) - the same kind of budget, already on the map.
+- **0x00B3BAAC..B4 and 0x00B3BAB8..C0: scratch vectors** of 0x0065ADD0 and 0x0065AE80 (a bound's centre less and
+  plus its extent, computed into the static and then copied to the caller's result). Harmless in one thread, a race
+  on threads: two callers at once can copy each other's vector. Each needs a local instead (two small rebuilds).
+- 0x00B02048, 0x00B0203C, 0x00B02030 and neighbours: written in under 2 % of the calls of every function, also seen
+  in the actors' down passes (docs/subsystems/actor-batch.md); not read. Unverified whether the probed functions
+  write them or another thread did during the probe.
+
+What follows (derived):
+
+- **Head tracking 0x00603500 and 0x00471C00 write no static of their own** in this horde. They are the first
+  candidates for the thread scaffold; what they write into heap objects other than their own actor still has to
+  come from the code (knowledge/actor-frame-map.md), the probe cannot show it.
+- **Vitals, detection and the package cast into the Havok world** and so share the stack area and the cast budget;
+  they are in the same class as the controller, not "light parts". They go onto threads only together with the
+  Havok conditions (a thread memory a worker, the world read-only, the budgets by rule).
