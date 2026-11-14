@@ -111,10 +111,13 @@ inline int FormatSummary(const Counts& c, const State& state, std::uint64_t pass
 	line.Text("Route: occlusion cull quick decisions (%s, %s in this window) - %.1f a pass without their rectangles, %.1f with",
 	          RuleName(state.rule), state.on ? "on" : "off", static_cast<double>(c.quick) / p, static_cast<double>(c.full) / p);
 	if (state.Checks()) {
-		line.Text("; check: %llu quick decisions compared, %llu the same, %llu outside both frustums (drawn where the full decision leaves out), "
-		          "%llu MISMATCH",
-		          static_cast<unsigned long long>(c.checked), static_cast<unsigned long long>(c.same), static_cast<unsigned long long>(c.outside),
-		          static_cast<unsigned long long>(c.other));
+		line.Text("; check: %llu quick decisions compared, %llu the same, %llu outside both frustums (drawn where the full decision leaves out)",
+		          static_cast<unsigned long long>(c.checked), static_cast<unsigned long long>(c.same), static_cast<unsigned long long>(c.outside));
+		if (c.other != 0) {  // the word the run scripts look for, only when there is one
+			line.Text(", %llu MISMATCH", static_cast<unsigned long long>(c.other));
+		} else {
+			line.Text(", none differing otherwise");
+		}
 	}
 	return line.at;
 }

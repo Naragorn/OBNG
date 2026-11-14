@@ -489,3 +489,58 @@ opaque geometry's depth alone. What is asked after that gets no test in the pass
 the prison the tests went out early in every pass (746-750 of 750 a window); 45 of 1 014 draws a pass were still left
 out there. Not measured yet: what the culler still saves in a town with this (the blended records come late in the
 finish, so most of the opaque depth is there), and Windows itself.
+
+## The culler's own cost: the quick decision and the stand-down (2026-11-14, class C)
+
+Nadi's Windows session of 2026-11-14 (docs/performance-backlog.md): over 200 347 eye passes the culler left out
+127 of 968 draws a pass (13.1 %) and cost 0.278 ms a pass (decide 0.173, the tests' end 0.067, the collect 0.038);
+at the mean cost of a drawn draw its skips saved less than that in 81 of 254 windows (29 % of the passes). In a
+horde at Anvil: 3 983 draws a pass, 25 left out, 1.06 ms a pass.
+
+### `[Route] OcclusionCullQuick` (default 1): no rectangles where none are needed
+
+The decision read the renderer's view and projection, built the second eye's view and projected the bound into
+both eyes for every draw of every frame. The rectangles serve a test of this frame and tell a bound outside both
+frustums, nothing else. A draw whose verdict on record is a visible one for this very object (the identity) and
+whose test is not due - `OcclusionCullVisibleEvery`, or a far LOD piece that is never tested - is drawn whatever
+they say; `quick::Applies` / `quick::Decide` (OcclusionCullQuickLogic.h) decide it from the verdict alone, the
+node notes and the counts as before.
+
+- The one difference (class C): a bound outside both frustums is drawn where the full decision leaves it out.
+- **The check in the game** (`OcclusionCullQuick=2`: the full decision taken for every draw, the quick one
+  compared; runs obng-profile-gate-guards/20261114-151935 and obng-profile-gate-guards-half/20261114-152317, the
+  horde at Anvil's gate, Linux): **3 036 197 quick decisions compared, all the same, 0 outside both frustums, none
+  differing otherwise.** The tolerance the class C row needs: 0 of 3.0 million in a horde; a place where the
+  engine's own cull lets bounds outside both frustums through was not looked for.
+- **What it saves** (`OcclusionCullQuick=3`, alternating summary windows, run -150327, 10 windows each): decide
+  0.719 -> 0.597 ms a pass at 1 598 first-time draws a pass, 879 of 1 643 decisions quick. A sixth of the decide,
+  not the half the rectangles' share of the samples promised: what is left per draw (the viewport read from the
+  device, the table's probe, the identity's reads, the notes at three ancestors, two clock reads) is 0.29 us
+  against 0.45 us with the rectangles. That run's frames were 4.5 a second (the sound's wait under Proton,
+  knowledge/voice-lines.md), so the memory was cold at every draw; on Windows the full decision was 0.18 us a draw.
+
+### `[Route] OcclusionCullStandDown` (default 0): the culler rests where it does not pay
+
+OcclusionCullStandDownLogic.h: windows of 32 passes; the saving is the draws left out, and those noted below a
+node left out (`NodeBook::DrawsBelow`), at the mean cost of a draw that was drawn - (pass - culler) / drawn -
+against decide + the tests' end + the collect. Two windows in a row that do not pay: a rest of 256 passes (every
+draw undecided, no test, no node left out - the walk finds no candidate without the draws' notes), then four
+passes of warm-up and a probe window that must save 1.25 times its cost; a probe that fails doubles the rest up to
+2 048 passes. 2 = judged and counted only.
+
+- **Measured in the horde** (Linux, the sound off, the quick decision on):
+  - what the skips really save, by `OcclusionCullAct=2` (run -153926, 6 acting and 7 test-only windows of 2 283
+    draws a pass): the eye pass 10.956 ms acting (114 left out a pass) against 11.518 ms test only - **0.56 ms a
+    pass saved, the culler's own work 1.21 ms a pass: 0.65 ms a pass lost.**
+  - the stand-down's own estimate in the same place (counted only, runs -151935 and -153926): 0.0 to 0.23 ms a pass
+    saved - lower than the measured 0.56 (the hidden draws there are skinned and cost more than the mean), the same
+    verdict. 33 of 132 and 7 of 130 windows paid.
+  - on (run -154331): rested in 3 985 of 4 193 passes, 5 rests begun, no probe paid; the culler's line reads 0
+    draws and 0.000 ms decide in the horde's windows. The eye pass without the culler was not measured against the
+    one with it in one run (there is no alternating mode); derived from the run above it is 11.52 - 1.21 = 10.3 ms
+    against 10.96 ms.
+- While it rests the summary's "per pass N draws" counts the working passes' draws over all passes: read the
+  stand-down line beside it.
+- **Open**: a place where the culler pays (a dungeon, a house) with the stand-down on - that it does not rest
+  there, and that the estimate's low side for skinned draws does not rest it where actors stand behind walls;
+  Windows; the rest lengths were not varied.

@@ -2269,3 +2269,38 @@ From capture 3 (1 456 world frames over 26 ms, 34.2 ms each; OBVR's CPU events a
   the culler standing down while its own windows show less left out than it costs. Outside the pass in the horde
   it counts Havok 5.4 ms a scene call (0x00921A40 alone 1.5), the game's code 3.2, ntdll 4.7 (2.1 under SteamVR's
   client), the process manager 7.0 ms a call.
+
+## 2026-11-14 afternoon: the horde at Anvil's gate on Linux - the sound's wait, the GPU's part, the culler's cost (measured)
+
+Nadi: "go A B E" - the slow place of the Windows session rebuilt on Linux, the eye resolution halved for the GPU's
+part, and the culler made to cost less than it saves. The scenario is Oblivion Walkers'
+(`harness/gate-guards-21.txt`: 105 walkers placed at Tamriel -47 -7, Anvil's guards come out) at the Dream Air's
+frame size in the single pass with the Windows mod list (`tools/hand-scripts/obng-profile-gate-guards.txt`, `-half`
+for 2018 x 1688 an eye; OBNG.dll of 2d40a79 to 6a78ddb and the build after it, OBVR main 67680b2).
+
+| run | what | world frames in the capture | a frame | scene pass | the game outside it |
+|---|---|---:|---:|---:|---:|
+| -150327 | as played | 439 in 98 s (4.5 a second) | 223 ms (mean) | 9.3 ms | - |
+| -151935 | `bSoundEnabled=0` | 1 794 in 100 s (18.0) | 54.3 ms (median) | 14.3 ms | 36.1 ms |
+| -half/-152317 | the same, a quarter of the pixels | 1 656 in 100 s (16.6) | 57.9 ms | 14.7 ms | 39.1 ms |
+
+- **Under Proton the horde's frame is the sound's**: 79 % of the main thread's samples wait in Wine's DirectSound
+  under the WAV reader 0x006AABD0; without sound the frame rate is four times as high. Linux only - written out in
+  knowledge/voice-lines.md ("Sounds by path under Proton").
+- **The GPU bounds nothing in the horde**: with a quarter of the pixels neither the frame nor the scene pass gets
+  shorter (54.3 -> 57.9 ms, 14.3 -> 14.7 ms; the scene differs a little from run to run). SteamVR's
+  `total_render_gpu_ms` read 52.4 and 55.3 ms - the frame's interval both times, not the GPU's work: the field is
+  no measure of the GPU's load, here or in the Windows captures. What the GPU needs for a frame at the Dream Air's
+  size stays unmeasured; it is under 54 ms, and no lever while the CPU's work is five times the budget.
+- **This scene is heavier than Nadi's**: about 114 skeleton updates a pass (86 to 127 in the Windows windows), but
+  the process manager 23 to 26 ms a call (4 to 7 ms there) - every walker is in a fight with the guards. The
+  shares, not the sums, carry over. Without sound, of 55.7 ms a frame (the render sampler, exclusive): OBNG.dll
+  8.0 ms - of it the rebuilt skeleton update 4.7 ms (RoutedDown 2.9, `Matches`, the order's check against the
+  tree, 1.05, the skin bounds 0.8) -, D3D9 2.6, ntdll 2.45, OBVR.dll 2.4, the heap's slow path 0x00402480 2.3,
+  Havok's 0x0093C690 + 0x00916C00 + 0x00921A40 3.2. Candidates from that: `Matches` at every update (a
+  millisecond a frame in a horde for a check that nearly always says yes), and what the process manager does for
+  24 ms (0x00603CA0 7.6 ms inclusive, 0x00471C00 9.2, 0x00519D90 5.7 - not broken down).
+- **The culler**: docs/subsystems/occlusion-cull.md, "The culler's own cost". In short: the quick decision checked
+  (3.0 million decisions the same) and on, a sixth of the decide saved; in the horde the culler's skips save
+  0.56 ms a pass and its work costs 1.21 - `OcclusionCullStandDown` rests it there (built, default off until a
+  place where it pays was flown with it).

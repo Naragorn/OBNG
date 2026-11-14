@@ -204,9 +204,14 @@ void TestSummary() {
 	counts.same = 48;
 	counts.outside = 2;
 	quick::FormatSummary(counts, state, 10, line, sizeof(line));
-	Check(std::string(line).find("check: 50 quick decisions compared, 48 the same, 2 outside both frustums (drawn where the full decision leaves out), 0 "
-	                             "MISMATCH") != std::string::npos,
-	      "the check's account");
+	Check(std::string(line).find("check: 50 quick decisions compared, 48 the same, 2 outside both frustums (drawn where the full decision leaves out), "
+	                             "none differing otherwise") != std::string::npos &&
+	          std::string(line).find("MISMATCH") == std::string::npos,
+	      "the check's account; without a fault the run scripts' word is not written");
+	counts.other = 3;
+	quick::FormatSummary(counts, state, 10, line, sizeof(line));
+	Check(std::string(line).find(", 3 MISMATCH") != std::string::npos, "a fault is written with the word the run scripts look for");
+	counts.other = 0;
 	state.Set(quick::Rule::kOff);
 	quick::FormatSummary(counts, state, 0, line, sizeof(line));
 	Check(std::string(line).find("off in this window") != std::string::npos, "off, and no pass does not divide by zero");
