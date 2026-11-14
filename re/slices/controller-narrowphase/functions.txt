@@ -1,0 +1,15 @@
+0x008ECDD0 # The phantom's vtable +0x34 (table 0x00A9AFFC, read from the EXE's bytes)
+0x008ECE60 # The phantom's vtable +0x38
+0x00916C00 # The most sampled Havok function under the controller (15 % of 2 702 samples; 1 739 samples in all Havok)
+0x0093C690 # Second most sampled under the controller (10 %; 2 144 samples in all Havok)
+0x008ABF70 # Sampled only under the controller (247 samples)
+0x008AD150 # Sampled only under the controller (162 samples); directly behind 0x008AD070
+0x008D1A30 # Sampled under the controller (113) and elsewhere (1 143 in all)
+0x008ABCE0 # Sampled only under the controller (74)
+0x008E4210 # Sampled under the controller (56 of 166); near hk3AxisSweep's update 0x008E4590
+0x008B1B00 # Sampled under the controller (51 of 57)
+0x00893B90 # Sampled under the controller (45 of 55); knowledge/actor-frame-map.md has it as the writer of the picked body [0x00BA7A5C] (pseudocode only)
+0x008AC6A0 # Under the proxy's integrate 0x008AD7D0: impulses to touched bodies (pseudocode only)
+0x0088BB60 # Called from the controller's update 0x00896000: an append to an array at [[phantom+8]+0x2B0]+0x6C..+0x74 (pseudocode only)
+0x008D8370 # Adds the broad phase's new pairs (called by 0x008DE950)
+0x008D83E0 # Removes the broad phase's removed pairs (called by 0x008DE950)

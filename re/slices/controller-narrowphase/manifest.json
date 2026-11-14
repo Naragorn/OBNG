@@ -1,0 +1,159 @@
+{
+  "slice": "controller-narrowphase",
+  "subsystem": "actors",
+  "sharedHeaders": [],
+  "purpose": "The fourth slice for docs/subsystems/actor-frame-parallel.md: the functions in which the character controllers' time actually lies (0x008AD070 and 0x008AD7D0 hold 81 % of it in their own code and callees) and the last unread writers on that path - to decide whether these can run for several actors on worker threads at once while the broad phase's updates stay on the main thread. Map and refute only; nothing is rebuilt. Read first: docs/subsystems/actor-frame-parallel.md (the sections of 2026-11-14 on the third slice and the controller's time), knowledge/actor-frame-map.md, re/functions/0x008ECC60.md, 0x008AD070.md, 0x008AD7D0.md, 0x008DE950.md. Class names only from the binary's RTTI (re/symbols/xobse.csv); a Havok SDK name from memory is 'unverified'.",
+  "functions": [
+    {
+      "address": "0x008ECDD0",
+      "name": "The phantom's vtable +0x34 (table 0x00A9AFFC, read from the EXE's bytes)",
+      "mapOnly": true,
+      "known": "Called by 0x008AD070 at 0x008AD0B4 between the write of the world's tolerance [world+0x74]+0x08 and its restore; 0x008AD070 holds 1.83 ms a frame in the gate horde (40 % of the controllers). Proposal: closest points of the phantom's shape against its overlap list.",
+      "questions": [
+        "What it does, which list it walks, which dispatcher functions it calls and how they are picked",
+        "Does it read the tolerance [world+0x74]+0x08, and from where exactly",
+        "The read-and-write list by five groups: (a) its own arguments and stack, (b) the phantom or controller it works for, (c) other phantoms, bodies, shapes and the Havok world, its broad phase, pair tables and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap (which allocator: the thread memory at TLS +0x19C, the manager at 0x00BA7D98, the form heap) and Havok's stack area; every write to (c), (d) and (e) with its instruction address; every callee named with one line, unfollowed callees marked. Say plainly at the end: could two threads run this at once for two different phantoms, and what stands against it"
+      ]
+    },
+    {
+      "address": "0x008ECE60",
+      "name": "The phantom's vtable +0x38",
+      "mapOnly": true,
+      "known": "Neighbour of the linear cast 0x008ECC60 (+0x30) and 0x008ECDD0 (+0x34).",
+      "questions": [
+        "What it is and who calls it on the controller's path",
+        "The read-and-write list by five groups: (a) its own arguments and stack, (b) the phantom or controller it works for, (c) other phantoms, bodies, shapes and the Havok world, its broad phase, pair tables and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap (which allocator: the thread memory at TLS +0x19C, the manager at 0x00BA7D98, the form heap) and Havok's stack area; every write to (c), (d) and (e) with its instruction address; every callee named with one line, unfollowed callees marked. Say plainly at the end: could two threads run this at once for two different phantoms, and what stands against it"
+      ]
+    },
+    {
+      "address": "0x00916C00",
+      "name": "The most sampled Havok function under the controller (15 % of 2 702 samples; 1 739 samples in all Havok)",
+      "mapOnly": true,
+      "known": "Sampler, run obng-profile-gate-guards/20261114-215120.",
+      "questions": [
+        "What it is (a narrow-phase agent, a MOPP walk, a shape query?)",
+        "The read-and-write list by five groups: (a) its own arguments and stack, (b) the phantom or controller it works for, (c) other phantoms, bodies, shapes and the Havok world, its broad phase, pair tables and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap (which allocator: the thread memory at TLS +0x19C, the manager at 0x00BA7D98, the form heap) and Havok's stack area; every write to (c), (d) and (e) with its instruction address; every callee named with one line, unfollowed callees marked. Say plainly at the end: could two threads run this at once for two different phantoms, and what stands against it"
+      ]
+    },
+    {
+      "address": "0x0093C690",
+      "name": "Second most sampled under the controller (10 %; 2 144 samples in all Havok)",
+      "mapOnly": true,
+      "known": "",
+      "questions": [
+        "What it is",
+        "The read-and-write list by five groups: (a) its own arguments and stack, (b) the phantom or controller it works for, (c) other phantoms, bodies, shapes and the Havok world, its broad phase, pair tables and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap (which allocator: the thread memory at TLS +0x19C, the manager at 0x00BA7D98, the form heap) and Havok's stack area; every write to (c), (d) and (e) with its instruction address; every callee named with one line, unfollowed callees marked. Say plainly at the end: could two threads run this at once for two different phantoms, and what stands against it"
+      ]
+    },
+    {
+      "address": "0x008ABF70",
+      "name": "Sampled only under the controller (247 samples)",
+      "mapOnly": true,
+      "known": "",
+      "questions": [
+        "What it is; which of 0x008AD070 / 0x008AD7D0 reaches it",
+        "The read-and-write list by five groups: (a) its own arguments and stack, (b) the phantom or controller it works for, (c) other phantoms, bodies, shapes and the Havok world, its broad phase, pair tables and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap (which allocator: the thread memory at TLS +0x19C, the manager at 0x00BA7D98, the form heap) and Havok's stack area; every write to (c), (d) and (e) with its instruction address; every callee named with one line, unfollowed callees marked. Say plainly at the end: could two threads run this at once for two different phantoms, and what stands against it"
+      ]
+    },
+    {
+      "address": "0x008AD150",
+      "name": "Sampled only under the controller (162 samples); directly behind 0x008AD070",
+      "mapOnly": true,
+      "known": "",
+      "questions": [
+        "What it is; who calls it",
+        "The read-and-write list by five groups: (a) its own arguments and stack, (b) the phantom or controller it works for, (c) other phantoms, bodies, shapes and the Havok world, its broad phase, pair tables and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap (which allocator: the thread memory at TLS +0x19C, the manager at 0x00BA7D98, the form heap) and Havok's stack area; every write to (c), (d) and (e) with its instruction address; every callee named with one line, unfollowed callees marked. Say plainly at the end: could two threads run this at once for two different phantoms, and what stands against it"
+      ]
+    },
+    {
+      "address": "0x008D1A30",
+      "name": "Sampled under the controller (113) and elsewhere (1 143 in all)",
+      "mapOnly": true,
+      "known": "",
+      "questions": [
+        "What it is",
+        "The read-and-write list by five groups: (a) its own arguments and stack, (b) the phantom or controller it works for, (c) other phantoms, bodies, shapes and the Havok world, its broad phase, pair tables and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap (which allocator: the thread memory at TLS +0x19C, the manager at 0x00BA7D98, the form heap) and Havok's stack area; every write to (c), (d) and (e) with its instruction address; every callee named with one line, unfollowed callees marked. Say plainly at the end: could two threads run this at once for two different phantoms, and what stands against it"
+      ]
+    },
+    {
+      "address": "0x008ABCE0",
+      "name": "Sampled only under the controller (74)",
+      "mapOnly": true,
+      "known": "",
+      "questions": [
+        "What it is",
+        "The read-and-write list by five groups: (a) its own arguments and stack, (b) the phantom or controller it works for, (c) other phantoms, bodies, shapes and the Havok world, its broad phase, pair tables and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap (which allocator: the thread memory at TLS +0x19C, the manager at 0x00BA7D98, the form heap) and Havok's stack area; every write to (c), (d) and (e) with its instruction address; every callee named with one line, unfollowed callees marked. Say plainly at the end: could two threads run this at once for two different phantoms, and what stands against it"
+      ]
+    },
+    {
+      "address": "0x008E4210",
+      "name": "Sampled under the controller (56 of 166); near hk3AxisSweep's update 0x008E4590",
+      "mapOnly": true,
+      "known": "",
+      "questions": [
+        "What it is; is it the broad phase, and does it write broad-phase state",
+        "The read-and-write list by five groups: (a) its own arguments and stack, (b) the phantom or controller it works for, (c) other phantoms, bodies, shapes and the Havok world, its broad phase, pair tables and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap (which allocator: the thread memory at TLS +0x19C, the manager at 0x00BA7D98, the form heap) and Havok's stack area; every write to (c), (d) and (e) with its instruction address; every callee named with one line, unfollowed callees marked. Say plainly at the end: could two threads run this at once for two different phantoms, and what stands against it"
+      ]
+    },
+    {
+      "address": "0x008B1B00",
+      "name": "Sampled under the controller (51 of 57)",
+      "mapOnly": true,
+      "known": "",
+      "questions": [
+        "What it is",
+        "The read-and-write list by five groups: (a) its own arguments and stack, (b) the phantom or controller it works for, (c) other phantoms, bodies, shapes and the Havok world, its broad phase, pair tables and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap (which allocator: the thread memory at TLS +0x19C, the manager at 0x00BA7D98, the form heap) and Havok's stack area; every write to (c), (d) and (e) with its instruction address; every callee named with one line, unfollowed callees marked. Say plainly at the end: could two threads run this at once for two different phantoms, and what stands against it"
+      ]
+    },
+    {
+      "address": "0x00893B90",
+      "name": "Sampled under the controller (45 of 55); knowledge/actor-frame-map.md has it as the writer of the picked body [0x00BA7A5C] (pseudocode only)",
+      "mapOnly": true,
+      "known": "",
+      "questions": [
+        "The writes of 0x00BA7A5C / 0x00BA7A58 exactly and who reads them",
+        "The read-and-write list by five groups: (a) its own arguments and stack, (b) the phantom or controller it works for, (c) other phantoms, bodies, shapes and the Havok world, its broad phase, pair tables and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap (which allocator: the thread memory at TLS +0x19C, the manager at 0x00BA7D98, the form heap) and Havok's stack area; every write to (c), (d) and (e) with its instruction address; every callee named with one line, unfollowed callees marked. Say plainly at the end: could two threads run this at once for two different phantoms, and what stands against it"
+      ]
+    },
+    {
+      "address": "0x008AC6A0",
+      "name": "Under the proxy's integrate 0x008AD7D0: impulses to touched bodies (pseudocode only)",
+      "mapOnly": true,
+      "known": "Proposal: it reaches a motion's vtable +0x60.",
+      "questions": [
+        "Does it write another body's motion directly, or queue; with the world's lock counter [world+0x88] raised, what changes",
+        "The read-and-write list by five groups: (a) its own arguments and stack, (b) the phantom or controller it works for, (c) other phantoms, bodies, shapes and the Havok world, its broad phase, pair tables and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap (which allocator: the thread memory at TLS +0x19C, the manager at 0x00BA7D98, the form heap) and Havok's stack area; every write to (c), (d) and (e) with its instruction address; every callee named with one line, unfollowed callees marked. Say plainly at the end: could two threads run this at once for two different phantoms, and what stands against it"
+      ]
+    },
+    {
+      "address": "0x0088BB60",
+      "name": "Called from the controller's update 0x00896000: an append to an array at [[phantom+8]+0x2B0]+0x6C..+0x74 (pseudocode only)",
+      "mapOnly": true,
+      "known": "",
+      "questions": [
+        "What the array is, who else writes and reads it",
+        "The read-and-write list by five groups: (a) its own arguments and stack, (b) the phantom or controller it works for, (c) other phantoms, bodies, shapes and the Havok world, its broad phase, pair tables and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap (which allocator: the thread memory at TLS +0x19C, the manager at 0x00BA7D98, the form heap) and Havok's stack area; every write to (c), (d) and (e) with its instruction address; every callee named with one line, unfollowed callees marked. Say plainly at the end: could two threads run this at once for two different phantoms, and what stands against it"
+      ]
+    },
+    {
+      "address": "0x008D8370",
+      "name": "Adds the broad phase's new pairs (called by 0x008DE950)",
+      "mapOnly": true,
+      "known": "Proposal: reaches the writer of a phantom's overlap list +0x120/+0x124.",
+      "questions": [
+        "Where a phantom's overlap list +0x120/+0x124 is written, through which call",
+        "The read-and-write list by five groups: (a) its own arguments and stack, (b) the phantom or controller it works for, (c) other phantoms, bodies, shapes and the Havok world, its broad phase, pair tables and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap (which allocator: the thread memory at TLS +0x19C, the manager at 0x00BA7D98, the form heap) and Havok's stack area; every write to (c), (d) and (e) with its instruction address; every callee named with one line, unfollowed callees marked. Say plainly at the end: could two threads run this at once for two different phantoms, and what stands against it"
+      ]
+    },
+    {
+      "address": "0x008D83E0",
+      "name": "Removes the broad phase's removed pairs (called by 0x008DE950)",
+      "mapOnly": true,
+      "known": "",
+      "questions": [
+        "Where a phantom's overlap list is shrunk, through which call",
+        "The read-and-write list by five groups: (a) its own arguments and stack, (b) the phantom or controller it works for, (c) other phantoms, bodies, shapes and the Havok world, its broad phase, pair tables and pending-operation queue, (d) globals, singletons and thread-local slots with their addresses, (e) the heap (which allocator: the thread memory at TLS +0x19C, the manager at 0x00BA7D98, the form heap) and Havok's stack area; every write to (c), (d) and (e) with its instruction address; every callee named with one line, unfollowed callees marked. Say plainly at the end: could two threads run this at once for two different phantoms, and what stands against it"
+      ]
+    }
+  ]
+}

@@ -273,8 +273,9 @@ R read in the instructions, D derived, Up pseudocode only, U unverified.
   `[pick+0x50] = 0`, `[pick+0x44] = 1.0`; its collectors are left as they were (D).
 - Reset by 0x0088C440 (bhkWorld vtable +0x80; R 0x0088C4E7-0x0088C505); how often a frame is not known.
 - Measured beside it (run 20261114-215120): 579 calls of the wrapper a frame in the gate horde against a budget
-  of 40 - **most of the horde's AI casts are skipped by the budget already**, and which actors get the 40 is the
-  actors' order.
+  of 40 a reset, at 0.43 us a call. Derived, not measured: unless the reset runs many times a frame, most of the
+  horde's picks are skipped by the budget already, and which actors get the 40 is the actors' order. A count of
+  skipped picks and of resets a frame would settle it.
 
 **3. The world's pending operations.**
 - 0x008DE950 queues instead of updating while `[world+0x88] + [world+0x8C] != 0` (R 0x008DE963-0x008DE970). A
