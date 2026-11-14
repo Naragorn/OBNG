@@ -653,3 +653,26 @@ with its address and writer; "unknown" = a callee on the path not followed. No r
   and 0x005E0660 < 0x006814B0 < 0x00643340 < 0x00628790 (the deeper words can be stale). So the controller runs
   inside an actor's movement, under the high process's 0x00643340 - none of these four is mapped. They are the next
   slice: without them it is not known what the movement does with the controller's result in the same turn.
+
+## The second slice, actor-movement (2026-11-14): one correction and the cast's world write
+
+- **Withdrawn: "the controller's update is called from 0x005E0660 under 0x00643340"** (the architect's note above,
+  from the sampler's stack words). The slice mapped those functions and all three refuters held it: 0x005E0660 is
+  a height getter (three virtual calls, (A.z - B.z) * scale, no call that can be 0x00896000 directly), 0x00643340 an
+  actor-value sum, 0x005F1910 and 0x005232D0 base actor-value getters, 0x00628790 a point along a line, 0x006814B0
+  a ray cast "is the reference ahead". The words in the samples were stale stack contents - the first word too,
+  which knowledge/render-thread-outside-the-pass.md had only said of the deeper ones. **Who calls 0x00896000 is
+  still not known**: three vtable slots (0x00A6FAE4, 0x00A752C4, 0x00A9689C) hold it; an entry probe that records
+  the return address at [ESP] settles it.
+- **Every cast moves the phantom in the world's broad phase** (re/functions/0x008DE950.md, proposed
+  hkPhantom::updateBroadPhase; read): with the world unlocked it increments `[world+0x88]` (load, INC, store at
+  0x008DE995-0x008DE9A2, no LOCK), calls the broad phase `[world+0x64]` vfunc +0x18 with the phantom's handle and
+  the new AABB, removes and adds the overlap pairs through the dispatcher `[world+0x68]`, decrements the counter
+  (0x008DEB15) and drains pending operations when it reaches 0. With the world locked
+  (`[world+0x88] + [world+0x8C] != 0`) it queues a record of type 0x11 through 0x00898820 and returns. So two casts
+  of different phantoms cannot overlap in time as the code stands: the counter, the broad phase and the pair tables
+  are shared and unguarded (the race is derived; what the broad phase writes inside is not followed).
+- **The support check's tolerance** (re/functions/0x008AD070.md, read): it adds to the float at `[world+0x74]+0x08`
+  (0x008AD0A1-0x008AD0AC), calls the phantom's vtable +0x34 once and restores the saved value (0x008AD0BB); no lock.
+  Two proxies interleaved would leave a widened tolerance behind (derived).
+- 0x008ABA40 (proposed hkShapePhantom::setTransform) and 0x008ABAC0 both end in the broad-phase update.

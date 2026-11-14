@@ -112,3 +112,18 @@ the process (the slots the run of 16:42 timed: the skeleton updates 5.3 ms, the 
 0x005FAAE0 2.2 ms, with 175 actors then). The loop's own share is 1.3 ms, not the 4.1 ms the earlier run's
 subtraction gave (that run timed fewer of its callees). Two earlier runs of this INI (20261114-202927, -205xxx) are
 void: the INI had lost its route sections.
+
+## The second slice's result (2026-11-14, actor-movement: 54 agents, 10 functions mapped and held)
+
+- **The call site named above is withdrawn**: 0x005E0660 and the functions above it are getters; the sampler's stack
+  words were stale. Where the controller's update is called from is open again; an entry probe on 0x00896000 that
+  records its return address is the next cheap step.
+- **The controller's casts cannot simply run side by side**: each cast moves the phantom in the Havok world's broad
+  phase (0x008DE950: an unguarded counter, the broad phase, the pair tables), and the support check widens a
+  world-wide tolerance around its query. Havok's own way out is in the same function: with the world locked the
+  move is queued as a pending operation instead of done. A parallel phase would be: the world locked, every
+  actor's casts run against the broad phase as it stands, the queued moves applied afterwards on one thread - if
+  the queue (0x00898820), the cast's reads of the broad phase and the collectors are safe for that, which is not
+  read. That is the question for step 3, and it is a larger one than the plan assumed: not "a per-thread copy of a
+  counter" but "Havok's world used read-only by several threads".
+- Unchanged: the smaller blockers of the first slice (the iteration cap, the detection counter, the flag byte).
