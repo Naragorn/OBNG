@@ -2156,3 +2156,11 @@ reason and what the game's function returned.
 
 What is left of such a call is the geometry's own work (the casts against 170-350 triangles), and the actor stuck in
 the ship stays a defect of the mod's data. The mean of the integrate in those windows: 0.018-0.022 ms a call.
+
+## 2026-11-14: a candidate from Oblivion Walkers - a quest's first stage loads its icon on the main thread (reported, not measured here)
+
+Oblivion Walkers' session, from its harness runs of 2026-11-14: SetStage on a new quest costs 43 ms on the main
+thread; the render sampler's samples lie in d3dx9_27's texture loading and `__read_nolock` under the "quest added"
+menu, the file the game's own `icon_miscellaneous.dds`. Derived there: the menu's icon is read and decoded from the
+disk when the message opens. Not read or measured in this repository. A lever would be the icon loaded ahead (or
+kept): class B/C, small once the menu's loader is read; the gain one frame of 43 ms per quest added.
