@@ -2194,3 +2194,62 @@ arm. Stopped on Nadi's word (a Windows test) after:
   (-123242, -123346), with OBNG's routes on and off. With `CloseAllMenus` ten seconds before the `cow` the same list
   flies (-125133). A game loaded from a save is not affected (the save arm). Not checked: whether the menu's
   closing creates the map menu or only delays the scripts.
+
+## 2026-11-14: the Windows session of 13:29-14:13 read (Dream Air, 90 Hz, the full mod list, OBNG ef83347, OBVR main 67680b2; measured from its logs)
+
+OBNG.log (265 ten-second windows, 238 with frames: 163 298 frames), OBVR.log and the captures OBVR-performance-1-47
+and -2 to -14 (five saved by OBVR's ring by itself at half-rate stretches, the others by Nadi and at the quit). The
+route: Anvil's inn, out of the main gate, into the town (AnvilMainEntrance 0000569A, AnvilWest02, AnvilArenaMain),
+north past Whitmond and Hrota Cave to Lord Drad's estate, then interiors. No crash. An earlier session of the day
+ended at 13:29; its OBNG.log is overwritten.
+
+- **The frame rate by window**: median 81.9 frames a second, 125 of 238 windows at 80 or more, 75 under 60 (the
+  loads and menus among them). SteamVR at half rate: 187 episodes, 17 886 frames (11 %); the session of 2026-11-13
+  had 315 episodes and 37 642 of 98 662 frames (38 %) - another route, so no before and after.
+- **The contact pass (`ContactDedup=1`)**: 3 106 943 passes, none left to the original (another thread 0, size 0),
+  1 863 297 on a remembered array, the most hits in one collector 158; 512 283 plane tests where the original's loops
+  would have made 187 974 538 predicate calls. The integrate 0x008902B0: 1 231 635 calls, mean 0.012 ms, **the
+  longest 1.00 ms** in the whole session (2026-11-13 at the harbour: about 19 ms a frame). Whether Nadi stood at the
+  sailor's ship is not in the logs (the cells logged are the town's, the harbour's are not among them).
+- **The voice route (`VoiceDecode=2`)**: 668 lines, the call 0.44 ms a line, the longest 2.05 ms; **0 left to the
+  game** (45 on 2026-11-13), 112 lines without a voice file on the silent voice plugin's stand-in; the self-test
+  line "taken on the stand-in, 312 frames at 44100 Hz". No buffer failures, no worker lock failures.
+- **Far actors**: 2 629 538 calls beyond 6 000 units, 748 918 of them (28 %) inside the view cone at every fourth
+  call (`ActorFarSeenEvery=4`). Its cost is not in this log.
+- **The culler's guards**: the far LOD never left out (0). 36 074 verdicts dropped because another object stood at
+  the address, **749 of them hidden within the age** - 749 new objects that would have been left out for up to two
+  frames without the identity (a source of popping closed, derived). In the 64 windows of 32 passes after a cell
+  change: 2 641 451 draws, 392 163 left out, 4 730 of those seen by their own pass's test (1.2 %); 88 hidden
+  verdicts for another object dropped.
+- **Other plugins' patches** (`[Probe] CodePatches`, 729 places; OBME.dll, Trifle.dll and Submodule.Game.dll among
+  the modules on Windows): inside the functions OBNG replaces or detours they lie in two only - the animation
+  update 0x00476D10 (Modern Engine Fixes, OBVR; an entry detour, the original runs) and the voice player (the
+  stub and the focus bit, both honoured).
+
+### The slow place: the crowd inside Anvil (windows 78-95, captures 2 and 3)
+
+About 170 s at 25 to 45 frames a second right after the load into the town: 86 to 127 skeleton updates a frame
+(about a hundred actors loaded), 1 000 to 1 800 skinned draws an eye pass, 2 500 to 4 000 draws a pass, the driver
+8 to 13 ms a pass, the process manager 4 to 7 ms a call (mean), the heap growing from 328 to 453 MB.
+From capture 3 (1 456 world frames over 26 ms, 34.2 ms each; OBVR's CPU events and render sampler):
+
+| part of a frame | ms |
+|---|---:|
+| the scene pass (34 % of the samples) | about 11.6 |
+| outside it | about 22.6 |
+| of that: waiting in ntdll (a third under SteamVR's client, a fifth under the sound update 0x006AE860 leaving a lock) | 6.4 |
+| OBNG.dll (the rebuilt skeleton update 1.8 %, the eye switch 1.6 %, both the engine's own work moved) | 3.5 |
+| Havok's 0x00921A40 alone (exclusive) | 1.9 |
+
+- **CPU first**: in every class of slow frames of every capture the CPU's work (the frame interval less the wait
+  for poses) is over the 11.1 ms of 90 Hz - median 12 to 22 ms in the half-rate frames, 31 to 33 ms in the crowd.
+- **The GPU is not shown to bound anything**: SteamVR's `total_render_gpu_ms` is 3.7 to 7.1 ms at the full rate and
+  8 to 10 ms in the half-rate frames outside the crowd, under the CPU's work there. In the crowd it reads 25 to
+  29 ms under a CPU work of 31 to 33 ms - but the field is "time between work submitted immediately after present
+  until the end of compositor submitted work" (openvr.h), an interval that the CPU's own time to issue the draws
+  stretches; it does not say the GPU was busy that long. Not decided for the crowd. The cut that would: the same
+  place at a lower eye resolution.
+- OBVR's own GPU marker is of no use here: `scene_pass` in gpu_samples.csv reads 0.008 ms in every frame (for
+  OBVR to look at).
+- The ring's own saves were used up after 26 minutes (five a session); the later stretches are in Nadi's saves
+  and the quit's.
