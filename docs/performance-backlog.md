@@ -2164,3 +2164,33 @@ thread; the render sampler's samples lie in d3dx9_27's texture loading and `__re
 menu, the file the game's own `icon_miscellaneous.dds`. Derived there: the menu's icon is read and decoded from the
 disk when the message opens. Not read or measured in this repository. A lever would be the icon loaded ahead (or
 kept): class B/C, small once the menu's loader is read; the gain one frame of 43 ms per quest added.
+
+## 2026-11-14 midday: the flight with Oblivion.esm alone - begun, stopped after five flights (measured)
+
+Nadi's question: was the flight to Anvil ever flown without the mods' plugins? It was not - the "Linux list" is 38
+plugins beside Oblivion.esm. The cut is built: `tools/with-plugin-list.py` (Plugins.txt reduced for a run and put
+back), `tools/hand-scripts/obng-stress-ride-menu.txt` (the flight from the main menu by the console, no save),
+`tools/stress-arms.sh` (the arms in turn, a run each a round, every run without OblivionWalkers.dll; OBNG.dll of
+ef83347, OBVR.dll of its main 067c94f). Loose files of the installed mods and the other OBSE plugins stay in every
+arm. Stopped on Nadi's word (a Windows test) after:
+
+| arm | runs | result |
+|---|---:|---|
+| vanilla: Oblivion.esm alone, from the main menu | 2 | one flown through (20261114-122740), one ended by me at the stop after about four minutes of flight without a crash (-130310) |
+| windows: the Windows list, from the main menu | 1 | flown through (-125133) |
+| save: the Windows list, the save OBVRHarnessMOO | 1 | flown through (obng-stress-ride/20261114-123456) |
+
+- **No heap crash in these flights**, the save arm included - the arm that ended early in ten flights of eleven
+  between 06:46 and 09:13 the same day, with the same OBNG.dll. Between the two lies OBVR's restart of SteamVR (its
+  compositor had been aborted by a watchdog at 09:09). Not shown that this is the cause: four flights at an earlier
+  rate of ten in eleven are chance in under 0.1 % of the cases, but the rate has changed by the hour before
+  (2026-11-13). **The cut itself is open**: no arm crashed, so the arms cannot be told apart yet. To go on:
+  `tools/stress-arms.sh 5 vanilla windows plain save`.
+- **A crash of its own at a start from the main menu** (not the flight's): with the main menu still up when `cow`
+  loads the cell, the first game frame ends at obse_1_2_416.dll+4B976 reading 0xC4 through a null pointer - xOBSE's
+  `GetMapMarkers` (read: the command table's entry for the function at +4B8C0) takes entry 22 of the menus' array
+  0x00B13974, the map menu, and reads its list without a check (read). Called by Maskar's Oblivion Overhaul and
+  Ultimate Leveling (read: their script texts), both in the Linux and the Windows list; twice in two runs
+  (-123242, -123346), with OBNG's routes on and off. With `CloseAllMenus` ten seconds before the `cow` the same list
+  flies (-125133). A game loaded from a save is not affected (the save arm). Not checked: whether the menu's
+  closing creates the map menu or only delays the scripts.
