@@ -106,3 +106,28 @@ Nadi's Windows horde, capture OBVR-performance-3 of 13:44 (2 662 world frames, 3
   horde's bodies, ragdolls and corpses is not told by exclusive samples; the world runs with iSimType=1 and no
   worker threads (knowledge/threading.md), and the one try with iSimType=4 on 2026-11-09 was slower.
 - The "12 to 14 ms a pass" above is the slow frames' median (frames over 26 ms); the capture's mean is 8 to 10 ms.
+
+## Stage 0 of "one draw an actor": the skinned draws counted (2026-11-14, measured, [Probe] SkinnedCensus)
+
+Run `artifacts/shadow/obng-profile-gate-guards/20261114-213530` (the gate horde, Linux, the Windows mod list,
+single pass, sound off, `tools/hand-scripts/obng-measure-gate-guards-census.ini`). An actor is the nearest
+BSFadeNode (vtable 0x00A3F944) above the drawn geometry, climbed over the parent at +0x1C; the first try keyed by
+the skin's root parent and counted 468 "actors" for 733 calls - void.
+
+| window | eye passes | skinned calls a pass | actors | parts | calls an actor | most calls an actor | left by shader class | left whole |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 231 | 751.0 | 78.0 | 748.0 | 9.6 | 20 | 81.0 | 79.0 |
+| 2 | 215 | 1328.1 | 86.3 | 1288.9 | 15.4 | 32 | 94.6 | 90.5 |
+| 3 | 184 | 1401.9 | 91.9 | 1365.6 | 15.3 | 39 | 99.4 | 96.4 |
+
+- **Measured**: 750 to 1400 skinned draw calls an eye pass for 78 to 92 actors, 10 to 15 an actor; a part is
+  drawn once a pass (1.00 to 1.03 calls a part), so the calls are parts, not passes over the same part. No call
+  was dropped by a full table.
+- **Measured**: nearly every actor's parts are of one shader class - by shader class 81 to 99 calls would be left,
+  about one an actor (a fall of 89 to 93 %).
+- **Derived, not measured**: what that saves in milliseconds. The capture gives no cost for a skinned call alone;
+  the pass's 8 to 10 ms spread over all its draws is no measure for these. Not counted either: how many distinct
+  textures and materials an actor's parts carry - a shader class alone does not make parts one draw; they need one
+  texture set (an atlas or a texture array) and one bone palette within the shader's limit. That is stage 1's
+  first question.
+- The horde here wears the Windows mod list's armour on Linux; Nadi's Windows game was not counted.
