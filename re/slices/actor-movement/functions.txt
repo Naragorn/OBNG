@@ -1,0 +1,10 @@
+0x005E0660 # the nearest caller of the controller's update 0x00896000 in the sampler (39 of 63 samples, return 0x005E06A6)
+0x00643340 # above 0x005E0660 in the sampler's chains; a high process function
+0x00628790 # above 0x00643340
+0x005F1910 # above 0x00628790
+0x006814B0 # between 0x005E0660 and 0x00643340 in the second chain
+0x005232D0 # the second caller of the controller's update in the sampler (11 samples, return 0x005232E9)
+0x008DE950 # under every cast: counts on the Havok world (+0x88/+0x8C) and updates the broad phase (pseudocode only so far)
+0x008ABA40 # called by the controller's update: writes the body's transform (pseudocode only)
+0x008ABAC0 # the integrate's tail, reaches 0x008DE950
+0x008AD070 # under the support check: a temporary write into [world+0x74]+0x08 (pseudocode only)

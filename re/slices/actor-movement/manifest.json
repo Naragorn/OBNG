@@ -1,0 +1,111 @@
+{
+  "slice": "actor-movement",
+  "subsystem": "actors",
+  "sharedHeaders": [],
+  "purpose": "The second slice for docs/subsystems/actor-frame-parallel.md: where the character controller's update is called from inside an actor's movement, what the movement does with its result in the same turn, and what the Havok world's cast step 0x008DE950 writes - to decide whether controller casts of several actors can run at once. Map and refute only. Read knowledge/actor-frame-map.md first: it is the first slice's result.",
+  "functions": [
+    {
+      "address": "0x005E0660",
+      "name": "Caller of the character controller's update (name unknown)",
+      "mapOnly": true,
+      "known": "Measured: 39 of 63 sampler samples inside 0x00896000 return to 0x005E06A6 (run obng-profile-gate-guards/20261114-151935). 0x00896000 itself is only referenced from vtable slots 0x00A6FAE4, 0x00A752C4, 0x00A9689C.",
+      "questions": [
+        "Through which slot it reaches 0x00896000 and on which object",
+        "What it does with the controller's result after the call (reads a position or velocity back, writes the reference's position)",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other actors or references, (c) the Havok world, its bodies, phantoms and broad phase, (d) the engine's globals, singletons and shared lists with the global's address, (e) the heap; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x00643340",
+      "name": "HighProcess movement step (proposal)",
+      "mapOnly": true,
+      "known": "Above 0x005E0660 in the sampler's chains (0x005E0660 < 0x00643340 < 0x00628790 < 0x005F1910); 6 samples return into it directly from 0x00896000.",
+      "questions": [
+        "Where it sits in an actor's turn: which slot of the process, called by what",
+        "What it reads that an earlier step of the same turn wrote",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other actors or references, (c) the Havok world, its bodies, phantoms and broad phase, (d) the engine's globals, singletons and shared lists with the global's address, (e) the heap; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x00628790",
+      "name": "(name unknown; above 0x00643340)",
+      "mapOnly": true,
+      "known": "Sampler chain member; 131 instructions.",
+      "questions": [
+        "What it is",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other actors or references, (c) the Havok world, its bodies, phantoms and broad phase, (d) the engine's globals, singletons and shared lists with the global's address, (e) the heap; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x005F1910",
+      "name": "(name unknown; above 0x00628790)",
+      "mapOnly": true,
+      "known": "Sampler chain member; 23 instructions.",
+      "questions": [
+        "What it is, who calls it - is it a callee of Actor::UpdateHigh 0x00605770 or of Actor::Update 0x00603CA0",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other actors or references, (c) the Havok world, its bodies, phantoms and broad phase, (d) the engine's globals, singletons and shared lists with the global's address, (e) the heap; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x006814B0",
+      "name": "(name unknown; between 0x005E0660 and 0x00643340 in one chain)",
+      "mapOnly": true,
+      "known": "288 instructions.",
+      "questions": [
+        "What it is",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other actors or references, (c) the Havok world, its bodies, phantoms and broad phase, (d) the engine's globals, singletons and shared lists with the global's address, (e) the heap; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x005232D0",
+      "name": "Second caller of the controller's update (name unknown)",
+      "mapOnly": true,
+      "known": "Measured: 11 samples return to 0x005232E9.",
+      "questions": [
+        "Whether it is the same call on another class's vtable",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other actors or references, (c) the Havok world, its bodies, phantoms and broad phase, (d) the engine's globals, singletons and shared lists with the global's address, (e) the heap; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x008DE950",
+      "name": "hkWorld cast / broad-phase step (proposal)",
+      "mapOnly": true,
+      "known": "knowledge/render-thread-outside-the-pass.md: checks the world's lock counters (+0x88/+0x8C, error 0x11), allocates two stack arrays from the thread's hkMemory stack (TLS +0x19C). Called from the phantom's cast 0x008ECC60 at 0x008ECCE6, from the integrate's tail 0x008ABAC0 and from the controller's update through 0x008ABA40 (knowledge/actor-frame-map.md). Its writes are known from pseudocode only.",
+      "questions": [
+        "Exactly which world fields it writes and whether each write is balanced within the call (a counter incremented and decremented) or lasting (the broad phase's AABB of the phantom, overlap pairs added or removed, listeners called)",
+        "Whether two calls on different phantoms could overlap in time: every shared structure it mutates, with the instruction address",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other actors or references, (c) the Havok world, its bodies, phantoms and broad phase, (d) the engine's globals, singletons and shared lists with the global's address, (e) the heap; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x008ABA40",
+      "name": "Controller: write the body's transform (proposal)",
+      "mapOnly": true,
+      "known": "Called by 0x00896000; reaches 0x008DE950 (knowledge/actor-frame-map.md, pseudocode only).",
+      "questions": [
+        "What it writes and into which body",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other actors or references, (c) the Havok world, its bodies, phantoms and broad phase, (d) the engine's globals, singletons and shared lists with the global's address, (e) the heap; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x008ABAC0",
+      "name": "Proxy integrate tail (proposal)",
+      "mapOnly": true,
+      "known": "Called at the end of 0x008AD7D0; reaches 0x008DE950.",
+      "questions": [
+        "What it writes into the world",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other actors or references, (c) the Havok world, its bodies, phantoms and broad phase, (d) the engine's globals, singletons and shared lists with the global's address, (e) the heap; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    },
+    {
+      "address": "0x008AD070",
+      "name": "Under the proxy's support check",
+      "mapOnly": true,
+      "known": "Pseudocode shows a temporary write into [world+0x74]+0x08, a world-wide tolerance that the cast 0x008ECC60 reads (knowledge/actor-frame-map.md).",
+      "questions": [
+        "The exact write and restore, with addresses, and what reads the field in between",
+        "The read-and-write list by five groups: (a) the object it is called on, (b) other actors or references, (c) the Havok world, its bodies, phantoms and broad phase, (d) the engine's globals, singletons and shared lists with the global's address, (e) the heap; every write with its instruction address; every callee named with one line, unfollowed callees marked"
+      ]
+    }
+  ]
+}
