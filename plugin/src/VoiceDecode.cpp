@@ -20,6 +20,9 @@ constexpr UInt32 kPlay = 0x006A9E00;  // __thiscall(manager; IDirectSoundBuffer*
 constexpr UInt8 kPlayBytes[] = {0x6A, 0xFF, 0x68, 0xEC, 0x62, 0x9C, 0x00};  // push -1; push 009C62ECh
 constexpr UInt32 kSoundDtor = 0x006B6700;  // __thiscall(sound): releases the buffer at +0x50 until its count is 0
 constexpr UInt8 kSoundDtorBytes[] = {0x56, 0x8B, 0xF1, 0xF7, 0x06, 0x00, 0x40, 0x00, 0x00};  // push esi; mov esi,ecx; test dword [esi],4000h
+constexpr UInt32 kNotFoundSite = 0x006A9EB7;   // "MP3 file '%s' not found": lea ecx,[esp+64h]; push ecx; push ... (read)
+constexpr UInt32 kOpenFileSite = 0x006A9ECE;   // where the function opens the file: push 1Ch; call the allocator (read)
+constexpr UInt32 kFlagMasksSite = 0x006A9FBE;  // and eax,20010h; or eax,0A0h (read)
 constexpr UInt32 kExistsPointer = 0x00B27E50;  // bool __cdecl(const char* path, int 0), loose or in an archive (0x00748160 jumps through it)
 constexpr UInt32 kAlloc = 0x00401F00;          // void* __cdecl(size)
 constexpr UInt32 kFree = 0x00401F20;           // void __cdecl(void*)
@@ -111,6 +114,10 @@ void* g_playOriginal = nullptr;
 void* g_dtorOriginal = nullptr;
 bool g_installed = false;
 LogFn g_log = nullptr;
+bool g_standIn = true;        // [Route] VoiceDecodeStandIn: a line without a voice file gets the silent voice plugin's file through the route
+UInt32 g_standInLines = 3;    // lines that say what the not-found place is
+UInt32 g_standInPathLines = 3;
+bool g_testMissing = false;   // [Route] VoiceDecodeTestMissing: at the first voice call, what a line without a voice file would get
 UInt32 g_leftLines = 60;  // lines for calls left to the game, a session ([Route] VoiceDecodeLeftLines)
 vd::Mode g_mode = vd::Mode::kOwnDecoder;
 UInt32 g_leadMs = 150;
@@ -287,9 +294,75 @@ struct Line {
 	void* buffer = nullptr;
 	void* locked = nullptr;
 	DWORD lockedBytes = 0;
+	bool standIn = false;  // no voice file: the silent voice plugin's file instead
 };
 
-// The file as the original opens it. False: the call is the game's (no such MP3, not one its decoder takes) -
+// Bytes that may not be readable; false then.
+bool ReadBytes(UInt32 address, UInt8* out, UInt32 count) {
+	__try {
+		std::memcpy(out, reinterpret_cast<const void*>(address), count);
+		return true;
+	} __except (EXCEPTION_EXECUTE_HANDLER) {
+		return false;
+	}
+}
+
+bool CallStub(const vd::SilentStub& stub, char* path) {
+	__try {
+		*reinterpret_cast<char**>(stub.pathSlot) = path;
+		reinterpret_cast<void(__cdecl*)()>(stub.routine)();
+		return true;
+	} __except (EXCEPTION_EXECUTE_HANDLER) {
+		return false;
+	}
+}
+
+// A line with neither MP3 nor WAV: when the function's not-found place 0x006A9EB7 is the silent voice plugin's
+// stub (VoiceDecodeLogic.h SilentStub), its routine rewrites `name` as it would the function's own buffer. True:
+// `name` was handed to it.
+bool StandInPath(char name[vd::kPathCapacity]) {
+	if (!g_standIn) {
+		return false;
+	}
+	UInt8 site[vd::kSilentSiteBytes] = {};
+	UInt8 code[vd::kSilentStubBytes] = {};
+	UInt8 slot[4] = {};
+	std::memcpy(site, reinterpret_cast<const void*>(kNotFoundSite), sizeof(site));
+	const UInt32 jumpSlot = vd::SilentJumpSlot(site);
+	vd::SilentStub stub;
+	UInt32 target = 0;
+	if (jumpSlot != 0 && ReadBytes(jumpSlot, slot, sizeof(slot))) {
+		std::memcpy(&target, slot, sizeof(target));
+		if (ReadBytes(target, code, sizeof(code))) {
+			stub = vd::ParseSilentStub(code, target);
+		}
+	}
+	UInt32 goesOn = 0;
+	const bool usable = stub.found && ReadBytes(stub.continueSlot, slot, sizeof(slot)) && (std::memcpy(&goesOn, slot, 4), goesOn == kOpenFileSite);
+	if (g_standInLines != 0) {
+		--g_standInLines;
+		g_log("Route: voice decode - a line without a voice file: the not-found place 0x006A9EB7 %s (stub at %08X, its routine %08X, it goes on at %08X)",
+		      usable ? "is the silent voice plugin's stub - the route asks its routine for the file" : jumpSlot != 0 ? "is patched, but not by a stub the route knows - left to the game"
+		                                                                                                             : "is the game's own - there is no stand-in",
+		      target, stub.routine, goesOn);
+	}
+	if (!usable) {
+		return false;
+	}
+	if (!CallStub(stub, name)) {
+		g_standIn = false;
+		g_log("Route: voice decode - the silent voice plugin's routine faulted; such lines are left to the game from now on");
+		return false;
+	}
+	name[vd::kPathCapacity - 1] = 0;
+	if (g_standInPathLines != 0) {
+		--g_standInPathLines;
+		g_log("Route: voice decode - the silent voice plugin's routine gave \"%s\"", name);
+	}
+	return true;
+}
+
+// The file as the original opens it. Not kTaken: the call is the game's (no such MP3, not one its decoder takes) -
 // nothing is left behind, the original does its own tries and writes its own messages.
 vd::Left OpenLine(const char* path, Line* line) {
 	char name[vd::kPathCapacity];
@@ -297,8 +370,15 @@ vd::Left OpenLine(const char* path, Line* line) {
 		return vd::Left::kPath;
 	}
 	const ExistsFn exists = *reinterpret_cast<ExistsFn*>(kExistsPointer);
-	if (exists == nullptr || !exists(name, 0)) {
+	if (exists == nullptr) {
 		return vd::Left::kNoFile;
+	}
+	if (!exists(name, 0)) {
+		// The original: with the WAV there it returns quietly (its caller plays the WAV), without it the not-found place runs.
+		if (exists(path, 0) || !StandInPath(name) || !exists(name, 0)) {
+			return vd::Left::kNoFile;
+		}
+		line->standIn = true;
 	}
 	void* block = reinterpret_cast<AllocFn>(kAlloc)(kFileSize);
 	if (block == nullptr) {
@@ -334,7 +414,10 @@ bool MakeBuffer(void* manager, void** out, UInt32 flags, Line* line) {
 	format.bits = 16;
 	BufferDesc desc{};
 	desc.size = sizeof(desc);
-	desc.flags = vd::BufferFlags(flags);
+	UInt8 code[10];
+	std::memcpy(code, reinterpret_cast<const void*>(kFlagMasksSite), sizeof(code));
+	const vd::Masks masks = vd::FlagMasks(code);
+	desc.flags = vd::BufferFlags(flags, masks.always, masks.positional);
 	desc.bytes = vd::BufferBytes(line->frames);
 	desc.format = &format;
 	if (Method<CreateBufferFn>(directSound, kCreateSoundBuffer)(directSound, &desc, out, nullptr) < 0 || *out == nullptr) {
@@ -396,6 +479,7 @@ UInt32 Rebuilt(void* manager, void** out, const char* path, UInt32 flags, vd::Le
 	const bool queued = made && slot != vd::Slots::kNone && (job.done < line.frames || job.check);
 	EnterCriticalSection(&g_lock);
 	g_counts.lines += made ? 1 : 0;
+	g_counts.standIn += made && line.standIn ? 1 : 0;
 	g_counts.failed += made ? 0 : 1;
 	g_counts.leadFrames += lead;
 	g_counts.whole += made && !queued ? 1 : 0;
@@ -415,11 +499,27 @@ UInt32 Rebuilt(void* manager, void** out, const char* path, UInt32 flags, vd::Le
 	return made ? vd::DurationMs(line.frames, line.rate) : 0;
 }
 
+// [Route] VoiceDecodeTestMissing: a path with no voice file opened as the route would, and closed again - whether
+// another plugin's stand-in is found and what it is.
+void TestMissing() {
+	Line line;
+	const vd::Left why = OpenLine("Data\\Sound\\Voice\\OBNG-test.esp\\none\\m\\obng_missing_line.wav", &line);
+	g_log("Route: voice decode test - a line without a voice file: %s%s, %u frames at %u Hz", why == vd::Left::kTaken ? "taken" : vd::LeftName(why),
+	      line.standIn ? " on the stand-in" : "", line.frames, line.rate);
+	if (why == vd::Left::kTaken) {
+		DestroyFile(line.file);
+	}
+}
+
 UInt32 __fastcall Play(void* self, void* /*edx*/, void** out, const char* path, UInt32 flags) {
 	LARGE_INTEGER start;
 	LARGE_INTEGER end;
 	QueryPerformanceCounter(&start);
 	CleanDone();
+	if (g_testMissing) {
+		g_testMissing = false;
+		TestMissing();
+	}
 	vd::Left why = vd::Left::kTaken;
 	UInt32 result = Rebuilt(self, out, path, flags, &why);
 	const bool taken = why == vd::Left::kTaken;
@@ -509,6 +609,8 @@ void InstallVoiceDecode(const char* iniPath, LogFn log) {
 	g_leadMs = lead > 5000 ? 5000 : lead;
 	g_check = GetPrivateProfileIntA("Route", "VoiceDecodeCheck", 0, iniPath) != 0;
 	g_leftLines = GetPrivateProfileIntA("Route", "VoiceDecodeLeftLines", 60, iniPath);
+	g_standIn = GetPrivateProfileIntA("Route", "VoiceDecodeStandIn", 1, iniPath) != 0;
+	g_testMissing = GetPrivateProfileIntA("Route", "VoiceDecodeTestMissing", 0, iniPath) != 0;
 	QueryPerformanceFrequency(&g_frequency);
 	InitializeCriticalSection(&g_lock);
 	for (Job& job : g_jobs) {

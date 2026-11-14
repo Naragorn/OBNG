@@ -42,6 +42,38 @@ int main() {
 	Check(DurationMs(3000, 44100) == static_cast<std::uint16_t>((3000u * 0x900u / 2) / 44), "over 65.5 s the low 16 bits, as the original's AX");
 	Check(BufferFlags(0) == 0xA0 && BufferFlags(5) == 0xA0, "no 3D: volume and frequency control");
 	Check(BufferFlags(2) == 0x200B0 && BufferFlags(6) == 0x200B0 && BufferFlags(0x106) == 0x200B0, "bit 1: 3D and mute at the maximum distance too");
+	Check(BufferFlags(0, 0x80A0, 0x20010) == 0x80A0 && BufferFlags(2, 0x80A0, 0x20010) == 0x280B0, "another plugin's mask (the global focus bit) is carried in both");
+	{
+		const std::uint8_t file[10] = {0x25, 0x10, 0x00, 0x02, 0x00, 0x0D, 0xA0, 0x00, 0x00, 0x00};
+		const std::uint8_t patched[10] = {0x25, 0x10, 0x00, 0x02, 0x00, 0x0D, 0xA0, 0x80, 0x00, 0x00};
+		const std::uint8_t other[10] = {0x90, 0x10, 0x00, 0x02, 0x00, 0x0D, 0xA0, 0x80, 0x00, 0x00};
+		const std::uint8_t other2[10] = {0x25, 0x10, 0x00, 0x02, 0x00, 0x90, 0xA0, 0x80, 0x00, 0x00};
+		Check(FlagMasks(file).read && FlagMasks(file).always == 0xA0 && FlagMasks(file).positional == 0x20010, "the masks read from the game's two instructions");
+		Check(FlagMasks(patched).always == 0x80A0 && FlagMasks(patched).positional == 0x20010, "a patched immediate is taken as it stands");
+		Check(!FlagMasks(other).read && FlagMasks(other).always == 0xA0 && !FlagMasks(other2).read && FlagMasks(other2).positional == 0x20010,
+		      "other instructions there: the file's masks");
+	}
+	Section("A line without a voice file: the silent voice plugin's stub");
+	{
+		const std::uint8_t file[6] = {0x8D, 0x4C, 0x24, 0x64, 0x51, 0x68};
+		const std::uint8_t jump[6] = {0xFF, 0x25, 0x0C, 0xF9, 0x4E, 0x02};
+		const std::uint8_t relative[6] = {0xE9, 0x25, 0x0C, 0xF9, 0x4E, 0x02};
+		Check(SilentJumpSlot(file) == 0 && SilentJumpSlot(relative) == 0 && SilentJumpSlot(jump) == 0x024EF90C, "only a jump through a slot gives one");
+		// The stub as read from the running game at 0x024E88C8.
+		const std::uint8_t stub[28] = {0x89, 0xE1, 0x83, 0xC1, 0x64, 0x89, 0x0D, 0x1C, 0xF9, 0x4E, 0x02, 0x50, 0x53, 0x52,
+		                               0xE8, 0x75, 0xFF, 0xFF, 0xFF, 0x5A, 0x5B, 0x58, 0xFF, 0x25, 0x9C, 0xA9, 0x4E, 0x02};
+		const SilentStub parsed = ParseSilentStub(stub, 0x024E88C8);
+		Check(parsed.found && parsed.pathSlot == 0x024EF91C && parsed.routine == 0x024E8850 && parsed.continueSlot == 0x024EA99C,
+		      "the path's slot, the routine (the call's end plus its displacement) and the slot of the address it goes on to");
+		for (const int at : {0, 4, 6, 11, 12, 13, 14, 19, 20, 21, 22, 23}) {
+			std::uint8_t changed[28];
+			for (int i = 0; i < 28; ++i) {
+				changed[i] = stub[i];
+			}
+			changed[at] ^= 0x10;
+			Check(!ParseSilentStub(changed, 0x024E88C8).found, "any other instruction in the stub: not this stub");
+		}
+	}
 	Check(kFramesAtMost == 0xFFFFFFFFu / 0x900 && BufferBytes(kFramesAtMost) / 0x900 == kFramesAtMost, "the most frames whose byte count does not wrap");
 
 	Section("How many frames are decoded at the call");
@@ -134,7 +166,7 @@ int main() {
 		Check(text.find("Route: voice decode (own decoder, the first 150 ms at the call) - 10 lines, the call 0.500 ms a line (longest 0.900)") == 0,
 		      "the mode, the lead, the lines, the call's mean over all twelve calls and its longest");
 		Check(text.find("frames at the call 60, on the worker 900") != std::string::npos && text.find("whole at the call 2 (1 for want of a slot)") != std::string::npos &&
-		          text.find("cancelled 3, left to the game 1, no buffer 1, worker lock failures 0") != std::string::npos,
+		          text.find("cancelled 3, left to the game 1, no buffer 1, worker lock failures 0; 0 of the lines without a voice file, on a stand-in") != std::string::npos,
 		      "the counts");
 		Section("Why a call is left to the game, and its line");
 		Check(LeftOfFile(false, 10, 44100, true) == Left::kNotValid && LeftOfFile(true, 0, 44100, true) == Left::kNoFrames &&

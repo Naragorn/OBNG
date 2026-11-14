@@ -275,6 +275,11 @@ void __fastcall Update(void* self, void*, float time) {
 	const UInt32 process = Dword(actor + kActorProcess);
 	if (time != 0.0f || process == 0 ||
 	    reinterpret_cast<LevelFn>(Dword(Dword(process) + kProcessLevelSlot))(reinterpret_cast<void*>(process)) != 0) {
+		if (ActorFarGlideAny()) {  // an update of another kind: the glide's offset must not be in the node it reads
+			if (far_update::Entry* shifted = g_table.Peek(actor)) {
+				ActorFarGlideRelease(*shifted, actor);
+			}
+		}
 		Original(self, time);
 		return;
 	}
@@ -355,16 +360,17 @@ void __fastcall Update(void* self, void*, float time) {
 	if (!step.runs) {
 		InterlockedIncrement64(&g_skipped);
 		if (isFar) {
-			ActorFarGlideSkipped(entry, actor);
+			ActorFarGlideSkipped(entry, actor, static_cast<float>(since));
 		}
 		return;
 	}
 	if (!isFar && entry.glide.hasLast) {
-		entry.glide = {};  // a near actor is updated every frame or is out of sight: nothing to show between
+		ActorFarGlideRelease(entry, actor);  // a near actor is updated every frame or is out of sight: nothing to show between
+		entry.glide = {};
 	}
 	if (!step.summed) {
 		if (isFar) {
-			ActorFarGlideAtUpdate(entry, actor, nullptr);
+			ActorFarGlideAtUpdate(entry, actor, nullptr, *frameSeconds);
 		}
 		NoteTravel(entry, actor, lower && !isNew, since);
 		far_update::DropRootMotion(entry);
@@ -385,7 +391,7 @@ void __fastcall Update(void* self, void*, float time) {
 	float way[3];
 	const bool took = far_update::TakeRootMotion(entry, animData, way);
 	if (isFar) {
-		ActorFarGlideAtUpdate(entry, actor, took ? way : nullptr);
+		ActorFarGlideAtUpdate(entry, actor, took ? way : nullptr, step.seconds);
 	}
 	NoteTravel(entry, actor, lower && !isNew, since);
 	if (took) {
@@ -443,7 +449,8 @@ void InstallActorFarUpdate(const char* iniPath, LogFn log) {
 		                                     reinterpret_cast<const void*>(&AnimUpdate), &g_animOriginal, log, DetourRole::Route);
 		g_rootMotion = g_rootMotion && anim;
 	}
-	ActorFarGlideInit(g_rootMotion && GetPrivateProfileIntA("Route", "ActorFarGlide", 1, iniPath) != 0, log);
+	ActorFarGlideInit(g_rootMotion && GetPrivateProfileIntA("Route", "ActorFarGlide", 1, iniPath) != 0,
+	                  GetPrivateProfileIntA("Route", "ActorFarGlideSamples", 0, iniPath), log);
 	log("Route %s: the animation's steps of the frames left out %s", kName, g_rootMotion ? "are summed for the update that runs" : "are NOT summed (the actor goes one frame's way an update)");
 	if (probe) {
 		g_probe = InstallEntryDetour("character controller update 0x00896000 (far actors' probe)", kController, kControllerBytes, sizeof(kControllerBytes),

@@ -82,9 +82,95 @@ constexpr std::uint16_t DurationMs(std::uint32_t frames, std::uint32_t rate) {
 	return perMs == 0 ? std::uint16_t{0} : static_cast<std::uint16_t>((BufferBytes(frames) >> 1) / perMs);
 }
 
-// The DirectSound buffer's capability flags for the call's flags.
-constexpr std::uint32_t BufferFlags(std::uint32_t callFlags) {
-	return (callFlags & 2u) != 0 ? 0x200B0u : 0xA0u;
+// The DirectSound buffer's capability flags for the call's flags: `always`
+// for every line, `positional` beside it for a call with bit 1 (read
+// 0x006A9FBC-0x006A9FC8: sbb eax,eax; and eax,20010h; or eax,0A0h). The two
+// masks are immediates in the game's code, and other plugins change them -
+// seen 2026-11-14: the second byte of the OR's immediate patched to 80h,
+// which is DSBCAPS_GLOBALFOCUS (the line goes on when the window loses the
+// focus) - so the route reads them there (FlagMasks).
+inline constexpr std::uint32_t kFlagsAlways = 0xA0u;
+inline constexpr std::uint32_t kFlagsPositional = 0x20010u;
+constexpr std::uint32_t BufferFlags(std::uint32_t callFlags, std::uint32_t always = kFlagsAlways, std::uint32_t positional = kFlagsPositional) {
+	return ((callFlags & 2u) != 0 ? positional : 0u) | always;
+}
+
+// The masks from the ten bytes at 0x006A9FBE (and eax,imm32; or eax,imm32);
+// the file's when the opcodes are not those any more.
+struct Masks {
+	std::uint32_t always = kFlagsAlways;
+	std::uint32_t positional = kFlagsPositional;
+	bool read = false;
+};
+constexpr Masks FlagMasks(const std::uint8_t code[10]) {
+	Masks m;
+	if (code[0] != 0x25 || code[5] != 0x0D) {
+		return m;
+	}
+	auto dword = [&](int at) {
+		return static_cast<std::uint32_t>(code[at]) | (static_cast<std::uint32_t>(code[at + 1]) << 8) | (static_cast<std::uint32_t>(code[at + 2]) << 16) |
+		       (static_cast<std::uint32_t>(code[at + 3]) << 24);
+	};
+	m.positional = dword(1);
+	m.always = dword(6);
+	m.read = true;
+	return m;
+}
+
+// ---- A line without a voice file: another plugin's stand-in ----------------------------
+//
+// When neither the MP3 nor the WAV exists the original writes "MP3 file '%s'
+// not found" (0x006A9EB7-0x006A9EC9) and returns 0. Elys' Universal Silent
+// Voice patches that place with `jmp [slot]` to a stub of its own (read from
+// the running game, 2026-11-14):
+//   mov ecx,esp; add ecx,64h; mov [pathSlot],ecx   ; the function's path buffer
+//   push eax; push ebx; push edx; call routine; pop edx; pop ebx; pop eax
+//   jmp [continueSlot]
+// Its routine rewrites the path in the buffer (to its silent MP3) and the
+// function goes on. The route, which never reaches that place, does the same
+// by the stub's own means when the stub is exactly this one: it puts its
+// buffer's address into pathSlot and calls the routine.
+struct SilentStub {
+	bool found = false;
+	std::uint32_t pathSlot = 0;      // where the stub stores the path buffer's address
+	std::uint32_t routine = 0;       // what it calls
+	std::uint32_t continueSlot = 0;  // where the address lies that it jumps on to
+};
+
+inline constexpr std::size_t kSilentSiteBytes = 6;
+inline constexpr std::size_t kSilentStubBytes = 28;
+
+// The six bytes at the not-found place: `jmp [slot]` gives the slot, anything else 0.
+constexpr std::uint32_t SilentJumpSlot(const std::uint8_t site[kSilentSiteBytes]) {
+	if (site[0] != 0xFF || site[1] != 0x25) {
+		return 0;
+	}
+	return static_cast<std::uint32_t>(site[2]) | (static_cast<std::uint32_t>(site[3]) << 8) | (static_cast<std::uint32_t>(site[4]) << 16) |
+	       (static_cast<std::uint32_t>(site[5]) << 24);
+}
+
+// The stub's 28 bytes at address `at`.
+constexpr SilentStub ParseSilentStub(const std::uint8_t stub[kSilentStubBytes], std::uint32_t at) {
+	SilentStub out;
+	const std::uint8_t head[7] = {0x89, 0xE1, 0x83, 0xC1, 0x64, 0x89, 0x0D};
+	for (int i = 0; i < 7; ++i) {
+		if (stub[i] != head[i]) {
+			return out;
+		}
+	}
+	if (stub[11] != 0x50 || stub[12] != 0x53 || stub[13] != 0x52 || stub[14] != 0xE8 || stub[19] != 0x5A || stub[20] != 0x5B || stub[21] != 0x58 ||
+	    stub[22] != 0xFF || stub[23] != 0x25) {
+		return out;
+	}
+	auto dword = [&](int i) {
+		return static_cast<std::uint32_t>(stub[i]) | (static_cast<std::uint32_t>(stub[i + 1]) << 8) | (static_cast<std::uint32_t>(stub[i + 2]) << 16) |
+		       (static_cast<std::uint32_t>(stub[i + 3]) << 24);
+	};
+	out.pathSlot = dword(7);
+	out.routine = at + 19 + dword(15);
+	out.continueSlot = dword(24);
+	out.found = true;
+	return out;
 }
 
 // How many of the line's frames are decoded at the call: enough sound for
@@ -227,6 +313,7 @@ struct Counts {
 	std::uint64_t workerFrames = 0;   // frames decoded by the worker
 	std::uint64_t cancelled = 0;      // lines whose sound was destroyed before the worker was through
 	std::uint64_t lockFailures = 0;   // the worker could not lock the buffer: the line's rest stays silent
+	std::uint64_t standIn = 0;        // lines without a voice file that got another plugin's stand-in file (among `lines`)
 	std::uint64_t callTicks = 0;
 	std::uint64_t longestCallTicks = 0;
 };
@@ -239,14 +326,14 @@ inline int FormatSummary(const Counts& c, Mode mode, std::uint32_t leadMs, std::
 	return std::snprintf(out, capacity,
 	                     "Route: voice decode (%s, the first %u ms at the call) - %llu lines, the call %.3f ms a line (longest %.3f); frames at the call "
 	                     "%llu, on the worker %llu; whole at the call %llu (%llu for want of a slot), cancelled %llu, left to the game %llu, no buffer "
-	                     "%llu, worker lock failures %llu",
+	                     "%llu, worker lock failures %llu; %llu of the lines without a voice file, on a stand-in",
 	                     mode == Mode::kEngineDecoder ? "the game's decoder" : mode == Mode::kOwnDecoder ? "own decoder" : "off", leadMs,
 	                     static_cast<unsigned long long>(c.lines), calls != 0 ? static_cast<double>(c.callTicks) * toMs / static_cast<double>(calls) : 0.0,
 	                     static_cast<double>(c.longestCallTicks) * toMs, static_cast<unsigned long long>(c.leadFrames),
 	                     static_cast<unsigned long long>(c.workerFrames), static_cast<unsigned long long>(c.whole),
 	                     static_cast<unsigned long long>(c.noSlot), static_cast<unsigned long long>(c.cancelled),
 	                     static_cast<unsigned long long>(c.left), static_cast<unsigned long long>(c.failed),
-	                     static_cast<unsigned long long>(c.lockFailures));
+	                     static_cast<unsigned long long>(c.lockFailures), static_cast<unsigned long long>(c.standIn));
 }
 
 // Why a call was left to the game's function.

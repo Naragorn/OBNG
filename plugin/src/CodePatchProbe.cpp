@@ -23,6 +23,8 @@ constexpr unsigned kHops = 3;               // jumps followed out of memory that
 
 LogFn g_log = nullptr;
 bool g_on = false;
+bool g_dump = false;  // [Probe] CodePatchesDump: the first bytes at a listed patch's target, as hex
+constexpr unsigned kDumpBytes = 160;
 UInt32 g_linesLeft = 400;
 UInt32 g_from = 0;
 UInt32 g_to = 0xFFFFFFFFu;
@@ -110,7 +112,15 @@ void NoteRun(const cp::Section& section, const std::uint8_t* file, std::uint32_t
 	++look->runs;
 	UInt32 target = 0;
 	UInt32 branchAt = 0;
-	const cp::Branch branch = cp::BranchAround(memory, offset, length, section.address, &target, &branchAt);
+	cp::Branch branch = cp::BranchAround(memory, offset, length, section.address, &target, &branchAt);
+	if (branch == cp::Branch::kNone && length >= 6 && memory[offset] == 0xFF && memory[offset + 1] == 0x25) {
+		std::uint8_t slot[4] = {};  // jmp [abs32]: the target lies in the slot
+		if (ReadBytes(cp::Dword(memory + offset + 2), slot, sizeof(slot))) {
+			target = cp::Dword(slot);
+			branchAt = address;
+			branch = cp::Branch::kJump;
+		}
+	}
 	char module[cp::kModuleName] = {};
 	if (branch != cp::Branch::kNone) {
 		EndModule(target, module);
@@ -129,6 +139,14 @@ void NoteRun(const cp::Section& section, const std::uint8_t* file, std::uint32_t
 	char line[320];
 	cp::FormatRun(address, length, memory + offset, file + offset, branch, branchAt, target, module, line, sizeof(line));
 	g_log("%s", line);
+	std::uint8_t code[kDumpBytes] = {};
+	if (g_dump && branch != cp::Branch::kNone && ReadBytes(target, code, sizeof(code))) {
+		char hex[kDumpBytes * 3 + 1] = {};
+		for (unsigned i = 0; i < kDumpBytes; ++i) {
+			std::snprintf(hex + i * 3, 4, "%02X ", code[i]);
+		}
+		g_log("Probe: code patch at 0x%08X - the code at its target 0x%08X: %s", address, target, hex);
+	}
 }
 
 void Scan(bool first) {
@@ -175,6 +193,7 @@ void InstallCodePatchProbe(const char* iniPath, LogFn log) {
 		return;
 	}
 	g_linesLeft = GetPrivateProfileIntA("Probe", "CodePatchesLines", 400, iniPath);
+	g_dump = GetPrivateProfileIntA("Probe", "CodePatchesDump", 0, iniPath) != 0;
 	char text[32] = {};
 	GetPrivateProfileStringA("Probe", "CodePatchesFrom", "0", text, sizeof(text), iniPath);
 	g_from = static_cast<UInt32>(std::strtoul(text, nullptr, 16));

@@ -101,10 +101,71 @@ void TestGain() {
 	Check(!glide::Offset(u, true, long2, offset), "beyond it: none");
 }
 
+void TestTakeBack() {
+	Section("The offset is taken out again when the translate is still the glide's");
+	glide::State s;
+	const float local[3] = {10.0f, 20.0f, 30.0f};
+	float back[3];
+	Check(!glide::TakeBack(s, local, back), "nothing written: nothing to take out");
+	s.applied[0] = 4.0f;
+	s.applied[2] = -1.0f;
+	glide::Wrote(s, local);
+	Check(glide::TakeBack(s, local, back) && back[0] == -4.0f && back[1] == 0.0f && back[2] == 1.0f && !s.wroteSet, "the offset, negated; the state has written nothing after");
+	Check(!glide::TakeBack(s, local, back), "not twice");
+	glide::Wrote(s, local);
+	const float elsewhere[3] = {10.0f, 20.0f, 31.0f};
+	Check(!glide::TakeBack(s, elsewhere, back) && !s.wroteSet, "someone else placed the node: the offset went with that");
+	glide::State zero;
+	glide::Wrote(zero, local);
+	Check(!glide::TakeBack(zero, local, back), "an offset of nothing: nothing to take out");
+}
+
+void TestSpeed() {
+	Section("An actor that moves without an animation step: its steady speed is shown on");
+	glide::State s;
+	const float none[3] = {0, 0, 0};
+	float offset[3];
+	glide::AtUpdate(s, false, none, false, none, 0.2f);
+	Check(!glide::Offset(s, false, none, offset, 0.1f), "the first update: no speed yet");
+	const float way1[3] = {20.0f, 0.0f, 0.0f};  // made by the update that stood for 0.2 s: 100 units a second
+	glide::AtUpdate(s, true, way1, false, none, 0.2f);
+	Check(s.hasVelocity && !s.steady && !glide::Offset(s, false, none, offset, 0.1f), "one speed measured: not yet known as steady");
+	const float way2[3] = {22.0f, 2.0f, 0.0f};
+	glide::AtUpdate(s, true, way2, false, none, 0.25f);
+	Check(s.steady && Near(s.velocity[0], 110.0f) && Near(s.velocity[1], 10.0f), "a second one within half of it: steady, the newer speed kept");
+	Check(glide::Offset(s, false, none, offset, 0.1f) && Near(offset[0], 11.0f) && Near(offset[1], 1.0f), "the speed times the time since the update");
+	Check(glide::Offset(s, false, none, offset, 1.0f) && Near(offset[0], 110.0f * 0.3125f), "for at most a quarter longer than the last update stood for (0.25 s)");
+	Check(!glide::Offset(s, false, none, offset, 0.0f), "no time gone: none");
+	const float turned[3] = {-25.0f, 0.0f, 0.0f};
+	glide::AtUpdate(s, true, turned, false, none, 0.2f);
+	Check(s.hasVelocity && !s.steady && !glide::Offset(s, false, none, offset, 0.1f), "a turn: not steady, nothing shown");
+	const float crawl[3] = {-0.2f, 0.0f, 0.0f};
+	glide::AtUpdate(s, true, crawl, false, none, 0.2f);
+	glide::AtUpdate(s, true, crawl, false, none, 0.2f);
+	Check(!s.steady, "a way under two units an update is standing");
+	glide::AtUpdate(s, true, way1, false, none, 0.001f);
+	glide::AtUpdate(s, true, way1, false, none, 0.2f);
+	Check(!s.hasVelocity && !s.steady, "an update that stood for almost no time gives no speed");
+	glide::AtUpdate(s, false, way1, false, none, 0.2f);
+	Check(!s.hasVelocity, "the way not known: none");
+
+	Section("With a gain and a step the animation's step wins");
+	glide::State t;
+	const float step[3] = {0.0f, 40.0f, 0.0f};
+	glide::AtUpdate(t, false, none, true, step, 0.2f);
+	glide::AtUpdate(t, true, way1, true, step, 0.2f);
+	glide::AtUpdate(t, true, way1, true, step, 0.2f);
+	const float soFar[3] = {0.0f, 10.0f, 0.0f};
+	Check(t.hasGain && t.steady && glide::Offset(t, true, soFar, offset, 0.19f) && Near(offset[0], 5.0f), "the gain times the step so far, not the speed times the time");
+	Check(glide::Offset(t, false, soFar, offset, 0.1f) && Near(offset[0], 10.0f), "no step noted in this stretch: the steady speed");
+}
+
 }  // namespace
 
 int main() {
 	TestLength();
 	TestGain();
+	TestTakeBack();
+	TestSpeed();
 	return Failures();
 }

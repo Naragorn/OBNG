@@ -3,7 +3,6 @@
 #include "ActorFarGlide.h"
 
 #include <windows.h>
-#include <intrin.h>
 
 #include <cstring>
 
@@ -16,27 +15,19 @@ namespace {
 namespace far_update = engine::scene::actor_far_update;
 namespace glide = engine::scene::actor_far_glide;
 
-constexpr UInt32 kRefPosition = 0x2C;          // the reference's position (ActorFarUpdate.cpp)
-constexpr UInt32 kRefNode = 0x3C;              // its scene node (ActorCensus.cpp)
-constexpr UInt32 kWorldBound = 0x20;           // NiAVObject's world bound: centre, radius (SceneUpdate.h kWorldBoundOffset)
-constexpr UInt32 kWorldTranslate = 0x88;       // its world translate (SceneUpdate.h kWorldTransformOffset + 9 floats; xOBSE m_worldTranslate)
-constexpr UInt32 kChildren = 0xB0;             // NiNode's child array (SceneUpdate.h kChildrenOffset)
-constexpr UInt32 kChildSlots = 0xB6;           // its first free entry, u16 (SceneUpdate.h kChildSlotsOffset)
-// NiObject's virtual +0x08: the object as a node, or null (read in the image:
-// NiNode 0x00A7E38C, BSFadeNode 0x00A3F944 and BSFaceGenNiNode 0x00A64F5C
-// hold 0x007616D0 "mov eax,ecx; ret" there, a geometry's 0x00A7F27C holds
-// 0x006F7070 "xor eax,eax; ret"; xOBSE NiObject::GetAsNiNode).
-constexpr UInt32 kSlotAsNode = 0x08;
-constexpr unsigned kMaxDepth = 40;
-using AsNodeFn = UInt32(__thiscall*)(void* self);
+constexpr UInt32 kRefPosition = 0x2C;      // the reference's position (ActorFarUpdate.cpp)
+constexpr UInt32 kRefNode = 0x3C;          // its scene node (ActorCensus.cpp)
+constexpr UInt32 kFormId = 0x0C;
+constexpr UInt32 kLocalTranslate = 0x54;   // NiAVObject's local translate (SceneUpdate.h kLocalTransformOffset + 9 floats; read 0x00406950)
 
 bool g_on = false;
 LogFn g_log = nullptr;
+unsigned g_samplesLeft = 0;           // [Route] ActorFarGlideSamples: lines of single updates left
+volatile LONG g_shifted = 0;          // entries with an offset in their node (about: for the paths that do not look the entry up)
 // The summary's counts; the actors' loop thread writes, the summary reads and clears.
 volatile LONG64 g_shifts = 0;
-volatile LONG64 g_objects = 0;
-volatile LONG64 g_shiftTicks = 0;
-volatile LONG64 g_recomposed = 0;     // the root was moved by someone else between two shifts
+volatile LONG64 g_replaced = 0;       // the node was placed by someone else between two shifts
+volatile LONG64 g_takenBack = 0;
 volatile LONG64 g_updates = 0;        // updates counted for the leap
 volatile LONG64 g_leapMilli = 0;      // the leaps, thousandths of a unit
 volatile LONG64 g_leftMilli = 0;      // what the glide left of them
@@ -44,85 +35,106 @@ volatile LONG64 g_withGain = 0;       // updates that left a gain
 
 UInt32 Dword(UInt32 address) { return *reinterpret_cast<const UInt32*>(address); }
 
-void Add(UInt32 address, const float d[3]) {
-	auto* v = reinterpret_cast<float*>(address);
-	v[0] += d[0];
-	v[1] += d[1];
-	v[2] += d[2];
-}
-
-// Every object of the subtree: world translate and world bound moved by d.
-unsigned ShiftTree(UInt32 object, const float d[3], unsigned depth) {
-	Add(object + kWorldTranslate, d);
-	Add(object + kWorldBound, d);
-	unsigned count = 1;
-	if (depth >= kMaxDepth || reinterpret_cast<AsNodeFn>(Dword(Dword(object) + kSlotAsNode))(reinterpret_cast<void*>(object)) == 0) {
-		return count;
-	}
-	const UInt32 children = Dword(object + kChildren);
-	const UInt32 slots = *reinterpret_cast<const UInt16*>(object + kChildSlots);
-	for (UInt32 i = 0; children != 0 && i < slots; ++i) {
-		if (const UInt32 child = Dword(children + 4 * i)) {
-			count += ShiftTree(child, d, depth + 1);
-		}
-	}
-	return count;
+float* LocalOf(UInt32 actor) {
+	const UInt32 node = Dword(actor + kRefNode);
+	return node != 0 ? reinterpret_cast<float*>(node + kLocalTranslate) : nullptr;
 }
 
 }  // namespace
 
-void ActorFarGlideInit(bool on, LogFn log) {
+void ActorFarGlideInit(bool on, unsigned samples, LogFn log) {
 	g_on = on;
+	g_samplesLeft = samples;
 	g_log = log;
-	log("Route Actor::Update (far actors): between its updates a far actor is %s", on ? "shown on its way - its subtree shifted by the animation's summed step so far (ActorFarGlide)"
+	log("Route Actor::Update (far actors): between its updates a far actor is %s", on ? "shown on its way - its node's local translate shifted by the animation's summed step so far (ActorFarGlide)"
 	                                                                                 : "left standing (ActorFarGlide=0)");
 }
 
-void ActorFarGlideSkipped(far_update::Entry& entry, UInt32 actor) {
+bool ActorFarGlideAny() { return g_shifted > 0; }
+
+namespace {
+
+// The offset out of the node; the state's `applied` stays for the caller.
+void TakeOut(far_update::Entry& entry, UInt32 actor) {
+	glide::State& state = entry.glide;
+	if (!state.wroteSet) {
+		return;
+	}
+	InterlockedDecrement(&g_shifted);
+	float* local = LocalOf(actor);
+	float back[3];
+	const float none[3] = {};
+	if (glide::TakeBack(state, local != nullptr ? local : none, back) && local != nullptr) {
+		local[0] += back[0];
+		local[1] += back[1];
+		local[2] += back[2];
+		InterlockedIncrement64(&g_takenBack);
+	}
+}
+
+}  // namespace
+
+void ActorFarGlideRelease(far_update::Entry& entry, UInt32 actor) {
+	TakeOut(entry, actor);
+	entry.glide.applied[0] = entry.glide.applied[1] = entry.glide.applied[2] = 0.0f;
+}
+
+void ActorFarGlideSkipped(far_update::Entry& entry, UInt32 actor, float elapsed) {
 	if (!g_on) {
 		return;
 	}
 	glide::State& state = entry.glide;
 	float offset[3];
-	if (!glide::Offset(state, entry.hasRootMotion, entry.rootMotion, offset)) {
+	if (!glide::Offset(state, entry.hasRootMotion, entry.rootMotion, offset, elapsed)) {
 		return;
 	}
-	const UInt32 node = Dword(actor + kRefNode);
-	if (node == 0) {
+	float* local = LocalOf(actor);
+	if (local == nullptr) {
 		return;
 	}
-	float root[3];
-	std::memcpy(root, reinterpret_cast<const void*>(node + kWorldTranslate), sizeof(root));
-	const bool moved = glide::RootMoved(state, root);
+	const bool replaced = glide::RootMoved(state, local);
 	float delta[3];
-	if (!glide::Shift(state, offset, moved, delta)) {
+	if (!glide::Shift(state, offset, replaced, delta)) {
 		return;
 	}
-	const unsigned __int64 t0 = __rdtsc();
-	const unsigned objects = ShiftTree(node, delta, 0);
-	std::memcpy(root, reinterpret_cast<const void*>(node + kWorldTranslate), sizeof(root));
-	glide::Wrote(state, root);
-	InterlockedExchangeAdd64(&g_shiftTicks, static_cast<LONG64>(__rdtsc() - t0));
+	local[0] += delta[0];
+	local[1] += delta[1];
+	local[2] += delta[2];
+	if (!state.wroteSet) {
+		InterlockedIncrement(&g_shifted);
+	}
+	glide::Wrote(state, local);
 	InterlockedIncrement64(&g_shifts);
-	InterlockedExchangeAdd64(&g_objects, objects);
-	if (moved) {
-		InterlockedIncrement64(&g_recomposed);
+	if (replaced) {
+		InterlockedIncrement64(&g_replaced);
 	}
 }
 
-void ActorFarGlideAtUpdate(far_update::Entry& entry, UInt32 actor, const float* step) {
+void ActorFarGlideAtUpdate(far_update::Entry& entry, UInt32 actor, const float* step, float seconds) {
 	if (!g_on) {
 		return;
 	}
+	TakeOut(entry, actor);  // the offset shown until now stays in the state: AtUpdate keeps it for the measurement
 	float here[3];
 	std::memcpy(here, reinterpret_cast<const void*>(actor + kRefPosition), sizeof(here));
 	const float moved[3] = {here[0] - entry.lastPosition[0], here[1] - entry.lastPosition[1], here[2] - entry.lastPosition[2]};
 	const float none[3] = {};
-	const glide::Measured m = glide::AtUpdate(entry.glide, entry.hasPosition, moved, step != nullptr, step != nullptr ? step : none);
+	const float shown[3] = {entry.glide.shown[0], entry.glide.shown[1], entry.glide.shown[2]};
+	const float consumed = entry.glide.consumed;
+	const glide::Measured m = glide::AtUpdate(entry.glide, entry.hasPosition, moved, step != nullptr, step != nullptr ? step : none, seconds);
 	if (m.counted) {
 		InterlockedIncrement64(&g_updates);
 		InterlockedExchangeAdd64(&g_leapMilli, static_cast<LONG64>(m.leap * 1000.0f));
 		InterlockedExchangeAdd64(&g_leftMilli, static_cast<LONG64>(m.left * 1000.0f));
+		if (g_samplesLeft != 0) {
+			--g_samplesLeft;
+			g_log("Route: far actors' glide sample - actor %08X: the last update moved it %.1f %.1f %.1f (%.1f units) on a summed step of %.1f; shown before "
+			      "it %.1f %.1f %.1f; left %.1f; the step it takes now %.1f, gain %s, steady speed %s",
+			      Dword(actor + kFormId), static_cast<double>(moved[0]), static_cast<double>(moved[1]), static_cast<double>(moved[2]),
+			      static_cast<double>(m.leap), static_cast<double>(consumed), static_cast<double>(shown[0]), static_cast<double>(shown[1]),
+			      static_cast<double>(shown[2]), static_cast<double>(m.left), static_cast<double>(entry.glide.consumed), entry.glide.hasGain ? "yes" : "no",
+			      entry.glide.steady ? "yes" : "no");
+		}
 	}
 	if (entry.glide.hasGain) {
 		InterlockedIncrement64(&g_withGain);
@@ -133,17 +145,14 @@ void LogActorFarGlideSummary() {
 	if (!g_on) {
 		return;
 	}
-	const LONG64 shifts = InterlockedExchange64(&g_shifts, 0);
-	const LONG64 objects = InterlockedExchange64(&g_objects, 0);
-	const LONG64 ticks = InterlockedExchange64(&g_shiftTicks, 0);
 	const LONG64 updates = InterlockedExchange64(&g_updates, 0);
 	const double leap = static_cast<double>(InterlockedExchange64(&g_leapMilli, 0)) / 1000.0;
 	const double left = static_cast<double>(InterlockedExchange64(&g_leftMilli, 0)) / 1000.0;
-	g_log("Route: far actors' glide - %lld shifts of %.0f objects each, %lld ticks each (the clock's), %lld after someone else composed the subtree anew; "
-	      "%lld updates of moving actors: the leap %.1f units on the mean, %.1f left of it with the glide (%.0f %%); %lld updates left a gain",
-	      shifts, shifts != 0 ? static_cast<double>(objects) / static_cast<double>(shifts) : 0.0, shifts != 0 ? ticks / shifts : 0,
-	      InterlockedExchange64(&g_recomposed, 0), updates, updates != 0 ? leap / static_cast<double>(updates) : 0.0,
-	      updates != 0 ? left / static_cast<double>(updates) : 0.0, leap > 0.0 ? left * 100.0 / leap : 0.0, InterlockedExchange64(&g_withGain, 0));
+	g_log("Route: far actors' glide - %lld shifts (%lld after someone else placed the node), %lld offsets taken back; %lld updates of moving actors: the "
+	      "leap %.1f units on the mean, %.1f left of it with the glide (%.0f %%); %lld updates left a gain; %ld actors shifted now",
+	      InterlockedExchange64(&g_shifts, 0), InterlockedExchange64(&g_replaced, 0), InterlockedExchange64(&g_takenBack, 0), updates,
+	      updates != 0 ? leap / static_cast<double>(updates) : 0.0, updates != 0 ? left / static_cast<double>(updates) : 0.0,
+	      leap > 0.0 ? left * 100.0 / leap : 0.0, InterlockedExchange64(&g_withGain, 0), static_cast<long>(g_shifted));
 }
 
 }  // namespace obng::plugin
