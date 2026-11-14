@@ -77,3 +77,32 @@ setup) and not the interface (Direct3D 9, one call a draw from the render thread
 
 Neither before step 1 of the plan says how the horde's 12-14 ms divide between the walk, the accumulation and the
 draws. A renderer of OBNG's own past Direct3D 9 is not planned.
+
+## Step 1's result from the captures in hand (2026-11-14, tools/re/pass-shares.py, exclusive samples)
+
+Nadi's Windows horde, capture OBVR-performance-3 of 13:44 (2 662 world frames, 31.8 ms a frame):
+
+| | ms a frame |
+|---|---:|
+| **inside the scene pass** | **9.9** (7.9 by OBVR's scene_pass events) |
+| Direct3D 9 (D3D9.DLL) | 2.2 |
+| NiMain and the renderer (0x0070-0x007A) | 2.0 |
+| OBNG.dll (the draw entries, the eye switch, the culler) | 1.9 |
+| the shaders and the accumulator (0x007A-0x0088) | 0.9 |
+| OBVR.dll | 0.7 |
+| **outside the pass** | **21.9** |
+| Havok (0x0088A000-0x0097FFFF) | 6.7 |
+| waiting in ntdll | 5.7 |
+| the game's own code | 2.9 |
+| NiMain | 1.3, OBNG.dll 1.2, the heap 1.1, sound 0.7 |
+
+- **The pass has no hot function**: inside it no function of the EXE is above 1.7 % of the pass's samples (0x0077B140,
+  RegisterGeometry 0x007AD270, the transform compose, ApplyConstants 0x009A8E30, the sampler states ...). The cost is
+  per draw, spread over the whole path to a draw. Rebuilding functions one by one gains tenths; what lowers it is
+  fewer draws (stage 2 above) or the path prepared elsewhere (stage 1).
+- **On Windows the horde's frame is not the pass's first**: the pass is a third, and outside it Havok alone is
+  6.7 ms - 0x00921A40 2.0 ms (under 0x00924000), 0x0094FEF0, 0x008D0290 and a long tail - and the waits 5.7 ms.
+  Whether that Havok time is the character controllers' casts (the actors' frame) or the world's own step with the
+  horde's bodies, ragdolls and corpses is not told by exclusive samples; the world runs with iSimType=1 and no
+  worker threads (knowledge/threading.md), and the one try with iSimType=4 on 2026-11-09 was slower.
+- The "12 to 14 ms a pass" above is the slow frames' median (frames over 26 ms); the capture's mean is 8 to 10 ms.
