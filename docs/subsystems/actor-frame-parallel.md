@@ -243,3 +243,71 @@ updates a frame, sound off.
 - The cast wrapper 0x0088B850 is called 579 times a frame and costs 0.25 ms in all: the AI's casts are cheap here,
   the frame budget is what matters about them, not their time. 0x008B22F0 is never called in this scene.
 - The world is rarely locked while a phantom moves: two operations a frame are queued.
+
+## The third slice: Havok's conditions for worker threads (2026-11-14, slice havok-thread-conditions)
+
+15 functions mapped and refuted (79 agents, Opus 5.5 medium; re/functions/0x0088B070.md ... 0x008D8BF0.md). Marks:
+R read in the instructions, D derived, Up pseudocode only, U unverified.
+
+**1. A thread's Havok memory.**
+- The thread memory is a 0x330-byte object (vtable 0x00A975C8) in the thread's static TLS block at +0x19C
+  (`_tls_index` 0x00BA9DE4; R 0x0088B130-0x0088B13F); the 0x2C object (vtable 0x00A95C70, at 0x00BA7D98) is the
+  process-wide memory manager behind it (R 0x0088B0D6-0x0088B0F7; 0x008A7060.md's name "ThreadMemoryBase" is the
+  wrong way round and is to be read as the manager's constructor).
+- A thread without one falls back to the global 0x00BA7D9C (R pattern in 0x008AE100, 0x008AD7D0, 0x008AD070,
+  0x008DE950), whose stack top is bumped without a lock: two such threads race (D).
+- The EXE holds a worker's recipe in 0x008BADF0 (Up): 0x008A72A0(manager, 0x10) on a 0x330-byte block,
+  0x008BB000 (install in TLS), an area from the manager, 0x008A7220(area, size); at the end 0x008A7220(0, 0),
+  0x008BB020, 0x008A7200. 0x008BADF0 itself runs Havok's step loop and cannot be called; its pieces can (D).
+- Open: whether the 0x2C manager's slots (0x00889600-0x00889680, 0x008A7130, 0x008A7170; not in the export) are
+  safe for several threads. The main thread's frees over 0x2000 bytes and all its frees with thread memory
+  +0x30 == 0 go to it (Up).
+
+**2. The casts' budget in 0x0088B850** (bhkWorld vtable +0x88; the controller's casts do not pass through it, D).
+- Counted by the pick's layer `[pick+0x24] & 0x3F` (R 0x0088B8B6-0x0088B915): 0x14 not at all; 0x15 and 0x1B the
+  total 0x00BA7924 and the path count 0x00BA7928; 0x1A the total and line of sight 0x00BA792C; 0x1D the total
+  and 0x00BA7930; any other the total, with the layer kept in 0x00BA7934. The pause byte 0x00BA790A switches all
+  of it off (R 0x0088B894).
+- Skipped when the path count is over 30 (R 0x0088B8CD) or the total over `[0x00B2E2F4]` (R 0x0088B926;
+  `iMaxPicks:HAVOK`, default 40, written at 0x00441A6E). A skipped pick is counted too. The caller gets false,
+  `[pick+0x50] = 0`, `[pick+0x44] = 1.0`; its collectors are left as they were (D).
+- Reset by 0x0088C440 (bhkWorld vtable +0x80; R 0x0088C4E7-0x0088C505); how often a frame is not known.
+- Measured beside it (run 20261114-215120): 579 calls of the wrapper a frame in the gate horde against a budget
+  of 40 - **most of the horde's AI casts are skipped by the budget already**, and which actors get the 40 is the
+  actors' order.
+
+**3. The world's pending operations.**
+- 0x008DE950 queues instead of updating while `[world+0x88] + [world+0x8C] != 0` (R 0x008DE963-0x008DE970). A
+  type 0x11 record carries the phantom (referenced) and a heap copy of its AABB (R 0x008D8A35-0x008D8AAE).
+- Queuing is under the critical section at queue+0x10 (R exits, Up entry); the drain 0x008D8BF0 takes no lock
+  (R) and must stay on the main thread. Order: first in, first out; records queued during the drain run before
+  the next older one (R 0x008D8D7E-0x008D8D94).
+- The cast 0x008ECC60 writes the phantom's position, calls 0x008DE950 and then walks the phantom's overlap list
+  +0x120/+0x124 (R 0x008ECC82, 0x008ECCE6, 0x008ECD38). **With the world locked for a parallel phase the list is
+  the one from the phase's start** (D): a phantom that moves into something it did not overlap before is not cast
+  against it until the main thread drains. A class C change.
+
+**4. The seeds that were something else.** 0x008EC790 is a simplex solver over the caller's planes, 0x008EC340
+examines its active planes, 0x008D9870 fills a cast input on the stack: pure, no shared state (R).
+
+**The writes that stand between the controllers and threads** (the ways round are proposals):
+
+| write | evidence | way round |
+|---|---|---|
+| Havok's stack area and the fallback thread memory | R | a thread memory and area a worker, by 0x008BADF0's recipe |
+| the 0x2C memory manager (large frees, queue payloads) | U | read its slots; then a lock or per-thread free lists (0x10) |
+| the iteration cap `[0x00B2EFB8]` | R 0x00896BD9, read 0x008AD884 | a value a thread: patch the one read |
+| the picked body `[0x00BA7A5C]`, `[0x00BA7A58]` | R 0x00896849, writer Up | a value a thread |
+| the broad phase and pair tables through 0x008DE950 | R | Havok's own lock and queue; drained after the join (class C: stale overlaps) |
+| the world's tolerance `[world+0x74]+0x08` in 0x008AD070 | R 0x008AD0A1-0x008AD0BB, read 0x008ECC8C | a collision input a thread |
+| a phantom's position read by a neighbour's cast | R write, U readers | fixed before the phase, or accepted as order |
+| impulses to touched bodies 0x008AC6A0 | Up | recorded, applied after the join |
+| the append through 0x0088BB60 | Up | after the join |
+| the cast counters and detection's `[0x00B333C0]` | R | the budget handed out by a rule before the phase |
+| scratch vectors 0x00B3BAAC, 0x00B3BAB8 | R | locals |
+
+**Open, the most blocking first:** (1) what the broad phase's ray cast (vtable +0x38 of `[world+0x64]`) writes;
+(2) the dispatcher's cast functions under 0x008ECC60 and the phantom's vtable +0x34 under 0x008AD070 - where the
+controller's 3.7 ms actually are; (3) the memory manager's slots; (4) how much an overlap list changes inside one
+frame (an in-game count); (5) whether impulses and 0x0088BB60 write directly; (6) which writers of `[world+0x88]`
+store "= 1"; (7) the caller of 0x00896000.
