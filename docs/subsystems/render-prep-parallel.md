@@ -61,3 +61,19 @@ decides and prepares a draw without the device.
 
 The horde's 12-14 ms a pass is the target; a walk and bone matrices on four threads could take 3-5 ms of it. Not
 before step 1 says where the 12-14 ms are.
+
+## Two stages on top of the draw entries OBNG already owns (2026-11-14, candidates, nothing measured)
+
+The single pass replaced the engine's four draw entries (and with them one cull and one accumulation a frame for
+both eyes) - not the path to a draw (the cull walk, the pass lists, per record the shader's, lights' and material's
+setup) and not the interface (Direct3D 9, one call a draw from the render thread). Since the entries are OBNG's:
+
+1. **Record, prepare on workers, replay**: the entries note each draw instead of issuing it; bone matrices and
+   constants are prepared on worker threads; the render thread replays the calls in the original's order. Large;
+   the entries and the instancing's record-and-flush exist. Saves preparation time, the calls stay serial.
+2. **One draw an actor**: an actor's skinned parts (about 15 an eye for an armoured NPC; 1 000-1 800 skinned draws a
+   pass in a horde) drawn as one, the bones in one palette, a shader of OBNG's own. Very large: vertex data and
+   shaders, and meshes of mods. It lowers the number of draws itself - the lever for crowds.
+
+Neither before step 1 of the plan says how the horde's 12-14 ms divide between the walk, the accumulation and the
+draws. A renderer of OBNG's own past Direct3D 9 is not planned.
