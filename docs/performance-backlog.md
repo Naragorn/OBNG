@@ -2080,3 +2080,74 @@ LOD landscape flickers too much when a new cell is entered. No crash in 38 minut
   frames, 1.5-2.8 times at 24-45. The moving ones travel 60-134 units a second (the log's travel lines): steps of
   20-90 units at those rates. Derived: that is the stutter in the distance; the view rule's camera is the headset's.
 - Memory: the address space 2 629 of 4 095 MB at its peak, the game heap 646 of 1 024 MB.
+
+## 2026-11-14: after the Windows session - the culler's guards, the contact pass, far actors in view, lines without a voice file (measured on Linux flights)
+
+Nadi: "go. 1-5" on the five items of the session's reading. The flights are `tools/stress-ride.sh` with
+`tools/hand-scripts/obng-measure-ride-checks.ini` (the ride's routes plus the checks) and the Windows mod list; runs
+obng-stress-ride/20261114-064600, -080839, -081539, -082454, -083028, -083530, -084405. Five of the seven ended in
+the known heap fault (0x004B29CE at x = -152 026, 0x00401642 at -168 256, 0x004025D2 at -186 025 and -202 914,
+kernel32 at -166 204; 0x00560944 at -220 020) - as with every route off on 2026-11-13; -083530 ran through.
+
+### 1. The far land's flicker at a cell change: the culler is not shown to be its cause; it is ruled out for the far LOD now
+
+- **A verdict belongs to its object** (`OcclusionCullGuardLogic.h` Identity: name, parent, model data, the place of the
+  bound's centre). Measured (run -080839): 41-94 verdicts a ten-second window were made for another object than the
+  address holds now, 3 of them in the whole flight hidden within the age - a new object left out for a frame or two by
+  another's verdict happens, but three times in a flight. In the 32 passes after each of eleven cell changes: 3-14
+  verdicts dropped, none hidden. **Not the flicker's cause.**
+- **The far LOD** (everything under "LODRoot" 0x00B333A8: the land's pieces, the distant objects, the trees): 130-183
+  pieces asked a pass, and in about 40 000 passes of four flights **not one had a hidden verdict within the age**
+  (`OcclusionCullLod=2`, the count). The flights pass at standing height through the terrain, so near hills do stand
+  in front; on foot it is not measured. `OcclusionCullLod=0` (the default now) never leaves a far piece out and does
+  not test it: whatever the culler did there on Windows, it does not any more, and up to 180 tests a pass are saved.
+- After a cell change the culler leaves less out for a while (128 of 17 273 draws, 0 of 14 589 in the 32 passes after
+  some changes against 8 631 of 27 171 after others) - derived: new objects fade in blended, the pass's first blended
+  record comes early, and the tests go out before most of the opaque depth is drawn (1b77009). More is drawn, nothing
+  is missing; the frames after a change are dearer by it. Not measured in time.
+- What is left for Nadi's observation (derived, not shown): the frames at a cell change were long and SteamVR's half
+  rate followed (315 episodes in that session against 59) - a far silhouette judders under reprojection. If the
+  flicker stays with `OcclusionCullLod=0`, it is not the culler's leaving out.
+
+### 2. Far actors: the glide does not earn its place; the ones in view get a rate of their own
+
+- **`[Route] ActorFarGlide`** (class C, off): the actor's node shifted between its updates by the animation's summed
+  step times a gain measured at its last update, or by its steady speed. Measured (runs -082454, -083028): of the
+  updates with an offset shown before them the leap is left under half in a quarter to a half; on the mean 62-110 %
+  of the leap is left (single steady walkers: 31 % left). The way an update makes is not the step it took times a
+  constant - the controller, the slope and the path turn it - and many creatures move with no step noted. Read on the
+  way: a loaded actor's world transforms are composed from the local ones every frame, update or not (a shift written
+  into them was gone by the next call in 93 % of 60 000 cases); the node's local translate is not rewritten between
+  updates (0 of 100 000).
+- **`[Route] ActorFarSeenEvery=4`**: a far actor inside the view cone (75 degrees, the rule's) gets every 4th call
+  instead of every 16th - 22 steps a second at 90 frames, 7-11 at 30-45. Measured (run -083530 against -083028,
+  windows without combat): 31 % of the far actors' calls lie inside the cone; the far updates that run rise from 6.7 %
+  to 12.4 % of the calls, 1.1 to 2.9 a frame. In time not measured apart (the two flights differ in length and
+  place); derived at about 80 us an update: 0.15 ms a frame. Nadi's word of 2026-11-11 was 16 for all; this departs
+  from it for the ones he can see.
+
+### 3. Anvil's harbour: the contact pass 0x008CE770 rebuilt (`[Route] ContactDedup`, class A)
+
+knowledge/character-controller-contacts.md has the reading. The check (`ContactDedup=2`: the original on the game's
+array, the rebuild on a copy, compared bit for bit): **0 mismatches in 190 000 passes** of five flights (-080839,
+-081539, -082454, -083028 with the first memo, -084405 with the second), among them 16 684 passes with up to 235 hits
+at Anvil.
+
+| the integrate 0x008902B0 with 220-235 hits in the collector | longest call | plane tests in the window |
+|---|---|---|
+| the original (run -081539, the check's window; the rebuild beside it) | 28.0 ms | 47.7 M predicate calls |
+| the rebuild, the memo compared and copied whole each pass (run -083530) | 7.1 ms | 24 123 |
+| the rebuild, the memo trusted by cast and last hit | not yet measured at such a count | |
+
+### 4. Lines without a voice file
+
+`[Probe] CodePatches` (the running code against Oblivion.exe on the disk: 649-678 patched places on Linux, by
+module) found inside the voice player: Elys' Universal Silent Voice jumps from the not-found place 0x006A9EB7 into a
+stub that hands the function's path buffer to its routine and goes on at 0x006A9ECE (the file's opening); and
+another plugin's byte at 0x006A9FC5 turns the buffer's capability mask 0xA0 into 0x80A0 (DSBCAPS_GLOBALFOCUS), which
+the route's copy of the constant did not have - a routed line would have gone silent when the window lost the focus.
+The route now reads both masks from the code and, for a line with neither MP3 nor WAV, asks that stub's routine for
+the file. Measured on Linux with the plugin's three files in the folder for the run (-083530): the routine gave
+`Data\OBSE\Plugins\Elys_USV.mp3`, 312 frames, taken by the route. On Windows such a line cost 9.4-12.6 ms (45 in 38
+minutes); the routed call is not yet measured there. Every call still left to the game is written with its path, the
+reason and what the game's function returned.
