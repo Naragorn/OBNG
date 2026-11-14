@@ -2253,3 +2253,19 @@ From capture 3 (1 456 world frames over 26 ms, 34.2 ms each; OBVR's CPU events a
   OBVR to look at).
 - The ring's own saves were used up after 26 minutes (five a session); the later stretches are in Nadi's saves
   and the quit's.
+
+### The same session, additions (2026-11-14 afternoon)
+
+- **The crowd inside Anvil was a horde of Oblivion Walkers in a fight**, not the town alone (measured: 78 Walkers
+  lines and 292 dismemberment lines in OBVR.log between the load into the town and the ring's third save - walkers
+  killed by refugees; OblivionWalkers.log's horde groups). The hundred skeleton updates a frame are the horde's.
+- **Reported by the Oblivion Performance 2026 session, not checked here** (its reading of the same logs, OBVR
+  docs/performance-spec.md "Nadi's Windows session of 2026-11-14", OBVR ce515d9): over the whole session the culler
+  left out 13.1 % of the draws (126 of 967 a pass; 27 to 51 % in the Linux runs) at 0.28 ms a pass for deciding,
+  the tests' end and the collect - derived at 3.1 us a draw a saving of about 0.39 ms, near break-even. In the
+  horde: 2 037 draws a pass, 2.0 % left out, the culler 0.52 ms a pass (deciding up to 0.96 ms at 3 983 draws; no
+  skinned draw left out) - there it costs about 0.4 ms more than it saves. Deciding costs 0.2 to 0.25 us a draw
+  also for draws that are never candidates. Candidates from that: skinned draws past the decision at no cost, and
+  the culler standing down while its own windows show less left out than it costs. Outside the pass in the horde
+  it counts Havok 5.4 ms a scene call (0x00921A40 alone 1.5), the game's code 3.2, ntdll 4.7 (2.1 under SteamVR's
+  client), the process manager 7.0 ms a call.
