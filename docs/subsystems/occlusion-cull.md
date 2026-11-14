@@ -544,3 +544,20 @@ passes of warm-up and a probe window that must save 1.25 times its cost; a probe
 - **Open**: a place where the culler pays (a dungeon, a house) with the stand-down on - that it does not rest
   there, and that the estimate's low side for skinned draws does not rest it where actors stand behind walls;
   Windows; the rest lengths were not varied.
+
+### The stand-down where the culler pays (measured 2026-11-14 16:15-16:24, obng-cull.txt's five places, Linux list)
+
+Run obng-cull/20261114-161547 (`OcclusionCullStandDown=2`, counted only, a summary every 5 s) and -162002
+(`OcclusionCullAct=2` beside it). The culler's skips paid in 333 of 411 windows. The windows that did not, by the
+place the summary fell in: the market 5 of 42 (2 rests), the load after it 27 of 27 (14 rests - a load, harmless),
+**the plaza 22 of 45 (11 rests), the house 19 of 42 (9 rests)**, the dungeon, the road and the rest none. Per place
+(acting windows): the plaza 85 of 390 draws left out at 0.15 ms a pass, the house 58 of 372 at 0.12 ms - it pays
+there on the whole, but the scenario turns the head, and in the directions where nothing stands behind anything
+the windows fail. With the stand-down on the culler would rest 256 passes (about 3 s) after two such windows and
+miss what it would save when the view turns back.
+
+- So `OcclusionCullStandDown` stays 0: in the horde it gains about 0.65 ms a pass, in a house or a plaza it would
+  give up part of 0.1 to 0.3 ms for seconds at a time. Deployed on Windows as 2 (counted) on 2026-11-14 16:30, so
+  Nadi's play says how often it would rest where.
+- Not tried: a short rest (32 to 64 passes) - the probes then cost a window's work more often; a rule by draws
+  rather than by time (the horde's passes have 2 000+ draws, the house's 370).
