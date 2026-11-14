@@ -27,6 +27,8 @@
 #include "ProcessProbe.h"
 #include "VoiceDecode.h"
 #include "VoiceProbe.h"
+#include "CodePatchProbe.h"
+#include "ContactDedup.h"
 #include "TimedCalls.h"
 #include "FastConstantArrange.h"
 #include "RouteRangeWalk.h"
@@ -250,6 +252,7 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	r.occlusionCullMargin = obng::plugin::occlusion_cull::MarginFromIni(GetPrivateProfileIntA("Route", "OcclusionCullMargin", 2, path));
 	{
 		r.occlusionCullBeforeBlend = GetPrivateProfileIntA("Route", "OcclusionCullBeforeBlend", 1, path) != 0;
+		r.occlusionCullLod = static_cast<int>(GetPrivateProfileIntA("Route", "OcclusionCullLod", 0, path));
 		const UINT every = GetPrivateProfileIntA("Route", "OcclusionCullVisibleEvery", 1, path);
 		r.occlusionCullVisibleEvery = every < 1 ? 1 : every > 16 ? 16 : every;
 	}
@@ -344,6 +347,8 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 	if (havePath) {
 		obng::plugin::InstallVoiceDecode(path, &Log);  // before the probe: both want the voice player's entry, the route has it first
 		obng::plugin::InstallVoiceProbe(path, &Log);
+		obng::plugin::InstallCodePatchProbe(path, &Log);
+		obng::plugin::InstallContactDedup(path, &Log);
 		obng::plugin::InstallActorFarUpdate(path, &Log);  // before the census: the route has the entry first
 		obng::plugin::InstallReferenceAnimRate(path, &Log);  // before the [Timed] lines: the route has the entry first
 		obng::plugin::InstallActorShadowRest(path, &Log);   // call sites and two patches inside the actor shadow step, no entry

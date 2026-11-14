@@ -42,6 +42,8 @@
 
 #include "Memory.h"
 #include "DrawGroupLogic.h"
+#include "OcclusionCullGuard.h"
+#include "OcclusionCullGuardLogic.h"
 #include "OcclusionCullLogic.h"
 #include "OcclusionRectDevice.h"
 #include "ProbeLogic.h"
@@ -84,7 +86,6 @@ constexpr UInt32 kGeometrySkinOffset = 0xB8;
 constexpr UInt32 kGeometryPropertyStateOffset = 0xAC;  // NiGeometry's property state (DrawInstancing.cpp)
 constexpr UInt32 kPropertyStateSlotsOffset = 0x08;     // its property pointers by type; the alpha property is type 0
 constexpr UInt32 kPropertyFlagsOffset = 0x18;
-constexpr UInt32 kObjectNameOffset = 0x08;  // NiObjectNET's name (the probe's)
 constexpr UInt32 kObjectParentOffset = 0x1C;  // NiAVObject's parent (the probe's)
 
 static_assert(sizeof(D3DVIEWPORT9) == sizeof(oc::Viewport), "the logic's viewport is D3DVIEWPORT9");
@@ -165,6 +166,7 @@ bool g_walk = false;        // inside the eye pass's cull walk
 unsigned g_driverDepth = 0;
 unsigned __int64 g_beginTicks = 0;
 draw_groups::NodeBook g_nodeBook;
+UInt32 g_nodeLogLeft = 0;  // [Route] OcclusionCullNodeLog: lines left
 unsigned __int64 g_nodesAsked = 0;
 unsigned __int64 g_nodesLeftOut = 0;
 unsigned __int64 g_nodeVisits = 0;
@@ -222,6 +224,7 @@ void FlushSummaryIfRequested() {
 	char line[1400];
 	cull::FormatSummary(g_stats, g_settings, ticksPerMillisecond, now.qpc, line, sizeof(line));
 	g_log("%s", line);
+	OcclusionCullGuardSummary(g_stats, g_settings.lodRule);
 	g_stats.Reset();
 	if (g_visibleEvery > 1) {
 		g_log("Route: occlusion cull visible draws - tested in one frame of %u (%s in this window): %llu tests of draws found visible left out",
@@ -280,21 +283,6 @@ void FlushSummaryIfRequested() {
 		      static_cast<double>(t.nodes[3]) * per);
 		g_groupTotals = draw_groups::Totals{};
 	}
-}
-
-// The geometry's name for the trace; a pointer that cannot be read gives the
-// empty name (the probe's ReadName).
-void ReadName(UInt32 geometry, char out[oc::kNameWidth]) {
-	char raw[oc::kNameWidth] = {};
-	__try {
-		const char* name = *reinterpret_cast<const char* const*>(static_cast<std::uintptr_t>(geometry + kObjectNameOffset));
-		for (std::size_t i = 0; name != nullptr && i + 1 < oc::kNameWidth && name[i] != '\0'; ++i) {
-			raw[i] = name[i];
-		}
-	} __except (EXCEPTION_EXECUTE_HANDLER) {
-		raw[0] = '\0';
-	}
-	oc::CopyName(raw, out);
 }
 
 // The trace's view of the device: the render target, the depth-stencil and
@@ -527,7 +515,9 @@ cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind, bool countRepeat
 	oc::RectKind kinds[2];
 	const cull::TestKind testKind =
 	    cull::RectsFor(bound, origin, view0, view1, proj, g_ports, static_cast<float>(g_settings.margin), &rects, kinds, g_eyeCount);
-	const cull::Decided decided = cull::Decide(g_table, geometry, g_frame, testKind, g_settings, g_cameras, &g_stats);
+	const cull::Decided decided =
+	    cull::Decide(g_table, geometry, g_frame, testKind, g_settings, g_cameras, &g_stats, OcclusionCullIdentity(geometry, node, bound.centre),
+	                 &OcclusionCullIsLod);
 	if (!node) {
 		cull::Count(&g_stats, kind, decided.decision, testKind, decided.newThisFrame, kinds);
 	}
@@ -556,24 +546,27 @@ cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind, bool countRepeat
 		g_notes.push_back(note);
 	}
 	const std::uint32_t every = g_visibleOnNow ? g_visibleEvery : 1;
-	const bool due = decided.verdict == nullptr || cull::TestDue(*decided.verdict, decided.decision, g_frame, every);
+	const bool due = decided.verdict == nullptr || (cull::TestDue(*decided.verdict, decided.decision, g_frame, every) &&
+	                                                (!decided.verdict->lod || cull::guard::LodTested(g_settings.lodRule)));
 	if (decided.newThisFrame && testKind == cull::TestKind::kTest && !due) {
 		++g_visibleTestsLeftOut;
 	}
 	if (decided.newThisFrame && testKind == cull::TestKind::kTest && due && !g_testsEnded) {
 		if (g_batch->count < cull::kMaxTests) {
+			cull::Test& test = g_batch->tests[g_batch->count];
+			test.geometry = geometry;
+			test.identity = decided.verdict != nullptr ? decided.verdict->identity : 0;
+			test.lod = decided.verdict != nullptr && decided.verdict->lod;
 			if (decided.verdict != nullptr) {
 				decided.verdict->testedFrame = g_frame;
 			}
-			cull::Test& test = g_batch->tests[g_batch->count];
-			test.geometry = geometry;
 			test.rects = rects;
 			test.skipped = decided.decision == cull::Decision::kSkip;
 			test.control = false;
 			test.kind = static_cast<std::uint8_t>(kind);
 			if (g_batch->traced && g_batch->count < cull::kTraceTests) {
-				ReadName(geometry, g_batch->names[g_batch->count]);
-				ReadName(ReadAt<UInt32>(geometry + kObjectParentOffset), g_batch->parents[g_batch->count]);
+				OcclusionCullReadName(geometry, g_batch->names[g_batch->count]);
+				OcclusionCullReadName(ReadAt<UInt32>(geometry + kObjectParentOffset), g_batch->parents[g_batch->count]);
 				g_batch->bounds[g_batch->count] = bound;
 			}
 			++g_batch->count;
@@ -753,6 +746,7 @@ bool BeginEyePass() {
 	++g_frame;
 	++g_stats.eyePasses;
 	Collect();
+	OcclusionCullGuardPass(g_frame, g_stats);
 	bool lost = false;
 	g_batchIndex = g_frame % cull::kBatches;
 	g_batch = &g_ring.Begin(g_frame, &lost);
@@ -927,50 +921,6 @@ UInt32 __fastcall CullDriver(void* self, void* /*edx*/, UInt32 process) {
 	return eax;
 }
 
-// [Route] OcclusionCullNodeLog: a node's first leaving out, by name - the
-// node, its vtable, its bound, three parents and its first children (the
-// layout as GrassProbe.cpp reads it: the child array at +0xB0, its count at
-// +0xB6). For the question of what the node cull leaves out in a place.
-constexpr UInt32 kNodeChildrenOffset = 0xB0;
-constexpr UInt32 kNodeChildCountOffset = 0xB6;
-constexpr UInt32 kNodeLogChildren = 8;
-UInt32 g_nodeLogLeft = 0;
-
-void LogNodeLeftOut(UInt32 node) {
-	--g_nodeLogLeft;
-	char line[768];
-	char name[oc::kNameWidth];
-	ReadName(node, name);
-	oc::Bound bound;
-	std::memcpy(&bound, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(node + kGeometryBoundOffset)), sizeof(bound));
-	int at = std::snprintf(line, sizeof(line), "Route: occlusion cull node left out - frame %u node 0x%08X '%s' vtable 0x%08X bound (%.0f, %.0f, %.0f) r %.0f; parents",
-	                       g_frame, node, name, ReadAt<UInt32>(node), static_cast<double>(bound.centre[0]), static_cast<double>(bound.centre[1]),
-	                       static_cast<double>(bound.centre[2]), static_cast<double>(bound.radius));
-	UInt32 parent = node;
-	for (unsigned level = 0; level < 3 && at > 0 && static_cast<std::size_t>(at) < sizeof(line); ++level) {
-		parent = ReadAt<UInt32>(parent + kObjectParentOffset);
-		if (parent == 0) {
-			break;
-		}
-		ReadName(parent, name);
-		at += std::snprintf(line + at, sizeof(line) - at, " '%s'", name);
-	}
-	const UInt32 children = ReadAt<UInt32>(node + kNodeChildrenOffset);
-	const UInt32 count = ReadAt<UInt16>(node + kNodeChildCountOffset);
-	if (at > 0 && static_cast<std::size_t>(at) < sizeof(line)) {
-		at += std::snprintf(line + at, sizeof(line) - at, "; %u children:", count);
-	}
-	for (UInt32 i = 0; children != 0 && i < count && i < kNodeLogChildren && at > 0 && static_cast<std::size_t>(at) < sizeof(line); ++i) {
-		const UInt32 child = ReadAt<UInt32>(children + i * 4);
-		if (child == 0) {
-			continue;
-		}
-		ReadName(child, name);
-		at += std::snprintf(line + at, sizeof(line) - at, " '%s' 0x%08X", name, ReadAt<UInt32>(child));
-	}
-	g_log("%s", line);
-}
-
 // One object's visit in a cull walk. In the eye pass's walk a candidate node
 // (a plain node or a fade node, by its +0x7C) is asked about like a draw;
 // hidden, it is not visited.
@@ -987,7 +937,8 @@ void __fastcall CullVisit(void* self, void* /*edx*/, UInt32 object) {
 				++g_nodesLeftOut;
 				++g_leftOutAll;
 				if (g_nodeBook.LeftOut(object, g_frame) && g_nodeLogLeft != 0) {
-					LogNodeLeftOut(object);
+					--g_nodeLogLeft;
+					OcclusionCullLogNode(object, g_frame, g_log);
 				}
 				return;
 			}
@@ -1024,7 +975,7 @@ void OcclusionCullNoteDraw(UInt32 geometry) {
 	g_device->GetRenderState(D3DRS_ZWRITEENABLE, &zWrite);
 	g_device->GetRenderState(D3DRS_COLORWRITEENABLE, &colour);
 	char name[oc::kNameWidth];
-	ReadName(geometry, name);
+	OcclusionCullReadName(geometry, name);
 	g_passIds.Note(ReadAt<UInt32>(kPassIdGlobal) & 0xFFFFu, blend, test, zWrite, name, colour);
 }
 
@@ -1051,6 +1002,9 @@ UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {
 	g_settings.maxMoveUnits = settings.occlusionCullMaxMove;
 	g_settings.maxTurnDegrees = settings.occlusionCullMaxTurn;
 	g_nodeLogLeft = settings.occlusionCullNodeLog;
+	g_settings.lodRule = cull::guard::LodRuleFromIni(settings.occlusionCullLod, cull::LodRule::kNeverSkip);
+	OcclusionCullGuardInit(log);
+	log("Route: occlusion cull - the far LOD (under LODRoot) is %s ([Route] OcclusionCullLod)", cull::guard::LodRuleName(g_settings.lodRule));
 	g_driverLog = settings.occlusionCullDriverLog;
 	g_targetCheck = settings.occlusionCullEyeTarget;
 	g_trace.passes = settings.occlusionCullTrace;

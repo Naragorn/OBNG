@@ -136,6 +136,29 @@ int main() {
 		Check(text.find("frames at the call 60, on the worker 900") != std::string::npos && text.find("whole at the call 2 (1 for want of a slot)") != std::string::npos &&
 		          text.find("cancelled 3, left to the game 1, no buffer 1, worker lock failures 0") != std::string::npos,
 		      "the counts");
+		Section("Why a call is left to the game, and its line");
+		Check(LeftOfFile(false, 10, 44100, true) == Left::kNotValid && LeftOfFile(true, 0, 44100, true) == Left::kNoFrames &&
+		          LeftOfFile(true, kFramesAtMost + 1, 44100, true) == Left::kTooLong && LeftOfFile(true, 10, 999, true) == Left::kRate &&
+		          LeftOfFile(true, 10, 44100, false) == Left::kNoData,
+		      "each refusal, in the order asked");
+		Check(LeftOfFile(true, kFramesAtMost, 1000, true) == Left::kTaken && LeftOfFile(false, 0, 0, false) == Left::kNotValid, "the bounds are taken; the first refusal wins");
+		for (const Left why : {Left::kTaken, Left::kPath, Left::kNoFile, Left::kNoMemory, Left::kNotValid, Left::kNoFrames, Left::kTooLong, Left::kRate, Left::kNoData}) {
+			Check(std::string(LeftName(why)) != "?" && !std::string(LeftName(why)).empty(), "a name for every reason");
+		}
+		Check(std::string(LeftName(static_cast<Left>(200))) == "?", "none for a value that is no reason");
+		char left[400];
+		FormatLeft("Data\\Sound\\Voice\\x.esp\\imperial\\m\\a.wav", Left::kNoFile, 8170, 10.25, left, sizeof(left));
+		Check(std::string(left) == "Route: voice decode - left to the game: \"Data\\Sound\\Voice\\x.esp\\imperial\\m\\a.wav\" (no MP3 under the path); the game's function "
+		                           "returned 8170 ms after 10.250 ms - it played a file the route did not find",
+		      "no file, yet the game played one: said");
+		FormatLeft("a.wav", Left::kNoFile, 0, 0.02, left, sizeof(left));
+		Check(std::string(left) == "Route: voice decode - left to the game: \"a.wav\" (no MP3 under the path); the game's function returned 0 ms after 0.020 ms",
+		      "no file and nothing played: plain");
+		FormatLeft(nullptr, Left::kNotValid, 1200, 3.0, left, sizeof(left));
+		Check(std::string(left) == "Route: voice decode - left to the game: \"\" (not an MP3 the game reads); the game's function returned 1200 ms after 3.000 ms",
+		      "another reason carries no such remark; a null path is the empty one");
+		char tiny[16];
+		Check(FormatLeft("a.wav", Left::kNoFile, 1, 1.0, tiny, sizeof(tiny)) > static_cast<int>(sizeof(tiny)) && tiny[sizeof(tiny) - 1] == 0, "a buffer too small is not overrun");
 		FormatSummary(Counts{}, Mode::kEngineDecoder, 100, 0, line, sizeof(line));
 		Check(std::string(line).find("(the game's decoder, the first 100 ms at the call) - 0 lines, the call 0.000 ms") != std::string::npos, "nothing counted, no clock: zeros");
 		Difference d;

@@ -249,6 +249,50 @@ inline int FormatSummary(const Counts& c, Mode mode, std::uint32_t leadMs, std::
 	                     static_cast<unsigned long long>(c.lockFailures));
 }
 
+// Why a call was left to the game's function.
+enum class Left : std::uint8_t {
+	kTaken,     // not left: the route took the call
+	kPath,      // the path does not fit the original's buffer
+	kNoFile,    // the game's existence check finds no MP3 under the path
+	kNoMemory,  // no block for the file object
+	kNotValid,  // the file object says it is no MP3 it can read
+	kNoFrames,  // no frame found in it
+	kTooLong,   // more frames than a buffer's byte count holds
+	kRate,      // no sample rate in its header
+	kNoData,    // the file object holds no bytes
+};
+
+constexpr const char* LeftName(Left why) {
+	switch (why) {
+		case Left::kTaken: return "taken";
+		case Left::kPath: return "the path does not fit";
+		case Left::kNoFile: return "no MP3 under the path";
+		case Left::kNoMemory: return "no memory for the file object";
+		case Left::kNotValid: return "not an MP3 the game reads";
+		case Left::kNoFrames: return "no frames";
+		case Left::kTooLong: return "too many frames";
+		case Left::kRate: return "no sample rate";
+		case Left::kNoData: return "no bytes";
+	}
+	return "?";
+}
+
+// What the opened file object says, in the order the route asks.
+constexpr Left LeftOfFile(bool valid, std::uint32_t frames, std::uint32_t rate, bool hasData) {
+	return !valid ? Left::kNotValid : frames == 0 ? Left::kNoFrames : frames > kFramesAtMost ? Left::kTooLong : rate < 1000 ? Left::kRate : !hasData ? Left::kNoData : Left::kTaken;
+}
+
+// One line per call left to the game (the first ones of a session): the path
+// it was called with, why the route did not take it, what the game's function
+// returned (the line's length; 0: it played nothing) and how long it ran. A
+// line the game plays although the route found no file was given another
+// file by someone inside the game's function - a plugin's patch there.
+inline int FormatLeft(const char* path, Left why, std::uint32_t resultMs, double callMs, char* out, std::size_t capacity) {
+	return std::snprintf(out, capacity, "Route: voice decode - left to the game: \"%s\" (%s); the game's function returned %u ms after %.3f ms%s",
+	                     path != nullptr ? path : "", LeftName(why), resultMs, callMs,
+	                     why == Left::kNoFile && resultMs != 0 ? " - it played a file the route did not find" : "");
+}
+
 // The check's line for one voice file ([Route] VoiceDecodeCheck): the own
 // decoder's samples against the game's, frame by frame.
 struct Difference {

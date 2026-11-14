@@ -111,6 +111,7 @@ void* g_playOriginal = nullptr;
 void* g_dtorOriginal = nullptr;
 bool g_installed = false;
 LogFn g_log = nullptr;
+UInt32 g_leftLines = 60;  // lines for calls left to the game, a session ([Route] VoiceDecodeLeftLines)
 vd::Mode g_mode = vd::Mode::kOwnDecoder;
 UInt32 g_leadMs = 150;
 bool g_check = false;
@@ -290,32 +291,32 @@ struct Line {
 
 // The file as the original opens it. False: the call is the game's (no such MP3, not one its decoder takes) -
 // nothing is left behind, the original does its own tries and writes its own messages.
-bool OpenLine(const char* path, Line* line) {
+vd::Left OpenLine(const char* path, Line* line) {
 	char name[vd::kPathCapacity];
 	if (!vd::Mp3Path(path, name, sizeof(name))) {
-		return false;
+		return vd::Left::kPath;
 	}
 	const ExistsFn exists = *reinterpret_cast<ExistsFn*>(kExistsPointer);
 	if (exists == nullptr || !exists(name, 0)) {
-		return false;
+		return vd::Left::kNoFile;
 	}
 	void* block = reinterpret_cast<AllocFn>(kAlloc)(kFileSize);
 	if (block == nullptr) {
-		return false;
+		return vd::Left::kNoMemory;
 	}
 	void* file = reinterpret_cast<FileCtorFn>(kFileCtor)(block, nullptr, name);
 	const UInt32 frames = Dword(file, kFileFrames);
 	const UInt32 header = Dword(file, kFileHeader);
 	const UInt32 rate = header != 0 ? Dword(reinterpret_cast<const void*>(header), kHeaderRate) : 0;
 	const bool valid = *reinterpret_cast<const UInt8*>(reinterpret_cast<UInt32>(file) + kFileValid) != 0;
-	if (!valid || frames == 0 || frames > vd::kFramesAtMost || rate < 1000 || Dword(file, kFileData) == 0) {
+	if (const vd::Left why = vd::LeftOfFile(valid, frames, rate, Dword(file, kFileData) != 0); why != vd::Left::kTaken) {
 		DestroyFile(file);
-		return false;
+		return why;
 	}
 	line->file = file;
 	line->frames = frames;
 	line->rate = rate;
-	return true;
+	return vd::Left::kTaken;
 }
 
 // The buffer as the original makes it, locked whole. False: no buffer (the original returns 0 then).
@@ -360,14 +361,13 @@ UInt32 FillLead(Job& job, const Line& line, UInt32 lead, bool* ended) {
 	return done;
 }
 
-// The route's version of the call. `taken` false: nothing was done, the game's function is to run.
-UInt32 Rebuilt(void* manager, void** out, const char* path, UInt32 flags, bool* taken) {
-	*taken = false;
+// The route's version of the call. `why` not kTaken: nothing was done, the game's function is to run.
+UInt32 Rebuilt(void* manager, void** out, const char* path, UInt32 flags, vd::Left* why) {
 	Line line;
-	if (!OpenLine(path, &line)) {
+	*why = OpenLine(path, &line);
+	if (*why != vd::Left::kTaken) {
 		return 0;
 	}
-	*taken = true;
 	EnterCriticalSection(&g_lock);
 	const UInt32 slot = g_slots.Claim();
 	LeaveCriticalSection(&g_lock);
@@ -420,13 +420,20 @@ UInt32 __fastcall Play(void* self, void* /*edx*/, void** out, const char* path, 
 	LARGE_INTEGER end;
 	QueryPerformanceCounter(&start);
 	CleanDone();
-	bool taken = false;
-	UInt32 result = Rebuilt(self, out, path, flags, &taken);
+	vd::Left why = vd::Left::kTaken;
+	UInt32 result = Rebuilt(self, out, path, flags, &why);
+	const bool taken = why == vd::Left::kTaken;
 	if (!taken) {
 		result = reinterpret_cast<PlayFn>(g_playOriginal)(self, nullptr, out, path, flags);
 	}
 	QueryPerformanceCounter(&end);
 	const UInt64 ticks = static_cast<UInt64>(end.QuadPart - start.QuadPart);
+	if (!taken && g_leftLines != 0) {
+		--g_leftLines;
+		char text[480];
+		vd::FormatLeft(path, why, result & 0xFFFFu, static_cast<double>(ticks) * 1000.0 / static_cast<double>(g_frequency.QuadPart != 0 ? g_frequency.QuadPart : 1), text, sizeof(text));
+		g_log("%s", text);
+	}
 	EnterCriticalSection(&g_lock);
 	g_counts.left += taken ? 0 : 1;
 	g_counts.callTicks += ticks;
@@ -501,6 +508,7 @@ void InstallVoiceDecode(const char* iniPath, LogFn log) {
 	const UINT lead = GetPrivateProfileIntA("Route", "VoiceDecodeLeadMs", 150, iniPath);
 	g_leadMs = lead > 5000 ? 5000 : lead;
 	g_check = GetPrivateProfileIntA("Route", "VoiceDecodeCheck", 0, iniPath) != 0;
+	g_leftLines = GetPrivateProfileIntA("Route", "VoiceDecodeLeftLines", 60, iniPath);
 	QueryPerformanceFrequency(&g_frequency);
 	InitializeCriticalSection(&g_lock);
 	for (Job& job : g_jobs) {
@@ -516,11 +524,11 @@ void InstallVoiceDecode(const char* iniPath, LogFn log) {
 	CloseHandle(thread);
 	// The destructor first: a line must never be in work without it.
 	if (!InstallEntryDetour("sound destructor 0x006B6700 (voice decode)", kSoundDtor, kSoundDtorBytes, sizeof(kSoundDtorBytes),
-	                        reinterpret_cast<const void*>(&SoundDtor), &g_dtorOriginal, log)) {
+	                        reinterpret_cast<const void*>(&SoundDtor), &g_dtorOriginal, log, DetourRole::Route)) {
 		return;
 	}
 	g_installed = InstallEntryDetour("voice player 0x006A9E00 (voice decode)", kPlay, kPlayBytes, sizeof(kPlayBytes),
-	                                 reinterpret_cast<const void*>(&Play), &g_playOriginal, log);
+	                                 reinterpret_cast<const void*>(&Play), &g_playOriginal, log, DetourRole::Route);
 	if (g_installed) {
 		log("Route: voice decode - %s, the line's first %u ms at the call, the rest on a worker thread%s",
 		    g_mode == vd::Mode::kEngineDecoder ? "the game's decoder" : "own decoder (minimp3)", g_leadMs,

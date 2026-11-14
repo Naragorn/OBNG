@@ -60,11 +60,22 @@ constexpr std::uint32_t MarginFromIni(int value) {
 	return value < 0 ? 0u : (static_cast<std::uint32_t>(value) > kMarginLimit ? kMarginLimit : static_cast<std::uint32_t>(value));
 }
 
+// [Route] OcclusionCullLod: what the culler does with the far LOD (the land's,
+// the distant objects' and the trees', everything under "LODRoot"). A far
+// piece is large on the screen, and one drawn a frame or two late - the
+// verdicts' delay - is a mountain missing for that long.
+enum class LodRule : std::uint8_t {
+	kNeverSkip = 0,  // drawn whatever a test says, and not tested
+	kMaySkip = 1,    // skipped like everything else
+	kCount = 2,      // drawn, but tested and counted: how often rule 1 would skip (a measurement)
+};
+
 struct Settings {
 	std::uint32_t maxAge = 2;       // frames a hidden verdict is acted on
 	std::uint32_t margin = 2;       // pixels
 	float maxMoveUnits = 100.0f;    // the camera moved further since the verdict: no skip
 	float maxTurnDegrees = 10.0f;   // the camera turned further since the verdict: no skip
+	LodRule lodRule = LodRule::kMaySkip;  // [Route] OcclusionCullLod
 };
 
 // What the culler cannot run beside, by the entry they share (the finish
@@ -230,6 +241,8 @@ struct Verdict {
 	std::uint32_t seenFrame = 0;    // the last frame the geometry was asked about
 	std::uint32_t hiddenFrame = 0;  // the frame of the last test that found it hidden; 0 none, or a later test saw it
 	std::uint32_t testedFrame = 0;  // the frame of the last test queued for it; 0 none ([Route] OcclusionCullVisibleEvery)
+	std::uint32_t identity = 0;     // which object the address held when the verdict was made (OcclusionCullGuardLogic.h Identity); 0 not said
+	bool lod = false;               // the object hangs under the far LOD's root (asked once per identity)
 	Decision decision = Decision::kDraw;  // this frame's, for the geometry's later passes
 };
 
@@ -277,17 +290,23 @@ struct Table {
 	}
 
 	// A test's result: hidden sets the verdict's frame, visible clears a
-	// verdict that is not newer than the test.
-	void Record(std::uint32_t geometry, std::uint32_t testFrame, bool hidden) {
+	// verdict that is not newer than the test. A result for another object
+	// than the address holds now (the test's identity is not the verdict's)
+	// is dropped; false then.
+	bool Record(std::uint32_t geometry, std::uint32_t testFrame, bool hidden, std::uint32_t identity = 0) {
 		Verdict* v = Find(geometry);
 		if (v == nullptr) {
-			return;
+			return true;
+		}
+		if (identity != v->identity) {
+			return false;
 		}
 		if (hidden) {
 			v->hiddenFrame = testFrame > v->hiddenFrame ? testFrame : v->hiddenFrame;
 		} else if (v->hiddenFrame <= testFrame) {
 			v->hiddenFrame = 0;
 		}
+		return true;
 	}
 };
 
@@ -302,6 +321,8 @@ struct Test {
 	bool skipped = false;  // the geometry was left out of the pass this test belongs to
 	bool control = false;  // a trace control (ControlRects): no geometry, no verdict, logged only
 	std::uint8_t kind = 0;  // DrawKind, for the trace
+	bool lod = false;       // a piece of the far LOD (the verdict's)
+	std::uint32_t identity = 0;  // the verdict's when the test was queued
 };
 
 constexpr std::uint32_t kTraceTests = 512;  // tests of a traced pass whose names are kept and whose results are logged (the hidden ones)
@@ -392,7 +413,20 @@ struct KindCounts {
 	std::uint64_t repeats = 0;       // the geometry's later passes in the same frame
 };
 
+// The guards' counts: verdicts dropped for another object at the address, and
+// the far LOD ([Route] OcclusionCullLod).
+struct GuardCounts {
+	std::uint64_t identityResets = 0;        // a verdict's address held another object: the verdict dropped
+	std::uint64_t identityResetsHidden = 0;  // ... and it was a hidden one within the age: the new object would have been left out
+	std::uint64_t staleResults = 0;          // a test's result read after its object was gone from the address: dropped
+	std::uint64_t lodAsked = 0;              // far LOD pieces asked about (first time a frame)
+	std::uint64_t lodSkipped = 0;            // ... left out (rule 1)
+	std::uint64_t lodKept = 0;               // ... drawn against a hidden verdict (rule 2, the count)
+	std::uint64_t lodUnconfirmed = 0;        // a skipped far LOD piece whose own pass's test saw its bound
+};
+
 struct Stats {
+	GuardCounts guard;
 	std::uint64_t eyePasses = 0;
 	std::uint64_t passesWithoutEyes = 0;  // the route had no eye data: the pass ran untouched
 	std::uint64_t flatPasses = 0;         // ... or, with OcclusionCullFlat, ran with the one camera
@@ -469,9 +503,14 @@ struct Decided {
 };
 
 // `frame` counts eye passes from 1. The table keeps the decision for the
-// geometry's later passes in the same frame.
+// geometry's later passes in the same frame. `identity` (0: not said) names
+// the object at the address: a verdict made for another one is dropped before
+// it is acted on - the engine's allocator hands a freed geometry's address to
+// the next one made, and a cell change frees and makes thousands in a frame.
+// `isLod` is asked once per identity.
+using LodFn = bool (*)(std::uint32_t object);
 inline Decided Decide(Table& table, std::uint32_t geometry, std::uint32_t frame, TestKind kind, const Settings& settings,
-                      const Cameras& cameras, Stats* stats) {
+                      const Cameras& cameras, Stats* stats, std::uint32_t identity = 0, LodFn isLod = nullptr) {
 	Decided out;
 	out.verdict = table.Claim(geometry, frame);
 	if (out.verdict == nullptr) {
@@ -484,6 +523,18 @@ inline Decided Decide(Table& table, std::uint32_t geometry, std::uint32_t frame,
 		return out;
 	}
 	out.newThisFrame = true;
+	if (identity != 0 && v.identity != identity) {
+		if (v.identity != 0) {
+			++stats->guard.identityResets;
+			if (v.hiddenFrame != 0 && frame - v.hiddenFrame <= settings.maxAge) {
+				++stats->guard.identityResetsHidden;
+			}
+			v.hiddenFrame = 0;
+			v.testedFrame = 0;
+		}
+		v.identity = identity;
+		v.lod = isLod != nullptr && isLod(geometry);
+	}
 	v.seenFrame = frame;
 	v.decision = Decision::kDraw;
 	if (kind == TestKind::kBothOutside) {
@@ -493,6 +544,17 @@ inline Decided Decide(Table& table, std::uint32_t geometry, std::uint32_t frame,
 			v.decision = Decision::kSkip;
 		} else {
 			++stats->motionBlocked;
+		}
+	}
+	if (v.lod) {
+		++stats->guard.lodAsked;
+		if (v.decision == Decision::kSkip) {
+			if (settings.lodRule == LodRule::kMaySkip) {
+				++stats->guard.lodSkipped;
+			} else {
+				v.decision = Decision::kDraw;
+				++stats->guard.lodKept;
+			}
 		}
 	}
 	out.decision = v.decision;
@@ -622,7 +684,11 @@ void Collect(Ring* ring, Table* table, Stats* stats, ReadFn&& read) {
 				++b->cursor;  // a trace control: no geometry behind it, nothing to record or count
 				continue;
 			}
-			table->Record(t.geometry, b->frame, hidden);
+			if (!table->Record(t.geometry, b->frame, hidden, t.identity)) {
+				++stats->guard.staleResults;
+				++b->cursor;
+				continue;
+			}
 			if (hidden) {
 				++stats->resultsHidden;
 			} else {
@@ -633,6 +699,7 @@ void Collect(Ring* ring, Table* table, Stats* stats, ReadFn&& read) {
 					++stats->skipsConfirmed;
 				} else {
 					++stats->skipsUnconfirmed;
+					stats->guard.lodUnconfirmed += t.lod ? 1 : 0;
 				}
 			}
 			++b->cursor;

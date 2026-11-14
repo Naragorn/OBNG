@@ -22,6 +22,8 @@
 #include "ProcessProbe.h"
 #include "VoiceDecode.h"
 #include "VoiceProbe.h"
+#include "CodePatchProbe.h"
+#include "ContactDedup.h"
 #include "TimedCalls.h"
 #include "FastConstantArrange.h"
 #include "RouteStereoDraw.h"
@@ -137,6 +139,8 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogLockProbeSummary();
 	LogProcessProbeSummary();
 	LogVoiceProbeSummary();
+	LogCodePatchSummary();
+	LogContactDedupSummary();
 	LogVoiceDecodeSummary();
 	LogActorCensusSummary();
 	LogActorFarUpdateSummary();
