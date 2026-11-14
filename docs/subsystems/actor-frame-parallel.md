@@ -127,3 +127,30 @@ void: the INI had lost its route sections.
   read. That is the question for step 3, and it is a larger one than the plan assumed: not "a per-thread copy of a
   counter" but "Havok's world used read-only by several threads".
 - Unchanged: the smaller blockers of the first slice (the iteration cap, the detection counter, the flag byte).
+
+## Where Havok's time is, and the waits (2026-11-14 evening)
+
+**Linux, the gate horde without sound, timed** (`obng-measure-gate-guards-havok.ini`, run
+obng-profile-gate-guards/20261114-211745, 4 773 frames, 158 high updates a frame; ms a frame): the update step
+0x0040D800 33.8 inclusive, 7.5 of its own outside the timed functions; the process manager 14.0; the render's frame
+function 10.2; the skeleton updates 3.8; **the character controllers 3.57 (the support check 1.48, the integrate
+1.82)**; **the Havok world's step 0x004CCCE0 1.41** (under the cells' grid update, 0.8 calls a frame). The render
+sampler of the same run has 8.9 ms a frame with the eip in Havok's code (0x0088A000-0x0097FFFF) at 48.3 ms a frame.
+So of Havok's 8.9 ms about 3.3 are the controllers' casts, 1.4 the world's step, and **about 4.2 lie elsewhere** -
+not timed: the skeletons' collision objects inside ApplyAnimData, ray casts from the AI (0x006814B0 is one), others.
+Havok's time is not one place.
+
+**Windows, Nadi's horde, the 6.2 ms a frame with the eip in ntdll** (capture OBVR-performance-3; the nearest export of
+Windows' own SysWOW64 ntdll.dll, read):
+
+| | ms a frame |
+|---|---:|
+| ZwWaitForSingleObject, under vrclient.dll - the wait for SteamVR, idle | 2.64 |
+| ZwOpenKeyEx, under the sound update 0x006AE860 (1 122 of 1 452 samples) and the WAV reader 0x006AABD0 | 1.11 |
+| ZwWaitForAlertByThreadId / ZwAlertThreadByThreadIdEx, under D3D9.DLL mostly | 0.58 |
+| the rest (critical sections, mutants, the performance counter) | about 1.9 |
+
+- 2.6 ms of the "waiting" are the frame's pacing, no work to take away.
+- The sound's part: registry keys opened from the sound update, about a millisecond a frame in a horde - with the
+  WAV reader's own 0.3 ms a candidate for a cache of sound buffers (derived: that a buffer's making opens the keys
+  is not read; DirectSound's code is not in the capture).
