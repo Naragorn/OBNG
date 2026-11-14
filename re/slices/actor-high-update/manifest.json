@@ -1,0 +1,151 @@
+{
+  "slice": "actor-high-update",
+  "subsystem": "actors",
+  "sharedHeaders": [],
+  "purpose": "The read-and-write map of an actor's frame, for docs/subsystems/actor-frame-parallel.md step 2: what each part of the process manager's loop over the high actors reads and writes outside its own actor, so that the parts that may run on several threads can be told from those that may not. Map and refute only; nothing is rebuilt in this run.",
+  "functions": [
+    {
+      "address": "0x00677EC0",
+      "name": "ProcessManager high-actors loop (proposal)",
+      "mapOnly": true,
+      "known": "Called by ProcessManager::Update 0x00678510 with (0, 0) as its fourth call (knowledge/threading.md, read). In the gate horde 2026-11-14 (run obng-profile-gate-guards/20261114-164228): 20.5 ms inclusive a call, 4.1 ms of it outside every timed callee; it calls the high update 0x00605770 once a high actor (175 a call). 27 distinct callees in the pseudocode, four calls of 0x00659A00.",
+      "questions": [
+        "In what order the actors are taken, and whether an actor's turn reads anything an earlier actor's turn of the same call wrote",
+        "What the 4.1 ms outside the high update are: which callees run per actor besides 0x00605770, and which once a call",
+        "For the map of what may run on several threads (docs/subsystems/actor-frame-parallel.md): list every read and every write this function makes itself, grouped as (a) the actor / object it is called on (this and what hangs on it), (b) other actors or references, (c) the Havok world and its bodies and phantoms, (d) the engine's globals, singletons and shared lists - with the global's address, (e) the heap (allocations and frees, with the call). Name every callee with one line on what it is for, and mark which callees you did not follow."
+      ]
+    },
+    {
+      "address": "0x00605770",
+      "name": "Actor high update (proposal)",
+      "mapOnly": true,
+      "known": "__thiscall on the actor (ECX is a reference: the [Timed] spike watch reads the form id from it). 610 134 calls in 3 488 loops, 15.6 ms inclusive and 0.55 ms exclusive a loop. Calls Actor::Update 0x00603CA0, the animation update 0x00476D10, 0x005F8000, 0x008AB440, 0x004DD4B0 among 38 callees; recursive (calls itself twice in the pseudocode).",
+      "questions": [
+        "Why it calls itself, and on what",
+        "The order of its steps: which of AI, movement, animation, the character controller comes first, and what each later step reads from an earlier one",
+        "For the map of what may run on several threads (docs/subsystems/actor-frame-parallel.md): list every read and every write this function makes itself, grouped as (a) the actor / object it is called on (this and what hangs on it), (b) other actors or references, (c) the Havok world and its bodies and phantoms, (d) the engine's globals, singletons and shared lists - with the global's address, (e) the heap (allocations and frees, with the call). Name every callee with one line on what it is for, and mark which callees you did not follow."
+      ]
+    },
+    {
+      "address": "0x00603CA0",
+      "name": "Actor::Update (proposal; OBNG's far-actor throttle detours it)",
+      "mapOnly": true,
+      "known": "925 pseudocode lines, 108 callees. Throttled to every 16th call beyond 6000 units by [Route] ActorFarWhole with the frame time summed (plugin/src/ActorFarUpdate.cpp). Its time argument and what it does with it are used by that route.",
+      "questions": [
+        "Which of its callees are the large ones by structure (loops, virtual calls into the process)",
+        "Where it calls the character controller's update 0x00896000 or reaches it",
+        "For the map of what may run on several threads (docs/subsystems/actor-frame-parallel.md): list every read and every write this function makes itself, grouped as (a) the actor / object it is called on (this and what hangs on it), (b) other actors or references, (c) the Havok world and its bodies and phantoms, (d) the engine's globals, singletons and shared lists - with the global's address, (e) the heap (allocations and frees, with the call). Name every callee with one line on what it is for, and mark which callees you did not follow."
+      ]
+    },
+    {
+      "address": "0x005FAAE0",
+      "name": "Actor vtable slot 0x368 (name unknown)",
+      "mapOnly": true,
+      "known": "[Timed]: 613 634 calls a run (about one an actor update), 2.2 ms a loop, longest 12.5 ms. Entry bytes 83 EC 0C D9 44 24 10. 15 callees.",
+      "questions": [
+        "What it is - its purpose from its callees and constants",
+        "For the map of what may run on several threads (docs/subsystems/actor-frame-parallel.md): list every read and every write this function makes itself, grouped as (a) the actor / object it is called on (this and what hangs on it), (b) other actors or references, (c) the Havok world and its bodies and phantoms, (d) the engine's globals, singletons and shared lists - with the global's address, (e) the heap (allocations and frees, with the call). Name every callee with one line on what it is for, and mark which callees you did not follow."
+      ]
+    },
+    {
+      "address": "0x00471C00",
+      "name": "ActorAnimData step before ApplyAnimData (name unknown)",
+      "mapOnly": true,
+      "known": "Called once a skeleton update (504 695 calls beside ApplyAnimData 0x00471F20's 504 695), 1.2 ms a loop. Entry bytes 6A FF 68 58 EC 9A 00 (an SEH frame).",
+      "questions": [
+        "What it computes and where it leaves it for ApplyAnimData",
+        "For the map of what may run on several threads (docs/subsystems/actor-frame-parallel.md): list every read and every write this function makes itself, grouped as (a) the actor / object it is called on (this and what hangs on it), (b) other actors or references, (c) the Havok world and its bodies and phantoms, (d) the engine's globals, singletons and shared lists - with the global's address, (e) the heap (allocations and frees, with the call). Name every callee with one line on what it is for, and mark which callees you did not follow."
+      ]
+    },
+    {
+      "address": "0x005F6540",
+      "name": "(name unknown)",
+      "mapOnly": true,
+      "known": "[Timed]: 731 688 calls a run, 1.0 ms a loop; entry bytes 81 EC 08 01 00 00. 352 pseudocode lines.",
+      "questions": [
+        "What it is, who calls it",
+        "For the map of what may run on several threads (docs/subsystems/actor-frame-parallel.md): list every read and every write this function makes itself, grouped as (a) the actor / object it is called on (this and what hangs on it), (b) other actors or references, (c) the Havok world and its bodies and phantoms, (d) the engine's globals, singletons and shared lists - with the global's address, (e) the heap (allocations and frees, with the call). Name every callee with one line on what it is for, and mark which callees you did not follow."
+      ]
+    },
+    {
+      "address": "0x0063A210",
+      "name": "HighProcess vtable slot 4 (proposal)",
+      "mapOnly": true,
+      "known": "[Timed] as actors:HighProcessSlot4: 529 437 calls, 0.9 ms inclusive a loop. Entry bytes 81 EC 54 01 00 00. Ghidra had no function here; created at the entry for this slice (body 0x0063A210-0x0063B95D).",
+      "questions": [
+        "What a high process does in this slot, and on which other objects",
+        "For the map of what may run on several threads (docs/subsystems/actor-frame-parallel.md): list every read and every write this function makes itself, grouped as (a) the actor / object it is called on (this and what hangs on it), (b) other actors or references, (c) the Havok world and its bodies and phantoms, (d) the engine's globals, singletons and shared lists - with the global's address, (e) the heap (allocations and frees, with the call). Name every callee with one line on what it is for, and mark which callees you did not follow."
+      ]
+    },
+    {
+      "address": "0x00603500",
+      "name": "Actor animation step (proposal)",
+      "mapOnly": true,
+      "known": "[Timed] actors:AnimStep: 460 228 calls, 0.74 ms a loop; entry bytes 83 EC 4C 53 55.",
+      "questions": [
+        "What it steps, and whether it touches anything but the actor's own animation data",
+        "For the map of what may run on several threads (docs/subsystems/actor-frame-parallel.md): list every read and every write this function makes itself, grouped as (a) the actor / object it is called on (this and what hangs on it), (b) other actors or references, (c) the Havok world and its bodies and phantoms, (d) the engine's globals, singletons and shared lists - with the global's address, (e) the heap (allocations and frees, with the call). Name every callee with one line on what it is for, and mark which callees you did not follow."
+      ]
+    },
+    {
+      "address": "0x00896000",
+      "name": "Character controller update (proposal; labels \"Character movement\", \"update character state\")",
+      "mapOnly": true,
+      "known": "__thiscall(float*), RET 4 (knowledge/threading.md). Per update: the support probes 0x00891780, the proxy's support check 0x008AE890, the state machine's update (virtual +0x18 of the object behind +0x1EC), the integrate wrapper 0x008902B0, skipped when the actor counts as not moving. Writes the iteration cap [0x00B2EFB8] around the integrate (knowledge/character-controller-contacts.md). 132 calls a loop at 37 us each in the gate horde.",
+      "questions": [
+        "Every global it writes ([0x00B2EFB8] is one) and whether two updates could run at once given them",
+        "What it writes into the Havok world: does it move the phantom (set its position, update the broad phase) and when",
+        "For the map of what may run on several threads (docs/subsystems/actor-frame-parallel.md): list every read and every write this function makes itself, grouped as (a) the actor / object it is called on (this and what hangs on it), (b) other actors or references, (c) the Havok world and its bodies and phantoms, (d) the engine's globals, singletons and shared lists - with the global's address, (e) the heap (allocations and frees, with the call). Name every callee with one line on what it is for, and mark which callees you did not follow."
+      ]
+    },
+    {
+      "address": "0x00891780",
+      "name": "Controller support probes (proposal)",
+      "mapOnly": true,
+      "known": "Called once an update by 0x00896000; 55 pseudocode lines; mean under 1 us.",
+      "questions": [
+        "For the map of what may run on several threads (docs/subsystems/actor-frame-parallel.md): list every read and every write this function makes itself, grouped as (a) the actor / object it is called on (this and what hangs on it), (b) other actors or references, (c) the Havok world and its bodies and phantoms, (d) the engine's globals, singletons and shared lists - with the global's address, (e) the heap (allocations and frees, with the call). Name every callee with one line on what it is for, and mark which callees you did not follow."
+      ]
+    },
+    {
+      "address": "0x008AE890",
+      "name": "Character proxy support check (proposal)",
+      "mapOnly": true,
+      "known": "Every controller update, 2.7-9.9 us; calls 0x008AE100.",
+      "questions": [
+        "Whether it casts into the world (a linear cast of the phantom) and what it writes",
+        "For the map of what may run on several threads (docs/subsystems/actor-frame-parallel.md): list every read and every write this function makes itself, grouped as (a) the actor / object it is called on (this and what hangs on it), (b) other actors or references, (c) the Havok world and its bodies and phantoms, (d) the engine's globals, singletons and shared lists - with the global's address, (e) the heap (allocations and frees, with the call). Name every callee with one line on what it is for, and mark which callees you did not follow."
+      ]
+    },
+    {
+      "address": "0x008AE100",
+      "name": "Under the proxy's support check",
+      "mapOnly": true,
+      "known": "420 pseudocode lines, 6 callees.",
+      "questions": [
+        "The world queries it makes and what they write (collectors, the phantom's cached overlaps)",
+        "For the map of what may run on several threads (docs/subsystems/actor-frame-parallel.md): list every read and every write this function makes itself, grouped as (a) the actor / object it is called on (this and what hangs on it), (b) other actors or references, (c) the Havok world and its bodies and phantoms, (d) the engine's globals, singletons and shared lists - with the global's address, (e) the heap (allocations and frees, with the call). Name every callee with one line on what it is for, and mark which callees you did not follow."
+      ]
+    },
+    {
+      "address": "0x008AD7D0",
+      "name": "Character proxy integrate (labels \"updateCharacter\", \"InitialCast\", \"CastMove\", \"UpdateManifold\", \"SlexMove\")",
+      "mapOnly": true,
+      "known": "knowledge/character-controller-contacts.md: while time is left and fewer than [0x00B2EFB8] iterations - both collectors' counts to 0, a linear cast of the phantom 0x008ECC60, the manifold's update, the simplex solve, a second cast when the solved velocity differs. The collector's pass 0x008CE770 inside is rebuilt and verified.",
+      "questions": [
+        "What it writes besides the proxy and its collectors: the phantom's transform, the world's broad phase, other bodies (pushes on what it touches?)",
+        "For the map of what may run on several threads (docs/subsystems/actor-frame-parallel.md): list every read and every write this function makes itself, grouped as (a) the actor / object it is called on (this and what hangs on it), (b) other actors or references, (c) the Havok world and its bodies and phantoms, (d) the engine's globals, singletons and shared lists - with the global's address, (e) the heap (allocations and frees, with the call). Name every callee with one line on what it is for, and mark which callees you did not follow."
+      ]
+    },
+    {
+      "address": "0x008ECC60",
+      "name": "Phantom linear cast (proposal)",
+      "mapOnly": true,
+      "known": "Vtable slot +0x30 of the phantom; OBNG's ContactDedup counts casts by a detour on its entry. 107 pseudocode lines, 3 callees.",
+      "questions": [
+        "Whether a cast only reads the world (the phantom's overlap list, the shapes) or writes (caches, the world's lock counters at +0x88/+0x8C seen in 0x008DE950)",
+        "For the map of what may run on several threads (docs/subsystems/actor-frame-parallel.md): list every read and every write this function makes itself, grouped as (a) the actor / object it is called on (this and what hangs on it), (b) other actors or references, (c) the Havok world and its bodies and phantoms, (d) the engine's globals, singletons and shared lists - with the global's address, (e) the heap (allocations and frees, with the call). Name every callee with one line on what it is for, and mark which callees you did not follow."
+      ]
+    }
+  ]
+}

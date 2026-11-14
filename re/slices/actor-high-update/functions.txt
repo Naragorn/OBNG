@@ -1,0 +1,14 @@
+0x00677EC0 # the loop over the high actors (the process manager's fourth call); 4.1 ms a call of its own in the gate horde, untimed inside
+0x00605770 # the high update: 15.6 ms inclusive a call over 175 actors, 0.55 ms of its own
+0x00603CA0 # Actor::Update (the far actors' throttle sits on it); 925 pseudocode lines
+0x005FAAE0 # the actor's vtable slot 0x368: 2.2 ms a call, 613 634 calls a run
+0x00471C00 # 1.2 ms a call, called once a skeleton update (504 695), before ApplyAnimData
+0x005F6540 # 1.0 ms a call, 731 688 calls
+0x0063A210 # the high process's slot 4: 0.8 ms a call
+0x00603500 # the animation step: 0.7 ms a call
+0x00896000 # the character controller's update: 4.9 ms a call, 132 controllers, 37 us each
+0x00891780 # the controller's support probes
+0x008AE890 # the proxy's support check, every update
+0x008AE100 # under the support check
+0x008AD7D0 # the proxy's integrate (the contact pass inside it is rebuilt)
+0x008ECC60 # the phantom's linear cast (both collectors reset before it)
