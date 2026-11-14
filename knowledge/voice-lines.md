@@ -60,6 +60,25 @@ rest by one worker thread that writes it into the buffer while the line plays, e
   difference and the mean square - the comparison class C asks for.
 
 **Run in the game on Windows, 2026-11-13 21:44-22:23** (Dream Air session, mode 2, measured from its `OBNG.log`; docs/performance-backlog.md 2026-11-14): 310 lines through the route, 0.50 ms a call on the mean and 1.19 ms the longest, 37 334 frames decoded on the worker into playing buffers, no cancel, no lock failure, no crash in 38 minutes. 45 lines were left to the game's function at 9.4-12.6 ms each - derived, not verified: lines without a voice file, for which Elys' Universal Silent Voice plays `Data\OBSE\Plugins\Elys_USV.mp3` (8.17 s, 313 frames); the route's existence check does not see that swap. **Not verified**: mode 2's samples against the game's (`VoiceDecodeCheck`), the line's start against the lips (no defect named by Nadi, not stated as accepted).
+
+## What other plugins patch inside the voice player (measured 2026-11-14, `[Probe] CodePatches`)
+
+Read from the running Linux game with the Windows list's plugins that matter put in (run
+obng-stress-ride/20261114-081539); the route replaces the whole function, so each of these has to be honoured by it.
+
+- **0x006A9EB7, the not-found place** (reached with neither MP3 nor WAV: `lea ecx,[esp+64h]; push ecx; push
+  "MP3 file '%s' not found"`): Elys' Universal Silent Voice writes `jmp [slot]` there. Its stub: `mov ecx,esp; add
+  ecx,64h; mov [pathSlot],ecx; push eax; push ebx; push edx; call routine; pop edx; pop ebx; pop eax; jmp
+  [continueSlot]` - the routine rewrites the function's path buffer (to `Data\OBSE\Plugins\Elys_USV.mp3`, 8.17 s of
+  silence, 312 frames by the game's count) and the function goes on at 0x006A9ECE, the file's opening. The route
+  parses exactly this stub (VoiceDecodeLogic.h ParseSilentStub), puts its own buffer's address into the stub's slot and
+  calls the routine; any other bytes there leave such a line to the game. On Windows these lines cost 9.4-12.6 ms
+  each on the main thread before (45 in 38 minutes, 2026-11-13).
+- **0x006A9FC5, a byte of `or eax,0A0h`** (the buffer's capability flags): 00 -> 80, so the mask is 0x80A0 -
+  DSBCAPS_GLOBALFOCUS, the line plays on when the window loses the focus. Which plugin writes it is not known (a
+  byte, no jump). The route reads both masks (`and eax,20010h; or eax,0A0h` at 0x006A9FBE) from the code at every
+  call. The same byte is patched at 0x006AAE2E (the WAV loader).
+- 0x006A9C22 and 0x006A9CBA (before the voice player, in the sound code): jumps into EngineBugFixes.dll; not read.
 Open in particular: DirectSound's Lock and Unlock from a second thread while the main thread plays or stops the
 buffer (Windows and Proton), the timing of a line's start against its lip movement, and mode 2's samples against
 the game's (the check).
