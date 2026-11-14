@@ -65,3 +65,29 @@ DefaultHeapSize 1024 MB on Linux. The heap is MemoryHeap 0x00B02020
   engine without OBVR (OBVR's harness drives the scenario, and
   `[Camera] HookEnabled=0` stops the harness too); which allocation sites
   make up the fill (`[Probe] HeapCalls`).
+
+## The game heap is one run of pages: VirtualQuery there costs milliseconds (2026-11-14)
+
+- **Measured** (Windows 11, Nadi's session of 2026-11-13, OBVR's capture
+  `OBVR-performance-1-45` and its sampler; OBVR `docs/performance-spec.md`,
+  "The hand fit's read"): OBVR asked `VirtualQuery` whether a bone's first
+  twelve bytes are readable, five times in one read of the first-person
+  hands (the count measured on Linux), every 15 frames. On Windows that
+  read stalled the frame 13 to 19 ms late in the session and 2 to 7 ms
+  early in it; 3070 of its 3168 samples sat in the one system call.
+- **Read** (Microsoft's VirtualQuery page; WRK `base/ntos/mm/queryvm.c`):
+  the call returns the size of the run of pages with the same state and
+  protection from the address on, and scans the run to find it.
+- **Derived**: the game heap (MemoryHeap 0x00B02020, MoreHeap's 1024 MB)
+  is one committed run - `Probe: game heap` had 112 MB carved at the
+  session's start and 624 MB near its end - so a question about an object
+  low in the heap walks up to 150 000 pages, and the cost grows as the
+  heap fills. Under Wine the same five questions cost well under a
+  millisecond together (measured: the whole read 0.18 to 0.23 ms).
+- **For a plugin**: never ask VirtualQuery about a heap object on the
+  frame's path. A read through `ReadProcessMemory` on the own process
+  answers "does this fault" without a scan and without an exception
+  (OBVR `99c37b4`); `IsBadReadPtr` raises a first-chance fault that a
+  vectored handler sees first (CobbCrashLogger.dll and
+  OblivionFrameFixes.dll import AddVectoredExceptionHandler). What the
+  read costs on Windows after the change is not measured yet.
