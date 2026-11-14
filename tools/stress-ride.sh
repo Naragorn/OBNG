@@ -12,8 +12,15 @@ stop="${TMPDIR:-/tmp}/obng-stress-stop"
 # OBNG_STRESS_SCRIPT / OBNG_STRESS_SAVE: another scenario of tools/hand-scripts and its save (the new game's: continue).
 script="${OBNG_STRESS_SCRIPT:-obng-stress-ride.txt}"
 save="${OBNG_STRESS_SAVE:-OBVRHarnessMOO}"
+# OBNG_STRESS_MODS=only:Oblivion.esm[;More.esp]: nothing but the plugins named (tools/with-plugin-list.py).
+# OBNG_STRESS_WITHOUT_DLL=OblivionWalkers.dll: that OBSE plugin out for each run (tools/without-plugin-dll.sh).
 mods=(python3 tools/run-with-windows-mods.py --)
 [[ "${OBNG_STRESS_MODS:-windows}" == "linux" ]] && mods=(env)
+if [[ "${OBNG_STRESS_MODS:-}" == only:* ]]; then
+	IFS=';' read -r -a only <<< "${OBNG_STRESS_MODS#only:}"
+	mods=(python3 tools/with-plugin-list.py "${only[@]}" --)
+fi
+[[ -n "${OBNG_STRESS_WITHOUT_DLL:-}" ]] && mods=(tools/without-plugin-dll.sh "$OBNG_STRESS_WITHOUT_DLL" -- "${mods[@]}")
 for ((i = 1; i <= runs; i++)); do
 	[[ -e "$stop" ]] && { echo "held before run $i ($stop exists)"; break; }
 	"${mods[@]}" tools/shadow-run.sh --ini "$ini" "tools/hand-scripts/$script" \

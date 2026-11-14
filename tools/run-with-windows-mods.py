@@ -90,6 +90,9 @@ command = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
 if os.path.exists(MANIFEST):
     print('an earlier run was not taken back - run with --undo first', file=sys.stderr)
     sys.exit(2)
+if os.path.exists(PLUGINS + '.obng-plugin-list.json'):
+    print('Plugins.txt holds a reduced list (with-plugin-list.py) - take that back first', file=sys.stderr)
+    sys.exit(2)
 links, dirs = plan()
 have = {p.lower() for p in plugin_names(PLUGINS)}
 # OBNG_WITHOUT_PLUGINS="A.esp;B.esp": plugins of the Windows list left out of the run's list (their files are linked
