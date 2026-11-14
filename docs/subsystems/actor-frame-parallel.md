@@ -77,3 +77,25 @@ it the skeleton updates (ApplyAnimData 0x00471F20) 5.3, the character controller
 With the controllers alone on four threads: 4.9 ms -> about 1.5 ms a call in the gate horde, about 1 ms in Nadi's
 Windows horde. With every per-actor part that the map clears: 15.6 ms -> 4-6 ms in the gate horde. Amdahl's rest is
 the loop's own 4.1 ms until it is read.
+
+## Step 2's result (2026-11-14): knowledge/actor-frame-map.md
+
+The slice `actor-high-update` went through the workflow (78 agents, 13 of 14 functions mapped and held, the
+controller's update 0x00896000 disputed on a debug branch's label). What the map says for the plan:
+
+- **No per-actor part is clear as it stands.** Each of the candidates writes a shared static or was not followed
+  far enough: the controller's integrate reads the iteration cap `[0x00B2EFB8]` that the update writes per actor, and
+  every cast goes through 0x008DE950, which counts on the Havok world (+0x88) and updates the broad phase; detection
+  0x005F6540 counts on `[0x00B333C0]` without a lock; the package update 0x0063A210 writes into another actor's
+  process (0x0063B0F3) and queues background pathing; the animation step 0x00471C00 and Actor::Update write the byte
+  `[0x00B3CBD0]`; head tracking 0x00603500 calls detection.
+- **The controller's update is not called where the plan assumed**: it is reached through a vtable slot from the
+  actor's movement (0x005E0660 under the high process's 0x00643340, measured in the sampler), not from
+  Actor::Update. "Run the casts before the loop" needs that path read first.
+- Most blockers are small and of one kind - a counter, a cap, a flag in a static - which a per-thread copy or a
+  value passed along can take away; the world's counter and broad-phase update in 0x008DE950 is the one that
+  decides whether casts can run side by side at all. It is read in pseudocode only.
+
+So step 3 does not start yet. Before it: the slice `actor-movement` (0x005E0660, 0x00643340, 0x00628790, 0x005F1910,
+0x006814B0, 0x005232D0, 0x008DE950, 0x008ABA40, 0x008ABAC0, 0x008AD070) with the same questions, and the write watch
+over the EXE's data during one actor's controller update (the probe `[Probe] ActorThreadsCheck` has the mechanism).
