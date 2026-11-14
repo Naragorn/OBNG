@@ -312,3 +312,51 @@ examines its active planes, 0x008D9870 fills a cast input on the stack: pure, no
 controller's 3.7 ms actually are; (3) the memory manager's slots; (4) how much an overlap list changes inside one
 frame (an in-game count); (5) whether impulses and 0x0088BB60 write directly; (6) which writers of `[world+0x88]`
 store "= 1"; (7) the caller of 0x00896000.
+
+## The fourth slice: what lies under the controller's two heavy functions (2026-11-14, slice controller-narrowphase)
+
+15 functions mapped and refuted (76 agents, Opus 5.5 medium; re/functions/0x008ECDD0.md ... 0x008D83E0.md). The
+phantom's vtable 0x00A9AFFC read from the reference EXE's bytes: +0x18 0x008ED200 (overlap added), +0x1C
+0x008ECEF0, +0x20 0x008ECF30 (overlap removed), +0x2C 0x008ED2B0, +0x30 0x008ECC60 (linear cast), +0x34
+0x008ECDD0 (closest points), +0x38 0x008ECE60.
+
+**Where the controller's samples lie** (2 702 samples under the controller, run 20261114-215120):
+
+| part | functions | share | shared writes |
+|---|---|---:|---|
+| convex narrow phase | 0x00916C00 support vertex, 0x0093C690 closest-feature walk, 0x008D1A30 segment pair | 29 % | none (R); the walk's cache is its `this`, owner U |
+| the proxy's manifold | 0x008AD150 update (proxy vtable +0x08), 0x008ABF70 score, 0x008ABCE0 point velocity | 18 % | 0x008AD150: yes, below |
+| the broad phase's axis update 0x008E4210 | | 2 % | all of it: main thread |
+| the controller's listener 0x00893B90 | | 2 % | the picked body |
+| outside this slice | the solver 0x008EC790 (pure), the dispatcher's agent functions, the triangle and MOPP path | about 38 % | U |
+
+**New or changed against the third slice's table:**
+
+- **0x008AD150 writes other objects on every call** (R): it takes the proxy off and puts it on the listener arrays
+  of the bodies (+0xAC, 0x008A6300 / 0x008A6550) and phantoms (+0x5C/+0x60, 0x008DE670 / 0x008DE710) it touches,
+  without a lock. Every proxy standing on the same body writes that body's array. Called from both heavy functions
+  (0x008AD0F1, 0x008AD98D).
+- **Impulses are direct** (R 0x008ACA91, motion vtable +0x60; no world lock read): 0x008AC6A0 under 0x008AD7D0
+  writes a touched body's motion at once, and wakes it (0x008A6410, the world's island array, Up). The manifold's
+  score and point velocity read those motions: worker against worker.
+- **The picked body** `[0x00BA7A5C]`, `[0x00BA7A58]` is written in 0x00893B90 (R 0x00894270, 0x00894219,
+  0x0089407C), the controller's slot +0x04 as the proxy's listener, called from 0x008AD7D0 at 0x008ADD14.
+- **The overlap list** +0x120/+0x124 is written only by the phantom's own vtable +0x18 / +0x20 / +0x2C, reached
+  from the broad phase's update (D): with the updates queued, the lists do not change and every walk of them is
+  safe.
+- **0x0088BB60 is not on the two functions' path**: it is the bhkWorld's debug-colour queue, appended by
+  0x00896000 itself (0x00896F1C).
+- **The narrow phase reads the other collidable's shape and transform** - for another actor's phantom the transform
+  that actor's own cast is writing in the same phase: the result depends on the order (class C).
+
+**The smallest set for the two functions on workers (proposal):** (1) a thread memory a worker; (2) the world's
+lock counter raised for the phase, the queue drained after the join; (3) the closest-points walk 0x008ECDD0
+replaced by one that takes a thread's own collision input (the tolerance); (4) 0x008AD150's listener changes
+recorded and applied after the join; (5) 0x008AC6A0's impulses and wakes recorded and applied after the join;
+(6) the picked body a controller's own slot (9 sites); (7) the iteration cap a thread's own value; (8) the main
+thread's x87 control word and MXCSR on the workers. Eight interventions, class C as a whole.
+
+**Still unread in that set:** the dispatcher's agent functions (most of the time), the proxy's other listeners,
+the motion's vtable +0x60 and +0x3C, 0x008AC3C0, 0x008ABAC0, 0x008AC530, 0x00893B90's callees, the memory manager's
+slots. The cheapest step that turns these into a finite list: a census of the indirect calls' targets in the gate
+horde (the dispatcher calls 0x008ECE41 and 0x008ECDBD, the listener calls, 0x008ACA91).
