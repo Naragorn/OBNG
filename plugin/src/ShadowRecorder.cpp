@@ -25,6 +25,7 @@
 #include "CodePatchProbe.h"
 #include "ContactDedup.h"
 #include "SceneOrderCheck.h"
+#include "SoundCommit.h"
 #include "TimedCalls.h"
 #include "FastConstantArrange.h"
 #include "RouteStereoDraw.h"
@@ -131,6 +132,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	g_log("%s", line);
 	LogProbeSummary();
 	LogSkinnedCensusSummary();
+	LogSoundCommitSummary();
 	LogRangeWalkSummary();
 	LogRouteSummary();
 	LogStereoDrawSummary();

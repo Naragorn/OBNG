@@ -30,6 +30,7 @@
 #include "CodePatchProbe.h"
 #include "ContactDedup.h"
 #include "SceneOrderCheck.h"
+#include "SoundCommit.h"
 #include "TimedCalls.h"
 #include "FastConstantArrange.h"
 #include "RouteRangeWalk.h"
@@ -355,6 +356,7 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 		obng::plugin::InstallContactDedup(path, &Log);
 		obng::plugin::InstallSceneOrderCheck(path, &Log);
 		obng::plugin::InstallSkinnedCensus(path, &Log);
+		obng::plugin::InstallSoundCommit(path, &Log);  // two call sites inside the sound update, no entry
 		obng::plugin::InstallActorFarUpdate(path, &Log);  // before the census: the route has the entry first
 		obng::plugin::InstallReferenceAnimRate(path, &Log);  // before the [Timed] lines: the route has the entry first
 		obng::plugin::InstallActorShadowRest(path, &Log);   // call sites and two patches inside the actor shadow step, no entry
