@@ -2304,3 +2304,26 @@ for 2018 x 1688 an eye; OBNG.dll of 2d40a79 to 6a78ddb and the build after it, O
   (3.0 million decisions the same) and on, a sixth of the decide saved; in the horde the culler's skips save
   0.56 ms a pass and its work costs 1.21 - `OcclusionCullStandDown` rests it there (built, default off until a
   place where it pays was flown with it).
+
+### The same horde: what the order check costs, and what the process manager does (measured 2026-11-14 16:42, run obng-profile-gate-guards/20261114-164228, the sound off)
+
+`obng-measure-gate-guards-timed.ini`: the routes and the culler as deployed on Windows at 16:30, the 28 [Timed]
+functions of obng-measure-ride-spikes.ini, `[Probe] SceneOrderCheck=2` (plugin/src/SceneOrderCheck.cpp,
+src/engine/scene/SceneOrderCheckLogic.h: the flat skeleton update's check of its order against the tree timed, then
+run again at once).
+
+- **The order check (`Matches`) is the tree's memory, not its work**: about 40 000 checks a window, 206 ms a window
+  for the first (5.0 to 5.5 us a check, 40 to 44 ns an entry), 21 ms for the same check at once after it - 90 % of
+  the first is fetching the nodes, which the run right after it reads as well. Leaving the check out could save the
+  warm part, about 0.1 ms a frame here, and would move the rest into the run (derived). Not worth a change that
+  makes the route trust a stale order; "make the check cheaper" is closed with this number.
+- **The process manager, 21.0 ms a call** (with the timers; 3 488 calls, a call a frame), by the timed functions'
+  exclusive time a call: the actors' high update 0x00605770 15.6 ms inclusive over 175 actors, of it
+  ApplyAnimData 0x00471F20 5.3 ms (the skeleton updates, OBNG's flat run inside), the character controller
+  0x00896000 4.9 ms (132 a call, 37 us each, the contact pass's rebuild on), 0x005FAAE0 (the actor's slot 0x368)
+  2.2 ms, 0x00471C00 1.2 ms, 0x005F6540 1.0 ms, slot 4 0x0063A210 0.8 ms, the animation step 0.7 ms; the
+  high-actors loop 0x00677EC0 itself 4.1 ms not inside any timed function; the cells' grid update 2.6 ms.
+  Outside the process manager in the same frame: 0x0040D4D0 (the render) 12.5 ms, the update step's own 8.9 ms.
+- Candidates, the largest first: the character controllers (4.9 ms; the proxies' integrate is one of them, the
+  rest not broken down), the skeleton updates (5.3 ms, already the flat run), the loop's own 4.1 ms (the AI's
+  packages and combat, untimed), 0x005FAAE0 (2.2 ms, not looked at).

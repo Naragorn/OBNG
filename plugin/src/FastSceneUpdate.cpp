@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "ProbeLogic.h"
+#include "SceneOrderCheck.h"
 #include "ShadowRecorder.h"
 #include "engine/scene/ActorFarRateLogic.h"
 #include "engine/scene/SceneUpdate.h"
@@ -314,14 +315,13 @@ unsigned SizeBucket(std::uint32_t entries) {
 }
 
 void Original(void* self, UInt32 timeBits, UInt32 flag) { reinterpret_cast<UpdateFn>(g_original)(self, nullptr, timeBits, flag); }
-
 // The order for this root, current against the tree; nullptr when the root
 // is not a plain node (the flat run has nothing to say about it).
 su::Order* OrderFor(su::Handle root) {
 	eng::Tree tree;
 	AcquireSRWLockExclusive(&g_lock);
 	auto it = g_orders.find(root);
-	if (it != g_orders.end() && su::Matches(it->second, tree)) {
+	if (it != g_orders.end() && SceneOrderChecked(it->second, tree)) {  // su::Matches, timed by [Probe] SceneOrderCheck
 		su::Order* order = &it->second;
 		ReleaseSRWLockExclusive(&g_lock);
 		return order;

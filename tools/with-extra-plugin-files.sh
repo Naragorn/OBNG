@@ -4,10 +4,11 @@
 # takes them out again afterwards, whatever the command did. A file that is
 # there already is left alone (and stays).
 #   tools/with-extra-plugin-files.sh <file>... -- command [args...]
-# OBNG_GAME_DIR points somewhere other than Steam's default Oblivion folder.
+# OBNG_GAME_DIR points somewhere other than Steam's default Oblivion folder; OBNG_EXTRA_TARGET a folder under it
+# other than Data/OBSE/Plugins ("." for the game's own folder, beside Oblivion.exe: a DLL that replaces a system one).
 set -u
 game="${OBNG_GAME_DIR:-$HOME/.local/share/Steam/steamapps/common/Oblivion}"
-target="$game/Data/OBSE/Plugins"
+target="$game/${OBNG_EXTRA_TARGET:-Data/OBSE/Plugins}"
 files=()
 while [[ $# -gt 0 && "$1" != "--" ]]; do files+=("$1"); shift; done
 [[ $# -gt 0 ]] || { echo "usage: $0 file... -- command" >&2; exit 2; }

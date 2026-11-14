@@ -22,7 +22,7 @@ def find_game():
         try:
             with open('/proc/%s/comm' % entry) as f:
                 comm = f.read().strip()
-            if comm.lower().startswith('oblivion.exe'):
+            if comm.lower() == 'oblivion.exe':  # not OblivionLauncher.exe (its comm starts the same), which ends at once
                 return int(entry)
         except OSError:
             continue
