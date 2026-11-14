@@ -114,3 +114,10 @@ picks one at random - read). A sound played is a DirectSound buffer made, and on
   replacement; not tried, not checked against the plugins that patch the voice player's buffer flags).
 - For measuring: a Linux profile of a crowd is the sound's, not the frame's. Fly it with the sound off
   (`python3 tools/run-with-game-ini.py bSoundEnabled=0 -- ...`) and say so with the numbers.
+- **Measured again, the same scenario with sound** (runs obng-profile-gate-guards/20261114-164620 and -165317):
+  8.0 and 15.3 world frames a second (the first run 4.5, without sound 18.0). The wait in DirectSound comes and
+  goes with the fight: in the third run 2 584 of 72 951 samples sat at the wait (58 839 of 70 034 in the first).
+  `tools/thread-sampler.py` beside the third: Wine's mixer thread (`wine_dsound_mix`) used 24 to 44 % of a core
+  in the horde, the main thread 76 to 87 % - the mixer was not saturated there. So the cost is not a constant of
+  the horde; how many buffers are made and dropped at once (a fight's hits and deaths) decides it (derived, not
+  counted: the buffers' number was not logged).
