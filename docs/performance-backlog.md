@@ -2129,15 +2129,17 @@ kernel32 at -166 204; 0x00560944 at -220 020) - as with every route off on 2026-
 ### 3. Anvil's harbour: the contact pass 0x008CE770 rebuilt (`[Route] ContactDedup`, class A)
 
 knowledge/character-controller-contacts.md has the reading. The check (`ContactDedup=2`: the original on the game's
-array, the rebuild on a copy, compared bit for bit): **0 mismatches in 190 000 passes** of five flights (-080839,
--081539, -082454, -083028 with the first memo, -084405 with the second), among them 16 684 passes with up to 235 hits
-at Anvil.
+array, the rebuild on a copy, compared bit for bit): **0 mismatches in 120 000 passes** of four flights (-080839,
+-081539, -082454, -083028; the first memo), among them 16 684 passes with up to 235 hits
+at Anvil. With the second memo (trusted by the cast and the last hit, 3a84ab4): **0 mismatches in 451 000 passes**
+more (-084405, -085851, -090320), among them 129 435 passes of one window with up to 347 hits - more than the memo
+held then (256; 1 024 now), so those passes ran the original's loops.
 
 | the integrate 0x008902B0 with 220-235 hits in the collector | longest call | plane tests in the window |
 |---|---|---|
 | the original (run -081539, the check's window; the rebuild beside it) | 28.0 ms | 47.7 M predicate calls |
 | the rebuild, the memo compared and copied whole each pass (run -083530) | 7.1 ms | 24 123 |
-| the rebuild, the memo trusted by cast and last hit | not yet measured at such a count | |
+| the rebuild, the memo trusted by cast and last hit (run -091325, 172-185 hits) | 4.3-6.1 ms | 21 943-81 438 of 21.7-51.4 M |
 
 ### 4. Lines without a voice file
 
@@ -2151,3 +2153,6 @@ the file. Measured on Linux with the plugin's three files in the folder for the 
 `Data\OBSE\Plugins\Elys_USV.mp3`, 312 frames, taken by the route. On Windows such a line cost 9.4-12.6 ms (45 in 38
 minutes); the routed call is not yet measured there. Every call still left to the game is written with its path, the
 reason and what the game's function returned.
+
+What is left of such a call is the geometry's own work (the casts against 170-350 triangles), and the actor stuck in
+the ship stays a defect of the mod's data. The mean of the integrate in those windows: 0.018-0.022 ms a call.

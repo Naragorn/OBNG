@@ -118,7 +118,7 @@ struct Work {
 
 // What is remembered of one collector's last pass.
 struct Memo {
-	static constexpr std::uint32_t kCap = 256;
+	static constexpr std::uint32_t kCap = 1024;  // 347 hits seen in one collector at Anvil (run obng-stress-ride/20261114-085851)
 	std::uint64_t key = 0;         // 0: empty
 	std::uint64_t generation = 0;  // the cast it was made in
 	std::uint32_t count = 0;       // hits the pass left
