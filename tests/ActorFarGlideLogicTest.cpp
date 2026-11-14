@@ -42,7 +42,7 @@ void TestGain() {
 	const float moved[3] = {30.0f, 0.0f, 6.0f};  // the world's way that step made: east and uphill, shorter than the step
 	const float step2[3] = {0.0f, 20.0f, 0.0f};
 	m = glide::AtUpdate(s, true, moved, true, step2);
-	Check(m.counted && Near(m.leap, glide::Length(moved)) && Near(m.left, m.leap), "the second: the leap counted, nothing was shown before it");
+	Check(m.counted && !m.shown && Near(m.leap, glide::Length(moved)) && Near(m.left, m.leap), "the second: the leap counted, nothing was shown before it");
 	Check(s.hasGain && Near(s.gain[0], 0.75f) && s.gain[1] == 0.0f && Near(s.gain[2], 0.15f) && Near(s.consumed, 20.0f), "the gain: the way over the step's length, by axis");
 
 	Section("The offset for the step so far, and the shift");
@@ -72,7 +72,7 @@ void TestGain() {
 	Check(s.applied[0] == 0.0f && !s.wroteSet && s.consumed == 0.0f, "the update composes the transforms anew: nothing applied, nothing written; it took no step");
 	Check(s.hasGain && Near(s.gain[0], 1.5f), "the gain is the way over the step the update before took (20 units)");
 	m = glide::AtUpdate(s, true, moved2, true, step1);
-	Check(m.counted && Near(m.leap, glide::Length(moved2)) && Near(m.left, std::sqrt(1.0f + 0.04f)), "at the next update: the leap against what the frames before it showed");
+	Check(m.counted && m.shown && Near(m.leap, glide::Length(moved2)) && Near(m.left, std::sqrt(1.0f + 0.04f)), "at the next update: the leap against what the frames before it showed");
 	Check(!s.hasGain, "an update that took no step leaves no gain for the next");
 
 	Section("No gain from a stand, a push or an unknown way");

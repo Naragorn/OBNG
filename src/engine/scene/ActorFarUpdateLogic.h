@@ -327,6 +327,33 @@ constexpr std::uint32_t FarEvery(bool isFar, bool inCombat, bool onNow, std::uin
 	return isFar && !inCombat && onNow ? every : 1u;
 }
 
+// Whether a point lies inside the cone around the camera's direction, without
+// a root: the cosine's sign and its square against the lengths' squares. A
+// point at the camera, a direction of no length or a value that is not a
+// number counts as inside (it cannot be called unseen).
+inline bool InsideCone(const float point[3], const float eye[3], const float direction[3], float coneCosine) {
+	const float x = point[0] - eye[0];
+	const float y = point[1] - eye[1];
+	const float z = point[2] - eye[2];
+	const float squared = x * x + y * y + z * z;
+	const float directionSquared = direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2];
+	if (!(squared > 0.0f) || !(directionSquared > 0.0f) || !(squared < 1.0e30f) || !(directionSquared < 1.0e30f)) {
+		return true;
+	}
+	const float dot = x * direction[0] + y * direction[1] + z * direction[2];
+	const float bound = coneCosine * coneCosine * squared * directionSquared;
+	return coneCosine >= 0.0f ? dot >= 0.0f && dot * dot >= bound : dot >= 0.0f || dot * dot <= bound;
+}
+
+// [Route] ActorFarSeenEvery: a far actor inside the cone around the camera's
+// direction - one that can be on screen - gets this rate instead of the far
+// one (Nadi on Windows, 2026-11-13: NPCs in the distance stutter - at every
+// 16th call an actor stands for sixteen frames and then leaps). Never slower
+// than the far rate; in combat every call, as before.
+constexpr std::uint32_t FarSeenEvery(std::uint32_t farEvery, std::uint32_t seenEvery, bool insideCone) {
+	return insideCone && seenEvery >= 1 && seenEvery < farEvery ? seenEvery : farEvery;
+}
+
 struct ViewRule {
 	bool on = false;
 	float coneCosine = 0.2588f;   // 75 degrees half angle: wider than a headset's view by 20 degrees

@@ -28,9 +28,12 @@ volatile LONG g_shifted = 0;          // entries with an offset in their node (a
 volatile LONG64 g_shifts = 0;
 volatile LONG64 g_replaced = 0;       // the node was placed by someone else between two shifts
 volatile LONG64 g_takenBack = 0;
-volatile LONG64 g_updates = 0;        // updates counted for the leap
-volatile LONG64 g_leapMilli = 0;      // the leaps, thousandths of a unit
-volatile LONG64 g_leftMilli = 0;      // what the glide left of them
+// Updates of moving actors, [0] with nothing shown before them, [1] with an offset shown: how many, their leaps
+// (thousandths of a unit) and what the glide left of them, and how many were left under half.
+volatile LONG64 g_updates[2] = {};
+volatile LONG64 g_leapMilli[2] = {};
+volatile LONG64 g_leftMilli[2] = {};
+volatile LONG64 g_halved = 0;
 volatile LONG64 g_withGain = 0;       // updates that left a gain
 
 UInt32 Dword(UInt32 address) { return *reinterpret_cast<const UInt32*>(address); }
@@ -123,9 +126,13 @@ void ActorFarGlideAtUpdate(far_update::Entry& entry, UInt32 actor, const float* 
 	const float consumed = entry.glide.consumed;
 	const glide::Measured m = glide::AtUpdate(entry.glide, entry.hasPosition, moved, step != nullptr, step != nullptr ? step : none, seconds);
 	if (m.counted) {
-		InterlockedIncrement64(&g_updates);
-		InterlockedExchangeAdd64(&g_leapMilli, static_cast<LONG64>(m.leap * 1000.0f));
-		InterlockedExchangeAdd64(&g_leftMilli, static_cast<LONG64>(m.left * 1000.0f));
+		const int kind = m.shown ? 1 : 0;
+		InterlockedIncrement64(&g_updates[kind]);
+		InterlockedExchangeAdd64(&g_leapMilli[kind], static_cast<LONG64>(m.leap * 1000.0f));
+		InterlockedExchangeAdd64(&g_leftMilli[kind], static_cast<LONG64>(m.left * 1000.0f));
+		if (m.shown && m.left < 0.5f * m.leap) {
+			InterlockedIncrement64(&g_halved);
+		}
 		if (g_samplesLeft != 0) {
 			--g_samplesLeft;
 			g_log("Route: far actors' glide sample - actor %08X: the last update moved it %.1f %.1f %.1f (%.1f units) on a summed step of %.1f; shown before "
@@ -145,14 +152,19 @@ void LogActorFarGlideSummary() {
 	if (!g_on) {
 		return;
 	}
-	const LONG64 updates = InterlockedExchange64(&g_updates, 0);
-	const double leap = static_cast<double>(InterlockedExchange64(&g_leapMilli, 0)) / 1000.0;
-	const double left = static_cast<double>(InterlockedExchange64(&g_leftMilli, 0)) / 1000.0;
-	g_log("Route: far actors' glide - %lld shifts (%lld after someone else placed the node), %lld offsets taken back; %lld updates of moving actors: the "
-	      "leap %.1f units on the mean, %.1f left of it with the glide (%.0f %%); %lld updates left a gain; %ld actors shifted now",
-	      InterlockedExchange64(&g_shifts, 0), InterlockedExchange64(&g_replaced, 0), InterlockedExchange64(&g_takenBack, 0), updates,
-	      updates != 0 ? leap / static_cast<double>(updates) : 0.0, updates != 0 ? left / static_cast<double>(updates) : 0.0,
-	      leap > 0.0 ? left * 100.0 / leap : 0.0, InterlockedExchange64(&g_withGain, 0), static_cast<long>(g_shifted));
+	const LONG64 plain = InterlockedExchange64(&g_updates[0], 0);
+	const LONG64 shown = InterlockedExchange64(&g_updates[1], 0);
+	const double plainLeap = static_cast<double>(InterlockedExchange64(&g_leapMilli[0], 0)) / 1000.0;
+	const double leap = static_cast<double>(InterlockedExchange64(&g_leapMilli[1], 0)) / 1000.0;
+	const double left = static_cast<double>(InterlockedExchange64(&g_leftMilli[1], 0)) / 1000.0;
+	InterlockedExchange64(&g_leftMilli[0], 0);
+	g_log("Route: far actors' glide - %lld shifts (%lld after someone else placed the node), %lld offsets taken back, %ld actors shifted now; updates of "
+	      "moving actors with an offset shown before: %lld, the leap %.1f units on the mean, %.1f left of it (%.0f %%), left under half in %lld; with "
+	      "none shown: %lld, the leap %.1f units; %lld updates left a gain",
+	      InterlockedExchange64(&g_shifts, 0), InterlockedExchange64(&g_replaced, 0), InterlockedExchange64(&g_takenBack, 0), static_cast<long>(g_shifted),
+	      shown, shown != 0 ? leap / static_cast<double>(shown) : 0.0, shown != 0 ? left / static_cast<double>(shown) : 0.0,
+	      leap > 0.0 ? left * 100.0 / leap : 0.0, InterlockedExchange64(&g_halved, 0), plain,
+	      plain != 0 ? plainLeap / static_cast<double>(plain) : 0.0, InterlockedExchange64(&g_withGain, 0));
 }
 
 }  // namespace obng::plugin

@@ -34,6 +34,8 @@ void* g_original = nullptr;
 bool g_installed = false;
 LogFn g_log = nullptr;
 std::uint32_t g_every = 1;
+std::uint32_t g_seenEvery = 0;   // [Route] ActorFarSeenEvery: the rate of a far actor inside the view cone; 0: the far rate
+volatile LONG64 g_farSeen = 0;   // calls of far actors inside the cone
 float g_distance = 6000.0f;
 // [Route] ActorViewCount: the near actors' calls by where the camera of the
 // last eye pass looks (ActorFarUpdateLogic.h ViewOfActor); a measurement.
@@ -292,6 +294,17 @@ void __fastcall Update(void* self, void*, float time) {
 			InterlockedIncrement64(&g_farCombat);
 		}
 		every = far_update::FarEvery(true, combat, g_onNow != 0, g_every);
+		if (every > 1 && g_seenEvery != 0 && g_seenEvery < every) {  // one that can be on screen: its own rate
+			float eye[3];
+			float direction[3];
+			float here[3];
+			std::memcpy(here, reinterpret_cast<const void*>(actor + kRefPosition), sizeof(here));
+			here[2] += kHeadHeight;
+			if (MainCamera(eye, direction) && far_update::InsideCone(here, eye, direction, g_viewRule.coneCosine)) {
+				every = far_update::FarSeenEvery(every, g_seenEvery, true);
+				InterlockedIncrement64(&g_farSeen);
+			}
+		}
 	}
 	bool taken = false;
 	if ((g_viewCount || g_viewRule.on) && !isFar) {
@@ -424,6 +437,7 @@ void InstallActorFarUpdate(const char* iniPath, LogFn log) {
 	g_log = log;
 	g_every = every > 64 ? 64 : every;
 	g_distance = static_cast<float>(GetPrivateProfileIntA("Route", "ActorFarDistance", 6000, iniPath));
+	g_seenEvery = GetPrivateProfileIntA("Route", "ActorFarSeenEvery", 0, iniPath);
 	g_alternate = GetPrivateProfileIntA("Route", "ActorFarAlternate", 0, iniPath) != 0;
 	g_viewCount = GetPrivateProfileIntA("Route", "ActorViewCount", 0, iniPath) != 0;
 	g_viewRule.on = GetPrivateProfileIntA("Route", "ActorViewRule", 0, iniPath) != 0;
@@ -449,7 +463,7 @@ void InstallActorFarUpdate(const char* iniPath, LogFn log) {
 		                                     reinterpret_cast<const void*>(&AnimUpdate), &g_animOriginal, log, DetourRole::Route);
 		g_rootMotion = g_rootMotion && anim;
 	}
-	ActorFarGlideInit(g_rootMotion && GetPrivateProfileIntA("Route", "ActorFarGlide", 1, iniPath) != 0,
+	ActorFarGlideInit(g_rootMotion && GetPrivateProfileIntA("Route", "ActorFarGlide", 0, iniPath) != 0,
 	                  GetPrivateProfileIntA("Route", "ActorFarGlideSamples", 0, iniPath), log);
 	log("Route %s: the animation's steps of the frames left out %s", kName, g_rootMotion ? "are summed for the update that runs" : "are NOT summed (the actor goes one frame's way an update)");
 	if (probe) {
@@ -483,8 +497,9 @@ void LogActorFarUpdateSummary() {
 		InterlockedExchange(&g_onNow, wasOn ? 0 : 1);
 	}
 	g_log("Route: far actors' whole update (every %u. call beyond %.0f units, %s in this window) - %lld calls of far actors (%lld of them in combat, at the "
-	      "full rate), %lld left out, %lld run with summed time",
-	      g_every, static_cast<double>(g_distance), wasOn ? "on" : "off", farCalls, InterlockedExchange64(&g_farCombat, 0), skipped, summed);
+	      "full rate), %lld left out, %lld run with summed time; %lld calls of far actors inside the view cone, at every %u. call",
+	      g_every, static_cast<double>(g_distance), wasOn ? "on" : "off", farCalls, InterlockedExchange64(&g_farCombat, 0), skipped, summed,
+	      InterlockedExchange64(&g_farSeen, 0), g_seenEvery != 0 && g_seenEvery < g_every ? g_seenEvery : g_every);
 	const double travelUnits = static_cast<double>(InterlockedExchange64(&g_travelUnits, 0)) / 1000.0;
 	const double travelSeconds = static_cast<double>(InterlockedExchange64(&g_travelMicros, 0)) / 1000000.0;
 	const double movingUnits = static_cast<double>(InterlockedExchange64(&g_movingUnits, 0)) / 1000.0;

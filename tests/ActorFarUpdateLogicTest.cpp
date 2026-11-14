@@ -312,5 +312,29 @@ int main() {
 	Check(FarEvery(true, false, false, 16) == 1, "off in this window: every call");
 	Check(FarEvery(false, false, true, 16) == 1, "not far: every call");
 
+	Section("Inside the cone, without a root; a far actor seen gets a rate of its own");
+	{
+		const float eye[3] = {0.0f, 0.0f, 0.0f};
+		const float ahead[3] = {0.0f, 2.0f, 0.0f};  // not unit length on purpose
+		const float c75 = 0.2588f;
+		const float front[3] = {0.0f, 7000.0f, 0.0f};
+		const float side70[3] = {6577.8f, 2394.1f, 0.0f};   // 70 degrees off
+		const float side80[3] = {6893.7f, 1215.5f, 0.0f};   // 80 degrees off
+		const float behind[3] = {0.0f, -7000.0f, 0.0f};
+		const float nan[3] = {0.0f, 7000.0f, std::numeric_limits<float>::quiet_NaN()};
+		Check(InsideCone(front, eye, ahead, c75) && InsideCone(side70, eye, ahead, c75), "straight ahead and 70 degrees off: inside 75");
+		Check(!InsideCone(side80, eye, ahead, c75) && !InsideCone(behind, eye, ahead, c75), "80 degrees off and behind: outside");
+		Check(InsideCone(eye, eye, ahead, c75) && InsideCone(front, eye, eye, c75) && InsideCone(nan, eye, ahead, c75),
+		      "at the camera, no direction, not a number: counted as inside");
+		Check(InsideCone(side80, eye, ahead, 0.0f) && !InsideCone(behind, eye, ahead, 0.0f), "a cone of 90 degrees: the half space in front");
+		Check(InsideCone(behind, eye, ahead, -1.0f) && InsideCone(side80, eye, ahead, -0.5f), "a cone wider than 90 degrees takes what lies behind too");
+		const float back120[3] = {6062.2f, -3500.0f, 0.0f};  // 120 degrees off
+		const float back150[3] = {3500.0f, -6062.2f, 0.0f};  // 150 degrees off
+		Check(InsideCone(back120, eye, ahead, -0.7071f) && !InsideCone(back150, eye, ahead, -0.7071f), "135 degrees: 120 inside, 150 outside");
+		Check(FarSeenEvery(16, 4, true) == 4 && FarSeenEvery(16, 4, false) == 16, "seen: its own rate; not seen: the far one");
+		Check(FarSeenEvery(16, 16, true) == 16 && FarSeenEvery(16, 32, true) == 16 && FarSeenEvery(16, 0, true) == 16 &&
+		          FarSeenEvery(1, 4, true) == 1,
+		      "never slower than the far rate; 0 and the far rate itself change nothing");
+	}
 	return Failures();
 }

@@ -115,9 +115,11 @@ void TestOriginal() {
 	Check(count == 0, "no hits: nothing");
 }
 
-// One collector's life: what the engine does to the two arrays between
-// passes, by a random script; after every pass the memo's array must be the
-// original's, bit for bit.
+// A controller's two collectors as the engine uses them: the proxy's own
+// (the start collector, key 1: its pass has no start collector) and the
+// cast's (key 2: its pass asks the proxy's hits in step 2). A random script
+// of what happens between passes; after every pass the rebuilt arrays must
+// be the original's, bit for bit.
 struct Tally {
 	std::uint64_t passes = 0;
 	std::uint64_t remembered = 0;
@@ -128,87 +130,131 @@ struct Tally {
 	std::uint64_t failures = 0;
 };
 
-void RunLife(std::uint32_t seed, unsigned facePercent, std::uint32_t steps, std::uint32_t capacity, Tally* tally, cd::Memo* memo) {
-	Random random{seed};
-	std::vector<Hit> reference(capacity);
-	std::vector<Hit> rebuilt(capacity);
-	std::vector<Hit> start(capacity);
+struct Collector {
+	std::vector<Hit> reference;
+	std::vector<Hit> rebuilt;
 	std::uint32_t count = 0;
-	std::uint32_t startCount = 0;
+	explicit Collector(std::uint32_t capacity) : reference(capacity), rebuilt(capacity) {}
+	void Append(const Hit& h) {
+		reference[count] = rebuilt[count] = h;
+		++count;
+	}
+};
+
+void RunPass(cd::Memos& memos, std::uint64_t key, std::uint64_t generation, Collector& c, std::uint64_t startKey, Collector* start, Tally* tally) {
+	std::uint32_t referenceCount = c.count;
+	std::uint32_t rebuiltCount = c.count;
+	cd::PassOriginal(c.reference.data(), &referenceCount, start != nullptr ? start->reference.data() : nullptr, start != nullptr ? start->count : 0);
+	const cd::Work work =
+	    cd::Pass(memos, key, generation, c.rebuilt.data(), &rebuiltCount, startKey, start != nullptr ? start->rebuilt.data() : nullptr, start != nullptr ? start->count : 0);
+	++tally->passes;
+	tally->remembered += work.remembered ? 1 : 0;
+	tally->plain += work.plain ? 1 : 0;
+	tally->asked += work.asked;
+	tally->original += work.original;
+	tally->removed += work.removed;
+	if (!Same(c.reference, referenceCount, c.rebuilt, rebuiltCount) || work.removed != c.count - referenceCount) {
+		++tally->failures;
+		c.rebuilt = c.reference;  // go on from the original's state
+	}
+	c.count = referenceCount;
+}
+
+void RunLife(std::uint32_t seed, unsigned facePercent, std::uint32_t steps, std::uint32_t capacity, Tally* tally, cd::Memos* memos, std::uint64_t* generation) {
+	Random random{seed};
+	Collector proxy(capacity);  // key 1
+	Collector cast(capacity);   // key 2
+	Collector other(capacity);  // another actor's cast collector (keys 10..15): it takes memo slots
 	std::uint32_t tag = 1;
-	std::uint64_t key = 0x1000 + seed % 3;
+	++*generation;
 	for (std::uint32_t step = 0; step < steps; ++step) {
 		const std::uint32_t what = random.Below(100);
-		bool pass = false;
-		if (what < 62 && count < capacity) {  // a triangle hit: appended, then the pass
-			reference[count] = rebuilt[count] = random.RandomHit(tag++, facePercent);
-			++count;
-			pass = true;
-		} else if (what < 70 && count < capacity) {  // a hit of a body that is no triangle: appended, no pass
+		if (what < 42 && cast.count < capacity) {  // a triangle hit for the cast collector: appended, then its pass
+			cast.Append(random.RandomHit(tag++, facePercent));
+			RunPass(*memos, 2, *generation, cast, 1, &proxy, tally);
+		} else if (what < 62 && proxy.count < capacity) {  // one for the proxy's collector: its pass has no start collector
+			proxy.Append(random.RandomHit(tag++, facePercent));
+			RunPass(*memos, 1, *generation, proxy, 0, nullptr, tally);
+		} else if (what < 68 && cast.count < capacity) {  // a hit of a body that is no triangle: appended, no pass
 			Hit h = random.RandomHit(tag++, 0);
 			h.kind = 0;
-			reference[count] = rebuilt[count] = h;
-			++count;
-		} else if (what < 80 && startCount < capacity) {  // the start collector gets a hit
-			start[startCount++] = random.RandomHit(tag++, facePercent);
-		} else if (what < 84) {  // a new cast: both arrays emptied
-			count = 0;
-			startCount = random.Below(2) == 0 ? 0 : startCount;
-		} else if (what < 87 && startCount > 1) {  // the start collector's own pass moved its hits
-			start[random.Below(startCount)] = start[--startCount];
-		} else if (what < 89 && count > 0) {  // the array written by someone else
-			const std::uint32_t at = random.Below(count);
-			reference[at] = rebuilt[at] = random.RandomHit(tag++, facePercent);
-		} else if (what < 91 && count > 0) {  // truncated
-			count = random.Below(count + 1);
-		} else if (what < 93) {  // another collector at the memo's key, or the memo's key at another collector
-			key = 0x1000 + random.Below(3);
-		} else if (what < 95 && startCount > 0) {  // a start hit rewritten in place
-			start[random.Below(startCount)] = random.RandomHit(tag++, facePercent);
-		} else if (count > 0) {
-			pass = true;  // a pass with nothing new
+			cast.Append(h);
+		} else if (what < 72 && proxy.count < capacity) {
+			Hit h = random.RandomHit(tag++, 0);
+			h.kind = 0;
+			proxy.Append(h);
+		} else if (what < 80) {  // the integrate's next iteration: both emptied, a cast begins
+			proxy.count = 0;
+			cast.count = 0;
+			++*generation;
+		} else if (what < 86) {  // its second cast: the cast collector alone emptied
+			cast.count = 0;
+			++*generation;
+		} else if (what < 90 && other.count < capacity) {  // another actor's collector in between
+			other.Append(random.RandomHit(tag++, facePercent));
+			RunPass(*memos, 10 + random.Below(6), *generation, other, 0, nullptr, tally);
+			if (other.count > 20) {
+				other.count = 0;
+			}
+		} else if (what < 94 && cast.count > 0) {  // a pass with nothing new
+			RunPass(*memos, 2, *generation, cast, 1, &proxy, tally);
+		} else if (what < 97 && cast.count > 0) {  // a pass of the cast collector without a start collector
+			RunPass(*memos, 2, *generation, cast, 0, nullptr, tally);
+		} else if (proxy.count > 0) {
+			RunPass(*memos, 1, *generation, proxy, 0, nullptr, tally);
 		}
-		if (!pass) {
-			continue;
-		}
-		const bool withStart = random.Below(8) != 0;
-		std::uint32_t referenceCount = count;
-		std::uint32_t rebuiltCount = count;
-		cd::PassOriginal(reference.data(), &referenceCount, withStart ? start.data() : nullptr, startCount);
-		const cd::Work work = cd::Pass(*memo, key, rebuilt.data(), &rebuiltCount, withStart ? start.data() : nullptr, startCount);
-		++tally->passes;
-		tally->remembered += work.remembered ? 1 : 0;
-		tally->plain += work.plain ? 1 : 0;
-		tally->asked += work.asked;
-		tally->original += work.original;
-		tally->removed += work.removed;
-		if (!Same(reference, referenceCount, rebuilt, rebuiltCount) || work.removed != count - referenceCount) {
-			++tally->failures;
-			rebuilt = reference;  // go on from the original's state
-		}
-		count = referenceCount;
 	}
 }
 
 void TestAgainstOriginal() {
-	Section("The pass with a memo against the original's loops, random lives of a collector");
-	static cd::Memo memo;
+	Section("The pass with the memos against the original's loops, random lives of a controller's two collectors");
+	static cd::Memos memos;
+	std::uint64_t generation = 0;
 	for (const unsigned facePercent : {0u, 10u, 35u, 70u, 100u}) {
 		Tally tally;
 		for (std::uint32_t seed = 1; seed <= 400; ++seed) {
-			RunLife(seed * 2654435761u + facePercent, facePercent, 400, 64, &tally, &memo);
+			RunLife(seed * 2654435761u + facePercent, facePercent, 500, 64, &tally, &memos, &generation);
 		}
 		std::printf("    %u %% faces: %llu passes, %llu with the memo, %llu hits removed, %llu plane tests against %llu predicate calls of the original\n", facePercent,
 		            static_cast<unsigned long long>(tally.passes), static_cast<unsigned long long>(tally.remembered),
 		            static_cast<unsigned long long>(tally.removed), static_cast<unsigned long long>(tally.asked), static_cast<unsigned long long>(tally.original));
 		Check(tally.failures == 0 && tally.passes > 50000, "every pass leaves the original's array, bit for bit");
-		Check(tally.remembered > tally.passes / 2, "most passes found their array as the last one left it");
+		Check(tally.remembered > tally.passes / 3, "many passes found a memo of their cast");
 		Check(facePercent == 0 || facePercent == 100 || tally.removed > 1000, "hits were removed");
 		Check(tally.asked < tally.original, "fewer plane tests than the original's predicate calls");
 	}
 
+	Section("Long casts: lives with few new casts, the arrays grow large");
+	{
+		Tally tally;
+		for (std::uint32_t seed = 1; seed <= 40; ++seed) {
+			Random random{seed * 7919u};
+			Collector proxy(200);
+			Collector cast(200);
+			++generation;
+			std::uint32_t tag = 1;
+			for (std::uint32_t step = 0; step < 300; ++step) {
+				const bool toCast = random.Below(3) != 0;
+				Collector& c = toCast ? cast : proxy;
+				if (c.count >= 200) {
+					continue;
+				}
+				Hit h = random.RandomHit(tag++, 55);
+				if (random.Below(4) != 0 && h.kind != 1) {
+					h.position[2] = 9.0f;  // most edge hits outside every plane: the arrays grow
+					h.position[0] = h.position[1] = 0.0f;
+				}
+				c.Append(h);
+				RunPass(memos, toCast ? 2 : 1, generation, c, toCast ? 1 : 0, toCast ? &proxy : nullptr, &tally);
+			}
+		}
+		std::printf("    %llu passes, %llu hits removed, %llu plane tests against %llu predicate calls of the original\n", static_cast<unsigned long long>(tally.passes),
+		            static_cast<unsigned long long>(tally.removed), static_cast<unsigned long long>(tally.asked), static_cast<unsigned long long>(tally.original));
+		Check(tally.failures == 0 && tally.removed > 500 && tally.asked * 20 < tally.original, "bit for bit, at less than a twentieth of the original's predicate calls");
+	}
+
 	Section("More hits than a memo holds: the original's loops, and the memo forgotten");
-	static cd::Memo big;
+	static cd::Memos big;
 	const std::uint32_t most = cd::Memo::kCap + 40;
 	std::vector<Hit> reference(most);
 	std::vector<Hit> rebuilt(most);
@@ -229,7 +275,7 @@ void TestAgainstOriginal() {
 			std::uint32_t a = size;
 			std::uint32_t b = size;
 			cd::PassOriginal(reference.data(), &a, starts.data(), startCount);
-			const cd::Work work = cd::Pass(big, 3, rebuilt.data(), &b, starts.data(), startCount);
+			const cd::Work work = cd::Pass(big, 3, 1, rebuilt.data(), &b, 4, starts.data(), startCount);
 			plain += work.plain ? 1 : 0;
 			remembered += work.remembered ? 1 : 0;
 			failures += Same(reference, a, rebuilt, b) ? 0 : 1;
@@ -251,17 +297,17 @@ void TestAgainstOriginal() {
 	Check(failures == 0 && plain == 10, "more start hits than the memo holds: the original's loops too");
 
 	Section("A cast that collects N hits: the work");
-	static cd::Memo line;
+	static cd::Memos line;
 	std::vector<Hit> hits(200);
 	std::uint32_t count = 0;
 	std::uint64_t asked = 0;
 	std::uint64_t original = 0;
 	Random random{12345};
 	for (std::uint32_t i = 0; i < 120; ++i) {
-		// Faces of one tilted plane and edge hits on its outer side: nothing is removed, the array only grows.
+		// Faces of one plane and edge hits on its outer side: nothing is removed, the array only grows.
 		const bool face = i % 2 == 0;
 		hits[count++] = Make(static_cast<float>(i), random.Coordinate(), face ? 0.0f : 5.0f, 0, 0, 1, face ? 1 : 2, i);
-		const cd::Work work = cd::Pass(line, 77, hits.data(), &count, nullptr, 0);
+		const cd::Work work = cd::Pass(line, 77, 1, hits.data(), &count, 0, nullptr, 0);
 		asked += work.asked;
 		original += work.original;
 	}
@@ -271,32 +317,69 @@ void TestAgainstOriginal() {
 }
 
 void TestMemoEdges() {
-	Section("The memo is trusted only for the same key and the same bytes");
-	static cd::Memo memo;
+	Section("A memo is used only for the same collector in the same cast");
+	static cd::Memos memos;
 	std::vector<Hit> hits = {Make(0, 0, 0, 0, 0, 1, 1, 1), Make(0, 0, 3, 0, 0, 0, 2, 2), Make(0, 0, 4, 0, 0, 0, 2, 3)};
 	std::uint32_t count = 3;
-	cd::Work work = cd::Pass(memo, 5, hits.data(), &count, nullptr, 0);
+	cd::Work work = cd::Pass(memos, 5, 1, hits.data(), &count, 0, nullptr, 0);
 	Check(!work.remembered && count == 3 && work.asked == 1, "a first pass: nothing remembered, the one pair asked");
-	work = cd::Pass(memo, 5, hits.data(), &count, nullptr, 0);
-	Check(work.remembered && work.asked == 0, "the same array again: nothing to ask");
-	work = cd::Pass(memo, 6, hits.data(), &count, nullptr, 0);
-	Check(!work.remembered && work.asked == 1, "another key: asked anew");
-	work = cd::Pass(memo, 0, hits.data(), &count, nullptr, 0);
+	work = cd::Pass(memos, 5, 1, hits.data(), &count, 0, nullptr, 0);
+	Check(work.remembered && work.asked == 0, "the same array again in the same cast: nothing to ask");
+	work = cd::Pass(memos, 6, 1, hits.data(), &count, 0, nullptr, 0);
+	Check(!work.remembered && work.asked == 1, "another collector: asked anew");
+	work = cd::Pass(memos, 5, 2, hits.data(), &count, 0, nullptr, 0);
+	Check(!work.remembered && work.asked == 1, "the next cast: asked anew");
+	work = cd::Pass(memos, 0, 2, hits.data(), &count, 0, nullptr, 0);
 	Check(!work.remembered, "key 0 is never remembered");
-	work = cd::Pass(memo, 0, hits.data(), &count, nullptr, 0);
+	work = cd::Pass(memos, 0, 2, hits.data(), &count, 0, nullptr, 0);
 	Check(!work.remembered, "not even by itself");
-	cd::Pass(memo, 5, hits.data(), &count, nullptr, 0);
-	hits[2].position[2] = -4.0f;  // the edge hit now lies behind the face
-	work = cd::Pass(memo, 5, hits.data(), &count, nullptr, 0);
-	Check(!work.remembered && count == 2 && work.removed == 1, "a byte changed: asked anew, and the hit goes");
+
+	Section("The last remembered hit is compared: an array filled anew outside a counted cast");
+	cd::Pass(memos, 5, 2, hits.data(), &count, 0, nullptr, 0);
+	hits[2].position[2] = -4.0f;  // the last hit is another now, and it lies behind the face
+	work = cd::Pass(memos, 5, 2, hits.data(), &count, 0, nullptr, 0);
+	Check(!work.remembered && count == 2 && work.removed == 1, "the last hit changed: asked anew, and the hit goes");
 	std::uint32_t none = 0;
-	work = cd::Pass(memo, 5, hits.data(), &none, nullptr, 0);
+	work = cd::Pass(memos, 5, 2, hits.data(), &none, 0, nullptr, 0);
 	Check(none == 0 && work.asked == 0 && work.original == 0 && !work.remembered, "no hits: nothing");
-	std::vector<Hit> start = {Make(0, 0, 10, 0, 0, 1, 1, 8)};
+	std::uint32_t fewer = 1;
+	cd::Pass(memos, 7, 2, hits.data(), &count, 0, nullptr, 0);
+	work = cd::Pass(memos, 7, 2, hits.data(), &fewer, 0, nullptr, 0);
+	Check(!work.remembered, "fewer hits than remembered: not the array the memo knows");
+
+	Section("The start collector: its hits are asked once, until a pass of its own moves them");
+	static cd::Memos two;
+	std::vector<Hit> start = {Make(0, 0, 10, 0, 0, 1, 1, 8), Make(0, 0, 12, 0, 0, 0, 2, 9), Make(0, 0, 13, 0, 0, 0, 2, 10)};
+	std::uint32_t startCount = 3;
+	hits = {Make(0, 0, 20, 0, 0, 0, 2, 2), Make(0, 0, 21, 0, 0, 0, 2, 3)};
+	count = 2;
+	work = cd::Pass(two, 2, 1, hits.data(), &count, 1, start.data(), startCount);
+	Check(count == 2 && work.asked == 2, "two hits in front of the start collector's face: asked, kept");
+	work = cd::Pass(two, 2, 1, hits.data(), &count, 1, start.data(), startCount);
+	Check(work.asked == 0, "again: nothing to ask");
+	work = cd::Pass(two, 2, 1, hits.data(), &count, 3, start.data(), startCount);
+	Check(work.asked == 2, "another start collector: asked anew");
+	work = cd::Pass(two, 2, 1, hits.data(), &count, 1, start.data(), startCount);
+	Check(work.asked == 2, "and the first one again after that too");
+	start[2] = Make(0, 0, 5, 0, 0, 0, 2, 11);  // behind the start collector's own face: its pass removes it
+	work = cd::Pass(two, 1, 1, start.data(), &startCount, 0, nullptr, 0);
+	Check(startCount == 2 && work.removed == 1, "the start collector's own pass moves its hits");
+	work = cd::Pass(two, 2, 1, hits.data(), &count, 1, start.data(), startCount);
+	Check(work.asked == 2, "so the cast collector asks all of them anew");
 	hits = {Make(0, 0, 3, 0, 0, 0, 2, 2), Make(0, 0, 4, 0, 0, 0, 2, 3)};
 	count = 2;
-	work = cd::Pass(memo, 9, hits.data(), &count, start.data(), 1);
-	Check(count == 0 && work.removed == 2 && work.original == 2, "two hits, both behind the start collector's face: both go");
+	work = cd::Pass(two, 2, 2, hits.data(), &count, 1, start.data(), startCount);
+	Check(count == 0 && work.removed == 2 && work.original == 4, "two hits, both behind the start collector's face: both go");
+
+	Section("Five collectors and four memos: the oldest memo is given away");
+	static cd::Memos few;
+	std::vector<Hit> three = {Make(0, 0, 0, 0, 0, 1, 1, 1), Make(0, 0, 3, 0, 0, 0, 2, 2), Make(0, 0, 4, 0, 0, 0, 2, 3)};
+	count = 3;
+	for (std::uint64_t key = 1; key <= 5; ++key) {
+		cd::Pass(few, key, 1, three.data(), &count, 0, nullptr, 0);
+	}
+	Check(cd::Pass(few, 5, 1, three.data(), &count, 0, nullptr, 0).remembered && !cd::Pass(few, 1, 1, three.data(), &count, 0, nullptr, 0).remembered,
+	      "the fifth is remembered, the first was given away");
 }
 
 void TestSummary() {

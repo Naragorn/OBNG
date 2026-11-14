@@ -18,8 +18,8 @@
 //
 // The rebuild makes the same removals in the same order (class A: the hit
 // array bit for bit) and asks only the pairs whose answer is not known: a
-// memo per collector keeps the array as the last pass left it, and a pass
-// that finds its array beginning with that same content asks
+// memo per collector remembers how many hits the last pass left and which of
+// them are new or were moved, and a pass in the same cast asks
 //   - a hit that is new or was moved since against every earlier face hit,
 //   - an old hit only against the face hits that are new or were moved,
 //   - in step 2 the new hits against every start hit, and the old ones only
@@ -28,10 +28,21 @@
 // an earlier pass asked it was answered "no" there - a "yes" would have
 // removed b - and the answer depends on the two hits' content alone. Every
 // hit that a removal moves is marked, so no pair of a changed arrangement
-// counts as asked. The memo is compared byte for byte before it is trusted;
-// an array it does not match (another cast, another actor at the address) is
-// taken as all new, which is the original's pass with the kinds looked at
-// first.
+// counts as asked.
+//
+// When the memo may be trusted: inside one cast a collector's array changes
+// only by addCdPoint's appends and by this pass (read 0x008CED20, 0x008CE770);
+// the proxy's integrate empties both collectors right before each cast (read
+// 0x008AD7D0: the counts set to 0 at the two places before the phantom's
+// linear cast 0x008ECC60). So the plugin counts the linear casts, and a memo
+// of another count ("generation") is not used. A pass that moves hits in a
+// collector drops what other memos know about it as their start collector.
+// Beside that the last remembered hit is kept and compared: an array emptied
+// and filled by a way that does not pass the counted cast is seen by it
+// unless it ends in the same hit. The first version compared the whole array
+// each pass - 37 MB of compares and copies in one integrate with 220 hits,
+// most of the 7 ms such a call still took (measured 2026-11-14, run
+// obng-stress-ride/20261114-083530).
 //
 // 64-bit clean: the collector is a std::uint64_t key, the hits plain arrays.
 #include <cstddef>
@@ -105,21 +116,50 @@ struct Work {
 	bool plain = false;           // more hits than a memo holds: the original's loops
 };
 
-// One collector's array as the last pass left it.
+// What is remembered of one collector's last pass.
 struct Memo {
 	static constexpr std::uint32_t kCap = 256;
-	std::uint64_t key = 0;  // 0: empty
-	std::uint32_t count = 0;
-	std::uint32_t startCount = 0;
-	Hit hits[kCap];
-	Hit start[kCap];
-	std::uint8_t fresh[kCap];  // the hit at this index is new or was moved since it was last asked as b
+	std::uint64_t key = 0;         // 0: empty
+	std::uint64_t generation = 0;  // the cast it was made in
+	std::uint32_t count = 0;       // hits the pass left
+	std::uint64_t startKey = 0;    // the start collector its step 2 asked
+	std::uint32_t startCount = 0;  // ... and how many of its hits
+	Hit last;                      // the hit at count - 1, as left
+	std::uint8_t fresh[kCap];      // the hit at this index is new or was moved since it was last asked as b
+};
+
+// The memos of the collectors in work: a controller's integrate uses two at a time.
+struct Memos {
+	static constexpr unsigned kSlots = 4;
+	Memo slots[kSlots];
+	unsigned next = 0;
+
+	Memo& For(std::uint64_t key) {
+		for (Memo& memo : slots) {
+			if (memo.key == key && key != 0) {
+				return memo;
+			}
+		}
+		Memo& memo = slots[next];
+		next = (next + 1) % kSlots;
+		memo.key = 0;
+		return memo;
+	}
+
+	// A pass moved hits in this collector: what others asked of it as their start collector is not known any more.
+	void Moved(std::uint64_t key) {
+		for (Memo& memo : slots) {
+			if (memo.startKey == key) {
+				memo.startCount = 0;
+			}
+		}
+	}
 };
 
 namespace detail {
 
-inline bool SameHits(const Hit* a, const Hit* b, std::uint32_t count) {
-	return count == 0 || std::memcmp(a, b, static_cast<std::size_t>(count) * sizeof(Hit)) == 0;
+inline bool SameHit(const Hit& a, const Hit& b) {
+	return std::memcmp(&a, &b, sizeof(Hit)) == 0;
 }
 
 // Step 1. `fresh` holds the pass's begin on entry (1 for a hit new or moved)
@@ -237,28 +277,35 @@ inline void StepTwo(Hit* hits, std::uint32_t* count, const Hit* start, std::uint
 
 }  // namespace detail
 
-// The pass with a memo. The hits and the count are left as PassOriginal
-// leaves them.
-inline Work Pass(Memo& memo, std::uint64_t key, Hit* hits, std::uint32_t* count, const Hit* start, std::uint32_t startCount) {
+// The pass with the memos. `generation`: the count of casts begun (a memo of
+// another one is not used). `startKey`: the start collector, 0 with none. The
+// hits and the count are left as PassOriginal leaves them.
+inline Work Pass(Memos& memos, std::uint64_t key, std::uint64_t generation, Hit* hits, std::uint32_t* count, std::uint64_t startKey, const Hit* start,
+                 std::uint32_t startCount) {
 	Work work;
 	const std::uint32_t n = *count;
 	const std::uint32_t m = start != nullptr ? startCount : 0;
 	work.original = (n >= 3 ? static_cast<std::uint64_t>(n - 1) * (n - 2) / 2 : 0) + static_cast<std::uint64_t>(m) * n;
+	Memo& memo = memos.For(key);
 	if (n > Memo::kCap || m > Memo::kCap) {
 		work.plain = true;
 		work.asked = work.original;
 		PassOriginal(hits, count, start, startCount);
 		work.removed = n - *count;
 		memo.key = 0;
+		if (work.removed != 0) {
+			memos.Moved(key);
+		}
 		return work;
 	}
 	std::uint8_t untested[Memo::kCap];
 	std::uint32_t known = 0;       // hits from the last pass, unchanged
 	std::uint32_t knownStart = 0;  // start hits the known hits were asked against
-	if (memo.key == key && key != 0 && memo.count <= n && detail::SameHits(hits, memo.hits, memo.count)) {
+	if (memo.key == key && key != 0 && memo.generation == generation && memo.count <= n &&
+	    (memo.count == 0 || detail::SameHit(hits[memo.count - 1], memo.last))) {
 		known = memo.count;
 		work.remembered = known != 0;
-		if (memo.startCount <= m && detail::SameHits(start, memo.start, memo.startCount)) {
+		if (memo.startKey == startKey && memo.startCount <= m) {
 			knownStart = memo.startCount;
 		}
 	}
@@ -273,13 +320,15 @@ inline Work Pass(Memo& memo, std::uint64_t key, Hit* hits, std::uint32_t* count,
 		detail::StepTwo(hits, count, start, m, knownStart, memo.fresh, untested, &work);
 	}
 	memo.key = key;
+	memo.generation = generation;
 	memo.count = *count;
+	memo.startKey = startKey;
 	memo.startCount = m;
 	if (*count != 0) {
-		std::memcpy(memo.hits, hits, static_cast<std::size_t>(*count) * sizeof(Hit));
+		memo.last = hits[*count - 1];
 	}
-	if (m != 0) {
-		std::memcpy(memo.start, start, static_cast<std::size_t>(m) * sizeof(Hit));
+	if (work.removed != 0) {
+		memos.Moved(key);
 	}
 	return work;
 }

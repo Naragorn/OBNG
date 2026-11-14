@@ -72,6 +72,7 @@ struct Measured {
 	bool counted = false;
 	float leap = 0.0f;  // the way the last update moved the actor: what a frame showed at once without the glide
 	float left = 0.0f;  // what was left of it after the offset shown before
+	bool shown = false; // an offset was shown before it
 };
 
 // An update that runs begins (after TakeBack). `moved`: the way the actor
@@ -84,7 +85,8 @@ inline Measured AtUpdate(State& s, bool hasMoved, const float moved[3], bool too
 		const float rest[3] = {moved[0] - s.shown[0], moved[1] - s.shown[1], moved[2] - s.shown[2]};
 		m.leap = Length(moved);
 		m.left = Length(rest);
-		m.counted = m.leap > kMinShift || Length(s.shown) > kMinShift;
+		m.shown = Length(s.shown) > kMinShift;
+		m.counted = m.leap > kMinShift || m.shown;
 	}
 	s.hasGain = false;
 	if (s.hasLast && hasMoved && s.consumed >= kMinStep) {

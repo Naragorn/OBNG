@@ -511,15 +511,21 @@ void TestMissing() {
 	}
 }
 
+// Armed by the first summary (every plugin has patched by then), run by the next voice call - on the thread
+// the stub's routine is called on in play.
+volatile LONG g_testArmed = 0;
+void RunTestMissing() {
+	if (g_testMissing && InterlockedCompareExchange(&g_testArmed, 2, 1) == 1) {
+		TestMissing();
+	}
+}
+
 UInt32 __fastcall Play(void* self, void* /*edx*/, void** out, const char* path, UInt32 flags) {
 	LARGE_INTEGER start;
 	LARGE_INTEGER end;
 	QueryPerformanceCounter(&start);
 	CleanDone();
-	if (g_testMissing) {
-		g_testMissing = false;
-		TestMissing();
-	}
+	RunTestMissing();
 	vd::Left why = vd::Left::kTaken;
 	UInt32 result = Rebuilt(self, out, path, flags, &why);
 	const bool taken = why == vd::Left::kTaken;
@@ -642,6 +648,7 @@ void LogVoiceDecodeSummary() {
 	if (!g_installed) {
 		return;
 	}
+	InterlockedCompareExchange(&g_testArmed, 1, 0);
 	EnterCriticalSection(&g_lock);
 	const vd::Counts counts = g_counts;
 	g_counts = vd::Counts{};
