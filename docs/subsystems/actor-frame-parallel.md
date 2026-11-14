@@ -99,3 +99,16 @@ controller's update 0x00896000 disputed on a debug branch's label). What the map
 So step 3 does not start yet. Before it: the slice `actor-movement` (0x005E0660, 0x00643340, 0x00628790, 0x005F1910,
 0x006814B0, 0x005232D0, 0x008DE950, 0x008ABA40, 0x008ABAC0, 0x008AD070) with the same questions, and the write watch
 over the EXE's data during one actor's controller update (the probe `[Probe] ActorThreadsCheck` has the mechanism).
+
+## Step 1's result (2026-11-14, run 20261114-205959, the gate horde without sound)
+
+`obng-measure-gate-guards-parts.ini`: the process manager, the loop, the high update and 24 of their direct
+callees timed (4 150 process manager calls, 146 high updates a call). Per process manager call: 14.0 ms, the loop
+13.65 ms inclusive and **1.30 ms of its own**, the high update 12.30 ms inclusive - and **12.06 ms of that outside
+every timed direct callee**. All 24 direct callees together are under 0.4 ms (the largest: 0x0065A2C0 0.09 ms at
+2 032 calls, 0x006A2280 0.07 ms). So nothing hides in the loop's or the high update's own helpers: the time is in
+Actor::Update 0x00603CA0 (not timeable here - the far actors' route holds its entry) and in the virtual calls into
+the process (the slots the run of 16:42 timed: the skeleton updates 5.3 ms, the character controllers 4.9 ms,
+0x005FAAE0 2.2 ms, with 175 actors then). The loop's own share is 1.3 ms, not the 4.1 ms the earlier run's
+subtraction gave (that run timed fewer of its callees). Two earlier runs of this INI (20261114-202927, -205xxx) are
+void: the INI had lost its route sections.
