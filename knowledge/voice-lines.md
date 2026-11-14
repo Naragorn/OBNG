@@ -121,3 +121,11 @@ picks one at random - read). A sound played is a DirectSound buffer made, and on
   in the horde, the main thread 76 to 87 % - the mixer was not saturated there. So the cost is not a constant of
   the horde; how many buffers are made and dropped at once (a fight's hits and deaths) decides it (derived, not
   counted: the buffers' number was not logged).
+- **Measured with DSOAL** (kcat/dsoal r648 of 2025-02-09 with its OpenAL Soft, the 32-bit `dsound.dll` and
+  `dsoal-aldrv.dll` beside Oblivion.exe for the run only, `WINEDLLOVERRIDES=version=n,b;dsound=n,b`; Nadi's
+  "erlaubt", 2026-11-14; run obng-profile-gate-guards/20261114-191556, both DLLs among the sampler's modules):
+  **20.4 world frames a second, median 48.6 ms, p90 58.8 ms; 0.0 % of the samples waiting under DirectSound**
+  (Wine's own: 5.5 / 8.8 / 15.3 a second, 69 / 46 / 2.7 % waiting; without sound 18.0, 0 %). The main thread
+  76 to 97 % of a core, no busy mixer thread of Wine's. Caveat: Oblivion Walkers deployed a new build (530c4972,
+  corpses disabled) just before this run, so the horde is not the same as in the runs before it; a control run with
+  Wine's DirectSound under that build is still owed. Sounds were not listened to (headless).
