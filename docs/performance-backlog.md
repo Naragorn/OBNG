@@ -2019,3 +2019,64 @@ on. The numbers owed: the call's time a line from the route's summary line ("the
 against the 5.6 ms mean and 27.8 ms longest above; the expected call is the file's read, the buffer's creation and
 six frames - under a millisecond (derived, not measured). Open: DirectSound from a second thread, the line's start
 against the lips, mode 2's samples against the game's (`VoiceDecodeCheck=1`).
+
+## 2026-11-14: the Windows session of 2026-11-13 21:44-22:23 read (Dream Air, 90 Hz, the full mod list, OBNG c34e1b0; measured from its logs)
+
+Sources in the Windows game folder: `OBNG.log` (231 ten-second windows, 193 of them with play), `OBVR.log`,
+`OBVR-performance-1-45/` (the ring's last 120 s, written at the quit), `OblivionWalkers.log`. No run of mine. Nadi's
+report: the prison's culling is right now, the torch bearers' shadows too; rarely NPCs in the distance stutter; the far
+LOD landscape flickers too much when a new cell is entered. No crash in 38 minutes (no new file under `Crash Logs`).
+
+- **The voice route ran: 310 lines, 0.50 ms a call on the mean, 1.19 ms the longest** (the 236 lines of the windows
+  without a line left to the game; before, Linux: 5.6 ms mean, 27.8 the longest). 1 860 frames decoded at the calls,
+  37 334 on the worker; no line whole at the call, none cancelled, no buffer refused, no lock failure on the worker.
+  DirectSound took the worker's Lock/Unlock on a playing buffer on Windows. Nadi named no sound defect (not stated as
+  accepted). Mode 2's tolerance is still not measured.
+- **45 lines were left to the game's function, 9.4-12.6 ms each** (28 windows; the longest call of every such window
+  lies in that range). Derived, not verified: all of one length - the game's decoder costs about 0.03 ms a frame
+  (this session's lines: about 150 frames, the earlier median 3.9 ms), so 10 ms are about 310 frames, and
+  `Data\OBSE\Plugins\Elys_USV.mp3` (Elys' Universal Silent Voice, the stand-in for a line without a voice file) is
+  8.17 s, mono 44.1 kHz 64 kbit/s = 313 frames. The route's own existence check (through 0x00B27E50) says "no file" for
+  such a line and hands it back; where that plugin swaps the path is not read (its DLL is packed). Owed: the path and
+  the reason of every line left to the game in the log, then the stand-in taken by the route as well.
+- **Frames:** 98 662 in 1 930 s of play (51 a second on the mean); 22 windows held 90, 45 had 60-88, 87 had 30-60, 39
+  under 30 frames a second. OBVR's log: 315 episodes of SteamVR's half rate, 37 642 frames shown twice (the longest
+  3 066), against 59 episodes and 3 366 frames in the 16 minutes of 2026-11-12.
+- **The timed parts of the main thread do not fill those frames.** By stretch (play windows only):
+
+  | windows | what (derived from the draws and the node names) | frames/s | process manager ms a frame | of it controllers | eye pass ms | draws a pass | skinned draws a frame |
+  |---|---|---|---|---|---|---|---|
+  | 42-61 | the open world after the load | 42 | 1.79 | 0.61 | 5.90 | 2 003 | 175 |
+  | 81-87 | a fight among many actors (51 controllers a frame) | 51 | 4.07 | 1.35 | 2.50 | 819 | 108 |
+  | 88-113 | the open world | 57 | 1.67 | 0.30 | 2.98 | 1 067 | 104 |
+  | 114-131 | a crowd (Anvil, 20 controllers a frame) | 41 | 2.82 | 0.49 | 7.71 | 2 017 | 672 |
+  | 132-153 | Anvil | 44 | 2.18 | 0.54 | 5.33 | 1 712 | 192 |
+  | 154-161 | Anvil's harbour | 24 | 11.68 | 7.09 | 7.64 | 2 361 | 247 |
+
+  In the open world the process manager and the eye pass together are 4.7-7.7 ms of frames that take 17-24 ms: what
+  holds them is not in these logs - the GPU at 8 072 x 3 376, the rest of the main thread, or the half rate. The
+  ring's capture covers only the last two minutes (an interior and menus: 90.9 % of 10 557 frames in time; the 408
+  frames of 13-60 ms spend 13.9 ms in the present). **Owed again: a capture from a slow place** ("Save the last minute"
+  there, or the ring written by itself after a run of late frames - OBVR's).
+- **Anvil's harbour: one character controller, about 20 ms in every frame.** Windows 154-161: the controller update
+  0x00896000's longest call 20.8-27.1 ms in every window, its integrate 0x008902B0 6.25 ms a frame on the mean over
+  the stretch (window 158: 9 881 calls of 0.425 ms mean, 254 over 0.1 ms in 221 frames, the longest 25.2 ms - one call
+  of about 19 ms a frame), the process manager 25.5 ms a call there, 22 frames a second. The same shape as the Linux
+  flight's kind 2 (`BANAnvilCargoShipSailor03`, 18-28 ms a call); the actor is not named on Windows (no spike watch in
+  that INI) - derived. Also single calls of 19-33 ms in windows 140-142 and 148-150.
+- **The crowd (windows 121-129): the eye pass 12-22 ms a pass** at 2 300-3 800 draws, about 2 000 of them skinned
+  (window 123: 3 825 draws, 2 728 of them repeats of a geometry in a further pass, 16.3 ms the eye pass, 27 frames a
+  second). Skinned records are drawn at once; the instancing takes none of them.
+- **The occlusion culler:** 26.7 M skips confirmed hidden by their own pass's test, 170 065 not (0.6 %, the popping's
+  upper bound by the bound). Read (OcclusionCullLogic.h): a verdict is kept by the geometry's address alone and a
+  hidden one is acted on for two frames; a geometry made at the address of one that was hidden a frame before is left
+  out until its own test is read. And a thing that becomes visible is drawn one to two frames late by design - 11-22
+  ms at 90 frames a second, 44-66 ms at 30-45. Whether either is what Nadi saw on the far land is not measured: the
+  log does not say what was skipped (the node lines end at 2 000). The land LOD hangs under "LandLOD" under "LODRoot"
+  0x00B333A8 (read, 0x00406950); the loaded cells under "ObjectLODRoot" 0x00B333AC. Since the session of 2026-11-12
+  (the culler on, no such report) the culler changed in one point: the tests go out before the first blended record
+  (1b77009).
+- **Far actors:** an actor beyond 6 000 units gets its whole update on every 16th call - 5.6 times a second at 90
+  frames, 1.5-2.8 times at 24-45. The moving ones travel 60-134 units a second (the log's travel lines): steps of
+  20-90 units at those rates. Derived: that is the stutter in the distance; the view rule's camera is the headset's.
+- Memory: the address space 2 629 of 4 095 MB at its peak, the game heap 646 of 1 024 MB.

@@ -59,7 +59,7 @@ rest by one worker thread that writes it into the buffer while the line plays, e
 - `VoiceDecodeCheck=1` (mode 2): the worker decodes every line once more with both decoders and writes the largest
   difference and the mean square - the comparison class C asks for.
 
-**Not verified**: the route has not run in the game (built and unit-tested 2026-11-13; Nadi tests it on Windows).
+**Run in the game on Windows, 2026-11-13 21:44-22:23** (Dream Air session, mode 2, measured from its `OBNG.log`; docs/performance-backlog.md 2026-11-14): 310 lines through the route, 0.50 ms a call on the mean and 1.19 ms the longest, 37 334 frames decoded on the worker into playing buffers, no cancel, no lock failure, no crash in 38 minutes. 45 lines were left to the game's function at 9.4-12.6 ms each - derived, not verified: lines without a voice file, for which Elys' Universal Silent Voice plays `Data\OBSE\Plugins\Elys_USV.mp3` (8.17 s, 313 frames); the route's existence check does not see that swap. **Not verified**: mode 2's samples against the game's (`VoiceDecodeCheck`), the line's start against the lips (no defect named by Nadi, not stated as accepted).
 Open in particular: DirectSound's Lock and Unlock from a second thread while the main thread plays or stops the
 buffer (Windows and Proton), the timing of a line's start against its lip movement, and mode 2's samples against
 the game's (the check).
