@@ -62,6 +62,45 @@ int main() {
 	Check(t.dropped > 0 && t.calls + t.dropped == sc::kActors + 600, "more actors than the table holds: the rest is counted as not counted");
 	Check(t.actors <= sc::kActors && t.actors > 0, "and no more actors than the table has room for");
 
+	Section("Looks: the textures and programs a part was drawn with");
+	t = sc::Totals{};
+	// Root 0x1000: body and hands with look 7 (the body in 2 passes), hair with look 9. Root 0x3000: one part, look 7.
+	frame->Note(0x1000, 0x2000, 0xA0, 7);
+	frame->Note(0x1000, 0x2000, 0xA0, 7);
+	frame->Note(0x1000, 0x2100, 0xA0, 7);
+	frame->Note(0x1000, 0x2200, 0xA0, 9);
+	frame->Note(0x3000, 0x4000, 0xA0, 7);
+	frame->End(&t);
+	Check(t.looks == 3 && t.mostLooksAnActor == 2, "three (actor, look) pairs; the most an actor has is two");
+	Check(t.byLook == 4, "by look: the first actor's look 7 keeps its part's 2 passes, its look 9 one, the second actor one - 4 calls");
+	Check(t.byClass == 3, "by shader class it would be 3: the looks split what the class joins");
+	t = sc::Totals{};
+	frame->Note(0x1000, 0x2000, 0xA0);
+	frame->Note(0x1000, 0x2100, 0xB0);
+	frame->End(&t);
+	Check(t.looks == 1 && t.byLook == 1 && t.mostLooksAnActor == 1, "the look not told: an actor's parts count as one look");
+	sc::Totals k;
+	k.frames = 10;
+	k.calls = 1000;
+	k.actors = 100;
+	k.looks = 450;
+	k.byLook = 500;
+	k.mostLooksAnActor = 12;
+	char looks[500];
+	int m = sc::FormatLooks(k, 25.0, looks, sizeof(looks));
+	Check(m > 0 && static_cast<std::size_t>(m) == std::strlen(looks), "the looks line's length is the line's");
+	Check(std::string(looks).find("4.5 looks an actor") != std::string::npos && std::string(looks).find("the most an actor 12") != std::string::npos &&
+	          std::string(looks).find("50.0 calls a pass (5.0 an actor)") != std::string::npos,
+	      "the looks an actor and the calls left");
+	Check(std::string(looks).find("took 2.500 ms a pass (25.0 us a call)") != std::string::npos, "the calls' time");
+	sc::FormatLooks(k, -1.0, looks, sizeof(looks));
+	Check(std::string(looks).find("took") == std::string::npos, "no time given: none written");
+	sc::FormatLooks(sc::Totals{}, 0.0, looks, sizeof(looks));
+	Check(std::string(looks).find("0.0 looks an actor") != std::string::npos, "nothing counted does not divide by zero");
+	char tinyLooks[8];
+	sc::FormatLooks(k, 25.0, tinyLooks, sizeof(tinyLooks));
+	Check(tinyLooks[7] == '\0' && sc::FormatLooks(k, 25.0, tinyLooks, 0) == 0, "a short buffer is not overrun, no buffer writes nothing");
+
 	Section("The line");
 	sc::Totals l;
 	l.frames = 10;

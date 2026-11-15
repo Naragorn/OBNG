@@ -360,3 +360,31 @@ thread's x87 control word and MXCSR on the workers. Eight interventions, class C
 the motion's vtable +0x60 and +0x3C, 0x008AC3C0, 0x008ABAC0, 0x008AC530, 0x00893B90's callees, the memory manager's
 slots. The cheapest step that turns these into a finite list: a census of the indirect calls' targets in the gate
 horde (the dispatcher calls 0x008ECE41 and 0x008ECDBD, the listener calls, 0x008ACA91).
+
+## Parked: the controllers on worker threads (decided 2026-11-14, Nadi: "T1 parken")
+
+The character controllers' two heavy functions on worker threads are **not built for now**. Why:
+
+- **The gain is small against the frame.** The controllers cost 3.5 to 4.6 ms a frame in a horde (measured, gate
+  horde and Nadi's Windows siege); on four threads about 2.5 to 3 ms of that could go (estimated) - 8 to 9 % of
+  the Windows horde's 31.8 ms, where 22 ms would be needed for a steady 45 fps.
+- **The cost is large.** Eight interventions (the list in the fourth slice's section above), four to six of them
+  rebuilds inside Havok's code, two or three more slices before the first of them (about 38 % of the controller's
+  time lies in functions still unread: the dispatcher's agent functions, the triangle and MOPP path, the proxy's
+  listeners), each with its own game gate.
+- **The gate is weak.** As a whole it is class C: the overlap lists are frozen for the phase, the actors read each
+  other's positions in another order, impulses land later. No shadow run compares that with the original; what
+  finds an error is a long run and the feel in the headset, and the errors to expect are rare ones (an actor
+  through a wall, a body not woken).
+- **The other per-actor parts hang on the same conditions.** Vitals, detection and the package cast into the
+  Havok world and share the stack area and the picks' budget; only head tracking and 0x00471C00 are free of
+  statics, 1.5 ms a frame together, at most about 1 ms on threads.
+
+What would reopen it: the render path brought down so far that the controllers are the frame's first part in a
+horde; or a need for hordes well above a hundred actors. What is kept for then: the two slices' maps
+(re/functions/), the table of shared writes, the recipe for a worker's thread memory, `[Timed] WritesOf` and the
+controller's timing INI. The first step then is the census of the indirect calls' targets named above.
+
+**Backlog (T3, class A):** the proxy's manifold update 0x008AD150 with its score 0x008ABF70 - the same computation,
+faster, on one thread (the matching is m x n with a dedupe of m x m / 2, 18 % of the controller's samples);
+at most 0.5 to 0.8 ms a frame in a horde. One slice, a rebuild with the shadow comparison.
