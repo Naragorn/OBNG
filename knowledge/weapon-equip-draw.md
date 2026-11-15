@@ -88,3 +88,22 @@ that frame and the dropped reference's model is loaded the next, its Havok
 body with it - one frame with no weapon anywhere. A sheathe by the Unequip
 group leaves the hand only at the Detach key: 9 frames at OBVR's ten-fold
 draw speed.
+
+## A model attached this frame has no world data yet (derived 2026-11-15, OBVR's log)
+
+A weapon equipped while the weapon state is already Drawn (OBVR: the fists
+up, then the claymore taken from the shoulder) has its model under the
+first-person "Weapon" node in the same frame, with its local transforms as
+authored - but its geometries' world transforms and the node's world bound
+are not updated until the scene graph's next update. Read in OBVR.log of
+2026-11-15 (line 11694): the same sword's 780 vertices, taken through each
+geometry's world transform and back through the node's inverse, lay 1016
+units from the node (78.6 in a later frame), about the camera's distance from
+the world's origin, and "the bound's ball said 0.0". (derived: the new
+geometries' world transforms still stood at the origin; the engine's attach
+and update order is not read in the EXE - unverified)
+
+For a rebuild: anything that reads a freshly attached model in the frame of
+its attach must go through the local transforms from a node it trusts, or
+wait for the update; a derived cache (world transform, bound) needs a
+"valid since" the reader can ask.
