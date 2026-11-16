@@ -169,3 +169,36 @@ critical-section waits), the exterior attach after a load 9 %
 - What a modern engine does instead: a thread-local allocator with no
   global lock (mimalloc, tbbmalloc, jemalloc) and no memset of pool pages
   on the hot path.
+
+## Addendum 2026-11-16: the main thread's own loads pause the IO workers (read; not timed apart)
+
+Why the main thread stands in the task manager's pause 0x004322B0 while the player travels (23 % of the long
+frames' samples in a cold ride, 4 % in a warm one - docs/performance-backlog.md, "the ride towards Anvil").
+R = read in the instructions (tools/re/disasm.py on the EXE of md5 cdd2f0c5), Rp = read in the rea-all pseudocode
+only.
+
+- **A cache miss off the manager's thread loads at once, between a pause and a resume** (R): the texture load
+  0x00442890 ("TES::CreateTextureImage unable to create image" is its string) looks the path up in the map
+  [0x00B35300]; on a miss it compares GetCurrentThreadId with [[0x00B33A10]+0x30] (0x00442960-66), calls the pause
+  0x00432860 when they differ (0x0044296D), loads through 0x00701E00 and 0x0075FA90, and resumes with 0x00432890
+  (0x0044299C). The model loader's lookup 0x00439FF0 has the same shape (the compare 0x0043A046, the pause
+  0x0043A04D, the load 0x004377D0 / 0x00439940 / 0x004378F0, the resume 0x0043A088); 0x00439EB0 is its twin (Rp).
+- **The pause waits for every worker's running task** (Rp, 0x004322B0): the first holder sleeps while [+0x1C] is
+  non-zero, then for each worker releases its semaphore if it idles and waits on its event without a timeout. So a
+  single texture missed on the main thread costs the rest of whatever the IO worker is parsing.
+- **Who misses on the ride** (Rp, named by their strings; the sampler's chains of run 20261113-142230):
+  - the textures through 0x0052D2C0 - an actor's skin parts ("Textures\%s", "%08XModUpperBodyFemale",
+    "%08XModBody", "Meshes\%s"), called from 0x0047AC20 ("skin", "UpperBody", "LowerBody", "Hand", "Foot", "Tail");
+  - the models through 0x004E3490 (an actor's animation set up: "Skeleton", "\Idle.KF", "\Death.KF", "Bad
+    InitAnimation for NPC"), 0x0041A610 ("Skeleton", "SpecialAnims") and 0x00475D80 (bone names).
+  Derived: when an actor gets its 3D, its animation files and its body's textures are not among what the
+  background loader queued for it; the main thread fetches them itself and stops the workers for each.
+- The pause has eleven callers in all (Rp: 0x00439FF0, 0x00439EB0, 0x00442890, 0x0043E0F0, 0x00444FB0 - the grid's
+  move -, 0x00465130 / 0x00464AB0 / 0x00465860 - the save game -, 0x004F2630, 0x005AD980); the texture load has
+  nineteen callers, the two model lookups twenty-nine files that call them.
+- **Not measured**: the time a pause costs by caller, in play on the ground and on Windows. `[Timed]` on 0x00432860
+  with the spike watch would give it without new code. Unverified: that [mgr+0x30] is the IO thread's id (the
+  sampler shows the main thread taking the pause, so it is not the main thread's - derived).
+- Levers (proposals, nothing built): queue an actor's animation files and skin textures with its models, so the
+  main thread's lookups hit the cache (class B); or let a main-thread miss wait only for the lock the load needs
+  instead of every worker's running task (class B, needs the read of what the pause protects).
