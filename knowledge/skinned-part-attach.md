@@ -117,3 +117,41 @@ string lookup at attach time (unverified here; no source fetched).
   `RagdollPart.sliceFillMaterial`, "the material applied to the inside of
   this part when it gets sliced", kospy.github.io/BasSDK) or draws the cap
   two-sided; no per-side asset orientation to get right.
+
+## 2026-11-16: a skinned shape cloned alone shares its skin instance (OBVR)
+
+- **Read** (bytes of Oblivion.exe 1.2.416, llvm-objdump): NiSkinInstance's
+  clone `0x0072BFA0` (thiscall, one argument - the cloning process -, RET 4)
+  first calls `0x0072BCA0(cloning)`: it asks the cloning's map
+  (`0x0055E000(map, object, &out)`) for the root parent (`+0x10`) and for
+  each of the `data+0x40` bones in `+0x14`, and answers 1 at the first one
+  found, else 0. On 0 the clone returns `this` (`0x0072BFD3 jne`, `0x0072BFD5
+  mov eax,ebp`): no new instance, no new bone list.
+- **Read:** on 1 it builds one inline (`0x0072BFDC` to `0x0072C0B4`): 0x2C
+  bytes from `0x00401F00`, NiObject's constructor `0x007005D0` (vtable
+  0x00A3FCF8 then 0x00A7D61C, count 0, the object tally 0x00B3FD64
+  incremented), vtable `0x00A684CC`, `+0x08..+0x14` zero, `+0x18`
+  0xFFFFFFFF, `+0x1C..+0x28` zero; `0x0072BC00` (copy members: registers the
+  pair in the cloning's map through 0x00700770 -> 0x00452570, shares the
+  skin data `+0x08` and the partition `+0x0C` with one count more each);
+  `+0x10` the root parent's clone or the root parent; `+0x14` a list of
+  `count * 4` bytes from `0x00401F00`, each entry the bone's clone or the
+  bone.
+- **Measured** (OBVR harness, Linux, artifacts/hand-script/
+  dismember-limb-skin-nostage/20261116-091701): `0x00700900` on one
+  NiTriShape of a dead bandit's body (cuirass, trousers, the naked upper
+  body) gave a clone whose `+0xB8` was the original's instance, seven shapes
+  of seven. With an instance built as above and put into `+0xB8` through the
+  smart pointer assign `0x0075FA90`, the clone hung beside its original
+  (vt+0x84) and updated (0x00707610, 0x00707370) draws lit and textured from
+  its own bone pointers (runs 20261116-092527 and dismember-limb-skin-bare/
+  20261116-092651; no crash at the cut, at the game's end or at unload).
+- **Derived:** the engine means a skin to be cloned only with its skeleton
+  (a whole model, as the biped update and the head builders do); a second
+  draw of one skinned shape with other bones needs its own NiSkinInstance.
+  The partition is shared between instances by design (the per-actor
+  clones do the same), so the vertex buffers are not duplicated.
+- **A modern engine instead:** a skinned mesh component references a
+  shared mesh asset and owns its pose buffer; drawing the same mesh with
+  two poses is two components, no cloning rule to know (unverified here;
+  no source fetched).
