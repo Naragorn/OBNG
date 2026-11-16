@@ -193,7 +193,7 @@ only.
     InitAnimation for NPC"), 0x0041A610 ("Skeleton", "SpecialAnims") and 0x00475D80 (bone names).
   Derived: when an actor gets its 3D, its animation files and its body's textures are not among what the
   background loader queued for it; the main thread fetches them itself and stops the workers for each.
-- The pause has eleven callers in all (Rp: 0x00439FF0, 0x00439EB0, 0x00442890, 0x0043E0F0, 0x00444FB0 - the grid's
+- The pause has ten callers in all (Rp: 0x00439FF0, 0x00439EB0, 0x00442890, 0x0043E0F0, 0x00444FB0 - the grid's
   move -, 0x00465130 / 0x00464AB0 / 0x00465860 - the save game -, 0x004F2630, 0x005AD980); the texture load has
   nineteen callers, the two model lookups twenty-nine files that call them.
 - **Not measured**: the time a pause costs by caller, in play on the ground and on Windows. `[Timed]` on 0x00432860
