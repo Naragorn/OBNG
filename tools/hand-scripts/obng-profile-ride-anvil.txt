@@ -31,6 +31,14 @@ console-at placed CloseAllMenus
 console-at placed player.setangle z 258
 console-at placed tcl
 console-at placed player.setav speed 200
+# A mod of the Windows list hands the player a scroll some 20 to 30 s after the save loads (LoversHooker.esp, in the
+# list since 2026-11-16): the Book menu pauses the world, and it opened after the CloseAllMenus at "placed" - the four
+# rides of 2026-11-16 up to 15:39 flew a paused world behind it. Closed again at the ride's marks (OBVR runs the
+# console lines itself, the stick is not touched); a run's OBVR.log must show no menu open between "ride" and "done".
+console-at ride CloseAllMenus
+console-at ride-30 CloseAllMenus
+console-at ride-60 CloseAllMenus
+console-at ride-90 CloseAllMenus
 expect HandScript: finished
 expect Performance: capture armed, it starts in 45 seconds
 expect Performance: capture 1 started

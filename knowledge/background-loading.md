@@ -196,9 +196,47 @@ only.
 - The pause has ten callers in all (Rp: 0x00439FF0, 0x00439EB0, 0x00442890, 0x0043E0F0, 0x00444FB0 - the grid's
   move -, 0x00465130 / 0x00464AB0 / 0x00465860 - the save game -, 0x004F2630, 0x005AD980); the texture load has
   nineteen callers, the two model lookups twenty-nine files that call them.
-- **Not measured**: the time a pause costs by caller, in play on the ground and on Windows. `[Timed]` on 0x00432860
-  with the spike watch would give it without new code. Unverified: that [mgr+0x30] is the IO thread's id (the
+- **Measured 2026-11-16 (Linux, two rides, the addendum below)**: the pause by caller in a ride's long frames. Still
+  not measured: on Windows, and in play on the ground. Unverified: that [mgr+0x30] is the IO thread's id (the
   sampler shows the main thread taking the pause, so it is not the main thread's - derived).
 - Levers (proposals, nothing built): queue an actor's animation files and skin textures with its models, so the
   main thread's lookups hit the cache (class B); or let a main-thread miss wait only for the lock the load needs
   instead of every worker's running task (class B, needs the read of what the pause protects).
+
+## Addendum 2026-11-16 evening: the ride's long frames by their timed parts (measured)
+
+Runs `artifacts/shadow/obng-profile-ride-anvil/20261116-164227` and `-165629`: Linux, the Beyond at 75 Hz, the Dream
+Air's frame size, the Windows mod list (51 plugins, no Oblivion Walkers), OBNG.dll ffab3813 (69b0c97), OBVR.dll
+2ab65b6c, `tools/hand-scripts/obng-measure-baseline-loads.ini` ([Timed] on the pause 0x004322B0, the texture load
+0x00442890, the model lookups 0x00439FF0 / 0x00439EB0, the skin textures 0x0052D2C0, an actor's animation set up
+0x004E3490, the skin parts 0x0047AC20, the drain loop 0x00434020, TES's update 0x00444FB0, the grid's update
+0x004823D0, the process manager; a spike line for every update step over 20 ms). A flight of 120 s west from the
+Gold Road at speed 200 with collision off (`obng-profile-ride-anvil.txt`), the machine quiet (load under 1.6).
+
+| | run -164227 | run -165629 |
+|---|---:|---:|
+| world frames over 20 ms / over 40 ms (of about 8 200) | 20 / 6 (680 ms) | 22 / 6 (749 ms) |
+| update steps over 20 ms | 24 | 28 |
+| - TES's update 0x00444FB0 holds them (12-33 ms a call) | 10 (329 ms) | 10 (329 ms) |
+| - an actor's 3D made on the main thread (0x004E3490: 24-72 ms a call) | 2 (145 ms) | 5 (322 ms) |
+| - the render's frame function (22-44 ms; the wait for poses is in it) | 5 (139 ms) | 2 (75 ms) |
+| - none of the timed functions (20-73 ms) | 7 (214 ms) | 11 (258 ms) |
+| the pause 0x004322B0 inside those steps | 35 ms | 98 ms |
+
+- **The pause by caller** (the spike lines): 31.2 of a texture load's 39.1 ms, 12.7 of 27.4 ms, 16.6 of 26.3 ms; 68.7
+  of a model lookup's (0x00439FF0) 71.1 ms; in three more actor loads 0 to 3.5 ms. So the pause is most of a load
+  when a worker is in a long task, and nothing when the workers idle - as the read of 0x004322B0 has it. It is in
+  no step that TES's update holds (the grid's move 0x00444FB0 is among its callers; its long calls here were not
+  the pause).
+- **An actor's 3D without the pause still costs 24 to 53 ms** in six of the seven loads (0x004E3490 less the
+  pause; the seventh was a model lookup that was all pause): the skin parts 0x0047AC20 (19-62 ms a step) with the
+  skin textures under them (13-41 ms, of it texture loads of 11-39 ms). The lever "queue an actor's files with its models" takes these whole; the lever "let a miss wait only
+  for the lock it needs" takes the pause's share alone (35 and 98 ms of 145 and 322 ms).
+- **TES's update is the larger part by count** and is not read: ten calls of 12 to 33 ms a ride. The grid's update
+  0x004823D0 is not it (under 1.1 ms a call). What 0x00444FB0 does in those calls is the next read.
+- A fourth of the long steps hold none of the timed functions (20 to 73 ms): not named.
+- **Void**: the four rides of 2026-11-16 before these (12:17, 12:21, 12:27, 15:39) flew a paused world - a mod's
+  scroll (LoversHooker.esp) opened after the script's CloseAllMenus and stayed (97.5 % of their frames
+  `live_menu` in frames.csv). Their long frames were the first seconds after the placement. The script closes
+  menus at the ride's marks now.
+

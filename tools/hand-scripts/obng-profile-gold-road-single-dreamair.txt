@@ -39,6 +39,45 @@ ini Performance MaxRecords=262144
 ini Performance Sampler=1
 console-at ready cow Tamriel -33 -4
 console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+# Two mods of the Windows list open a box that pauses the world: Plunder.esp's question after every load, and
+# LoversHooker.esp's scroll some 20 to 30 s after the save loads. Nothing closed them here, and the four Gold Road
+# runs of 2026-11-16 (12:13, 15:43, 15:47, 16:16) drew a paused world behind the question for their whole length
+# (frames.csv: delivered_mode live_menu). Closed at every mark, before the mark's other console lines
+# (tools/re/capture-row.py says how many of a capture's frames were drawn behind a menu).
+console-at s1 CloseAllMenus
+console-at s1-y0 CloseAllMenus
+console-at s1-y-45 CloseAllMenus
+console-at s1-y-90 CloseAllMenus
+console-at s1-y-135 CloseAllMenus
+console-at s1-y180 CloseAllMenus
+console-at s1-y135 CloseAllMenus
+console-at s1-y90 CloseAllMenus
+console-at s1-y45 CloseAllMenus
+console-at s1-walk CloseAllMenus
+console-at s1-walked CloseAllMenus
+console-at s2 CloseAllMenus
+console-at s2-y0 CloseAllMenus
+console-at s2-y-45 CloseAllMenus
+console-at s2-y-90 CloseAllMenus
+console-at s2-y-135 CloseAllMenus
+console-at s2-y180 CloseAllMenus
+console-at s2-y135 CloseAllMenus
+console-at s2-y90 CloseAllMenus
+console-at s2-y45 CloseAllMenus
+console-at s2-walk CloseAllMenus
+console-at s2-walked CloseAllMenus
+console-at s3 CloseAllMenus
+console-at s3-y0 CloseAllMenus
+console-at s3-y-45 CloseAllMenus
+console-at s3-y-90 CloseAllMenus
+console-at s3-y-135 CloseAllMenus
+console-at s3-y180 CloseAllMenus
+console-at s3-y135 CloseAllMenus
+console-at s3-y90 CloseAllMenus
+console-at s3-y45 CloseAllMenus
+console-at s3-walk CloseAllMenus
+console-at s3-walked CloseAllMenus
+console-at done CloseAllMenus
 console-at s1 player.setangle z 90
 console-at s1-walked cow Tamriel -27 -3
 console-at s2 player.setangle z 90

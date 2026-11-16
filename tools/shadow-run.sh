@@ -69,7 +69,12 @@ any_shadow_on() {
 }
 
 test_ini="$plugins/OBNG-test.ini"
-trap 'rm -f "$test_ini"' EXIT
+# The machine's load beside the run: every 10 s the load average and the six busiest processes, kept as
+# machine-load.txt in the run's folder. A build or another game on the machine during a measuring run makes its
+# frames longer (2026-11-16: a Market run with a parallel build), and nothing in the capture says so.
+load_log="$(mktemp)"
+load_pid=""
+trap 'rm -f "$test_ini" "$load_log"; [[ -n "$load_pid" ]] && kill "$load_pid" 2>/dev/null' EXIT
 if [[ -n "$ini_file" ]]; then
 	cp "$ini_file" "$test_ini"
 else
@@ -100,11 +105,20 @@ memory_on=1  # OBNG.dll's default when the key is absent
 [[ "$(ini_value "$test_ini" Probe Memory)" =~ ^0+$ ]] && memory_on=0
 
 mkdir -p "$artifacts"
+( while true; do
+	printf '%s load %s | %s\n' "$(date +%H:%M:%S)" "$(cut -d' ' -f1-3 /proc/loadavg)" \
+		"$(ps -eo pcpu,comm --sort=-pcpu --no-headers | head -6 | awk '{printf "%s %s; ", $1, $2}')"
+	sleep 10
+done ) > "$load_log" 2>/dev/null &
+load_pid=$!
 ( cd "$obvr" && python3 tools/hand-script-run.py "$scenario" --headless --run-timeout "$run_timeout" \
 	--artifact-root "$artifacts" "$@" )
 harness=$?
 
+kill "$load_pid" 2>/dev/null
+load_pid=""
 run_dir="$(ls -dt "$artifacts"/*/* 2>/dev/null | head -1)"
+[[ -n "$run_dir" ]] && cp "$load_log" "$run_dir/machine-load.txt"
 if [[ -f "$game/OBNG.log" && -n "$run_dir" ]]; then
 	cp "$game/OBNG.log" "$run_dir/OBNG.log"
 fi

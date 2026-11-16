@@ -2347,7 +2347,20 @@ among them as the Bashed Patch's master, without its DLL - inert by the Walkers 
 "Own work" is the frame's length less the wait for poses and the running start's hold (`tools/re/capture-frames.py`,
 "busy"); on the road and the ride the two waits overlap, so the frame less the wait for poses is given instead.
 
-- **Outdoors the CPU is not the wall** (measured): under 5 ms of work a frame on the Gold Road and the ride. The
+**Corrected the same evening (the section below, "the places flown again"): most of this table does not stand.**
+- **The Gold Road's and the ride's rows are void.** Two mods of the Windows list open a box that pauses the world
+  (Plunder.esp's question after every load, LoversHooker.esp's scroll 20 to 30 s after the save loads); the Gold Road's
+  script closed neither and the ride's closed too early, so 97 % of those captures' frames were drawn behind a menu
+  (frames.csv, `delivered_mode live_menu`). With them the two bullets "Outdoors the CPU is not the wall" and "The
+  ride's long frames without Walkers" below are void as measurements; both places are measured again below.
+- **The Market's and the docks' rows count menu frames as frames** (27.6 % and 21.5 % of the capture, before the
+  script's first CloseAllMenus). Over the world's frames alone: the Market 31.7 % in time, the docks 78.5 %.
+- **The machine was slower at noon than four hours later, by 30 to 60 % of a frame's own work, in the same
+  configuration** (the Market's median 11.5 ms against 5.5 to 9.1 ms, the docks' 9.1 against 5.2; every module's
+  share longer). The cause is not found. So these rows are no "before" for anything measured later.
+
+- **Outdoors the CPU is not the wall** (void as measured here - a paused world; measured again below, where it
+  holds): under 5 ms of work a frame on the Gold Road and the ride. The
   Gold Road's slow frames (14.6 % of them, 22.7 ms) have 3.3 ms of own work and wait 16.5 ms for poses, with a
   pre-submit time of 12.9 ms against 7.1 ms in the frames shown once - derived: the GPU at the Dream Air's frame
   size in the directions that cost most; not proven (the pre-submit number is wall time between two markers,
@@ -2359,7 +2372,9 @@ among them as the Bashed Patch's master, without its DLL - inert by the Walkers 
   about 8 ms outside it (Oblivion.exe 5.8 with no function above 0.31 ms - 0x0070AC00, the heap's slow path
   0x00402480 0.28 -, ntdll 0.8, OBNG.dll 0.7, OBVR 0.6; `tools/re/pass-shares.py`). As on 2026-11-12 (P1: 41-72
   frames a second there; today 55): Walkers was not what made the town slow.
-- **The ride's long frames without Walkers** (frames over 20 ms in the capture's 130 s): 28, 13 and 8 (863, 466,
+- **The ride's long frames without Walkers** (void - a paused world, the frames are the first seconds after the
+  placement; the ride's real long frames: knowledge/background-loading.md, the addendum of the evening) (frames
+  over 20 ms in the capture's 130 s): 28, 13 and 8 (863, 466,
   422 ms; 4, 3 and 6 of them over 40 ms), against 37, 42 and 58 (1 340 to 2 688 ms) on 2026-11-13 with Walkers'
   DLL loaded (32 plugins then, an older OBVR - no clean before and after). 6 to 52 % of their samples wait for
   poses (frames held by the compositor after a late one); the rest is 320 to 420 ms a ride, in run -122701:
@@ -2392,6 +2407,113 @@ log says only "Probes: off".
 - **Fixed**: `installProbes` is called on every load; each part decides by its own switch (all of them did
   already). PluginEntryTest's "every probe off" case asserted the missing call and now asserts the call. OBNG.dll
   of this commit (md5 ffab3813) is in both games since 2026-11-16 (Nadi: "go 1"; the builds before it kept in
-  artifacts/backups: Linux 95ddf4c9, Windows db848452). **Not yet seen in a game**: no run was allowed after the
-  deploy; the proof is the routes' lines in the next OBNG.log ("Route voice player 0x006A9E00 ... on", the contact
-  pass, the far actors).
+  artifacts/backups: Linux 95ddf4c9, Windows db848452). **Seen in the Linux game the same afternoon** (run
+  obng-profile-market/20261116-153427 and the runs after it: with `[Probe] Memory=0` the log has "Route voice
+  player 0x006A9E00 ... on", the contact pass, the sound's commit, the far actors with the view rule and the
+  references' animation; the ride's [Timed] lines write). Not yet seen in the Windows game.
+
+## 2026-11-16 afternoon: the places flown again (measured, 20 Linux runs) - two mods' boxes had paused the world, the Gold Road's wall is the grass drawn four times
+
+Nadi: "go 1 2" - the town rows with the load fix, the ride with the loader timed, the Gold Road's GPU by step. Linux,
+the Beyond at 75 Hz (13.33 ms), the Dream Air's frame size (an eye of 4036x3376), the single pass, the Windows mod
+list (51 plugins, no Oblivion Walkers), OBNG.dll ffab3813 (69b0c97), OBVR.dll 6da2bcd1 for the first five runs and
+2ab65b6c from 16:08 on (OBVR's main, a build of f8dd562 by the OBVR session's word). All runs passed.
+
+### What was wrong with the measuring, found on the way
+
+- **A paused world measured as play.** Plunder.esp asks a question in a message box after every load;
+  LoversHooker.esp hands the player a scroll (the Book menu) 20 to 30 s after the save loads. Both pause the world;
+  OBVR draws it on behind the menu and the capture goes on (frames.csv: `delivered_mode live_menu`). The Gold Road's
+  script closed nothing; the ride's closed at "placed", before the scroll. Void: every Gold Road and ride run of
+  2026-11-16 up to 16:16 (97 % menu frames). The Market's and the docks' scripts close at every mark: 19 to 30 % of
+  their captures are menu frames, all before the first sweep. Earlier runs checked by their frames.csv (the Gold
+  Road 20261110-114256, the docks 20261111-092728, the Market 20261112-182234, the gate horde 20261114-215120, the
+  ride 20261113-145740): 97 to 100 % world frames; the first ride of 2026-11-13 (142230) has 42 % menu frames.
+- **Fixed**: `obng-profile-ride-anvil.txt` closes at the ride's marks and `obng-profile-gold-road-single-dreamair.txt`
+  at every mark; `tools/re/capture-row.py` (new: a table row a capture) counts the world's frames only and prints
+  the menu frames' share, and says "void" for a capture without world frames. `tools/re/capture-frames.py` still
+  counts every frame.
+- **The machine's load is not in a capture.** The Market run of 16:08 had a build of another session beside it (29
+  object files written in its window). `tools/shadow-run.sh` now writes `machine-load.txt` into the run's folder
+  (the load average and the six busiest processes every 10 s; the script's change is not yet run in the game). The
+  runs from 16:42 on had the peers' word for no builds and a load under 2.3.
+- **The GPU probe writes with a summary only**: `[Probe] GpuPasses=1` under `[Log] SummaryTimer=0` writes nothing
+  (the first Gold Road probe run, 15:47). `obng-measure-baseline-gpu.ini` has the timer on.
+
+### The Market District: the seven routes of the load fix are not seen in it; what the frame is over is what stands in the picture
+
+`obng-measure-baseline.ini` ("on": the routes as played) against `obng-measure-baseline-seven-off.ini` ("off": the far
+actors' whole update with the view rule, the references' animation rate, the actor shadows' rest, the sound's
+commit, the voice lines' decode and the contact pass as the load bug left them). World frames only; own work = the
+frame less the wait for poses and the running start, frames under 60 ms.
+
+| run (obng-profile-market/20261116-) | | in time | own work, ms (median / p95) | GPU before submit, ms (median / p95) | the 40 s stand at the end: own work / scene pass / GPU |
+|---|---|---:|---|---|---|
+| 120815 | off, at noon | 31.7 % | 11.5 / 21.8 | 9.5 / 15.6 | 11.5 / 7.3 / 9.4 |
+| 153427 | on, the first run after a reboot | 76.9 % | 7.5 / 13.4 | 7.8 / 10.9 | 7.8 / 6.2 / 8.0 |
+| 160847 | off, a build beside it | 74.0 % | 8.8 / 13.2 | 8.0 / 11.1 | 9.3 / 6.8 / 8.5 |
+| 161124 | on | 84.8 % | 5.3 / 10.2 | 6.3 / 8.5 | 5.3 / 4.6 / 6.3 |
+| 164601 | off | 88.3 % | 5.5 / 10.1 | 6.2 / 8.0 | 5.2 / 4.5 / 6.2 |
+| 164839 | on | 85.7 % | 4.9 / 9.8 | 6.0 / 8.4 | 4.4 / 4.0 / 5.9 |
+| 165115 | off | 64.0 % | 9.1 / 15.0 | 8.6 / 12.8 | 10.1 / 7.7 / 9.4 |
+| 165352 | on | 89.6 % | 4.2 / 8.9 | 5.5 / 7.6 | 4.0 / 3.8 / 5.5 |
+
+- **On against off, where the picture is the same** (the sweep's first directions, towards the market: 9.3 to 10.1 ms
+  of own work in all six runs from 16:08 on, the GPU 7.2 to 7.8 ms): no difference above half a millisecond.
+- **The runs differ by the stand**, 40 s looking one way: 4.0 to 5.3 ms in four runs, 9.3 to 10.1 ms in two (both
+  "off"), with the scene pass 3 ms longer and the GPU 3 ms longer in the same frames - more is drawn. What stands
+  there is not seen (the window's screenshot is black in the single pass). The routes that were off do not draw; the
+  actor shadows' rest saves 0.28 ms (S1, 2026-11-12). Derived: the crowd in view, not the routes; with three runs a
+  side not excluded that the routes' absence has a part.
+- **The docks**: "on" (153704) 85.2 % in time, 5.7 / 9.6 ms; "off" (161402) 87.5 %, 5.2 / 9.5 ms; at noon (121104,
+  "off") 78.5 %, 9.1 / 12.6 ms.
+- **Against 90 Hz** (derived: 11.1 ms less OBVR's running start of 3 ms leaves about 8 ms of own work): the light
+  views fit (4 to 5.5 ms); the views with the market's crowd are 1 to 2 ms over at the median (9.3 to 10.1 ms) and
+  5 to 7 ms over in the worst twentieth. The GPU fits in all of them (under 10 ms but for the heavy stands' p95).
+- **Noon's row stands apart and is not explained**: the same configuration as 164601 with twice the own work, every
+  module's share longer (inside the pass Oblivion.exe 3.44 against 2.58 ms, D3D9 1.33 against 1.14, OBNG.dll 1.30
+  against 1.12; outside it Oblivion.exe 5.80 against 4.15), the GPU half as long again. Between them: a reboot
+  (13:50), two OBVR builds, cold file caches for the mod list's 11 407 linked files in the day's first runs. Not
+  separated.
+
+### The ride towards Anvil, in a running world (runs obng-profile-ride-anvil/20261116-164227 and -165629)
+
+93.3 and 93.8 % of the world's frames in time; own work 1.5 ms at the median, 2.9 to 3.0 at p95, 5.2 to 5.4 at p99; the
+GPU before submit 5.0 ms (p95 7.6 to 7.7). 20 and 22 frames over 20 ms in the 120 s (680 and 749 ms), six over 40 ms
+in each. What they are, by the timed functions: knowledge/background-loading.md, the addendum of this evening - ten
+calls a ride of TES's update 0x00444FB0 at 12 to 33 ms (not read yet), two and five actors given their 3D on the
+main thread at 24 to 72 ms (the loader's pause 35 and 98 ms of it), seven and eleven steps over 20 ms that hold
+none of the timed functions.
+
+### The Gold Road: the CPU is not the wall, the GPU is, and it is FoliageAA's grass passes
+
+Runs under obng-profile-gold-road-single-dreamair/: 20261116-170021 (no probe), -170412 (`[Probe] GpuPasses`, one
+frame of four), then three with the Linux game's FoliageAA.ini changed for the run and put back (`OBNG_GAME_INI=...
+tools/with-game-ini.sh`; md5 b3823d51 before and after, a copy in artifacts/backups). FoliageAA (Nadi's plugin)
+draws every grass draw and every leaf draw once per pass, 4 passes each as installed in both games. The sweeps and
+walks at the three spots, world frames; GPU = SteamVR's time before submit.
+
+| FoliageAA | slow frames, all spots | spot 1 (-33 -4): slow / GPU median / p90 | spot 2 (-27 -3) | spot 3 (-21 -1) | the probe: tall grass, ms a frame (spot 2 / the run's last windows, at spot 3) | tree leaves (the same two) |
+|---|---:|---|---|---|---|---|
+| grass 4, leaves 4 (as installed), -170021 | 15.0 % | 1.5 % / 7.0 / 8.0 | 51.1 % / 12.4 / 14.5 | 5.6 % / 10.8 / 11.7 | - | - |
+| the same with the probe, -170412 | 18.8 % | 1.6 % / 6.6 / 7.9 | 42.9 % / 12.3 / 14.4 | 22.2 % / 11.1 / 12.4 | 5.7-7.1 / 8.9-9.0 | 1.8-3.3 / 0.4-0.5 |
+| grass 2, leaves 4, -171314 | 1.5 % | 1.3 % / 6.9 / 7.7 | 1.8 % / 9.9 / 10.4 | 1.4 % / 8.0 / 8.4 | 2.7-3.1 / 3.2-3.3 | 1.6-3.1 / 0.4 |
+| grass off, leaves 4, -170922 | 1.4 % | 1.1 % / 7.0 / 7.8 | 1.7 % / 8.1 / 8.9 | 1.5 % / 6.8 / 7.3 | 1.2-1.4 / 1.5-1.6 | 1.5-2.9 / 0.4 |
+| grass off, leaves 1, -171704 | 1.3 % | 1.1 % / 6.0 / 6.7 | 1.1 % / 6.1 / 6.5 | 1.9 % / 5.7 / 6.2 | 1.4 / 1.4-1.5 | 0.4-0.8 / 0.1 |
+
+- **The CPU**: 2.5 ms of own work at the median on the Gold Road, 5.9 at p95, 8.9 at p99 (the two runs as
+  installed) - in a running world this time.
+- **The grass's four passes are the slow frames**: 27 to 39 grass draws a frame cost the GPU 5.7 to 9.0 ms drawn
+  four times, 2.7 to 3.3 ms drawn twice, 1.2 to 1.6 ms drawn once. With two passes or one the Gold Road's slow
+  frames go from 15 to 19 % to 1.5 % at 75 Hz.
+- **Against 90 Hz** (derived from the 75 Hz runs; 11.1 ms for the application and the compositor's 0.6 ms): as
+  installed spot 2 does not fit (12.4 ms at the median) and spot 3 barely (10.8); with two grass passes spot 2 is
+  at 9.9 ms (p90 10.4), without them 8.1, without the leaves' passes too 6.1. Not measured: Nadi's Windows game
+  (its Direct3D 9 is not DXVK's) and the Dream Air's 90 Hz itself.
+- **What it costs in the picture** is FoliageAA's own measure: the tall grass changed twice as much between frames
+  without the passes (its README, measured in a headset 2026-11-03). Two passes were not looked at in a headset.
+- The levers, none built (the plugin is its own project): `[Grass] Passes=2` in both games' FoliageAA.ini; the
+  passes chosen by the GPU's time (4 where it fits, fewer where not); OBVR's dynamic resolution (off in these
+  runs) takes the same milliseconds from every pixel instead.
+- The earlier line "the pixels are not what the GPU time follows" (2026-11-10: twice the pixels a quarter more on
+  the Gold Road) fits: the cost is the grass's and the leaves' fill, drawn several times.
