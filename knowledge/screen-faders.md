@@ -22,8 +22,10 @@ Marks: **read** (in the EXE or a file), **measured** (in the game),
   0x005730B0 under the menu root: the faders are drawn in the 2D pass. (read)
 - **0x00663070**(1) starts fader 0 over 1.0 s; with 0 it ends it through
   0x00572EC0 (read in the decompile, `re/export/rea-all/functions/0x663070.c`).
-  Its caller is not read. (unverified: which script function or package
-  asks for the bars)
+  Its caller is not read in the EXE; measured 2026-11-16 (OBVR harness
+  letterbox-no-fade): the console's **DisablePlayerControls** turns fader 0 on
+  (opacity 1.00 within 3 s) and EnablePlayerControls off again - the bars come
+  with the player's controls taken away.
 - Fader 2 is the one the main loop asks about after a load (0x0040D50F...).
   (read)
 
