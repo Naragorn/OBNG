@@ -60,7 +60,9 @@ struct Host {
 	// A thread that drives the summary every second, for runs where no
 	// per-frame detour does (ShadowRecorder); false if it could not start.
 	bool (*startSummaryTimer)(const ShadowSettings& settings);
-	// The counting probes (Probes.cpp); returns how many detours were made.
+	// The counting probes (Probes.cpp) and, with them, every route, probe and timed call that reads its own switch
+	// from the INI; called on every load, each part decides by its switch. Returns how many of the counting probes'
+	// detours were made.
 	uint32_t (*installProbes)(const ShadowSettings& settings);
 	// The stereo draw's route (RouteStereoDraw.cpp); returns how many detours were made.
 	uint32_t (*installRouteStereoDraw)(const RouteSettings& settings);

@@ -407,7 +407,9 @@ void TestLoadProbesOff() {
 	g_fake = &fake;
 	ResetForTest();
 	Check(Load(Game(), kHost), "loads");
-	Check(fake.probeInstalls == 0 && fake.Logged("Probes: off"), "no probe installer call, said so");
+	// The installer also carries every route, probe and timed call that reads its own switch from the INI (voice
+	// decode, contact dedup, the far actors ...): with every counted probe off it must still run, once.
+	Check(fake.probeInstalls == 1 && fake.Logged("Probes: off"), "the installer still runs once for what reads its own switch, and the log says the probes are off");
 
 	Fake timer;
 	timer.iniSettings.shadow.callCounters = false;

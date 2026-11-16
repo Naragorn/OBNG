@@ -2327,3 +2327,68 @@ run again at once).
 - Candidates, the largest first: the character controllers (4.9 ms; the proxies' integrate is one of them, the
   rest not broken down), the skeleton updates (5.3 ms, already the flat run), the loop's own 4.1 ms (the AI's
   packages and combat, untimed), 0x005FAAE0 (2.2 ms, not looked at).
+
+## 2026-11-16: the baseline without Oblivion Walkers (measured, six Linux runs) - and a load bug that had switched seven routes off
+
+Nadi: Walkers' DLL and plugin out for now, it distorts the game's performance; "go 1" for a baseline of normal play.
+Linux, the Beyond at 75 Hz (a period of 13.33 ms, the running start 3 ms), the Dream Air's frame size (an eye of
+4036x3376), the single pass, the Windows mod list (`tools/run-with-windows-mods.py`: 51 plugins added; OblivionWalkers.esp
+among them as the Bashed Patch's master, without its DLL - inert by the Walkers session's read of it), OBNG.dll of
+6100eb6, OBVR main f56b14e, `tools/hand-scripts/obng-measure-baseline.ini` (the Windows game's OBNG.ini of 2026-11-15
+15:20, its values). OBVR's capture and render sampler; all six runs passed.
+
+| place (run under artifacts/shadow/) | frames in time | shown again (SteamVR) | the frame's own work, ms (in time / near / slow frames) | scene pass, ms | pre-submit GPU, ms (median / p95) |
+|---|---:|---:|---|---:|---|
+| Market District (obng-profile-market/20261116-120815) | 41.9 % | 37.2 % | 8.0 / 10.2 / 14.6 | 7.4 | 9.6 / 15.0 |
+| Anvil's docks (obng-profile-anvil-docks/20261116-121104) | 80.5 % | 16.0 % | 7.1 / 9.6 / 11.9 | 4.0 | 7.5 / 8.8 |
+| Gold Road, three spots (obng-profile-gold-road-single-dreamair/20261116-121347) | 78.2 % | 15.8 % | under 5 (the frame less the wait for poses: 4.6) | 3.1 | 8.1 / 14.2 |
+| the ride towards Anvil (obng-profile-ride-anvil/20261116-121744, -122123, -122701) | 91.4-94.3 % | 3.6, 2.6, 2.1 % | under 5 (4.9) | 2.1-2.4 | 5.4 / 7.9 |
+
+"Own work" is the frame's length less the wait for poses and the running start's hold (`tools/re/capture-frames.py`,
+"busy"); on the road and the ride the two waits overlap, so the frame less the wait for poses is given instead.
+
+- **Outdoors the CPU is not the wall** (measured): under 5 ms of work a frame on the Gold Road and the ride. The
+  Gold Road's slow frames (14.6 % of them, 22.7 ms) have 3.3 ms of own work and wait 16.5 ms for poses, with a
+  pre-submit time of 12.9 ms against 7.1 ms in the frames shown once - derived: the GPU at the Dream Air's frame
+  size in the directions that cost most; not proven (the pre-submit number is wall time between two markers,
+  knowledge/vr-compositor-pacing.md). The cut that would decide it: `[Probe] GpuPasses` on the Gold Road, or the
+  same run at a lower eye resolution.
+- **In a town the CPU is the wall** (measured): the Market District's slow frames (39.1 % of them) carry 14.6 ms of
+  own work, the docks' (8.9 %) 11.9 ms - against 11.1 ms at 90 Hz. In the Market the frame is 7.4 ms of scene pass
+  (Oblivion.exe 3.4, D3D9/DXVK 1.3, OBNG.dll 1.3, Oblivion Frame Fixes 0.4, OBVR 0.3; no function above 0.2 ms) and
+  about 8 ms outside it (Oblivion.exe 5.8 with no function above 0.31 ms - 0x0070AC00, the heap's slow path
+  0x00402480 0.28 -, ntdll 0.8, OBNG.dll 0.7, OBVR 0.6; `tools/re/pass-shares.py`). As on 2026-11-12 (P1: 41-72
+  frames a second there; today 55): Walkers was not what made the town slow.
+- **The ride's long frames without Walkers** (frames over 20 ms in the capture's 130 s): 28, 13 and 8 (863, 466,
+  422 ms; 4, 3 and 6 of them over 40 ms), against 37, 42 and 58 (1 340 to 2 688 ms) on 2026-11-13 with Walkers'
+  DLL loaded (32 plugins then, an older OBVR - no clean before and after). 6 to 52 % of their samples wait for
+  poses (frames held by the compositor after a late one); the rest is 320 to 420 ms a ride, in run -122701:
+  ntdll 28 %, Oblivion.exe 19 %, msvcrt 18.5 %, d3dx9_27.dll 16 % - a texture made on the main thread
+  (knowledge/background-loading.md, the addendum of 2026-11-16). `tools/re/long-frame-chains.py` named the cull
+  walk 0x0070AB40 < 0x0070E1A0 for half of them: void, the eip of those samples is in vrclient.dll and the stack
+  words are stale.
+- **Not measured**: the loader's pause by caller. `obng-measure-baseline-loads.ini` has the [Timed] lines for it
+  (the pause 0x004322B0, the texture load, the two model lookups, their callers); run -122123 flew it with the
+  summary off and run -122701 with it on, and neither wrote a timed line - see the bug below.
+
+### The bug: with every counted probe off, seven routes were not installed (read, measured; fixed)
+
+`Load` (plugin/src/PluginEntry.cpp) called the host's `installProbes` only when a counted probe or the memory probe
+was on. That installer (Plugin.cpp, `InstallProbesSideEffect`) also installs everything that reads its own switch
+from the INI: the routes VoiceDecode, ContactDedup, SoundCommit, the far actors with the view rule
+(`InstallActorFarUpdate`), ReferenceAnimEvery, the actor shadows' rest, PassListKeep and the receiver filter, the
+INI-switched probes and the [Timed] calls. With `[Probe] Memory=0` and no counter they were silently left out - the
+log says only "Probes: off".
+
+- **On Windows since 2026-11-15 15:20** (read: the game's OBNG.ini against `OBNG.ini.bak-2026-11-15-perf` - Memory,
+  ProcessManager, CollisionWrites and CodePatches set from 1 to 0 that afternoon; the Windows OBNG.log of 2026-11-16
+  08:38 has "Probes: off" and no line of voice decode, contact dedup or the far actors). The Linux game's own
+  OBNG.ini has Memory=1 and was not hit.
+- **Today's six runs flew that state** (measured: no line of those routes in their logs; the log of
+  obng-profile-gate-guards/20261114-164228 has them). So the table above is the Windows game as it stands, not
+  the routes as meant: the far actors' lower rate (1.2 to 4.7 ms a frame at the docks, 2026-11-11), the view rule
+  (about 0.6 ms), the references' animation (0.26 ms), the actor shadows' rest and the voice lines' decode off the
+  main thread were all off. The town rows are owed again with the fix.
+- **Fixed**: `installProbes` is called on every load; each part decides by its own switch (all of them did
+  already). PluginEntryTest's "every probe off" case asserted the missing call and now asserts the call. OBNG.dll
+  of this commit is built (md5 ffab3813) and **not deployed** - Nadi was playing on Linux; Windows waits for his go.

@@ -126,11 +126,14 @@ bool Load(const ExtenderInterfaceHead& xse, const Host& host) {
 			host.log("Probe: NiAVObject::Update timing - %u of 1 detours made", host.installActorUpdateTiming(s));
 		}
 	}
+	// Always called: the installer also carries every route, probe and timed call that reads its own switch from the
+	// INI (voice decode, contact dedup, sound commit, the far actors, [Timed] ...). Left out with every counted probe
+	// off until 2026-11-16, which switched those routes off without a word.
 	const uint32_t probesAsked = ProbesAskedFor(s);
+	const uint32_t probesMade = host.installProbes(s);
 	if (probesAsked == 0 && !s.memoryProbe) {
 		host.log("Probes: off");
 	} else {
-		const uint32_t probesMade = host.installProbes(s);
 		host.log("Probes: %u of %u call counters made, memory %s", probesMade, probesAsked, s.memoryProbe ? "on" : "off");
 	}
 	// Last, so its first summary finds the probes and the route in place.
