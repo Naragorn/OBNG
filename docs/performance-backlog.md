@@ -2391,4 +2391,7 @@ log says only "Probes: off".
   main thread were all off. The town rows are owed again with the fix.
 - **Fixed**: `installProbes` is called on every load; each part decides by its own switch (all of them did
   already). PluginEntryTest's "every probe off" case asserted the missing call and now asserts the call. OBNG.dll
-  of this commit is built (md5 ffab3813) and **not deployed** - Nadi was playing on Linux; Windows waits for his go.
+  of this commit (md5 ffab3813) is in both games since 2026-11-16 (Nadi: "go 1"; the builds before it kept in
+  artifacts/backups: Linux 95ddf4c9, Windows db848452). **Not yet seen in a game**: no run was allowed after the
+  deploy; the proof is the routes' lines in the next OBNG.log ("Route voice player 0x006A9E00 ... on", the contact
+  pass, the far actors).
