@@ -46,3 +46,19 @@ its files), **derived**, **unverified**.
   filled once per skeleton file, would answer "where is its head" for
   every creature and every mod's; how modern engines map bone roles was
   not looked up for this note.
+
+## The human skeleton: the neck carries the arms (added 2026-11-17 from OBVR)
+
+- **Measured (OBVR's `[Debug] BodyTreeProbe` on the player's third-person
+  skeleton, harness run body-probe 20261011-171140, "Body tree:" lines):**
+  "Bip01 Spine2" has four children; "Bip01 Neck" three - "Bip01 Neck1",
+  "Bip01 L Clavicle" and "Bip01 R Clavicle"; "Bip01 Neck1" one, "Bip01 Head"
+  (0.6 units above the neck, the head 5.7 above that). The arms hang on the
+  neck, not on the chest.
+- **Measured (OBVR harness bodies-give 20261117-131551, eye picture at the
+  mark "pressed"):** a rotation written to "Bip01 Neck" after the animation
+  swung both arms with the head - one lifted, one folded behind the back.
+  Whatever turns a head alone has to turn "Bip01 Neck1" or the head bone.
+- **Derived:** this is 3ds Max Biped's own parenting; a role table per
+  skeleton (above) would name "the bone that carries only the head".
+  **Unverified** for the creature skeletons: only the human one was read.
