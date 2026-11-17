@@ -19,6 +19,15 @@
 - Here: this is the project's purpose - profile runs under the harness with the original against the rebuilt path, the same scene and settings for both.
 - Write each measured result where the project keeps its findings (the spec or the knowledge files), with the commit, so the next change can be compared against it.
 
+## Running the harness (OBVR's)
+
+- The harness is OBVR's runner, `../OBVR/tools/hand-script-run.py`; the rules for it live in `../OBVR/AGENTS.md` ("Running the harness on Linux") and `../OBVR/docs/hand-script-harness.md` ("Without SteamVR", "Several runs at once", "A run that measures runs alone"). Read them before a run. The short of it, since 2026-11-17:
+- `--no-steamvr`: SteamVR does not have to run; OBVR loads a stand-in runtime. Its headset is the Pimax Dream Air by default (4036x3376 an eye, 72 Hz, IPD 63 mm); `--headset beyond` is the Bigscreen Beyond (2568x2568, 75 Hz) of the runs before that date.
+- `--parallel` (with `--headless --no-steamvr`): the run takes a slot of its own - a mirror of the game folder and its own Proton prefix - beside the player's game and beside other runs, with no busy/free. `--plugin FILE` puts a file under test into the mirror's plugin folder (a DLL, an INI); everything else under `Data` is the player's, linked, and still needs a deploy. A deploy and a run without `--parallel` are announced with busy/free as before.
+- A run that measures runs alone (Nadi, 2026-11-17): pass `--exclusive` for every load, timing or performance run - it waits until no other harness run and no other game is running and holds the others off until it ends. A scenario with `ini Performance Enabled=1` is exclusive by itself. An exclusive run fails when a game is started beside it.
+- A run without SteamVR tests nothing SteamVR does itself (compositing, overlays shown, frame statistics, reprojection), and its performance numbers are not comparable with a run with SteamVR.
+- Here: `--plugin <build>/OBNG.dll` (and `--plugin <its>.ini`) tests a build of OBNG in a slot without deploying it. The original-against-rebuilt comparisons are measurements: both sides `--exclusive`, the same headset and rate for both, and both with SteamVR or both without - never one of each.
+
 ## Reading Oblivion.exe
 
 Every function of the EXE is already decompiled in `re/export/rea-all/functions/0x<address>.c` (see `re/README.md`; on the shared disk only, not in Git). Grep it before starting a Ghidra or REA session; start one only for what the files do not answer (assembly, cross-references, data).
