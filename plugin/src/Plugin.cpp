@@ -29,6 +29,7 @@
 #include "VoiceProbe.h"
 #include "CodePatchProbe.h"
 #include "ContactDedup.h"
+#include "FileFindCache.h"
 #include "SceneOrderCheck.h"
 #include "SoundCommit.h"
 #include "TimedCalls.h"
@@ -354,6 +355,7 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 		obng::plugin::InstallVoiceProbe(path, &Log);
 		obng::plugin::InstallCodePatchProbe(path, &Log);
 		obng::plugin::InstallContactDedup(path, &Log);
+		obng::plugin::InstallFileFindCache(path, &Log);  // FindFile's entry (not with a [Timed] line on 0x00431020)
 		obng::plugin::InstallSceneOrderCheck(path, &Log);
 		obng::plugin::InstallSkinnedCensus(path, &Log);
 		obng::plugin::InstallSoundCommit(path, &Log);  // two call sites inside the sound update, no entry

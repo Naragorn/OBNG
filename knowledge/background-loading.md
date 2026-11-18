@@ -305,3 +305,34 @@ ms of it:
 - Levers (proposals, nothing built): FindFile's answers kept (above; class A, it is the far cells' LOD queue's whole
   cost); the purge off the crossing's frame (class B; 1 to 19 ms in every second
   or third crossing). The map's scan is not worth one (1 to 2 ms).
+
+## 2026-11-18: FindFile's answers kept (`[Route] FileFindCache`, class A, built, on in both games)
+
+`src/engine/io/FileFindCacheLogic.h` (the decisions and the table, every flow in `tests/FileFindCacheLogicTest.cpp`)
+and `plugin/src/FileFindCache.cpp` (the entry detour on 0x00431020, an SRW lock: FindFile is called from more than
+one thread). A call's key is the finder, the flags, the mask and the path's bytes; only relative paths of asset
+kinds are kept (nif, dds, kf, lod, cmp, spt, wav, mp3, ogg, lip, tga, egm, egt, tri, fnt, tex, dlodsettings) - INIs,
+text, logs, paths without an extension, absolute and ".\" paths are asked every time. 1 the route, 2 the check.
+
+Measured (Linux without SteamVR, the stand-in Beyond, `--exclusive`, the Windows mod list, OBNG.dll 3e1ae91e, the ride;
+`tools/hand-scripts/obng-measure-file-find-{check,off,on}.ini`):
+
+| run (obng-profile-ride-anvil/) | mode | FindFile calls | asked of the OS | from the cache | time in the OS's answers | mismatches |
+|---|---|---:|---:|---:|---:|---:|
+| 20261118-223542 | check | 33 867 | 19 210 (every kept kind) | - | 1 993 ms | **0** |
+| 20261118-224245 | route | 33 775 | 8 039 | 11 079 (4 750 found, 6 329 not) | 992 ms + 2.9 ms for the hits | 0 |
+| 20261118-224944 | route | 33 018 | 7 669 | 10 692 | 935 ms + 2.9 ms | 0 |
+
+- **The gate**: 19 210 kept-kind calls compared with the original's answer, 0 mismatches (the check run's harness
+  verdict is FAIL for another reason: a game started beside it after "ride-90", not through the runner's locks -
+  its timing is void, its comparison is not).
+- **What it saves: about 1 s of the OS's file queries a run** (1 993 against 935 to 992 ms), a hit costing 0.26 us
+  against 103 us asked. The calls the cache answers are repeats - the same textures and meshes asked again while
+  the save loads and actors get their 3D.
+- **What it does not save: the cell crossing.** 0x004BD430's LOD queue at a crossing 6.3 to 6.4 ms with the cache, 6.4
+  to 6.5 ms without (two runs each, ten crossings each); the step 35.0 to 36.0 against 34.2 to 34.4 ms. Every
+  crossing asks for the new cells' LOD files - paths never asked before -, so the first answer is the OS's. The
+  lever for the crossing is a lookup that does not ask the OS per file at all (a listing of the loose files under
+  Data made once, the archives' own in-memory lookup 0x0042EBA0 as it is), not built.
+- Not measured: Windows (the OS's answer there is likely much cheaper - unverified; the route's own cost, a lock and
+  a hash, is the same).
