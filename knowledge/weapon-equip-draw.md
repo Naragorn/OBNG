@@ -107,3 +107,26 @@ For a rebuild: anything that reads a freshly attached model in the frame of
 its attach must go through the local transforms from a node it trusts, or
 wait for the update; a derived cache (world transform, bound) needs a
 "valid since" the reader can ask.
+
+## The engine's hang from the sheath to the hand (read and measured 2026-11-18, OBVR)
+
+Read in Oblivion.exe 1.2.0.416: HighProcess's virtual +0x150 (0x00656270,
+the same entry in MiddleHighProcess's vtable) is the hang - thiscall
+(toHand, biped, animData, actor), ret 10h. It gets the hand's node (+0x118,
+0x0064B110: HighProcess +0xFC "Weapon", or the left hand's "Torch" node
+through +0x11C while byte +0xF4 is set - the bow) and the sheath's (+0x124),
+takes the sheath's first child (NiNode GetAt 0x00405790) and AttachChild's
+it (vtable +0x84) to the hand, sets its local turn by weapon type, then
+calls into the anim data (0x00476410) and the actor (0x005EF9B0). HighProcess
++0x115 is the "on the hand" byte (setter +0x308 0x0064AD40); the re-hang
+after a model change (slot +0x400, 0x00656C90) hangs by it. The node cache
+0x006541A0: +0xFC Weapon, +0x100 Torch, +0x104 Bip01 L ForearmTwist, +0x108
+sheath (Back/SideWeapon by type), +0x10C Quiver, +0x110 ArrowBone. The
+player passes biped 0x006600D0 (+0x5C8 first person, +0x104 third) and anim
+data 0x0065D750 (+0x5CC first, 0x004D8370 third).
+
+Measured (OBVR harness): equip, set +0x115, call the hang for both persons
+in the same frame - the weapon is on the hand in the take's frame (3 frames
+before), and the engine plays no Equip group for it. A scabbard ("Scb", the
+sheath's second child) stays on the hip. For a rebuild: the attach is one
+call; the draw animation is optional.
