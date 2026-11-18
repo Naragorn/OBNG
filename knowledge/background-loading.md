@@ -240,3 +240,44 @@ Gold Road at speed 200 with collision off (`obng-profile-ride-anvil.txt`), the m
   `live_menu` in frames.csv). Their long frames were the first seconds after the placement. The script closes
   menus at the ride's marks now.
 
+
+## Addendum 2026-11-18: the grid's move with the player 0x00444FB0, by its callees (read, measured)
+
+What it is (read in the rea-all pseudocode, 0x00444FB0, called once a frame from the update step 0x0040D800 with the
+player's position; names are proposals): while the player stays in his cell it only queues the next row of cells
+for the background loader as he nears the edge (0x004BE090, read `bBackgroundCellLoads` 0x00B08960). When he
+crosses into a new cell it pauses the IO workers (0x00432860), shifts both grids - the near cells' (GridCellArray
+slot 0x10, 0x00482090) and the far cells' (GridDistantArray slot 0x10, 0x00483B60; both from their vtables
+0x00A3D79C / 0x00A3D7E0, found through RTTI) -, brackets them with Havok calls (0x0088D1D0, 0x0088BD60), attaches
+the new cells (0x00444340), purges (0x0043FC20, below), and resumes the workers (0x00432890). When the new cells are
+not loaded yet, 0x00440C40 starts a fade (0x0057ACC0 with 0.1) and renders a frame of its own (0x0040D4D0).
+
+Measured: four rides (`artifacts/shadow/obng-profile-ride-anvil/20261118-140656`, `-141027`, `-142518`, `-142849`;
+Linux without SteamVR, the stand-in Beyond at 75 Hz, `--exclusive`, the Windows mod list without Oblivion Walkers,
+OBNG.dll ffab3813, `tools/hand-scripts/obng-measure-grid-move.ini`: [Timed] on every callee a five-byte jump can
+take). Every ride crosses ten cells; every crossing is one update step of 26 to 83 ms, the grid's move 12.3 to 57.5
+ms of it:
+
+| part (per crossing, from the spike lines) | ms |
+|---|---:|
+| the cells' attach 0x00444340 | 6.8 - 25.0 |
+| - of it its own callees timed: the cell attach 0x004441A0, 0x0043FED0, 0x004D5BD0, the Ni updates 0x00707610 / 0x00707980 | 1 - 4 (once 17) |
+| - the rest, untimed: the far grid's update 0x00483D60 (by the render sampler: 4 to 7 of 6 to 13 samples a ride under 0x00444340 have it below, most with eip in 0x007B3A40) | the remainder |
+| the purge 0x0043FC20 (in every second to third crossing) | 1 - 42 |
+| - of it `MemoryPool::FreeUnusedPagesForAllPools()` 0x00402740 (its string) | 1.2 - 19.4 |
+| - of it 0x004A25F0 | 2.2 - 5.5 |
+| the two grids' shift (0x00482090, 0x00483B60) | 1 - 3.4 |
+| Havok (0x0088D1D0, 0x0088BD60) | under 5 |
+| the render frame inside the step (the fade's own frame, 0x00440C40, called once a ride: 0.3 ms) | 3 - 10, once 35 |
+
+- **The far grid's update 0x00483D60** (read): for every far cell it walks, a cell that leaves goes to 0x007B3A40,
+  which walks **every bucket of a global map** (0x00B2C340 the bucket count, 0x00B2C344 the buckets, 0x00B2C348 the
+  count) and drops the cell from the lists of every entry that holds it (0x00802A60 a linear search, 0x007AA860,
+  0x00803210, a free). Derived: the cost grows with the cells left times the map's size. What the map holds is not
+  read (its callees lie at 0x0080xxxx; that it is SpeedTree's is unverified). Not yet timed by itself: the third
+  round of the INI (F38-F41) has it.
+- **The purge 0x0043FC20** (read): under the critical section 0x00B35380, with the renderer's lock 0x00977C50, it
+  frees the memory pools' unused pages on the main thread at a cell crossing.
+- Levers (proposals, nothing built): the map's lookup by cell instead of a scan of every bucket (class A: the same
+  removals in the same order); the purge off the crossing's frame (class B). Neither before 0x00483D60's own time is
+  measured.
