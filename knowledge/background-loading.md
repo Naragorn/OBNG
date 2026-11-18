@@ -282,10 +282,26 @@ ms of it:
   "DistantLOD\\%s_%i_%i.lod" with sprintf and asks the file system 0x00B33A04 (vtable +4) whether the file exists
   before it makes the load task 0x004BCAC0, or makes the task 0x004BCA90; then 0x004BCB70 and the IO manager's queue
   ([0x00B33A10] vtable +0x3C). So the main thread allocates, formats and looks a file up for every far cell that
-  comes into the grid, and the loading itself goes to the IO thread. Which of those steps holds the 120 to 160 us is
-  not measured (the next round: 0x004BCE00, 0x004BCAC0 / 0x004BCA90, 0x004BCB70, the file lookup).
+  comes into the grid, and the loading itself goes to the IO thread.
+- **Measured, the fourth round** (rides `20261118-221839`, `-222208`; the INI's F32-F40): **the file lookup is all of
+  it.** `FileFinder::FindFile` 0x00431020 (FileFinder's vtable 0x00A36414 slot 1, by RTTI; the object at 0x00B33A04)
+  takes 4.7 to 11.7 ms of 0x004BD430's 4.8 to 11.9 ms a crossing. Everything else in it is under 0.2 ms a crossing
+  (the task 0x004BCE00, the LOD file task 0x004BCAC0, 0x004BCB70, 0x004BD230, 0x004BDE80, 0x004F0DA0; 0x004BCA90 was
+  not called - the byte 0x00B09DB0 is set in this install).
+- **FindFile is slow everywhere, not only here**: 13 400 and 13 600 calls a run (placement, loads and the ride),
+  1.44 and 1.46 s in all - 105 to 107 us a call. Of the render sampler's 771 samples with a return address inside
+  0x00431020-0x004311FF on the stack, 752 (97.5 %) have their eip in Wine's ntdll.dll (0x7BEF0000): the time is the
+  operating system's file query that FindFile makes through FileFinder's vtable slot 0x0C (`call eax` at
+  0x004310BF; which import it reaches is not read - the EXE imports GetFileAttributesA, GetFileAttributesExA,
+  FindFirstFileA, CreateFileA). Derived: under Proton a loose-file query costs about 0.1 ms; **on Windows it is not
+  measured** and is probably much cheaper (unverified), so the size of this lever on Nadi's Windows game is open.
+- Lever (proposal, nothing built, class A): FindFile's answers kept by path - the Data folder does not change while
+  the game runs (unverified for a mod that writes files it reads back) - so each path is asked of the OS once. Gate:
+  the shadow run, the original's answer against the kept one for every call. Gain on Linux: the 5 to 12 ms of every
+  crossing and most of 1.4 s a run in loads; on Windows to be measured first (the same INI and `[Timed]` line in the
+  Windows game's OBNG.ini).
 - **The purge 0x0043FC20** (read): under the critical section 0x00B35380, with the renderer's lock 0x00977C50, it
   frees the memory pools' unused pages on the main thread at a cell crossing.
-- Levers (proposals, nothing built): the far cells' LOD queued from a worker or spread over the frames after the
-  crossing (class B; 5 to 13 ms a crossing); the purge off the crossing's frame (class B; 1 to 19 ms in every second
+- Levers (proposals, nothing built): FindFile's answers kept (above; class A, it is the far cells' LOD queue's whole
+  cost); the purge off the crossing's frame (class B; 1 to 19 ms in every second
   or third crossing). The map's scan is not worth one (1 to 2 ms).
