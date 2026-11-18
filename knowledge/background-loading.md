@@ -271,13 +271,21 @@ ms of it:
 | the render frame inside the step (the fade's own frame, 0x00440C40, called once a ride: 0.3 ms) | 3 - 10, once 35 |
 
 - **The far grid's update 0x00483D60** (read): for every far cell it walks, a cell that leaves goes to 0x007B3A40,
-  which walks **every bucket of a global map** (0x00B2C340 the bucket count, 0x00B2C344 the buckets, 0x00B2C348 the
-  count) and drops the cell from the lists of every entry that holds it (0x00802A60 a linear search, 0x007AA860,
-  0x00803210, a free). Derived: the cost grows with the cells left times the map's size. What the map holds is not
-  read (its callees lie at 0x0080xxxx; that it is SpeedTree's is unverified). Not yet timed by itself: the third
-  round of the INI (F38-F41) has it.
+  which walks every bucket of a global map (0x00B2C340 the bucket count, 0x00B2C344 the buckets, 0x00B2C348 the
+  count) and drops the cell from the lists of the entries that hold it; a cell that comes goes to 0x004BD430.
+- **Measured, the third round** (rides `20261118-220557`, `-220929`, the INI's F38-F41): per crossing 0x00483D60 takes
+  6.4 to 14.6 ms, of it **0x004BD430 5.4 to 13.3 ms** (156 calls a crossing, 1 712 in eleven; 120 to 160 us a call),
+  the map's scan 0x007B3A40 only 0.9 to 2.4 ms (670 calls a crossing, 2 us each) - the sampler's eips in 0x007B3A40
+  had pointed the wrong way. 0x00802A60 0.1 ms.
+- **0x004BD430, a far cell given its LOD** (read; the name a proposal): allocates a task 0x004BCE00 with two new
+  nodes (0x0075FA90 twice), then either (the byte 0x00B09DB0 set; which setting it is, is not read) formats
+  "DistantLOD\\%s_%i_%i.lod" with sprintf and asks the file system 0x00B33A04 (vtable +4) whether the file exists
+  before it makes the load task 0x004BCAC0, or makes the task 0x004BCA90; then 0x004BCB70 and the IO manager's queue
+  ([0x00B33A10] vtable +0x3C). So the main thread allocates, formats and looks a file up for every far cell that
+  comes into the grid, and the loading itself goes to the IO thread. Which of those steps holds the 120 to 160 us is
+  not measured (the next round: 0x004BCE00, 0x004BCAC0 / 0x004BCA90, 0x004BCB70, the file lookup).
 - **The purge 0x0043FC20** (read): under the critical section 0x00B35380, with the renderer's lock 0x00977C50, it
   frees the memory pools' unused pages on the main thread at a cell crossing.
-- Levers (proposals, nothing built): the map's lookup by cell instead of a scan of every bucket (class A: the same
-  removals in the same order); the purge off the crossing's frame (class B). Neither before 0x00483D60's own time is
-  measured.
+- Levers (proposals, nothing built): the far cells' LOD queued from a worker or spread over the frames after the
+  crossing (class B; 5 to 13 ms a crossing); the purge off the crossing's frame (class B; 1 to 19 ms in every second
+  or third crossing). The map's scan is not worth one (1 to 2 ms).
