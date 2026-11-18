@@ -2517,3 +2517,13 @@ walks at the three spots, world frames; GPU = SteamVR's time before submit.
   runs) takes the same milliseconds from every pixel instead.
 - The earlier line "the pixels are not what the GPU time follows" (2026-11-10: twice the pixels a quarter more on
   the Gold Road) fits: the cost is the grass's and the leaves' fill, drawn several times.
+
+### Shipped (2026-11-18): FoliageAA at two passes for the grass and the leaves
+
+Nadi: the new beta ships FoliageAA with two passes. Read in the Windows game's FoliageAA.ini (written 2026-11-16 23:14):
+`[Grass] Passes=2`, `[Leaves] Passes=2`, both `Method=supersample`. The Linux game's had 4 and 4 and is now the same
+file (md5 f09fe295; the one before in artifacts/backups/FoliageAA.ini.linux-before-beta-2passes), so the harness
+measures what ships. Measured above: grass 2 with leaves 4. **Not measured**: leaves at 2 (derived from the leaves'
+rows: their 0.4-3.3 ms at 4 passes falls about by half), the Gold Road at 2 and 2 at the Dream Air's 72/90 Hz, and the
+picture at two passes in a headset. FoliageAA's own default in its repository is still 4 (its project, not changed
+from here).
