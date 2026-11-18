@@ -130,3 +130,14 @@ in the same frame - the weapon is on the hand in the take's frame (3 frames
 before), and the engine plays no Equip group for it. A scabbard ("Scb", the
 sheath's second child) stays on the hip. For a rebuild: the attach is one
 call; the draw animation is optional.
+
+## The hang back to the sheath (read and measured 2026-11-18, OBVR)
+
+The same hang with toHand 0 takes the hand node's first child onto the sheath
+(0x00656270 at 0x0065630C; nothing on the hand, nothing done at 0x00656345)
+[R]. Called with the on-hand byte +0x115 cleared in the frame a weapon is let
+go at a holster, first and third person, the weapon is off the hand in that
+frame (it was 7 frames later, at the Unequip group's Detach key) and the
+group's own hang at Detach finds the hand empty [M, OBVR
+weapon-release-holster.txt]. For a rebuild: the sheathe, like the draw, is
+one call; the animation is optional.

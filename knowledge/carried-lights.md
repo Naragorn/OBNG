@@ -73,3 +73,18 @@ The values match xOBSE's GameForms.h, consulted through DeepWiki.
   record's "off by default", the reference's fire flag, and whether the holder is an actor.
 - **One rule for both hands.** What the off hand holds while a weapon is drawn should come from
   the hands' actual use. Today it comes from a list of weapon types.
+
+## A dropped torch's flames taken off by a script (measured 2026-11-18, OBVR)
+
+The Unofficial Oblivion Patch gives the torch the script UOPTorchFix,
+`Begin OnLoad RemoveFlames` (read in Unofficial Oblivion Patch.esp): vanilla
+drops a torch that shows flames without a light, and UOP takes the flames off
+as its 3D loads - in the frame after the 3D is hung into the cell (OBVR's
+[Debug] FlameTrace: the flames-off 0x004DE1C0 called from 0x00505057, inside
+the script command RemoveFlames 0x00505020) [M]. Flames put on a 3D already
+in the scene need what AddFlames (0x00504F70) does after 0x004E26F0:
+NiAVObject UpdateProperties 0x00707610, UpdateEffects 0x00707980 and
+Update(0.0, 1) 0x00707370 - without them the new shapes have no render state
+and the renderer faults [R, M]. For a rebuild: a light reference's "burning"
+is one state (fire flag, flames, light); a patch that fixes one part of a
+state the engine keeps in three places breaks whoever sets the others.
