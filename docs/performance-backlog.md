@@ -2555,3 +2555,10 @@ the long render frame in a third of the crossings (12 - 29 ms, not split), 0x006
 the player's list walk), 0x004D5BD0 (1 - 4, twice 11 - 17), the far grid's update (1 - 5: the archive walk and the
 map's scan 0x007B3A40), 0x004A25F0 (0.7 - 4.6), the heap's allocations (1 - 2.5). The step's other ~9 ms are OBVR's
 wait for the headset (derived), not a lever.
+
+## 2026-11-19: ArchiveLooseCheck - the archives' loose file `_stat` answered from the listing
+
+knowledge/background-loading.md "the archive lookup's cost is the loose file check's _stat". Class A, verified (4 686
+answers, 0 mismatches). The archive lookup 176 -> 18 ms a ride, the grid's move at a crossing 11.1 -> 9.6 ms mean
+(longest 18.7 -> 13.8 ms). On in both games (OBNG.dll 6621bdb6). The folder-hash map is dropped (at most 6 ms a ride).
+0x00665260's 3.4 ms a crossing are the quest target's door route search 0x0065D8D0 (class B or C, not cheap).

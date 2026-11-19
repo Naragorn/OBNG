@@ -1,14 +1,14 @@
 #include "LooseFileList.h"
 
+#include "LooseListing.h"
+
 #include <windows.h>
 
 #include <intrin.h>
-#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <string>
-#include <vector>
 
 #include "engine/io/LooseFileListLogic.h"
 
@@ -35,11 +35,6 @@ enum class Mode { kOff, kRoute, kCheck };
 void* g_original = nullptr;
 Mode g_mode = Mode::kOff;
 LogFn g_log = nullptr;
-std::atomic<const lfl::Listing*> g_listing{nullptr};
-char g_root[MAX_PATH] = {};
-double g_buildMs = 0.0;
-std::atomic<unsigned> g_twins{0};  // folders' names with a case twin, marked ambiguous
-
 struct Counts {
 	std::atomic<unsigned long long> calls{0}, notReady{0}, refused{0}, archive{0}, loose{0}, looseInFolder{0}, notFound{0}, mismatches{0};
 	std::atomic<unsigned long long> answeredTicks{0}, originalTicks{0};
@@ -48,54 +43,6 @@ Counts g_counts;
 std::atomic<unsigned> g_mismatchLines{0};
 unsigned __int64 g_summaryTsc = 0;
 LARGE_INTEGER g_summaryQpc{};
-
-// Every file and folder under root, by its path relative to root; a folder's own tree after it (no recursion: an
-// explicit stack, at most 64 levels deep).
-void ListTree(const std::string& root, lfl::Listing* listing) {
-	std::vector<std::string> pending{std::string()};
-	while (!pending.empty()) {
-		const std::string relative = std::move(pending.back());
-		pending.pop_back();
-		const std::string pattern = root + "\\" + (relative.empty() ? std::string() : relative + "\\") + "*";
-		WIN32_FIND_DATAA found;
-		HANDLE find = FindFirstFileExA(pattern.c_str(), FindExInfoBasic, &found, FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH);
-		if (find == INVALID_HANDLE_VALUE) {
-			continue;
-		}
-		std::vector<std::string> names;
-		do {
-			const char* name = found.cFileName;
-			if (std::strcmp(name, ".") == 0 || std::strcmp(name, "..") == 0) {
-				continue;
-			}
-			names.emplace_back(name);
-			const std::string path = relative.empty() ? std::string(name) : relative + "\\" + name;
-			listing->Add(path.c_str());
-			const bool folder = (found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
-			if (folder && std::count(path.begin(), path.end(), '\\') < 64) {
-				pending.push_back(path);
-			}
-		} while (FindNextFileA(find, &found));
-		FindClose(find);
-		for (const std::string& twin : lfl::CaseTwins(names)) {
-			listing->MarkAmbiguous((relative.empty() ? twin : relative + "\\" + twin).c_str());
-			g_twins.fetch_add(1, std::memory_order_relaxed);
-		}
-	}
-}
-
-DWORD WINAPI BuildListing(void*) {
-	LARGE_INTEGER t0{}, t1{}, frequency{};
-	QueryPerformanceCounter(&t0);
-	auto* listing = new lfl::Listing();  // kept for the process's life: answers are read from it on every thread
-	ListTree(g_root, listing);
-	listing->Seal();
-	QueryPerformanceCounter(&t1);
-	QueryPerformanceFrequency(&frequency);
-	g_buildMs = static_cast<double>(t1.QuadPart - t0.QuadPart) * 1000.0 / static_cast<double>(frequency.QuadPart);
-	g_listing.store(listing, std::memory_order_release);
-	return 0;
-}
 
 UInt32 Original(void* self, char* path, UInt32 flags, UInt32 mask) {
 	const unsigned __int64 t0 = __rdtsc();
@@ -156,7 +103,7 @@ UInt32 Check(void* self, char* path, UInt32 flags, UInt32 mask, const lfl::Listi
 // arguments, callee-cleaned like the original's RET 0x0C.
 UInt32 __fastcall Slot(void* self, void*, char* path, UInt32 flags, UInt32 mask) {
 	g_counts.calls.fetch_add(1, std::memory_order_relaxed);
-	const lfl::Listing* listing = g_listing.load(std::memory_order_acquire);
+	const lfl::Listing* listing = LooseListing();
 	if (listing == nullptr) {
 		g_counts.notReady.fetch_add(1, std::memory_order_relaxed);
 		return Original(self, path, flags, mask);
@@ -197,9 +144,8 @@ void InstallLooseFileList(const char* iniPath, LogFn log) {
 		return;
 	}
 	g_log = log;
-	const DWORD rootLength = GetCurrentDirectoryA(sizeof(g_root), g_root);
-	if (rootLength == 0 || rootLength >= sizeof(g_root)) {
-		log("Route: loose file list - the working folder could not be read; not routed");
+	if (!StartLooseListing(log)) {
+		log("Route: loose file list - no listing; not routed");
 		g_mode = Mode::kOff;
 		return;
 	}
@@ -208,15 +154,10 @@ void InstallLooseFileList(const char* iniPath, LogFn log) {
 		g_mode = Mode::kOff;
 		return;
 	}
-	HANDLE thread = CreateThread(nullptr, 0, &BuildListing, nullptr, 0, nullptr);
-	if (thread != nullptr) {
-		SetThreadPriority(thread, THREAD_PRIORITY_BELOW_NORMAL);
-		CloseHandle(thread);
-	}
 	g_summaryTsc = __rdtsc();
 	QueryPerformanceCounter(&g_summaryQpc);
 	log("Route: loose file list (%s) - the files under \"%s\" listed on a thread of their own; every call before that goes to the original",
-	    g_mode == Mode::kRoute ? "route" : "check", g_root);
+	    g_mode == Mode::kRoute ? "route" : "check", LooseListingRoot());
 }
 
 void LogLooseFileListSummary() {
@@ -237,11 +178,11 @@ void LogLooseFileListSummary() {
 	g_summaryQpc = qpc;
 	const double answeredMs = ticksPerMs > 0.0 ? static_cast<double>(answeredTicks) / ticksPerMs : 0.0;
 	const double originalMs = ticksPerMs > 0.0 ? static_cast<double>(originalTicks) / ticksPerMs : 0.0;
-	const lfl::Listing* listing = g_listing.load(std::memory_order_acquire);
+	const lfl::Listing* listing = LooseListing();
 	g_log("Route: loose file list (%s) - %llu calls; answered: archive %llu, loose %llu, under a search folder %llu, not found %llu (%.3f ms); to the "
 	      "original: not ready %llu, refused %llu (%.3f ms); mismatches %llu; the listing %zu entries, %u case twins (%s, %.0f ms)",
 	      g_mode == Mode::kRoute ? "route" : "check", calls, archive, loose, inFolder, notFound, answeredMs, notReady, refused, originalMs, mismatches,
-	      listing != nullptr ? listing->Size() : 0, g_twins.load(std::memory_order_relaxed), listing != nullptr ? "ready" : "not ready", g_buildMs);
+	      listing != nullptr ? listing->Size() : 0, LooseListingTwins(), listing != nullptr ? "ready" : "not ready", LooseListingBuildMs());
 }
 
 }  // namespace obng::plugin

@@ -27,6 +27,7 @@
 #include "FileFindCache.h"
 #include "PoolPageRelease.h"
 #include "LooseFileList.h"
+#include "ArchiveLooseCheck.h"
 #include "SceneOrderCheck.h"
 #include "SoundCommit.h"
 #include "TimedCalls.h"
@@ -152,6 +153,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogFileFindCacheSummary();
 	LogPoolPageReleaseSummary();
 	LogLooseFileListSummary();
+	LogArchiveLooseCheckSummary();
 	LogVoiceDecodeSummary();
 	LogActorCensusSummary();
 	LogActorFarUpdateSummary();

@@ -476,3 +476,52 @@ or more):
   pacing, and it ends where the engine's work begins.
 - What a crossing costs the frame, then: the grid's move (8 - 18 ms) plus, in a third of the crossings, a long render
   frame (12 - 29 ms). At 90 Hz (11.1 ms) the move alone misses a frame every crossing.
+
+## 2026-11-19 afternoon: the archive lookup's cost is the loose file check's _stat; ArchiveLooseCheck (measured)
+
+Runs `20261119-122033` and `-122357` (`tools/hand-scripts/obng-measure-crossing-cheap.ini`: the callees of the archive
+lookup and of 0x00665260), same setup as above (OBNG.dll 9394cb4b).
+
+- **The archive lookup 0x0042EA60 is the loose file check's `_stat`** (measured): 171 ms a ride inclusive, of which the
+  check 0x0042C1D0 holds 157 ms over 3 055 records (about 51 us each under Proton). The folder search 0x0042CE40 is
+  5.8 ms over 119 561 calls, the name hash 0x006FA1B0 30 ms. A folder-hash map over the archives (the idea of the
+  morning) would have saved at most the 6 ms of the folder search; it was not built.
+- **0x0042C1D0** (read, disassembly; independently SkyBSA's `research/CheckFileIsOverridden.h`,
+  github.com/DavidJCobb/oblivion-SkyBSA): `__thiscall(Archive*, BSAEntry* record, char* path) -> bool`, RET 8. Unless
+  `bInvalidateOlderFiles` (byte 0x00B04460) is set and the record's +8 bit 31 ("checked") is clear it returns 0 at
+  once; otherwise it `_stat64i32`s (0x00983754) "Data\" + path; a loose file newer than the archive's time
+  (+0x180/+0x184) zeroes the record's offset (+0xC &= 0x80000000) and returns 1 (the archive does not have it);
+  else bit 31 is set and 0 returned. Called by FolderContainsFile 0x0042D000 at a record's first find.
+- **SkyBSA** (installed in both games, 1.1.0) patches `0x0042C283 -> 0x0042C295` (a found loose file always wins,
+  read in its `LooseFilesAlwaysOverride.cpp`) and `0x0042EAEB` (the lookup no longer tries the last archive that
+  answered first); the `_stat` stays. BSA redirection (ArchiveInvalidation Invalidated!, a dummy BSA) does not touch
+  the check either. `bInvalidateOlderFiles=0` would drop the `_stat` but stop every loose file from overriding an
+  archive, SkyBSA's patch included (derived: the patch sits behind the switch).
+- **ArchiveLooseCheck (class A)**: the check's entry answered from LooseFileList's listing of the game folder when no
+  loose file or folder of that name exists (the `_stat` would fail: bit 31 set, 0); a listed name, a kind the listing
+  does not answer for or a path under a case twin goes to the original (with SkyBSA's patch). Check run
+  `20261119-123339`: 4 686 listing answers compared with a `_stat` of its own, 0 mismatches. Off against on
+  (`obng-measure-archive-off.ini` / `-on.ini`, runs `-123702`, `-124348` off, `-124025`, `-124712` on; OBNG.dll
+  6621bdb6, OBVR.dll unchanged between them):
+
+| | off | on |
+|---|---:|---:|
+| the archive lookup 0x0042EA60, a ride | 176 / 170 ms | 17 / 18 ms |
+| FolderContainsFile 0x0042D000, a ride | 163 / 157 ms | 5.0 / 6.2 ms |
+| the far cells' LOD queue 0x004BD430, a ride | 131 / 135 ms | 12 / 11 ms |
+| the cells' attach 0x00444340, a ride | 217 / 218 ms | 90 / 103 ms |
+| the grid's move at a crossing, mean (10 crossings) | 11.1 / 11.1 ms | 9.6 / 9.6 ms |
+| the grid's move at a crossing, longest | 17.5 / 18.7 ms | 13.8 / 12.3 ms |
+| the archive lookup at a crossing | 1.3 - 3.7 ms | under 3 % of the step |
+
+  The route answered 4 543 calls of a ride in 2.6 ms; 347 records with a loose file of that name (and 24 refused)
+  still went to the original (65 - 71 ms a ride). The crossing's whole step did not fall in these runs (28.3 / 25.9
+  -> 29.1 / 27.1 ms mean): the long render frames inside the step (12 - 38 ms in 3 - 4 of 10 crossings in the on runs)
+  are the noise, not the route.
+- **0x00665260's 3.4 ms are one call of 0x0065D8D0** (measured): 0x00665260 is the player's active quest targets
+  update (xOBSE: PlayerCharacter +0x5F4 `activeQuest`, +0x5F8 `activeQuestTargets`), cheap every frame (15 ms
+  exclusive over 72 579 calls). At a crossing its rebuild 0x00529A20 calls 0x0065D8D0 per target, and that holds
+  the 3.3 - 4.2 ms. 0x0065D8D0 resolves the target ref (0x0052B440) and runs 0x0065D880 -> 0x0068B030 -> 0x0068AB20
+  with the pathing's settings saved and restored around it; read as the search for the route through doors to the
+  target (what the compass points at; derived from the calls, the name unverified). Not a cheap lever: a frame later
+  or on a thread is class B, keeping the answer is class C.
