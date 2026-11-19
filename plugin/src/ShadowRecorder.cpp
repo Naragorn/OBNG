@@ -28,6 +28,7 @@
 #include "PoolPageRelease.h"
 #include "LooseFileList.h"
 #include "ArchiveLooseCheck.h"
+#include "TextureLockSkip.h"
 #include "SceneOrderCheck.h"
 #include "SoundCommit.h"
 #include "TimedCalls.h"
@@ -154,6 +155,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogPoolPageReleaseSummary();
 	LogLooseFileListSummary();
 	LogArchiveLooseCheckSummary();
+	LogTextureLockSkipSummary();
 	LogVoiceDecodeSummary();
 	LogActorCensusSummary();
 	LogActorFarUpdateSummary();

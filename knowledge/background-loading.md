@@ -557,3 +557,29 @@ line on RenderScene 0x0040C830 took the entry OBVR's single pass hooks, so singl
   allocation 0x00401AF6 / 0x00401D92 sites.
 - The device was created with behaviour flags 0x54 (HARDWARE_VERTEXPROCESSING | PUREDEVICE | MULTITHREADED;
   measured, OBVR.log "device behavior flags").
+
+## 2026-11-19 afternoon: TextureLockSkip - the prepare without the lock for a ready texture (measured)
+
+`[Route] TextureLockSkip` (plugin/src/TextureLockSkip.cpp, src/engine/render/TextureLockSkipLogic.h): a 6-byte jump
+at 0x0077ACB8 inside the prepare; a texture with its renderer data (+0x24) goes straight to the data's use at
+0x0077AD1C, one without takes the original's way under the lock (0x0077ACBF). All three writers publish +0x24 as
+their last step (read: 0x0076134B, 0x007615A8, the end of 0x00774550). Runs `20261119-141855` (check), `-142219`,
+`-142906` (off), `-142543`, `-143230` (on); `obng-measure-texture-lock-*.ini`, OBNG.dll 9b8ef08d, all PASS.
+
+- Check: 11 102 335 prepares read the pointer without the lock and then under it, 0 mismatches. No prepare in any of
+  the runs met a texture without its data (the render thread never created one through the prepare; derived: the
+  creations of the loads go through the precache 0x00763560).
+- Off against on, the ride's render frames (measured, the [Timed] spike lines from 10 ms; frames.csv for the frames):
+
+| | off | on |
+|---|---:|---:|
+| render frames of 14 ms or more | 8 / 8 | 1 / 2 |
+| render frames of 20 ms or more | 3 / 4 | 0 / 0 |
+| the longest render frame | 52.4 / 26.9 ms | 15.8 / 16.0 ms |
+| the prepare a run | 782 / 781 ms | 356 / 358 ms |
+| frames over 20 ms (frames.csv) | 37 / 41 | 27 / 29 |
+| frames over 30 ms | 12 / 12 | 5 / 7 |
+| frame mean / p99 | 13.41 / 14.9 - 15.3 ms | 13.38 / 14.7 ms |
+
+  The longest frames of a ride (81 - 95 ms) are untouched: they are the crossing's update step (the grid's move,
+  0x00665260's door search, the attach), not the render.

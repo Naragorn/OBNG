@@ -2571,3 +2571,11 @@ precache 0x00763560 reads a texture file and runs D3DX under it: 326 ms of waits
 in the long frames. Fix proposed: look at the texture's renderer data before taking the lock (class B: a lock-free
 read of a pointer the creator publishes last; the pixel-data path's publish still to read). Second: the heap lock
 0x00B32B80, 349 ms of short waits a ride.
+
+## 2026-11-19: TextureLockSkip on
+
+The long render frames at crossings are gone in the ride (render frames of 20 ms or more 3 - 4 -> 0, the longest
+27 - 52 -> 16 ms); class B, check clean over 11.1 million prepares. On in both games (OBNG.dll 9b8ef08d). Waits for
+Nadi's look in the headset (textures at a crossing: no flicker, nothing missing) before it is accepted. Left of a
+crossing: the update step's grid move and its parts (attach, 0x00665260, 0x004D5BD0, 0x004A25F0), the heap lock's
+short waits (349 ms a ride).

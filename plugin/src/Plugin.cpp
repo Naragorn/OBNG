@@ -33,6 +33,7 @@
 #include "PoolPageRelease.h"
 #include "LooseFileList.h"
 #include "ArchiveLooseCheck.h"
+#include "TextureLockSkip.h"
 #include "SceneOrderCheck.h"
 #include "SoundCommit.h"
 #include "TimedCalls.h"
@@ -360,6 +361,7 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 		obng::plugin::InstallContactDedup(path, &Log);
 		obng::plugin::InstallFileFindCache(path, &Log);  // FindFile's entry (not with a [Timed] line on 0x00431020)
 		obng::plugin::InstallLooseFileList(path, &Log);  // FileFinder's search slot's entry 0x00431800
+		obng::plugin::InstallTextureLockSkip(path, &Log);  // a patch inside the texture prepare 0x0077AC90 (its entry stays free)
 		obng::plugin::InstallArchiveLooseCheck(path, &Log);  // the archives' loose file check's entry 0x0042C1D0 (not with a [Timed] line on it)
 		obng::plugin::InstallPoolPageRelease(path, &Log);  // the purge's and the release's entries (not with [Timed] lines on 0x0043FC20 / 0x00402740)
 		obng::plugin::InstallSceneOrderCheck(path, &Log);
