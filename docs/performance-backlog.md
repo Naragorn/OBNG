@@ -28,7 +28,7 @@ exclusive runs); the sections of 2026-11-19 below and knowledge/background-loadi
 
 | # | Item | Measured | Next step |
 |---|---|---|---|
-| 7 | The water pre-pass's texture load 0x00442890 (TES::CreateTextureImage) on the render thread | up to 36 - 58 ms in one call (whole runs; whether inside the ride or at loads is not split) | split by the ride's marks; if in the ride, the load moves to the loader like any texture |
+| 7 | The main thread's waits on the background loader: the loader pause 0x004322B0 (8 calls, 26 - 78 ms in one step at 119.9 s of the ride) and CreateTextureImage 0x00442890 loading a texture on the main thread with the loader paused (2 calls, 13 - 20 ms at 106.9 s) | 53 - 93 ms steps, the ride's longest, both runs at the same places (runs 20261119-145710 / -150035; knowledge/background-loading.md) | time the pause's callers (0x00444FB0, 0x00464AB0, 0x00465130, 0x00465860, 0x005AD980, the model loads) and log CreateTextureImage's paths; sample the loader thread during a pause to see the job it finishes |
 | 8 | One 252 ms stall in the present 0x007D7210 (run 20261119-132209, once) | once in eight runs | watch for it again; unexplained |
 | 9 | The GPU: the Gold Road's grass drawn four times, the Market District's eye pass (9 ms) | 2026-11-16 and 2026-11-12 sections | after the crossing |
 | 10 | Loads only: 6 143 FindFile calls for INIs a load (about 0.8 s), the first world frame's scripts (MOO, 130 - 160 ms) | 2026-11-19, 2026-10-25 (OBVR) | after the frame items |
@@ -48,14 +48,10 @@ exclusive runs); the sections of 2026-11-19 below and knowledge/background-loadi
 
 ### Harness and tools
 
-- `--headset beyond` runs rendered 4036x3376 an eye (OBVR.log "single-pass stereo's frame side by side 8072x3376"),
-  the Dream Air's size, not the Beyond's 2568x2568. Cause (OBVR-Additionals, 2026-11-19): the slot copies the live
-  OBVR.ini, whose `[Render] GameResolutionWidth/Height` (4036x3376, Nadi's Dream Air) overrode the stand-in headset.
-  Fixed in OBVR 2d22f2f (the runner sets both to 0 under `--no-steamvr` unless the scenario sets them; measured there:
-  2568x2568, single pass 5136x2568). The 75 Hz was real. Every OBNG ride up to 2026-11-19 with `--headset beyond` ran
-  at 8072x3376: the comparisons stand (both sides alike), the absolute render numbers are the Dream Air's size. The
-  local OBVR checkout that `tools/shadow-run.sh` uses was pulled to 2d22f2f on 2026-11-19 after the TextureLockSkip
-  runs: every later `--headset beyond` run renders the Beyond's size, so compare it only with runs of the same size.
+- `obng-profile-ride-anvil.txt` pins `[Render] GameResolutionWidth/Height=4036x3376` itself: the ride renders the
+  Dream Air's eye on purpose, also after OBVR's stand-in fix 2d22f2f (pulled 2026-11-19), so the rides stay comparable
+  (measured: runs 20261119-145710 / -150035 still 8072x3376). Other scenarios with `--headset beyond` now render
+  2568x2568; compare those only with runs of the same size.
 - `tools/re/timed-spikes.py` reads only `frame:UpdateStep` spike lines; render-frame spikes were read ad hoc. Add a
   `--spike NAME` option.
 - Never time RenderScene 0x0040C830's entry: OBVR's single pass hooks it, and a timed line there stops single pass

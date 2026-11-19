@@ -583,3 +583,36 @@ their last step (read: 0x0076134B, 0x007615A8, the end of 0x00774550). Runs `202
 
   The longest frames of a ride (81 - 95 ms) are untouched: they are the crossing's update step (the grid's move,
   0x00665260's door search, the attach), not the render.
+
+## 2026-11-19 late afternoon: the ride's longest frames after TextureLockSkip (measured)
+
+Runs `obng-profile-ride-anvil/20261119-145710` and `-150035`: Linux without SteamVR, the stand-in Beyond at 75 Hz,
+`--exclusive`, the Windows mod list, OBNG.dll 9b8ef08d with every route as shipped (TextureLockSkip on),
+`tools/hand-scripts/obng-measure-long-frames.ini` (the update step's spikes over 20 ms with the suspects timed). The
+eye is 4036x3376 on purpose: `obng-profile-ride-anvil.txt` pins `[Render] GameResolutionWidth/Height` itself, so OBVR's
+stand-in size fix 2d22f2f does not change this ride and its numbers stay comparable with the earlier rides.
+
+A step's length comes in whole headset periods (13.33 ms: 40.0, 53.3, 66.7, 80.0, 93.4 ms), since OBVR waits for the
+next one. Of the ride's 120 s, the steps of 30 ms or more fall on the same places in both runs (seconds after the
+`ride` mark):
+
+| s | step, run 1 / 2 | inside it (timed) |
+|---:|---:|---|
+| 106.9 | 66.7 / 53.3 ms | `0x00442890` (TES::CreateTextureImage, string read in it) 2 calls, 20.0 / 13.3 ms, the longest 17.6 / 8.4; the loader pause 3.6 / 4.6 ms |
+| 110.8 | 39.9 / 40.0 ms | one script run `0x005169A0` of 24.9 / 24.8 ms |
+| 119.9 | 93.2 / 53.1 ms | the loader pause `0x004322B0` 8 calls, 78.1 / 26.3 ms, the longest 18.5 / 18.8 |
+| 53.6 | 49.9 ms (run 1) | `0x00444FB0` 29.3 ms |
+| 40.9, 59.0 | 40.0 ms (run 2) | nothing timed (the render 3.4 ms); not explained |
+
+The load before the `ride` mark (placing the player) has frames up to 107 ms; they are a load, not the ride.
+
+Read (the decompiles, the call sites seen): `0x004322B0` is the main thread's pause of the background loader. It
+raises the pause count, waits with `Sleep(1)` until no loader thread is pausing already, then wakes each loader thread
+through its semaphore and waits for it with `WaitForSingleObject(INFINITE)`. The main thread therefore waits until
+every loader thread has finished the job it is on: a texture file read and D3DX, under the renderer's lock, up to 24 ms
+(knowledge above). `0x00432860` calls it when the caller is not the loader's thread; `0x00432890` resumes. Callers:
+the model load `0x00439EB0` and `0x00439FF0` on a cache miss, CreateTextureImage `0x00442890` on a cache miss (it loads
+the texture on the main thread through `0x00701E00` and `0x0075FA90`), `0x00444FB0`, `0x00464AB0`, `0x00465130`,
+`0x00465860` and `0x005AD980`. Which of them paused 8 times at 119.9 s, and which texture CreateTextureImage loads at
+106.9 s, is not known yet (unverified). An older reading of the sampler blamed the grid move for the 81-95 ms frames
+of the TextureLockSkip runs; this split shows that was wrong. Those frames are the pause and the texture load.
