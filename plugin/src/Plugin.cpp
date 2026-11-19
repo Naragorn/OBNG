@@ -36,6 +36,7 @@
 #include "TextureLockSkip.h"
 #include "LoaderWaitProbe.h"
 #include "BodyTexturePreload.h"
+#include "SlowCallProbe.h"
 #include "SceneOrderCheck.h"
 #include "SoundCommit.h"
 #include "TimedCalls.h"
@@ -366,6 +367,7 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 		obng::plugin::InstallTextureLockSkip(path, &Log);  // a patch inside the texture prepare 0x0077AC90 (its entry stays free)
 		obng::plugin::InstallLoaderWaitProbe(path, &Log);  // the loader pause 0x004322B0, its IO wait 0x00431F50, CreateTextureImage 0x00442890 (not with [Timed] lines on them)
 		obng::plugin::InstallBodyTexturePreload(path, &Log);  // the loading screen's call of the loader pause at 0x005ADADC (no entry)
+		obng::plugin::InstallSlowCallProbe(path, &Log);  // the script line 0x005169A0 and the source texture 0x00701E00 (not with [Timed] lines on them)
 		obng::plugin::InstallArchiveLooseCheck(path, &Log);  // the archives' loose file check's entry 0x0042C1D0 (not with a [Timed] line on it)
 		obng::plugin::InstallPoolPageRelease(path, &Log);  // the purge's and the release's entries (not with [Timed] lines on 0x0043FC20 / 0x00402740)
 		obng::plugin::InstallSceneOrderCheck(path, &Log);

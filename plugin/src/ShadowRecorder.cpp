@@ -31,6 +31,7 @@
 #include "TextureLockSkip.h"
 #include "LoaderWaitProbe.h"
 #include "BodyTexturePreload.h"
+#include "SlowCallProbe.h"
 #include "SceneOrderCheck.h"
 #include "SoundCommit.h"
 #include "TimedCalls.h"
@@ -160,6 +161,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogTextureLockSkipSummary();
 	LogLoaderWaitSummary();
 	LogBodyTexturePreloadSummary();
+	LogSlowCallSummary();
 	LogVoiceDecodeSummary();
 	LogActorCensusSummary();
 	LogActorFarUpdateSummary();

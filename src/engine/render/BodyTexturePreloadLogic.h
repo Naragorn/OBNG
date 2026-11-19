@@ -60,6 +60,37 @@ inline bool PathOf(const char* texture, std::size_t length, char* out, std::size
 	return true;
 }
 
+// The normal map the body's shader loads beside a skin, read 2026-11-19 in the ride's loads (0x007B8200 at 0x007B82C3,
+// on the main thread): "Data\" + the skin's path with "_n" before ".dds" ("Textures\Characters\Breton\Female\
+// FootFemale.dds" -> "Data\Textures\Characters\Breton\Female\FootFemale_n.dds"). False when the path does not end
+// in ".dds" (any case) or the result does not fit.
+inline bool NormalPathOf(const char* skin, char* out, std::size_t outSize) {
+	constexpr char kData[] = "Data\\";
+	std::size_t length = 0;
+	while (skin != nullptr && skin[length] != '\0') {
+		++length;
+	}
+	if (skin == nullptr || out == nullptr || length < 4) {
+		return false;
+	}
+	const char* end = skin + length - 4;
+	auto lower = [](char c) { return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c; };
+	if (end[0] != '.' || lower(end[1]) != 'd' || lower(end[2]) != 'd' || lower(end[3]) != 's') {
+		return false;
+	}
+	const std::size_t data = sizeof(kData) - 1;
+	const std::size_t stem = length - 4;
+	if (data + stem + 6 + 1 > outSize) {  // "_n.dds"
+		return false;
+	}
+	std::size_t at = 0;
+	for (std::size_t i = 0; i < data; ++i) out[at++] = kData[i];
+	for (std::size_t i = 0; i < stem; ++i) out[at++] = skin[i];
+	for (const char* tail = "_n.dds"; *tail != '\0'; ++tail) out[at++] = *tail;
+	out[at] = '\0';
+	return true;
+}
+
 // Two paths name the same file: case and the slash's way do not count (the archives and the folder ignore both).
 inline bool SameFile(const char* a, const char* b) {
 	for (;; ++a, ++b) {

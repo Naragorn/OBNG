@@ -23,6 +23,7 @@ constexpr UInt8 kStepBytes[] = {0xE8, 0x8B, 0xE5, 0xFF, 0xFF};       // call rel
 constexpr UInt32 kPauseLoader = 0x00432860;                          // __thiscall(io manager) (read)
 constexpr UInt32 kUpdateStep = 0x0040D800;                           // __thiscall(main) (read; ECX = *0x00B33398 at 0x0040F26A)
 constexpr UInt32 kCreateImage = 0x00442890;                          // (out, path, 0, 0), RET 0x10 (read; the body build's call at 0x0052D4E8)
+constexpr UInt32 kShaderTexture = 0x007B8200;                       // __cdecl(out, path, load, check mips) (read; the body's normal maps at 0x007B82C3)
 constexpr UInt32 kDataHandler = 0x00B33A98;                          // DataHandler* (xOBSE g_dataHandler; read at 0x005C7BA0)
 constexpr UInt32 kRaces = 0x44;                                      // tList<TESRace> {data, next}
 constexpr UInt32 kFormId = 0x0C;                                     // TESForm's refID
@@ -34,6 +35,7 @@ constexpr UInt32 kMaxPointers = kMaxRaces * btp::kCount;
 using PauseFn = void(__thiscall*)(void* io);
 using StepFn = void(__thiscall*)(void* main);
 using CreateFn = void*(__stdcall*)(void** out, const char* path, UInt32, UInt32);
+using ShaderTextureFn = void(__cdecl*)(void** out, const char* path, UInt32 load, UInt32 checkMips);
 
 btp::Mode g_mode = btp::Mode::Off;
 LogFn g_log = nullptr;
@@ -90,8 +92,25 @@ UInt32 Snapshot(UInt32* out) {
 }
 
 struct Tally {
-	UInt32 races = 0, held = 0, failed = 0, known = 0, empty = 0, full = 0;
+	UInt32 races = 0, held = 0, failed = 0, known = 0, empty = 0, full = 0, normals = 0, noNormal = 0;
 };
+
+// The normal map beside a skin, through the shader's texture cache 0x007B8200 the body's own load asks (held as the
+// skins are; a skin without one counts as no normal).
+void Normal(const char* skin, Tally& tally) {
+	if (g_count >= kMaxPaths) {
+		++tally.full;
+		return;
+	}
+	char* path = g_paths[g_count];
+	if (!btp::NormalPathOf(skin, path, kPathSize) || Known(path)) {
+		return;
+	}
+	void* texturePointer = nullptr;
+	reinterpret_cast<ShaderTextureFn>(kShaderTexture)(&texturePointer, path, 1, 0);
+	g_held[g_count++] = texturePointer;
+	texturePointer != nullptr ? ++tally.normals : ++tally.noNormal;
+}
 
 void Race(UInt32 race, Tally& tally) {
 	for (UInt32 i = 0; i < btp::kCount; ++i) {
@@ -114,6 +133,7 @@ void Race(UInt32 race, Tally& tally) {
 		reinterpret_cast<CreateFn>(kCreateImage)(&texturePointer, path, 0, 0);
 		g_held[g_count++] = texturePointer;
 		texturePointer != nullptr ? ++tally.held : ++tally.failed;
+		Normal(path, tally);
 		if (g_passes > 0) {  // the later passes are few: name what they load
 			g_log("Route: body texture preload - pass %u: race %08X [%u] \"%s\" %s", g_passes + 1, *reinterpret_cast<const UInt32*>(race + kFormId), i,
 			      path, texturePointer != nullptr ? "held" : "failed");
@@ -127,7 +147,6 @@ void Pass(const char* where) {
 	LARGE_INTEGER from, to, frequency;
 	QueryPerformanceCounter(&from);
 	const UInt64 before = PrivateBytes();
-	const UInt32 heldBefore = g_count;
 	Tally tally;
 	for (UInt32 node = handler + kRaces; node != 0; node = *reinterpret_cast<const UInt32*>(node + 4)) {
 		const UInt32 race = *reinterpret_cast<const UInt32*>(node);
@@ -142,10 +161,10 @@ void Pass(const char* where) {
 	const double ms = static_cast<double>(to.QuadPart - from.QuadPart) * 1000.0 / static_cast<double>(frequency.QuadPart);
 	const double mb = static_cast<double>(static_cast<long long>(PrivateBytes() - before)) / (1024.0 * 1024.0);
 	++g_passes;
-	g_log("Route: body texture preload (%s) - pass %u %s: %u races, %u textures newly held (%u in all), %u failed, %u held already, %u "
-	      "without a path, %u past the list's end; %.1f ms, private memory %+.1f MB",
-	      g_mode == btp::Mode::Async ? "async not built yet, as on" : "on", g_passes, where, tally.races, g_count - heldBefore - tally.failed,
-	      g_count, tally.failed, tally.known, tally.empty, tally.full, ms, mb);
+	g_log("Route: body texture preload (%s) - pass %u %s: %u races, %u skins and %u normal maps newly held (%u entries in all), %u skins "
+	      "failed, %u without a normal map, %u held already, %u without a path, %u past the list's end; %.1f ms, private memory %+.1f MB",
+	      g_mode == btp::Mode::Async ? "async not built yet, as on" : "on", g_passes, where, tally.races, tally.held, tally.normals, g_count,
+	      tally.failed, tally.noNormal, tally.known, tally.empty, tally.full, ms, mb);
 }
 
 // A pass when the races are there and their paths are not the ones of the last pass.

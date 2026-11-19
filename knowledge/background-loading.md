@@ -665,3 +665,30 @@ route), on `-155056` / `-155419` (e0839551):
 is not counted there). The model loads of 0x00439FF0 at 119.9 s did not wait either in these two runs (derived from
 the probe: no main-thread wait at all; why is not known). The 40 ms frames (three headset periods) with nothing timed
 inside stay; they are not this.
+
+### The 40 ms frames: the skins' normal maps, 4096x4096 for feet (measured)
+
+`[Probe] SlowCalls` (every texture made from a path 0x00701E00 of 3 ms or more, its path, caller and thread;
+`obng-measure-slow-calls.ini`), run `20261119-211929` (skins preloaded): the ride's main-thread texture loads were the
+body's normal maps through the shader's texture cache 0x007B8200 (call site 0x007B82C3): `Breton\Female\
+FootFemale_n.dds` 21.0 and 18.8 ms (twice a ride), `Breton\Male\FootMale_n.dds` 5.6 ms; and three menu textures
+(`Menus\GenericBackground\edge_*`, 4 - 5 ms each) at 110.8 s, when a script opens a menu. The others of the 40 ms
+frames: a mod script's 66 ms step at 95.3 s, the crossing at 53.6 s (the quest target's door route 0x0065D8D0, the far
+map scan 0x007B3A40), and the model loads of 0x00439FF0 at 119.9 s in some runs (5 pauses, 20 - 65 ms).
+
+Read in the game folder: 38 of the characters' textures are 4096x4096 (554 MB on disk), the female feet's skins and
+normal maps of every race (`FootFemale_n.dds` 4096x4096 DXT5, 22 MB each; a body mod's); the rest are 512 - 2048.
+
+BodyTexturePreload now also holds each skin's normal map (`NormalPathOf`: `Data\` + the skin's path with `_n` before
+`.dds`, loaded through 0x007B8200 as the body's shader does). Runs `-212452` / `-212816` against `-211929`:
+
+| | skins only | skins and normal maps |
+|---|---:|---:|
+| main-thread texture loads in the ride | 7 (64.7 ms) | 3 / 3 (15.0 / 14.4 ms, the menu's three) |
+| frames over 40 / 50 ms | 2 / 1 | 0 / 0, 1 / 0 |
+| the longest frame | 66.4 ms | 39.9 / 42.3 ms |
+| the passes at the loading screen | (as above) | 1227 + 0.3 + 265 / 1242 + 0.4 + 239 ms |
+| address space at the end (peak) | 2113 (2271) MB | 2969 (3026) / 2857 (2909) MB |
+
+The normal maps cost about 700 MB of address space more (derived from these runs) and a second at the loading screen,
+because of the 4096x4096 feet; at 1024x1024 a DXT5 map is 1.4 MB instead of 22 (derived).

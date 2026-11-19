@@ -26,6 +26,18 @@ int main() {
 	Check(!PathOf("Characters\\LongerThanTheBuffer.dds", 34, out, sizeof(out)), "a path that does not fit");
 	Check(PathOf("0123456789012345678901", 22, out, sizeof(out)) && std::strlen(out) == 31, "exactly fitting, with its end");
 
+	Section("The normal map beside a skin");
+	char normal[64];
+	Check(NormalPathOf("Textures\\Characters\\Breton\\Female\\FootFemale.dds", normal, sizeof(normal)) &&
+	          std::strcmp(normal, "Data\\Textures\\Characters\\Breton\\Female\\FootFemale_n.dds") == 0,
+	      "Data\\ before, _n before .dds");
+	Check(NormalPathOf("Textures\\a.DDS", normal, sizeof(normal)) && std::strcmp(normal, "Data\\Textures\\a_n.dds") == 0, "an upper-case .DDS");
+	Check(!NormalPathOf("Textures\\a.tga", normal, sizeof(normal)), "not a .dds: none");
+	Check(!NormalPathOf("dds", normal, sizeof(normal)) && !NormalPathOf(nullptr, normal, sizeof(normal)), "too short or no path");
+	char tight[22];  // "Data\\Textures\\a_n.dds" is 21 characters
+	Check(!NormalPathOf("Textures\\ab.dds", tight, sizeof(tight)), "does not fit: none");
+	Check(NormalPathOf("Textures\\a.dds", tight, sizeof(tight)) && std::strlen(tight) == 21, "exactly fitting");
+
 	Section("The same file");
 	Check(SameFile("Textures\\Characters\\Foot.dds", "textures/characters/FOOT.DDS"), "case and slashes do not count");
 	Check(!SameFile("Textures\\a.dds", "Textures\\b.dds"), "another name");
