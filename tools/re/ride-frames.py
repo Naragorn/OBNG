@@ -6,7 +6,14 @@ loader waits ([Probe] LoaderWaits) and the address space at the end.
 Usage: ride-frames.py <run folder>... [--from ride] [--to ride-120]"""
 import collections, csv, os, re, sys
 
-args = [a for a in sys.argv[1:] if not a.startswith('--')]
+args, skip = [], False
+for a in sys.argv[1:]:
+    if skip:
+        skip = False
+    elif a.startswith('--'):
+        skip = True
+    else:
+        args.append(a)
 def opt(name, default):
     return sys.argv[sys.argv.index(name) + 1] if name in sys.argv else default
 first, last = opt('--from', 'ride'), opt('--to', 'ride-120')

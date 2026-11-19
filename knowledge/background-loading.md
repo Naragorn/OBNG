@@ -708,3 +708,13 @@ at 119.9 s one wait of 19.2 / 16.4 / 11.8 ms (`backward.kf`) and no other, again
 no freeze, the harness passed three times. Frames over 40 ms in the ride 2 / 0 / 1, the longest 40.5 / 39.9 / 53.9 ms;
 the 53.9 ms at 104.0 s is in Havok (0x00893B90, 0x008E4590, 0x008ABAC0, 0x008AD7D0; also 31 ms at 53.6 s before), not
 this.
+
+### The address space over a long session, with the preloads held (measured)
+
+Run `obng-long-memory/20261119-220418` (`tools/hand-scripts/obng-long-memory.txt`, 15.5 minutes: the ride towards Anvil,
+then a jump into Kvatch, Skingrad, Chorrol, the Imperial City's market, Bravil, Leyawiin, Cheydinhal, Bruma and Anvil
+with 80 s of flight from each; OBNG.dll 25358a92, every route as on in the games, `obng-measure-animation-batch.ini`;
+Linux, the Windows mod list): the address space rose from 2241 MB at the first summary to 2906 MB in the first two
+minutes (the preload's passes and the first ride), then stayed at 2902 - 2907 MB through all nine jumps; the peak was
+2932 MB of 4095 (72 %). It does not grow with the session here: about 1.16 GB stay free. Not covered: fights, interiors
+with many actors, the menus, a session of hours, the Windows game.

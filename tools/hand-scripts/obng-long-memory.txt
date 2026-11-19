@@ -1,0 +1,115 @@
+# The address space over a long session (2026-11-19): the ride of obng-profile-ride-anvil.txt, then nine more legs,
+# each a jump into a city (coc / cow) and 80 s of flight at a raised speed, about 16 minutes in all; OBNG's memory
+# probe writes the address space every summary (10 s). A coc that names no cell leaves the player where they are and
+# the leg flies on from there. Run with --run-timeout 1500 and the Windows mod list:
+#   python3 tools/run-with-windows-mods.py -- tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-animation-batch.ini \
+#     tools/hand-scripts/obng-long-memory.txt --save OBVRHarnessMOO --run-timeout 1500 --no-steamvr --headset beyond --exclusive
+ini Render SinglePassStereo=1
+ini SelfCheck ShowPanel=0
+ini Render GameResolutionWidth=4036
+ini Render GameResolutionHeight=3376
+expect Single-pass stereo: OBNG took the eyes ok (0)
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Hands BodyCollision=1
+ini Hands PhysicsRate=0
+ini Performance Enabled=1
+ini Performance StartAfterSeconds=45
+ini Performance CaptureSeconds=900
+ini Performance MaxRecords=262144
+console-at ready cow Tamriel -33 -4
+console-at ready set gamehour to 12
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at placed CloseAllMenus
+console-at placed player.setangle z 258
+console-at placed tcl
+console-at placed player.setav speed 200
+console-at leg-kvatch coc Kvatch
+console-at leg-skingrad coc Skingrad
+console-at leg-chorrol coc Chorrol
+console-at leg-ic-market coc ICMarketDistrict
+console-at leg-bravil coc Bravil
+console-at leg-leyawiin coc Leyawiin
+console-at leg-cheydinhal coc Cheydinhal
+console-at leg-bruma coc Bruma
+console-at leg-anvil-city coc Anvil
+console-at leg-anvil-fly CloseAllMenus
+console-at leg-kvatch-fly CloseAllMenus
+console-at leg-skingrad-fly CloseAllMenus
+console-at leg-chorrol-fly CloseAllMenus
+console-at leg-ic-market-fly CloseAllMenus
+console-at leg-bravil-fly CloseAllMenus
+console-at leg-leyawiin-fly CloseAllMenus
+console-at leg-cheydinhal-fly CloseAllMenus
+console-at leg-bruma-fly CloseAllMenus
+console-at leg-anvil-city-fly CloseAllMenus
+expect HandScript: finished
+reject menu Container
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 16
+mark placed
+wait 12
+head yaw 0
+mark leg-anvil-fly
+left stick 0 1
+wait 80
+mark leg-kvatch
+left stick 0 0
+wait 10
+mark leg-kvatch-fly
+left stick 0 1
+wait 80
+mark leg-skingrad
+left stick 0 0
+wait 10
+mark leg-skingrad-fly
+left stick 0 1
+wait 80
+mark leg-chorrol
+left stick 0 0
+wait 10
+mark leg-chorrol-fly
+left stick 0 1
+wait 80
+mark leg-ic-market
+left stick 0 0
+wait 10
+mark leg-ic-market-fly
+left stick 0 1
+wait 80
+mark leg-bravil
+left stick 0 0
+wait 10
+mark leg-bravil-fly
+left stick 0 1
+wait 80
+mark leg-leyawiin
+left stick 0 0
+wait 10
+mark leg-leyawiin-fly
+left stick 0 1
+wait 80
+mark leg-cheydinhal
+left stick 0 0
+wait 10
+mark leg-cheydinhal-fly
+left stick 0 1
+wait 80
+mark leg-bruma
+left stick 0 0
+wait 10
+mark leg-bruma-fly
+left stick 0 1
+wait 80
+mark leg-anvil-city
+left stick 0 0
+wait 10
+mark leg-anvil-city-fly
+left stick 0 1
+wait 80
+left stick 0 0
+mark done
+wait 3
