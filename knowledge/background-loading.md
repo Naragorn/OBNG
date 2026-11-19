@@ -616,3 +616,21 @@ the texture on the main thread through `0x00701E00` and `0x0075FA90`), `0x00444F
 `0x00465860` and `0x005AD980`. Which of them paused 8 times at 119.9 s, and which texture CreateTextureImage loads at
 106.9 s, is not known yet (unverified). An older reading of the sampler blamed the grid move for the 81-95 ms frames
 of the TextureLockSkip runs; this split shows that was wrong. Those frames are the pause and the texture load.
+
+### Who makes the main thread wait (measured, `[Probe] LoaderWaits`)
+
+Runs `obng-profile-ride-anvil/20261119-151416` and `-151740` (as above, OBNG.dll 96876a16,
+`tools/hand-scripts/obng-measure-loader-waits.ini`): every wait for the loader of 0.5 ms or more with its caller,
+thread and tick; thread 432 is the main thread, 580 the loader's.
+
+- **An NPC's body textures, loaded on the main thread.** `0x0052D2C0` (it builds an actor's body: the strings
+  `%08XModUpperBodyFemale`, `%08XModBody`, `Textures\%s`; call site 0x0052D4E8) calls CreateTextureImage for the race's
+  skin textures: `Textures\Characters\Breton\Female\FootFemale.dds` 13.0 - 14.9 ms, `HandFemale.dds` 4.3 - 9.5 ms,
+  `Orc\Male\FootMale.dds` 13.1 ms, `Khajiit\Female\FootFemale.dds` 4.2 ms. Inside each, the loader pause from
+  CreateTextureImage (0x00442972) takes 3.5 - 8.7 ms of it: the main thread waits for the loader's current job, then
+  reads and creates the texture itself. These are the 53 - 67 ms steps at 106.9 s. The same FootFemale.dds was loaded
+  twice in one ride (106.9 s and 120.0 s), so the texture cache let it go in between (derived).
+- **Model loads, 0x00439FF0** (call site 0x0043A052): five pauses of 7 - 16 ms (61 ms) in one step at 119.9 s in run
+  -151740, the 53 - 93 ms step of the earlier runs; which model is not logged yet.
+- On the loader's own thread (no wait for the frame): the faces of LivingOblivion.esp (0x00524100, 7.3 - 7.4 ms each).
+- Small ones on the main thread: 0x00555A80 (heads, 3.6 - 3.9 ms), 0x004BA780, 0x006A16F0 (magic, 5.2 ms once).
