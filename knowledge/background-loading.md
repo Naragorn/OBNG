@@ -718,3 +718,18 @@ Linux, the Windows mod list): the address space rose from 2241 MB at the first s
 minutes (the preload's passes and the first ride), then stayed at 2902 - 2907 MB through all nine jumps; the peak was
 2932 MB of 4095 (72 %). It does not grow with the session here: about 1.16 GB stay free. Not covered: fights, interiors
 with many actors, the menus, a session of hours, the Windows game.
+
+### The ride's last 50 ms steps are not Havok's work (measured)
+
+Runs `20261119-222228` / `-222552` (`obng-measure-havok.ini`: the broadphase batch 0x008E4590, 0x008DE950, the proxy's
+set position 0x008ABAC0 and integrate 0x008AD7D0, 0x00893B90, 0x008DFFB0 timed on the main thread): all of them cheap,
+the longest call 0.66 ms, 0x008E4590 0.92 ms in 6 551 calls a window. The steps of 53 ms at 48.1, 104.1 and 106.9 s
+have nothing timed inside but the render (2.4 - 3.3 ms); OBVR's capture puts 39 - 48 ms between the present and the
+next pose wait. Read by the sampler's eip (not its stack words, which can be stale):
+- **104.0 s:** 11 samples in winegstreamer.dll (a sound decoded on the main thread through Wine's GStreamer; which
+  sound is not known), then 10 in ntdll with Havok's 0x008AE08F / 0x008E46D6 / 0x008DEAA3 on the stack - the broadphase
+  waiting on a lock (as knowledge/cell-change-hitches.md saw at crossings; its holder not known).
+- **106.9 s:** the main thread's loader pause from the model load 0x00439EB0 (call site 0x00439F11), twice: 8.9 and 22.2
+  ms ([Probe] LoaderWaits), a Breton NPC's meshes coming into view (derived from the textures loaded around it).
+- **48.1 s:** a mod's script (0x005169A0 / 0x004FAB20 / 0x004FA110 under the eip).
+The earlier reading of these frames as Havok's work came from stale stack words.
