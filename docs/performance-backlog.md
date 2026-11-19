@@ -48,9 +48,14 @@ exclusive runs); the sections of 2026-11-19 below and knowledge/background-loadi
 
 ### Harness and tools
 
-- `--headset beyond` runs render 4036x3376 an eye (OBVR.log "single-pass stereo's frame side by side 8072x3376"), the
-  Dream Air's size, not the Beyond's 2568x2568; every run of the day shares it, so the comparisons stand, but the flag
-  does not do what AGENTS.md says. To ask OBVR (do not edit it from here).
+- `--headset beyond` runs rendered 4036x3376 an eye (OBVR.log "single-pass stereo's frame side by side 8072x3376"),
+  the Dream Air's size, not the Beyond's 2568x2568. Cause (OBVR-Additionals, 2026-11-19): the slot copies the live
+  OBVR.ini, whose `[Render] GameResolutionWidth/Height` (4036x3376, Nadi's Dream Air) overrode the stand-in headset.
+  Fixed in OBVR 2d22f2f (the runner sets both to 0 under `--no-steamvr` unless the scenario sets them; measured there:
+  2568x2568, single pass 5136x2568). The 75 Hz was real. Every OBNG ride up to 2026-11-19 with `--headset beyond` ran
+  at 8072x3376: the comparisons stand (both sides alike), the absolute render numbers are the Dream Air's size. The
+  local OBVR checkout that `tools/shadow-run.sh` uses was still at 78723f8, without the fix, on 2026-11-19; a run after
+  OBVR's pull renders the Beyond's size, so compare new runs only with runs of the same size.
 - `tools/re/timed-spikes.py` reads only `frame:UpdateStep` spike lines; render-frame spikes were read ad hoc. Add a
   `--spike NAME` option.
 - Never time RenderScene 0x0040C830's entry: OBVR's single pass hooks it, and a timed line there stops single pass
