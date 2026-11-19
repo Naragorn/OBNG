@@ -38,10 +38,17 @@ struct Entry {
 	volatile LONG contended;
 	volatile LONG threads[4];  // the first four thread ids seen
 	volatile LONG moreThreads;
+	volatile LONG waits;      // contended enters timed
+	volatile LONG waitUs;     // microseconds spent waiting after a failed try (contended enters only)
+	volatile LONG longestUs;  // the longest such wait
+	volatile LONG site;       // a section's last enter site (the holder's, when the next enter finds it held)
 };
 Entry g_sections[kSlots];
 Entry g_enterSites[kSlots];
 Entry g_interlockedSites[kSlots];
+Entry g_waitSites[kSlots];    // the enter sites that waited, by the time waited
+Entry g_holderSites[kSlots];  // the holders' enter sites, by the time others waited on them
+LARGE_INTEGER g_frequency{};
 volatile LONG g_dropped = 0;
 volatile LONG g_interlockedInPass = 0;
 volatile LONG g_interlockedOutside = 0;
@@ -81,6 +88,18 @@ void NoteThread(Entry* e) {
 	InterlockedExchange(&e->moreThreads, 1);
 }
 
+void NoteWait(Entry* e, LONG us) {
+	if (e == nullptr) {
+		return;
+	}
+	InterlockedIncrement(&e->waits);
+	InterlockedExchangeAdd(&e->waitUs, us);
+	LONG longest = e->longestUs;
+	while (us > longest && InterlockedCompareExchange(&e->longestUs, us, longest) != longest) {
+		longest = e->longestUs;
+	}
+}
+
 void Count(Entry* e, bool inPass) {
 	if (e != nullptr) {
 		InterlockedIncrement(inPass ? &e->inPass : &e->outside);
@@ -97,12 +116,26 @@ void __stdcall EnterReplacement(CRITICAL_SECTION* section) {
 		NoteThread(e);
 	}
 	if (g_tryEnter(section)) {
+		if (e != nullptr) {
+			InterlockedExchange(&e->site, static_cast<LONG>(site));
+		}
 		return;
 	}
+	const LONG holder = e != nullptr ? e->site : 0;
+	LARGE_INTEGER t0{}, t1{};
+	QueryPerformanceCounter(&t0);
+	g_enter(section);
+	QueryPerformanceCounter(&t1);
+	const LONG us = g_frequency.QuadPart > 0 ? static_cast<LONG>((t1.QuadPart - t0.QuadPart) * 1000000 / g_frequency.QuadPart) : 0;
 	if (e != nullptr) {
 		InterlockedIncrement(&e->contended);
+		NoteWait(e, us);
+		InterlockedExchange(&e->site, static_cast<LONG>(site));
 	}
-	g_enter(section);
+	NoteWait(Find(g_waitSites, site), us);
+	if (holder != 0) {
+		NoteWait(Find(g_holderSites, static_cast<UInt32>(holder)), us);
+	}
 }
 
 BOOL __stdcall TryEnterReplacement(CRITICAL_SECTION* section) {
@@ -189,6 +222,36 @@ void LogTop(const char* what, Entry* table, double perFrame, bool sections) {
 	g_log("%s", line);
 }
 
+// The waits since the last summary, the longest total first: count, ms in all, the longest in ms. Read and reset
+// while other threads add (a measurement: a wait landing between the two reads may be lost).
+void LogWaits(const char* what, Entry* table) {
+	struct Row {
+		UInt32 key;
+		LONG waits;
+		LONG us;
+		LONG longest;
+	};
+	Row rows[kSlots];
+	unsigned count = 0;
+	for (unsigned i = 0; i < kSlots; ++i) {
+		if (table[i].key == 0 || table[i].waitUs == 0) {
+			continue;
+		}
+		rows[count++] = Row{static_cast<UInt32>(table[i].key), InterlockedExchange(&table[i].waits, 0), InterlockedExchange(&table[i].waitUs, 0),
+		                    InterlockedExchange(&table[i].longestUs, 0)};
+	}
+	if (count == 0) {
+		return;
+	}
+	std::sort(rows, rows + count, [](const Row& a, const Row& b) { return a.us > b.us; });
+	char line[1500];
+	int at = std::snprintf(line, sizeof(line), "Probe: lock waits - %s (%u), waits / ms in all / longest ms:", what, count);
+	for (unsigned i = 0; i < count && i < 12 && at > 0 && static_cast<std::size_t>(at) < sizeof(line) - 60; ++i) {
+		at += std::snprintf(line + at, sizeof(line) - at, " %08X %ld / %.2f / %.2f;", rows[i].key, rows[i].waits, rows[i].us / 1000.0, rows[i].longest / 1000.0);
+	}
+	g_log("%s", line);
+}
+
 }  // namespace
 
 void InstallLockProbe(const ShadowSettings& settings, LogFn log) {
@@ -196,6 +259,7 @@ void InstallLockProbe(const ShadowSettings& settings, LogFn log) {
 		return;
 	}
 	g_log = log;
+	QueryPerformanceFrequency(&g_frequency);
 	const bool ok = Swap(kSlotEnter, &EnterReplacement, &g_enter) && Swap(kSlotTryEnter, &TryEnterReplacement, &g_tryEnter) &&
 	                Swap(kSlotLeave, &LeaveReplacement, &g_leave) && Swap(kSlotIncrement, &IncrementReplacement, &g_increment) &&
 	                Swap(kSlotDecrement, &DecrementReplacement, &g_decrement);
@@ -211,6 +275,9 @@ void LogLockProbeSummary() {
 	const UInt32 passes = OcclusionCullEyePasses();
 	const UInt32 frames = passes - g_lastPasses;
 	g_lastPasses = passes;
+	LogWaits("critical sections", g_sections);
+	LogWaits("waiting enter sites", g_waitSites);
+	LogWaits("the holders' enter sites", g_holderSites);
 	const LONG in = InterlockedExchange(&g_interlockedInPass, 0);
 	const LONG out = InterlockedExchange(&g_interlockedOutside, 0);
 	if (frames == 0) {

@@ -2562,3 +2562,12 @@ knowledge/background-loading.md "the archive lookup's cost is the loose file che
 answers, 0 mismatches). The archive lookup 176 -> 18 ms a ride, the grid's move at a crossing 11.1 -> 9.6 ms mean
 (longest 18.7 -> 13.8 ms). On in both games (OBNG.dll 6621bdb6). The folder-hash map is dropped (at most 6 ms a ride).
 0x00665260's 3.4 ms a crossing are the quest target's door route search 0x0065D8D0 (class B or C, not cheap).
+
+## 2026-11-19: the long render frame at a crossing - the renderer's lock
+
+knowledge/background-loading.md "the long render frame at a crossing is the render thread waiting on the renderer's
+lock". The texture prepare 0x0077AC90 takes the renderer's lock for every texture and waits while the loader's
+precache 0x00763560 reads a texture file and runs D3DX under it: 326 ms of waits a ride, up to 12 ms each, 11 - 54 ms
+in the long frames. Fix proposed: look at the texture's renderer data before taking the lock (class B: a lock-free
+read of a pointer the creator publishes last; the pixel-data path's publish still to read). Second: the heap lock
+0x00B32B80, 349 ms of short waits a ride.

@@ -525,3 +525,35 @@ lookup and of 0x00665260), same setup as above (OBNG.dll 9394cb4b).
   with the pathing's settings saved and restored around it; read as the search for the route through doors to the
   target (what the compass points at; derived from the calls, the name unverified). Not a cheap lever: a frame later
   or on a thread is class B, keeping the answer is class C.
+
+## 2026-11-19 afternoon: the long render frame at a crossing is the render thread waiting on the renderer's lock (measured)
+
+Runs in `artifacts/shadow/obng-profile-ride-anvil/`: `20261119-131842`, `-132209` (`obng-measure-render-frame.ini`,
+the render frame's and RenderScene's callees), `-132746`, `-133110` (`obng-measure-render-textures.ini`),
+`-133529`, `-133853` (`obng-measure-texture-create.ini`), `-134406` (`obng-measure-lock-waits.ini`, `[Probe]
+LockCalls=1` with the wait times added 2026-11-19). All PASS, single pass on. (`-131016` / `-131340` FAIL: a timed
+line on RenderScene 0x0040C830 took the entry OBVR's single pass hooks, so single pass never started; do not time it.)
+
+- Render frames over 14 ms in a ride: 8 - 11. In nearly all of them the texture manager's prepare holds 11 - 54 ms
+  (NiDX9TextureManager, vtable 0x00A8A9DC by RTTI, slot 2 0x0077AC90; read): in the scene pass NiDrawScene 0x0070C0B0
+  (up to 40 ms) and the water pre-pass 0x0049E880 (up to 17 ms). The render sampler: about three quarters of those
+  frames' samples under that chain with the eip in ntdll.
+- The prepare's time is its own: no texture is created on the render thread during the ride (NiDX9SourceTextureData's
+  create 0x00761270 -> 0x00760DA0, which opens the file, reads it whole 0x0042C8E0 and hands it to
+  D3DXGetImageInfoFromFileInMemory / D3DXCreateTextureFromFileInMemory: 260 calls a run, all at loads).
+- **The wait** (read): the prepare enters the renderer's lock `[[0x00B3F928]+0x180]` at 0x0077ACC6 for every texture,
+  before it looks at the texture's renderer data (+0x24); the lock is left at 0x0077AD16, before the data is used.
+  The other holder is NiDX9Renderer's vtable 0x00A88EA4 slot 65, 0x00763560 (by RTTI; the slot's only pointer at
+  0x00A88FA8; reached from NiSourceTexture's 0x00701C00): under the same lock, when +0x24 is null, it creates the
+  texture's data (the file read and D3DX above). It runs on another thread (derived: none of its creates are timed
+  on the main thread in the ride). Lock-wait probe, one ride (measured): the lock waited on 372 ms in all; the
+  prepare's enter 0x0077ACCC waited 219 times, 326 ms, the longest 12.0 ms; every wait had 0x00763572 (the precache)
+  as the holder, the longest 24.2 ms.
+- So the render thread waits for the loader's file read and D3DX of *other* textures (derived: the prepare waits
+  whether its own texture is ready or not). The D3DX path publishes +0x24 after the texture is complete
+  (0x00761270: `*(data[1] + 0x24) = data` after 0x00760DA0 succeeded; read); the pixel-data path's publish is not
+  read yet.
+- Also seen: the heap's lock 0x00B32B80 waited on 349 ms a ride, in 451 091 short waits (the longest 1.6 ms) from the
+  allocation 0x00401AF6 / 0x00401D92 sites.
+- The device was created with behaviour flags 0x54 (HARDWARE_VERTEXPROCESSING | PUREDEVICE | MULTITHREADED;
+  measured, OBVR.log "device behavior flags").
