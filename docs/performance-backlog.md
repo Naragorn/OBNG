@@ -7,6 +7,55 @@ share of the frame in an ordinary scene; what is put back because it is
 small is listed here, with what was measured, so that it is picked up at
 the end and not found again. Classes A, B, C: AGENTS.md.
 
+## Open levers and release prerequisites (2026-11-19, the list to work from)
+
+State after FileFindCache, PoolPageRelease, LooseFileList, ArchiveLooseCheck and TextureLockSkip (all on in both
+games, OBNG.dll 9b8ef08d). Linux numbers from the ride towards Anvil (ten cell crossings, stand-in headset at 75 Hz,
+exclusive runs); the sections of 2026-11-19 below and knowledge/background-loading.md hold the runs.
+
+### The cell crossing (what is left of its update step, 21 - 49 ms)
+
+| # | Item | Class | Measured | Cost | Next step |
+|---|---|---|---|---|---|
+| 1 | The grid's move 0x00444FB0 spread over frames: the cells' attach 0x00444340 (3 - 12 ms, twice 15 - 19), its far grid update 0x00483D60, the cell attach 0x004441A0, the Ni updates 0x00707610 | B | the move 9.6 ms mean, 12 - 14 ms longest with every route on; at 90 Hz (11.1 ms) it misses a frame at every crossing | large | read which of the attach's parts can run a frame later without a reader seeing a half-attached cell; the first candidates are the far grid's LOD queue and the map's scan |
+| 2 | The quest target's route through doors 0x0065D8D0 (0x0065D880 -> 0x0068B030 -> 0x0068AB20), called per target by the rebuild 0x00529A20 inside 0x00665260 | B (a frame later, or on a thread) or C (kept per target and player cell) | 3.3 - 4.2 ms at every crossing, one call | medium | read 0x0068AB20 (what it walks, what it writes) and who reads the result (the compass, the map marker); then pick the way |
+| 3 | 0x004D5BD0 (per cell in the attach) and the purge's 0x004A25F0 | open | 0.8 - 3.9 ms (twice 11 - 17) and 0.7 - 4.6 ms at every second crossing | open | a [Timed] round over their callees, as for 0x00665260 |
+| 4 | The heap's lock 0x00B32B80: waits from the allocator's 0x00401AF6 / 0x00401D92 | C (a per-thread allocator) | 349 ms of waits a ride in 451 091 short waits, the longest 1.6 ms ([Probe] LockCalls, run 20261119-134406) | medium to large (the row "the engine's allocator replaced" below, put back on 2026-11-10, is the same item) | which threads contend, and how much of it falls in a frame's critical path rather than the loader's |
+| 5 | The far grid's map scan 0x007B3A40 | open | 0.8 - 2.1 ms a crossing | small to medium | its callees timed |
+| 6 | The heap's allocations 0x00401F00 at a crossing | A (fewer calls) or C | 1 - 2.5 ms a crossing, about 5 million calls a run | medium | who allocates most at the crossing |
+
+### Elsewhere in the frame
+
+| # | Item | Measured | Next step |
+|---|---|---|---|
+| 7 | The water pre-pass's texture load 0x00442890 (TES::CreateTextureImage) on the render thread | up to 36 - 58 ms in one call (whole runs; whether inside the ride or at loads is not split) | split by the ride's marks; if in the ride, the load moves to the loader like any texture |
+| 8 | One 252 ms stall in the present 0x007D7210 (run 20261119-132209, once) | once in eight runs | watch for it again; unexplained |
+| 9 | The GPU: the Gold Road's grass drawn four times, the Market District's eye pass (9 ms) | 2026-11-16 and 2026-11-12 sections | after the crossing |
+| 10 | Loads only: 6 143 FindFile calls for INIs a load (about 0.8 s), the first world frame's scripts (MOO, 130 - 160 ms) | 2026-11-19, 2026-10-25 (OBVR) | after the frame items |
+
+### Before a first public release
+
+- Windows measured: every route of 2026-11-19 is on in the Windows game, none is measured there; the Windows numbers
+  of _stat / _access are smaller than Proton's (unverified), so the gains may be smaller.
+- A profile for players without OBVR (flat), and the Dream Air at 90 Hz in the headset.
+- The class B gates: PoolPageRelease (a long run done, Nadi's look open), TextureLockSkip (Nadi's look at textures
+  at crossings open).
+- Other mods: SkyBSA checked (read, compatible with ArchiveLooseCheck); Mod Organizer 2's virtual file system untested
+  with LooseFileList and ArchiveLooseCheck (the listing reads the folder through FindFirstFileEx); JALOD's LOD not
+  installed yet (more far-cell loads at a crossing, unmeasured).
+- A loose file added while the game runs is not seen by LooseFileList / ArchiveLooseCheck until the next start; say so
+  on the release page.
+
+### Harness and tools
+
+- `--headset beyond` runs render 4036x3376 an eye (OBVR.log "single-pass stereo's frame side by side 8072x3376"), the
+  Dream Air's size, not the Beyond's 2568x2568; every run of the day shares it, so the comparisons stand, but the flag
+  does not do what AGENTS.md says. To ask OBVR (do not edit it from here).
+- `tools/re/timed-spikes.py` reads only `frame:UpdateStep` spike lines; render-frame spikes were read ad hoc. Add a
+  `--spike NAME` option.
+- Never time RenderScene 0x0040C830's entry: OBVR's single pass hooks it, and a timed line there stops single pass
+  (runs 20261119-131016 / -131340 FAIL).
+
 ## Where the frame stands (measured 2026-11-10)
 
 Linux, the Beyond at 75 Hz, an eye of 2568x2568, every route of today on
