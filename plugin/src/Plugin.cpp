@@ -38,6 +38,8 @@
 #include "BodyTexturePreload.h"
 #include "SlowCallProbe.h"
 #include "AnimationPauseBatch.h"
+#include "MusicGraphProbe.h"
+#include "MusicAsync.h"
 #include "SceneOrderCheck.h"
 #include "SoundCommit.h"
 #include "TimedCalls.h"
@@ -370,6 +372,8 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 		obng::plugin::InstallBodyTexturePreload(path, &Log);  // the loading screen's call of the loader pause at 0x005ADADC (no entry)
 		obng::plugin::InstallSlowCallProbe(path, &Log);  // the script line 0x005169A0 and the source texture 0x00701E00 (not with [Timed] lines on them)
 		obng::plugin::InstallAnimationPauseBatch(path, &Log);  // the animation setup's entry 0x00475D80 and the resume's call at 0x0043A088
+		obng::plugin::InstallMusicAsync(path, &Log);  // the music player's seven CoCreateInstance calls (before the probe, which then stays out)
+		obng::plugin::InstallMusicGraphProbe(path, &Log);  // the music player's seven CoCreateInstance calls (no entry)
 		obng::plugin::InstallArchiveLooseCheck(path, &Log);  // the archives' loose file check's entry 0x0042C1D0 (not with a [Timed] line on it)
 		obng::plugin::InstallPoolPageRelease(path, &Log);  // the purge's and the release's entries (not with [Timed] lines on 0x0043FC20 / 0x00402740)
 		obng::plugin::InstallSceneOrderCheck(path, &Log);

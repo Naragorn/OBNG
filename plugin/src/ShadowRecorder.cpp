@@ -33,6 +33,7 @@
 #include "BodyTexturePreload.h"
 #include "SlowCallProbe.h"
 #include "AnimationPauseBatch.h"
+#include "MusicAsync.h"
 #include "SceneOrderCheck.h"
 #include "SoundCommit.h"
 #include "TimedCalls.h"
@@ -164,6 +165,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogBodyTexturePreloadSummary();
 	LogSlowCallSummary();
 	LogAnimationPauseBatchSummary();
+	LogMusicAsyncSummary();
 	LogVoiceDecodeSummary();
 	LogActorCensusSummary();
 	LogActorFarUpdateSummary();

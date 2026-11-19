@@ -760,3 +760,29 @@ next pose wait, Wine's ntdll by export name.
   another thread. Before the ride: the archive's lock (0x0042C3E0 waiting on 0x0042DB50, 13.3 ms) and the renderer's
   precache lock (0x00763572, 8.5 ms).
 - **110.7 s** (40 ms): d3dx9 making the three menu textures a mod's script opens (above).
+
+### MusicAsync: the music's track start off the main thread (measured)
+
+`[Probe] MusicGraph` (plugin/src/MusicGraphProbe.cpp; the seven CoCreateInstance sites patched, RenderFile timed in
+quartz's vtable), run `20261119-224946`: CoCreateInstance 0.4 - 1.7 ms, **RenderFile 27 - 28 ms** a track
+(`Explore\atmosphere_03.mp3` 28.3, `Battle\battle_07.mp3` 28.4, `Explore\atmosphere_06.mp3` 26.7; the title
+`Special\TES4Title.mp3` 102.0 ms at the main menu) - all on the main thread (thread 432).
+
+`[Route] MusicAsync` (plugin/src/MusicAsync.cpp, src/engine/sound/MusicAsyncLogic.h; class B, template 0, on in both
+games): the seven sites hand the game a stand-in filter graph (IGraphBuilder, IBasicAudio, IMediaControl,
+IMediaPosition, IMediaEvent in one COM object, the DirectShow headers of the SDK); its RenderFile queues the track for
+a worker thread (COM's multithreaded apartment) that makes the real graph and renders the file; the volume, the
+position and Run/Pause/Stop asked before it is there are kept and given to the real graph in the game's order at the
+first call on the main thread after it is ready (the update's GetEvent every frame); GetEvent has no event until then
+and answers one EC_ERRORABORT for a graph that could not be built. The calls the game never makes (read) wait for the
+worker and pass on (counted: none in the runs).
+
+Runs with it on, `-225818`, `-230150`, `-230602`, `-230926` (OBNG.dll 2bf854b0 / 402b7a8e,
+`obng-measure-music-async.ini`): every track built on the worker (the title 105 - 113 ms; explore and battle tracks 26
+- 31 ms), none failed, no call waited; given to the game's graph 37 - 75 ms after its RenderFile (2 - 5 frames; the
+title 202 - 205 ms at the main menu), the graph running (state 2) after the handover. In `-230150` two tracks started
+during the ride (`Battle\battle_04.mp3`, `Explore\atmosphere_04.mp3`, the second during a fade: the game runs it after
+the handover) without a long frame. Frames over 30 ms with Wine's GStreamer and the registry between present and pose
+wait: 2 / 2 / 2 in the three last rides without the route (and 0 - 1 in the rides before them: a track starts in the
+ride only when the music changes, a fight's for one), 0 in all four with it. Not measured: Windows' cost of RenderFile;
+how the music sounds (Nadi's ears).
