@@ -35,7 +35,7 @@ enum class Kind : UInt8 { PauseAll, WaitOne, CreateImage };
 
 struct Record {
 	Kind kind;
-	UInt32 caller, thread;
+	UInt32 caller, thread, result;
 	LONGLONG endTick;
 	double ms;
 	char path[96];
@@ -57,7 +57,7 @@ LONGLONG Now() {
 	return t.QuadPart;
 }
 
-void Note(Kind kind, UInt32 caller, LONGLONG start, LONGLONG end, const char* path) {
+void Note(Kind kind, UInt32 caller, LONGLONG start, LONGLONG end, const char* path, UInt32 result = 0) {
 	g_calls[static_cast<int>(kind)].fetch_add(1, std::memory_order_relaxed);
 	const double ms = static_cast<double>(end - start) * 1000.0 / static_cast<double>(g_frequency.QuadPart);
 	const UInt32 kept = g_kept.load(std::memory_order_relaxed);
@@ -75,6 +75,7 @@ void Note(Kind kind, UInt32 caller, LONGLONG start, LONGLONG end, const char* pa
 	Record& r = g_records[slot];
 	r.kind = kind;
 	r.caller = caller;
+	r.result = result;
 	r.thread = GetCurrentThreadId();
 	r.endTick = end;
 	r.ms = ms;
@@ -105,7 +106,7 @@ void* __stdcall CreateImage(void* out, const char* path, UInt32 a3, UInt32 a4) {
 	const UInt32 caller = reinterpret_cast<UInt32>(_ReturnAddress());
 	const LONGLONG start = Now();
 	void* result = reinterpret_cast<CreateFn>(g_createImage)(out, path, a3, a4);
-	Note(Kind::CreateImage, caller, start, Now(), path);
+	Note(Kind::CreateImage, caller, start, Now(), path, out != nullptr ? *reinterpret_cast<const UInt32*>(out) : 0);
 	return result;
 }
 
@@ -150,8 +151,8 @@ void LogLoaderWaitSummary() {
 	const UInt32 n = kept < kCapacity ? kept : kCapacity;
 	for (UInt32 i = 0; i < n; ++i) {
 		const Record& r = g_records[i];
-		g_log("Probe: loader wait - %s %.3f ms, caller %08X, thread %u, ending at tick %lld%s%s%s", NameOf(r.kind), r.ms, r.caller, r.thread,
-		      r.endTick, r.path[0] ? " - \"" : "", r.path, r.path[0] ? "\"" : "");
+		g_log("Probe: loader wait - %s %.3f ms, caller %08X, thread %u, result %08X, ending at tick %lld%s%s%s", NameOf(r.kind), r.ms, r.caller,
+		      r.thread, r.result, r.endTick, r.path[0] ? " - \"" : "", r.path, r.path[0] ? "\"" : "");
 	}
 	g_log("Probe: loader waits - calls: pause %u, IO wait %u, texture image %u; %u kept, %u long ones not kept",
 	      g_calls[0].exchange(0), g_calls[1].exchange(0), g_calls[2].exchange(0), n, g_dropped.exchange(0));

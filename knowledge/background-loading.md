@@ -634,3 +634,34 @@ thread and tick; thread 432 is the main thread, 580 the loader's.
   -151740, the 53 - 93 ms step of the earlier runs; which model is not logged yet.
 - On the loader's own thread (no wait for the frame): the faces of LivingOblivion.esp (0x00524100, 7.3 - 7.4 ms each).
 - Small ones on the main thread: 0x00555A80 (heads, 3.6 - 3.9 ms), 0x004BA780, 0x006A16F0 (magic, 5.2 ms once).
+
+### BodyTexturePreload: the race skins loaded at the loading screen and held (measured)
+
+`[Route] BodyTexturePreload` (plugin/src/BodyTexturePreload.cpp, src/engine/render/BodyTexturePreloadLogic.h), 0 off,
+1 on (the default), 2 async (the body build's loads on the loader's thread; not built yet, runs as 1). At a loading
+screen (the call of the loader pause at 0x005ADADC in LoadingMenu::Tick, the loader resting) every race's ten body
+textures (TESRace +0x224, read in the body build 0x0052D2C0 at 0x0052D4AB and xOBSE's unk11) are loaded through
+CreateTextureImage and their references kept. A body mod's script gives races new paths after the load (measured: 41
+paths, Breton 000224FC, HighElf 00019204 and others, one with the mod's own typo `Bretonl`), so the races' path pointers
+are compared again at every loading screen tick and every update step (the main loop's call at 0x0040F270; 2 400 TSC
+ticks a step, under 1 us) and the new paths loaded. In the ride the third pass came at the loading screen still.
+
+Runs (as above, `obng-measure-loader-waits.ini`): off `20261119-151416` / `-151740` (OBNG.dll 96876a16, before the
+route), on `-155056` / `-155419` (e0839551):
+
+| | off | on |
+|---|---:|---:|
+| body textures loaded on the main thread in the ride | 4 / 4 (41.6 / 31.6 ms) | 0 / 0 |
+| the main thread's waits for the loader >= 0.5 ms in the ride | 13 / 12 (134 / 102 ms) | 0 / 0 |
+| frames over 50 ms in the ride | 3 / 1 | 0 / 0 |
+| the longest frame in the ride | 867 / 67.6 ms | 40.6 / 41.2 ms |
+| frames over 30 / 20 ms | 7 / 3, 33 / 25 | 4 / 6, 27 / 28 |
+| frame mean, p99 | 13.49 / 13.37, 14.8 ms | 13.37 / 13.37, 14.7 ms |
+| the passes' time at the loading screen | - | 183 + 0.3 + 148 / 232 + 0.3 + 149 ms |
+| address space at the end (peak) | 1892 / 1666 MB (2007 / 1846) | 2106 / 2238 MB (2307 / 2418) |
+
+108 textures are held. The cost is memory: the address space ends 200 - 570 MB higher (the two off runs alone differ by
+226 MB, so the textures' share is derived, not measured on its own; PrivateUsage did not move, so the textures' memory
+is not counted there). The model loads of 0x00439FF0 at 119.9 s did not wait either in these two runs (derived from
+the probe: no main-thread wait at all; why is not known). The 40 ms frames (three headset periods) with nothing timed
+inside stay; they are not this.
