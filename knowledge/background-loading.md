@@ -692,3 +692,19 @@ BodyTexturePreload now also holds each skin's normal map (`NormalPathOf`: `Data\
 
 The normal maps cost about 700 MB of address space more (derived from these runs) and a second at the loading screen,
 because of the 4096x4096 feet; at 1024x1024 a DXT5 map is 1.4 MB instead of 22 (derived).
+
+### The horse at 119.9 s: four KF loads, four waits for the loader; AnimationPauseBatch (measured)
+
+`[Probe] SlowCalls` now also keeps the KF loads of 0x00439FF0 (the model loader's animation cache, `__thiscall(loader,
+path)`, RET 4) of 3 ms or more. Run `20261119-214333`, 119.9 s: `Creatures\Horse\backward.kf` 18.2 ms,
+`jumploop.kf` 14.1, `swimturnright.kf` 15.1, `handtohandidle.kf` 20.8 - on the main thread, from an actor's animation
+setup 0x00475D80 (call site 0x00475EC3); each one's loader pause took all but 0.2 ms of it. A horse comes into view.
+
+`[Route] AnimationPauseBatch` (plugin/src/AnimationPauseBatch.cpp, src/engine/io/AnimationPauseBatchLogic.h; class B,
+template 0, on in both games): the setup's entry is detoured and the KF load's resume call at 0x0043A088 patched; inside
+a setup the resumes are held back and given at its end, so only the first miss waits (the pause counts, read in
+0x004322B0 / 0x00432350). Runs `-214844`, `-215208`, `-215532` (OBNG.dll 25358a92, `obng-measure-animation-batch.ini`):
+at 119.9 s one wait of 19.2 / 16.4 / 11.8 ms (`backward.kf`) and no other, against four to five (64.5 - 67.3 ms) before;
+no freeze, the harness passed three times. Frames over 40 ms in the ride 2 / 0 / 1, the longest 40.5 / 39.9 / 53.9 ms;
+the 53.9 ms at 104.0 s is in Havok (0x00893B90, 0x008E4590, 0x008ABAC0, 0x008AD7D0; also 31 ms at 53.6 s before), not
+this.

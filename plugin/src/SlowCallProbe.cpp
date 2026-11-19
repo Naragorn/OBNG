@@ -19,12 +19,20 @@ namespace lw = obng::engine::io::loader_wait;
 constexpr UInt32 kSourceTexture = 0x00701E00;
 constexpr UInt8 kSourceTextureBytes[] = {0x6A, 0xFF, 0x68, 0x2B, 0xA4, 0x9C, 0x00};
 
+// 0x00439FF0: an animation file (KF) from the model loader's cache, __thiscall(loader, path), RET 4; on a miss off the
+// loader's thread it pauses the loader and loads (read 2026-11-19; callers 0x00474C50 "Meshes\%s", 0x0041A610 the
+// skeleton's "SpecialAnims").
+constexpr UInt32 kAnimation = 0x00439FF0;
+constexpr UInt8 kAnimationBytes[] = {0x6A, 0xFF, 0x68, 0x38, 0xC9, 0x9A, 0x00};
+
 constexpr double kMinimumMs = 3.0;
 constexpr UInt32 kCapacity = 256;
 
+using AnimationFn = UInt32(__thiscall*)(void*, const char*);
 using TextureFn = void*(__cdecl*)(const char*, void*, UInt32);
 
 struct Record {
+	bool animation;
 	UInt32 caller, thread;
 	LONGLONG endTick;
 	double ms;
@@ -34,6 +42,7 @@ struct Record {
 bool g_on = false;
 LogFn g_log = nullptr;
 void* g_texture = nullptr;
+void* g_animation = nullptr;
 double g_ticksPerMs = 0.0;
 unsigned __int64 g_minimumTicks = 0;
 Record g_records[kCapacity];
@@ -67,6 +76,21 @@ void* __cdecl SourceTexture(const char* path, void* a2, UInt32 a3) {
 	const unsigned __int64 t0 = __rdtsc();
 	void* result = reinterpret_cast<TextureFn>(g_texture)(path, a2, a3);
 	if (Record* r = Slot(__rdtsc() - t0)) {
+		r->animation = false;
+		r->caller = caller;
+		if (path != nullptr) {
+			strncpy_s(r->name, path, _TRUNCATE);
+		}
+	}
+	return result;
+}
+
+UInt32 __fastcall Animation(void* loader, void*, const char* path) {
+	const UInt32 caller = reinterpret_cast<UInt32>(_ReturnAddress());
+	const unsigned __int64 t0 = __rdtsc();
+	const UInt32 result = reinterpret_cast<AnimationFn>(g_animation)(loader, path);
+	if (Record* r = Slot(__rdtsc() - t0)) {
+		r->animation = true;
 		r->caller = caller;
 		if (path != nullptr) {
 			strncpy_s(r->name, path, _TRUNCATE);
@@ -103,6 +127,10 @@ void InstallSlowCallProbe(const char* iniPath, LogFn log) {
 	g_minimumTicks = static_cast<unsigned __int64>(g_ticksPerMs * kMinimumMs);
 	g_on = InstallEntryDetour("source texture 0x00701E00", kSourceTexture, kSourceTextureBytes, sizeof(kSourceTextureBytes),
 	                                  reinterpret_cast<const void*>(&SourceTexture), &g_texture, log);
+	const bool animation = InstallEntryDetour("animation file 0x00439FF0", kAnimation, kAnimationBytes, sizeof(kAnimationBytes),
+	                                          reinterpret_cast<const void*>(&Animation), &g_animation, log);
+	g_on = g_on || animation;
+	log("Probe: slow calls - animation file %d;", animation);
 	log("Probe: slow calls - source texture %d; calls of %.1f ms or more kept (%.0f TSC ticks a ms)", g_on, kMinimumMs, g_ticksPerMs);
 }
 
@@ -114,8 +142,8 @@ void LogSlowCallSummary() {
 	const UInt32 n = kept < kCapacity ? kept : kCapacity;
 	for (UInt32 i = 0; i < n; ++i) {
 		const Record& r = g_records[i];
-		g_log("Probe: slow call - source texture %.3f ms \"%s\", caller %08X, thread %u, ending at tick %lld", r.ms, r.name, r.caller, r.thread,
-		      r.endTick);
+		g_log("Probe: slow call - %s %.3f ms \"%s\", caller %08X, thread %u, ending at tick %lld", r.animation ? "animation file" : "source texture", r.ms, r.name,
+		      r.caller, r.thread, r.endTick);
 	}
 	g_log("Probe: slow calls - %u kept, %u long ones not kept", n, g_dropped.exchange(0));
 	g_kept.store(0, std::memory_order_relaxed);
