@@ -392,3 +392,51 @@ ride, ten crossings a ride; `tools/hand-scripts/obng-measure-pool-release-{measu
   route also reached (84.5 MB). The process's commit at the end 703 against 702 MB, its address space 1 986 against
   2 034 MB: no growth from the route.
 - Shipped 2026-11-19: on in both games (OBNG.dll 25d45b55, `PoolPageRelease=1`); the Windows game not measured.
+
+## 2026-11-19: FindFile's file questions answered from a listing (`[Route] LooseFileList`, class A, verified, on in both games)
+
+**FileFinder's search slot 0x00431800** (read in the disassembly; FileFinder's vtable 0x00A36414 slot 3, called by
+FindFile 0x00431020 through `call eax` at 0x004310BF; `__thiscall(char* path, flags, mask)`, RET 0x0C): unless
+flags & 1 the archives 0x0042EBA0(path, mask) (true: 2); unless flags & 2 `_access(path, 0)` 0x00982D71 relative to
+the working folder (found: 1); unless flags & 4, for each search folder of the char* array [this+8] (count: the word
+[this+0x10]) whose name the path does not start with (`_strnicmp` 0x009864D9), `_access(folder + path)` built in a
+0xF4-byte local - found: copied over the path, 1; else 0. FindFile turns a drive letter into flags 5 and ".\" into
+flags 4 (and drops the ".\"). The archive lookup 0x0042EA60 strips a leading "Data\", hashes the name (0x006FA1B0) and
+walks the list of archives 0x00B338E0, the last hit 0x00B338E4 first - all in memory.
+
+**The route** (plugin/src/LooseFileList.cpp, src/engine/io/LooseFileListLogic.h, every flow in
+tests/LooseFileListLogicTest.cpp): the slot's entry detoured; every file and folder under the working folder listed
+once on a thread of its own at start (FindFirstFileEx, 28 069 entries with the Windows mod list linked in, 491 to 653
+ms, 43 calls before it is ready go to the original); the slot's two `_access` steps answered by the listing, the
+archives and `_strnicmp` still the EXE's own. Asset kinds only (FileFindCache's list), no path Windows would rewrite,
+nothing under a name with a case twin; all else to the original.
+
+**The first check found a fault in the Linux game, not in the route**: one mismatch, "Data\Meshes\Armor\Fur\F\
+Cuirass_ba1.NIF" found by the listing, not by the original. The Linux game's Data/Meshes held both `Armor` (the
+game's) and `armor` (one mod file, made 2026-11-04); `tools/run-with-windows-mods.py` put its 673 armor links into
+`armor`, and Wine showed the game the other one. **Every Linux run with the Windows mod list before 2026-11-19 10:50
+was without the Windows list's loose armor meshes.** Fixed at the cause: the one file moved into `Armor` (a copy in
+artifacts/backups/linux-Meshes-armor-twin-20261119), `armor` removed, no other twin under Data; the linker now stops
+on a case twin; the listing refuses any path under a twin (Wine picks one, unpredictably).
+
+Measured (Linux without SteamVR, the stand-in Beyond, `--exclusive`, the Windows mod list, the ride;
+`tools/hand-scripts/obng-measure-loose-files-{check,off,on}.ini`, FileFindCache and PoolPageRelease on as shipped):
+
+| run (obng-profile-ride-anvil/) | mode | LOD queue 0x004BD430 a crossing (mean / longest) | grid's move (mean / longest) | step (mean / longest) | FindFile time asked of the original a run |
+|---|---|---:|---:|---:|---:|
+| 20261119-103619 | off | 6.3 / 9.9 ms | 15.8 / 24.3 ms | 32.1 / 45.9 ms | 911 ms |
+| 20261119-104305 | off | 6.3 / 9.6 ms | 15.6 / 22.9 ms | 31.3 / 50.9 ms | 934 ms |
+| 20261119-103942 | on | 1.5 / 3.7 ms | 12.5 / 24.0 ms | 30.4 / 57.1 ms | 593 ms |
+| 20261119-104628 | on | 1.4 / 3.6 ms | 12.3 / 24.0 ms | 29.1 / 49.7 ms | 575 ms |
+
+- **The gate** (run 20261119-105108, `LooseFileList=2`, FileFindCache off so that every call reaches the slot, after
+  the twin's fix): 33 366 calls, 26 875 of them answered by the listing and compared with the original's answer and
+  path - 8 810 in an archive, 1 373 loose, 631 under a search folder, 16 061 not found - **0 mismatches**; 6 448
+  refused, 43 before the listing was ready. Verified.
+- What is left in the LOD queue (1.4 ms a crossing) is the archive lookup: answered calls cost 589 to 606 ms a run for
+  about 16 000 calls, 37 us each, all of it the walk of the archive list (no OS call in it) - a lever (one map of
+  every archive's files made once), not built.
+- The 6 448 refused calls cost 827 to 837 ms a run in the OS: 6 143 of them INIs asked during the save's load in one
+  ten-second window (FileFindCache's census by extension) - which INI and who asks, not read yet.
+- The 57.1 ms step of 103942 and the longest grid moves (24 ms in all four) are crossings the route does not touch:
+  the render frame inside the step and the cells' attach.

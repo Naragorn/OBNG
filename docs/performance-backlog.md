@@ -2537,3 +2537,13 @@ ms; the long flight (15 minutes, 64 crossings, `tools/hand-scripts/obng-stress-r
 flat at 84.8 MB (84.5 MB peak without the route), the process's commit at the end 703 against 702 MB. Both PASS, no crash.
 Open: Windows (deployed, not measured), and what is left at a crossing: the far cells' LOD lookups 5-10 ms
 (FindFile asking the OS per new file - the listing of the loose files made once is the lever), the cells' attach, 0x004A25F0 2-4 ms.
+
+## 2026-11-19: the loose files listed once (`[Route] LooseFileList`, class A, verified; on in both games)
+
+FileFinder's `_access` questions answered from a listing of the game folder made at start on a thread of its own.
+The far cells' LOD queue at a crossing 6.3 -> 1.4 ms mean (longest 9.9 -> 3.7 ms), the grid's move 15.7 -> 12.4 ms
+mean, FindFile's OS time 911-934 -> 575-593 ms a ride. Check: 26 875 answers, 0 mismatches. Found on the way: the
+Linux game's Data/Meshes had `Armor` and `armor`, which hid every linked Windows armor mesh in Linux runs until today
+(fixed; the linker now refuses such twins). Next levers at the crossing: the cells' attach 0x00444340 (7-15 ms), the
+render frame inside the step (3-30 ms), the archive lookup (about 1.4 ms a crossing, 37 us a call), 0x004A25F0 2-4 ms;
+in the load: 6 143 FindFile calls for INIs (about 0.8 s a load).

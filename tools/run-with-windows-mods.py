@@ -57,9 +57,16 @@ def plan():
     def entries(path):
         if path not in listing:
             try:
-                listing[path] = {e.lower(): e for e in os.listdir(path)}
+                names = os.listdir(path)
             except OSError:
-                listing[path] = {}
+                names = []
+            listing[path] = {e.lower(): e for e in names}
+            if len(listing[path]) != len(names):
+                # Two names that differ only in case: Wine shows the game one of them, so links put into the other
+                # are never found (2026-11-19: Data/Meshes/Armor and armor had hidden every armor mesh linked in).
+                twins = sorted(n for n in names if sum(1 for m in names if m.lower() == n.lower()) > 1)
+                print(f'{path} holds names that differ only in case: {twins} - merge them first', file=sys.stderr)
+                sys.exit(2)
         return listing[path]
     def visit(wdir, ldir, exists, top):
         for name in sorted(os.listdir(wdir)):
