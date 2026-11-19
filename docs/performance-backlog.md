@@ -2547,3 +2547,11 @@ Linux game's Data/Meshes had `Armor` and `armor`, which hid every linked Windows
 (fixed; the linker now refuses such twins). Next levers at the crossing: the cells' attach 0x00444340 (7-15 ms), the
 render frame inside the step (3-30 ms), the archive lookup (about 1.4 ms a crossing, 37 us a call), 0x004A25F0 2-4 ms;
 in the load: 6 143 FindFile calls for INIs (about 0.8 s a load).
+
+## 2026-11-19: a cell crossing's rest, measured with the three routes on
+
+knowledge/background-loading.md "what is left of a cell crossing". The levers left, by size a crossing (Linux):
+the long render frame in a third of the crossings (12 - 29 ms, not split), 0x00665260 (3.3 - 3.8 ms every crossing,
+the player's list walk), 0x004D5BD0 (1 - 4, twice 11 - 17), the far grid's update (1 - 5: the archive walk and the
+map's scan 0x007B3A40), 0x004A25F0 (0.7 - 4.6), the heap's allocations (1 - 2.5). The step's other ~9 ms are OBVR's
+wait for the headset (derived), not a lever.

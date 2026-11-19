@@ -440,3 +440,39 @@ Measured (Linux without SteamVR, the stand-in Beyond, `--exclusive`, the Windows
   ten-second window (FileFindCache's census by extension) - which INI and who asks, not read yet.
 - The 57.1 ms step of 103942 and the longest grid moves (24 ms in all four) are crossings the route does not touch:
   the render frame inside the step and the cells' attach.
+
+
+## 2026-11-19 midday: what is left of a cell crossing, with the three routes on (measured)
+
+Runs `artifacts/shadow/obng-profile-ride-anvil/20261119-111011` and `-111657` (round A,
+`tools/hand-scripts/obng-measure-crossing-attach.ini`: every callee of 0x00444340 and 0x00444FB0 a five-byte jump can
+take) and `-111334`, `-112020` (round B, `obng-measure-crossing-step.ini`: every direct callee of the update step
+0x0040D800); Linux without SteamVR, the stand-in Beyond at 75 Hz, `--exclusive`, the Windows mod list, OBVR.dll
+f4e4b70d (78723f8), OBNG.dll 9394cb4b with FileFindCache, PoolPageRelease and LooseFileList on. All four PASS.
+Earlier crossing spikes of `-103942` / `-104628` (the base INI's anchors) add 0x00665260 and 0x007B3A40.
+
+A crossing's update step is 21 to 49 ms (40 crossings); its parts (the spike lines list a part at 3 % of the step
+or more):
+
+| part | ms a crossing | note |
+|---|---:|---|
+| the grid's move 0x00444FB0 | 7.8 - 18 (twice 24) | |
+| - the cells' attach 0x00444340 | 2.8 - 11.5 (twice 15 - 19) | |
+| -- the far grid's update 0x00483D60: the LOD queue 0x004BD430 (the archive walk) and the map's scan 0x007B3A40 | 0.9 - 5.0 (1.3 - 3.8 and 0.8 - 2.1) | |
+| -- 0x004D5BD0 | 0.8 - 3.9 (twice 11 - 17) | per cell; reads like the cell's references attached (unverified) |
+| -- the heap's allocation 0x00401F00 (-> 0x00401AA0) | 1.0 - 2.5 | about 5 million calls a run, 0.3 us each with the timer's own cost |
+| -- the cell attach 0x004441A0, the Ni updates 0x00707610 | about 1 each | |
+| - 0x00665260 | 3.3 - 3.8, every crossing | the player's (this +0x5F4/+0x5F8) list walked with 0x0052B440, 0x004D6D40, 0x00485E00, 0x00487820 - what the list is, is not read |
+| - the purge's 0x004A25F0 | 0.7 - 4.6, every second crossing | |
+| - the rest (Havok, the shifts, the pause 0x004322B0 under 3 %) | about 1.5 | |
+| the render frame 0x0040D4D0 inside the step | 2.8 - 5 as any frame; 12 - 29 in a third of the crossings | the long ones not split yet |
+| the rest of the step | about 9 | no direct callee of 0x0040D800 reaches 3 % of a crossing's step |
+
+- **The step's rest is OBVR's wait for the headset, not the engine's work** (derived): no timed callee of 0x0040D800
+  holds it; OBVR's `begin_frame` (WaitGetPoses) is 8.95 ms mean in the same runs' capture (measured,
+  `OBVR-performance-1-5-report`), and OBVR calls it from its camera hook 0x0066BE6E inside 0x0066B710, which the step
+  reaches through an indirect call (which one is not read). The step's mean is 13.8 ms, the stand-in's 75 Hz period.
+  So the "about 15 ms of the step outside the grid's move" of the earlier crossings is no lever: it is the frame's
+  pacing, and it ends where the engine's work begins.
+- What a crossing costs the frame, then: the grid's move (8 - 18 ms) plus, in a third of the crossings, a long render
+  frame (12 - 29 ms). At 90 Hz (11.1 ms) the move alone misses a frame every crossing.
