@@ -391,4 +391,4 @@ ride, ten crossings a ride; `tools/hand-scripts/obng-measure-pool-release-{measu
   83.2, 83.9, 84.2 and 84.8 MB at a quarter, half, three quarters and the end - flat at the peak the run without the
   route also reached (84.5 MB). The process's commit at the end 703 against 702 MB, its address space 1 986 against
   2 034 MB: no growth from the route.
-- Shipped 2026-11-19: on in the Linux game (OBNG.dll 25d45b55, `PoolPageRelease=1`); Windows not yet.
+- Shipped 2026-11-19: on in both games (OBNG.dll 25d45b55, `PoolPageRelease=1`); the Windows game not measured.

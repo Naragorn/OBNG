@@ -28,6 +28,15 @@
 - A run without SteamVR tests nothing SteamVR does itself (compositing, overlays shown, frame statistics, reprojection), and its performance numbers are not comparable with a run with SteamVR.
 - Here: `--plugin <build>/OBNG.dll` (and `--plugin <its>.ini`) tests a build of OBNG in a slot without deploying it. The original-against-rebuilt comparisons are measurements: both sides `--exclusive`, the same headset and rate for both, and both with SteamVR or both without - never one of each.
 
+## Deploying
+
+- Every deploy goes to both games, always (Nadi, 2026-11-19): the Linux game
+  (`~/.local/share/Steam/steamapps/common/Oblivion/Data/OBSE/Plugins`) and the
+  Windows game (`/run/media/nadi/Programs/Steam/steamapps/common/Oblivion/Data/OBSE/Plugins`),
+  the same OBNG.dll and the same INI change in both, with backups of both into
+  `artifacts/backups/` first. `tools/build-plugin.sh` deploys to Linux only; copy
+  to Windows in the same step. Never one game alone without saying so.
+
 ## Reading Oblivion.exe
 
 Every function of the EXE is already decompiled in `re/export/rea-all/functions/0x<address>.c` (see `re/README.md`; on the shared disk only, not in Git). Grep it before starting a Ghidra or REA session; start one only for what the files do not answer (assembly, cross-references, data).
