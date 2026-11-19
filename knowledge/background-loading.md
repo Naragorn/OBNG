@@ -336,3 +336,59 @@ Measured (Linux without SteamVR, the stand-in Beyond, `--exclusive`, the Windows
   Data made once, the archives' own in-memory lookup 0x0042EBA0 as it is), not built.
 - Not measured: Windows (the OS's answer there is likely much cheaper - unverified; the route's own cost, a lock and
   a hash, is the same).
+
+## 2026-11-19: the pools' page release kept off the cell crossing (`[Route] PoolPageRelease`, class B, built)
+
+**What the purge's release is** (read 2026-11-19 in the disassembly, the names proposals):
+- 0x00444FB0 calls the purge 0x0043FC20 twice at a crossing: at 0x00445371 when 0x0043FE30 emptied some of the buffer
+  of interior cells (it returns how many), and at 0x004454EF every time. 0x004455E0 calls it three times more; the
+  loads and the cell changes behind a loading screen are its other callers.
+- The purge (under the critical section 0x00B35380; 0x00977C50 only returns 1 in this build) calls 0x0055E390(1)
+  twice, 0x007B84E0, 0x004A25F0 when [0x00B35300] is set and its this's byte +0xA9 or its argument is, and
+  `MemoryPool::FreeUnusedPagesForAllPools()` 0x00402740.
+- 0x00402740 holds the allocator's lock 0x00B32B80 - the lock `MemoryHeap::Allocate` 0x00401AA0 takes on every
+  allocation - and calls 0x00402640 for each of the pools in the 129 slots at 0x00B33080 (by element size / 4).
+  0x00402640 sorts the pool's free list by address (0x00402190, a merge sort of the list) and cuts every page whose
+  use count (+0x108, a 16-bit count a page) is zero out of it with `VirtualFree(page, 0x1000, MEM_DECOMMIT)`.
+- **A pool's pages stay reserved**: 0x00402280 reserves the pool's whole range once (`VirtualAlloc(MEM_RESERVE)`), and
+  0x00402480 commits a page again when the free list is empty (`VirtualAlloc(MEM_COMMIT)`, +0x118 the committed
+  pages, +0x104 their peak, +0x10C the reserved). The release gives back committed memory, never address space.
+- 27 pools are made at start (0x0040E3B1 on: element sizes 8 to 0x108 bytes), **174 MB reserved in all** - read, and
+  the route's summary reads the same 174.0 MB from the 27 pools at run time.
+
+**The route**: two entry detours (plugin/src/PoolPageRelease.cpp, the decisions in
+src/engine/memory/PoolPageReleaseLogic.h, every flow in tests/PoolPageReleaseLogicTest.cpp). The purge's detour
+reads its return address; when it is one of the crossing's two (0x00445376, 0x004454F4) it marks its thread, and the
+release's detour skips the release on that thread. Every other purge releases as before. 1 skip, 2 measure (both
+timed, nothing skipped: the before with the same instrument). Class B: the free list stays unsorted until the next
+release, so the pools hand out other addresses than the original's; derived: what stays committed is bounded by the
+174 MB the pools have reserved anyway.
+
+Measured (Linux without SteamVR, the stand-in Beyond, `--exclusive`, the Windows mod list, OBNG.dll 40231057, the
+ride, ten crossings a ride; `tools/hand-scripts/obng-measure-pool-release-{measure,skip}.ini`, all four PASS):
+
+| run (obng-profile-ride-anvil/) | mode | the release at the crossings | longest crossing purge | the grid's move a crossing (mean / longest) | the crossing's step (mean / longest) | pools committed at the end (peak) |
+|---|---|---:|---:|---:|---:|---:|
+| 20261119-085648 | measure | 36.4 ms (11.3, 10.2, 9.8, 3.5, the rest < 0.5) | 14.9 ms | 19.4 / 35.2 ms | 35.8 / 57.2 ms | 72.7 MB (81.8) |
+| 20261119-090336 | measure | 41.1 ms (12.8, 12.0, 11.8, 1.1, 1.1, ...) | 15.5 ms | 19.8 / 35.4 ms | 35.1 / 59.5 ms | 70.5 MB (82.3) |
+| 20261119-090013 | skip | 0 (10 skipped) | 3.7 ms | 16.4 / 23.0 ms | 30.6 / 37.5 ms | 77.5 MB (77.5) |
+| 20261119-090704 | skip | 0 (10 skipped) | 4.2 ms | 15.7 / 21.3 ms | 33.5 / 54.0 ms | 80.3 MB (80.3) |
+
+- The release costs 10 to 13 ms in three of the ten crossings of a ride (where the cells left behind emptied whole
+  pages), under 1.1 ms in the others. Skipped, **the worst grid's move drops from 35 to 21-23 ms** and the mean by
+  3-4 ms a crossing. The 54.0 ms step of 090704 is the fade's own render frame inside the step (25.7 ms), not the move.
+- What the purge still costs at a crossing (2.2 to 4.2 ms) is 0x004A25F0 (0.7 to 4.2 ms, 17 calls a ride); 0x0055E390
+  and 0x007B84E0 are under 0.2 ms.
+- The pools hold 5 to 10 MB more committed at the end of a ride (77.5 / 80.3 against 70.5 / 72.7 MB); the peak is the
+  same (80 to 82 MB in all four). The process's commit and address space differ more between two runs of the same
+  mode than between the modes (611 to 642 MB commit, 1 695 to 1 942 MB address space).
+- Not measured: Windows (VirtualFree there is not Wine's; the free list's sort is the same work).
+- **The long flight** (`tools/hand-scripts/obng-stress-ride-long.txt`: seven legs of 120 s back and forth, 15 minutes, 64
+  crossings over cells left and entered again; `obng-stress-ride-long/20261119-091127` skip, `-092723` measure, both
+  PASS, no crash): the crossing purges 64 against 200 ms in all, the longest 3.9 against 22.0 ms; the release took
+  over 5 ms at 6 of the 64 crossings without the route (125 ms in all). The grid's move a crossing: mean 11.1 against
+  13.0 ms, over 20 ms 2 against 4 times, longest 26.6 against 37.6 ms. The pools' committed memory with the route:
+  83.2, 83.9, 84.2 and 84.8 MB at a quarter, half, three quarters and the end - flat at the peak the run without the
+  route also reached (84.5 MB). The process's commit at the end 703 against 702 MB, its address space 1 986 against
+  2 034 MB: no growth from the route.
+- Shipped 2026-11-19: on in the Linux game (OBNG.dll 25d45b55, `PoolPageRelease=1`); Windows not yet.

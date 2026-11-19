@@ -1,0 +1,139 @@
+# The long flight for [Route] PoolPageRelease (2026-11-19): obng-stress-ride.txt's level flight without collision, in god
+# mode, from the cell -33 -4, but seven legs of 120 s back and forth between heading 258 (west) and 78 (east) - about 15
+# minutes and some 60 cell crossings over cells left and entered again, so that the pools' pages kept at a crossing are
+# used again and the commit can be watched ([Probe] Memory, [Route] PoolPageRelease summaries). Run with --run-timeout 1300.
+ini Render SinglePassStereo=1
+ini SelfCheck ShowPanel=0
+ini Render GameResolutionWidth=4036
+ini Render GameResolutionHeight=3376
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Hands BodyCollision=1
+ini Hands PhysicsRate=0
+ini Performance Enabled=1
+ini Performance GpuTiming=1
+ini Performance StartAfterSeconds=45
+ini Performance CaptureSeconds=130
+ini Performance MaxRecords=262144
+ini Performance Sampler=1
+console-at ready cow Tamriel -33 -4
+console-at ready set gamehour to 12
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at placed CloseAllMenus
+console-at placed player.setangle z 258
+console-at placed tcl
+console-at placed tgm
+console-at placed player.setav speed 200
+console-at turn-1 player.setangle z 78
+console-at turn-2 player.setangle z 258
+console-at turn-3 player.setangle z 78
+console-at turn-4 player.setangle z 258
+console-at turn-5 player.setangle z 78
+console-at turn-6 player.setangle z 258
+console-at leg-1 CloseAllMenus
+console-at leg-2 CloseAllMenus
+console-at leg-3 CloseAllMenus
+console-at leg-4 CloseAllMenus
+console-at leg-5 CloseAllMenus
+console-at leg-6 CloseAllMenus
+console-at leg-7 CloseAllMenus
+expect Single-pass stereo: OBNG took the eyes ok (0)
+expect HandScript: finished
+expect Performance: capture armed, it starts in 45 seconds
+expect Performance: capture 1 started
+expect Performance: export
+reject Performance: export partial
+reject menu Container
+reject HandScript: WARNING
+reject CRASH:
+
+wait 12
+mark ready
+wait 16
+mark placed
+wait 12
+head yaw 0
+mark leg-1
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 0
+mark turn-1
+wait 5
+mark leg-2
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 0
+mark turn-2
+wait 5
+mark leg-3
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 0
+mark turn-3
+wait 5
+mark leg-4
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 0
+mark turn-4
+wait 5
+mark leg-5
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 0
+mark turn-5
+wait 5
+mark leg-6
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 0
+mark turn-6
+wait 5
+mark leg-7
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 1
+wait 30
+left stick 0 0
+mark done
+wait 3

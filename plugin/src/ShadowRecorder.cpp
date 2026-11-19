@@ -25,6 +25,7 @@
 #include "CodePatchProbe.h"
 #include "ContactDedup.h"
 #include "FileFindCache.h"
+#include "PoolPageRelease.h"
 #include "SceneOrderCheck.h"
 #include "SoundCommit.h"
 #include "TimedCalls.h"
@@ -148,6 +149,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogCodePatchSummary();
 	LogContactDedupSummary();
 	LogFileFindCacheSummary();
+	LogPoolPageReleaseSummary();
 	LogVoiceDecodeSummary();
 	LogActorCensusSummary();
 	LogActorFarUpdateSummary();

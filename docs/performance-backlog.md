@@ -2527,3 +2527,13 @@ measures what ships. Measured above: grass 2 with leaves 4. **Not measured**: le
 rows: their 0.4-3.3 ms at 4 passes falls about by half), the Gold Road at 2 and 2 at the Dream Air's 72/90 Hz, and the
 picture at two passes in a headset. FoliageAA's own default in its repository is still 4 (its project, not changed
 from here).
+
+## 2026-11-19: the pools' page release kept off the cell crossing (`[Route] PoolPageRelease`, class B; on in the Linux game)
+
+`MemoryPool::FreeUnusedPagesForAllPools()` 0x00402740 at a cell crossing skipped (the purge's other work and every
+other purge stay). Measured (details and runs in knowledge/background-loading.md): the ride's worst grid move 35 -> 21-23
+ms; the long flight (15 minutes, 64 crossings, `tools/hand-scripts/obng-stress-ride-long.txt`): the crossing purges 200
+-> 64 ms in all, the longest 22.0 -> 3.9 ms, the grid's move over 20 ms 4 -> 2 times, the pools' committed memory
+flat at 84.8 MB (84.5 MB peak without the route), the process's commit at the end 703 against 702 MB. Both PASS, no crash.
+Open: Windows (not deployed there yet), and what is left at a crossing: the far cells' LOD lookups 5-10 ms
+(FindFile asking the OS per new file - the listing of the loose files made once is the lever), the cells' attach, 0x004A25F0 2-4 ms.

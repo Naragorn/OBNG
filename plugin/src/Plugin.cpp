@@ -30,6 +30,7 @@
 #include "CodePatchProbe.h"
 #include "ContactDedup.h"
 #include "FileFindCache.h"
+#include "PoolPageRelease.h"
 #include "SceneOrderCheck.h"
 #include "SoundCommit.h"
 #include "TimedCalls.h"
@@ -356,6 +357,7 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 		obng::plugin::InstallCodePatchProbe(path, &Log);
 		obng::plugin::InstallContactDedup(path, &Log);
 		obng::plugin::InstallFileFindCache(path, &Log);  // FindFile's entry (not with a [Timed] line on 0x00431020)
+		obng::plugin::InstallPoolPageRelease(path, &Log);  // the purge's and the release's entries (not with [Timed] lines on 0x0043FC20 / 0x00402740)
 		obng::plugin::InstallSceneOrderCheck(path, &Log);
 		obng::plugin::InstallSkinnedCensus(path, &Log);
 		obng::plugin::InstallSoundCommit(path, &Log);  // two call sites inside the sound update, no entry
