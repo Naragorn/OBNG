@@ -733,3 +733,30 @@ next pose wait. Read by the sampler's eip (not its stack words, which can be sta
   ms ([Probe] LoaderWaits), a Breton NPC's meshes coming into view (derived from the textures loaded around it).
 - **48.1 s:** a mod's script (0x005169A0 / 0x004FAB20 / 0x004FA110 under the eip).
 The earlier reading of these frames as Havok's work came from stale stack words.
+
+### The ride's remaining 40 - 53 ms frames, all three suspects (measured)
+
+Runs `20261119-223333` / `-223657` (`obng-measure-last-steps.ini`: [Probe] SlowCalls with the model files 0x00439EB0
+and the sounds by path 0x006AC610, LockCalls, LoaderWaits) and the two before. New tool
+`tools/re/frame-gap-samples.py`: the sampler's eip (not its stale stack words) between a long frame's present and its
+next pose wait, Wine's ntdll by export name.
+
+- **Music, through DirectShow on the main thread (the recurring one).** The frames at 37.3, 40.8, 60.7, 68.3 and 104.0 s
+  (40 - 53 ms; 2 - 3 a ride, at varying places) are 25 - 35 ms of `winegstreamer.dll` and registry calls
+  (ZwOpenKey(Ex), ZwQueryValueKey, ZwEnumerateKey, ZwCreateKey, ZwSetValueKey, ZwClose) between the present and the pose
+  wait. Read: the music player 0x006AD030 (the strings "death", "success"; three such functions, 0x006AB160 and
+  0x006ACD10 too) makes a new filter graph for a track, `CoCreateInstance(CLSID_FilterGraph at 0x00A78FB4, ...)` at
+  0x006AD123, and calls IGraphBuilder::RenderFile (vtable +0x34) on the MP3: COM's registry lookups and Wine's GStreamer
+  graph build, on the main thread. How long this takes on Windows is not measured.
+- **The "Havok lock" was a misreading.** The ntdll samples at 104.0 s were these registry calls and, inside the pose
+  wait, the stand-in runtime's Sleep (openvr_mock's WaitGetPoses, called from OBVR.dll); the Havok return addresses on
+  the stack were stale. The Havok functions timed are cheap (above).
+- **Model loads** (0x00439EB0, kept from 3 ms): equipment meshes when an NPC comes into view, `MOO\Crafting\Small\
+  SkinningKnife.nif` 6.0 ms (caller 0x004798FA, the weapon equip 0x00479780), `Armor\Steel\Shield.NIF` 4.6 ms (caller
+  0x0047A086); each one's loader pause varies with the job the loader is on (2.4 ms here, 8.9 + 22.2 ms in run -222228).
+- **Sounds by path** (0x006AC610): only an ambient wind loop over 3 ms (3.5 ms). Not the music.
+- **Lock waits** ([Probe] LockCalls) in the ride: the FaceGen cache's lock 0x00B39C00 once, 14.4 ms at 119.9 s - the
+  main thread's insert 0x005515B0 waiting while 0x005506B0 (the cache's purge to its budget, under the lock) runs on
+  another thread. Before the ride: the archive's lock (0x0042C3E0 waiting on 0x0042DB50, 13.3 ms) and the renderer's
+  precache lock (0x00763572, 8.5 ms).
+- **110.7 s** (40 ms): d3dx9 making the three menu textures a mod's script opens (above).
