@@ -54,8 +54,8 @@ exclusive runs); the sections of 2026-11-19 below and knowledge/background-loadi
   Fixed in OBVR 2d22f2f (the runner sets both to 0 under `--no-steamvr` unless the scenario sets them; measured there:
   2568x2568, single pass 5136x2568). The 75 Hz was real. Every OBNG ride up to 2026-11-19 with `--headset beyond` ran
   at 8072x3376: the comparisons stand (both sides alike), the absolute render numbers are the Dream Air's size. The
-  local OBVR checkout that `tools/shadow-run.sh` uses was still at 78723f8, without the fix, on 2026-11-19; a run after
-  OBVR's pull renders the Beyond's size, so compare new runs only with runs of the same size.
+  local OBVR checkout that `tools/shadow-run.sh` uses was pulled to 2d22f2f on 2026-11-19 after the TextureLockSkip
+  runs: every later `--headset beyond` run renders the Beyond's size, so compare it only with runs of the same size.
 - `tools/re/timed-spikes.py` reads only `frame:UpdateStep` spike lines; render-frame spikes were read ad hoc. Add a
   `--spike NAME` option.
 - Never time RenderScene 0x0040C830's entry: OBVR's single pass hooks it, and a timed line there stops single pass
