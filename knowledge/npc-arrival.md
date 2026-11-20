@@ -253,3 +253,23 @@ ride: the mod list's leveled spawns and schedules change who is on the road - in
 The routes take two to nine late frames a ride out of forty to sixty; three rides a side cannot show that. The
 numbers of what the routes touch can. Open: a scenario with a fixed set of arriving NPCs (the long session's city
 legs), or many more rides a side.
+
+## The gates run so far, and the state in the two games (2026-11-20 evening)
+
+- **A long session** (`obng-long-memory.txt`, sixteen minutes, the ride and nine city legs, all three routes on, run
+  `obng-long-memory/20261120-200042`): passed, 22 marks, no crash, no dump of the hang watch after the loading
+  screen. It exercised the routes less than a ride does: 118 FaceGen reads, 30 premakes, 4 694 appends, all in its
+  first minutes - the city legs brought no new queued heads.
+- **AnimationLazyAppend checked in the game against the game's own walk** (`[Route] AnimationLazyAppend=2`,
+  `obng-ride-lazy-append-check.ini`, run `obng-profile-ride-anvil-late/20261120-201719`): 9 203 appends compared,
+  0 mismatches; the game's walk passed 1 156 921 nodes for the run's 9 791 appends, the route passes 5 000 - 9 000.
+  That is the class A gate: verified.
+- **In the two games** since 2026-11-20 20:21 (OBNG.dll 4e8c2903, backups
+  `artifacts/backups/20261120-2021-npc-arrival-routes-on`): `[Route] FaceGenLoadOutside=1`, `BodyTexturePremake=1`,
+  `AnimationLazyAppend=1` and `[Probe] HangWatch=1` in both OBNG.ini files, for Nadi's look and the peers' runs. The
+  code's own default stays 0 until the two class B routes are accepted. Open for them: Nadi's look in the headset,
+  real SteamVR, 90 Hz, Windows, the peer sessions' regression runs.
+- **A crash to keep in mind** (Walkers' run of 19:44 with OBNG.dll 68e6b3c2, the three routes off by its INI): the
+  pool allocator at 0x004025D2 unlinking a free 12-byte block whose link words had been overwritten, on the loader's
+  thread while it read a NIF. Not reproduced in the next run. Nothing ties it to OBNG, Walkers or the game yet.
+

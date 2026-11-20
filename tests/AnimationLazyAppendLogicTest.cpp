@@ -86,7 +86,8 @@ bool Same(const Memory& a, const Memory& b) {
 
 int main() {
 	Section("The INI's value");
-	Check(!OnOf(0) && OnOf(1) && !OnOf(2) && !OnOf(-1), "1 is on, anything else is off");
+	Check(ModeOf(0) == Mode::Off && ModeOf(1) == Mode::Route && ModeOf(2) == Mode::Check && ModeOf(3) == Mode::Off && ModeOf(-1) == Mode::Off,
+	      "1 routes, 2 checks against the game's walk, anything else is off");
 	Check(Shipped() == 0, "off as shipped until the game's gates have run");
 
 	Section("What an append does with the item");
@@ -163,6 +164,46 @@ int main() {
 	std::uint64_t second = RouteAppend(route3, three, r3, 6);
 	End(three);
 	Check(Same(game3, route3) && first == 3 && second == 0, "the first append walks to the end, the next ones start there");
+
+	Section("The check: the kept end against the game's walk");
+	{
+		Memory memory;
+		const std::uint32_t head = memory.New();
+		Scope scope;
+		Begin(scope);
+		unsigned compared = 0, mismatches = 0;
+		for (std::uint32_t item = 1; item <= 40; ++item) {
+			std::uint64_t unused = 0;
+			const auto next = [&memory](std::uint32_t node) { return memory.nodes[node].next; };
+			const std::uint32_t start = StartOf(scope, head);
+			const std::uint32_t trueLast = LastOf(head, next, unused);
+			if (start != head) {
+				++compared;
+				mismatches += LastOf(start, next, unused) != trueLast ? 1 : 0;
+			}
+			GameAppend(memory, head, item);
+			std::uint32_t kept = head;
+			while (memory.nodes[kept].next != 0) {
+				kept = memory.nodes[kept].next;
+			}
+			Keep(scope, head, kept);
+		}
+		End(scope);
+		Check(compared == 38 && mismatches == 0, "every append after the list has a node of its own is compared, and agrees");
+		// A list another hand has cut short behind the kept end's back: the check must see it.
+		Begin(scope);
+		Keep(scope, head, memory.nodes[head].next);  // a node that is not the last
+		std::uint64_t unused = 0;
+		const auto next = [&memory](std::uint32_t node) { return memory.nodes[node].next; };
+		const std::uint32_t kept = StartOf(scope, head);
+		memory.nodes[kept].next = 0;  // the list now ends at the kept node...
+		Check(LastOf(kept, next, unused) == LastOf(head, next, unused), "a kept node that is the last agrees");
+		const std::uint32_t orphan = memory.New();
+		memory.nodes[orphan].next = 0;
+		Keep(scope, head, orphan);  // ...and a kept node that is not in the list at all
+		Check(LastOf(StartOf(scope, head), next, unused) != LastOf(head, next, unused), "a kept node outside the list is a mismatch");
+		End(scope);
+	}
 
 	Section("The allocator fails");
 	Memory game4, route4;

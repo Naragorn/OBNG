@@ -29,8 +29,9 @@ struct Node {
 
 LogFn g_log = nullptr;
 bool g_on = false;
+la::Mode g_mode = la::Mode::Off;
 thread_local la::Scope t_scope;
-std::atomic<unsigned long long> g_appends{0}, g_steps{0}, g_fromLast{0};
+std::atomic<unsigned long long> g_appends{0}, g_steps{0}, g_fromLast{0}, g_compared{0}, g_mismatches{0};
 
 Node* NodeAt(UInt32 handle) {
 	return reinterpret_cast<Node*>(static_cast<std::uintptr_t>(handle));
@@ -43,8 +44,22 @@ void __fastcall Append(void* head, void*, UInt32 item) {
 	}
 	const UInt32 headHandle = static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(head));
 	const UInt32 start = la::StartOf(t_scope, headHandle);
+	const auto next = [](UInt32 node) { return NodeAt(node)->next; };
 	std::uint64_t steps = 0;
-	const UInt32 last = la::LastOf(start, [](UInt32 node) { return NodeAt(node)->next; }, steps);
+	UInt32 last = la::LastOf(start, next, steps);
+	if (g_mode == la::Mode::Check) {
+		// The game's own walk decides; the kept end's answer is only compared with it.
+		std::uint64_t walked = 0;
+		const UInt32 trueLast = la::LastOf(headHandle, next, walked);
+		if (start != headHandle) {
+			g_compared.fetch_add(1, std::memory_order_relaxed);
+			if (last != trueLast) {
+				g_mismatches.fetch_add(1, std::memory_order_relaxed);
+			}
+		}
+		last = trueLast;
+		steps = walked;
+	}
 	UInt32 kept = last;
 	if (la::PutOf(item, NodeAt(last)->item) == la::Put::IntoLast) {
 		NodeAt(last)->item = item;
@@ -81,7 +96,8 @@ void InstallAnimationLazyAppend(const char* iniPath, LogFn log) {
 		return;
 	}
 	s_done = true;
-	if (!la::OnOf(static_cast<int>(GetPrivateProfileIntA("Route", "AnimationLazyAppend", la::Shipped(), iniPath)))) {
+	g_mode = la::ModeOf(static_cast<int>(GetPrivateProfileIntA("Route", "AnimationLazyAppend", la::Shipped(), iniPath)));
+	if (g_mode == la::Mode::Off) {
 		log("Route: animation lazy append - off in OBNG.ini; the list of animation files to clone is walked from its head at every append, as the game does it");
 		return;
 	}
@@ -93,23 +109,29 @@ void InstallAnimationLazyAppend(const char* iniPath, LogFn log) {
 	std::memcpy(patch + 1, &toRoute, 4);
 	if (!Verify(kAppendSite, expected, sizeof(expected))) {
 		log("Route: animation lazy append - the append's call at %08X is not the game's own; not routed", kAppendSite);
+		g_mode = la::Mode::Off;
 		return;
 	}
 	if (!SafeWrite(kAppendSite, patch, sizeof(patch))) {
 		log("Route: animation lazy append - the append's call at %08X could not be written; not routed", kAppendSite);
+		g_mode = la::Mode::Off;
 		return;
 	}
 	g_on = true;
-	log("Route: animation lazy append - inside an animation set up the list of files to clone is appended to at its kept end (needs [Route] "
-	    "AnimationPauseBatch for the set up's begin and end)");
+	log("Route: animation lazy append (%s) - inside an animation set up the list of files to clone is %s (needs [Route] AnimationPauseBatch for the "
+	    "set up's begin and end)",
+	    g_mode == la::Mode::Check ? "check" : "route",
+	    g_mode == la::Mode::Check ? "walked as the game walks it, and the kept end compared with the walk's" : "appended to at its kept end");
 }
 
 void LogAnimationLazyAppendSummary() {
 	if (!g_on) {
 		return;
 	}
-	g_log("Route: animation lazy append - since the start %llu appends, %llu of them from the kept end, %llu nodes passed on the way in all",
-	      g_appends.load(std::memory_order_relaxed), g_fromLast.load(std::memory_order_relaxed), g_steps.load(std::memory_order_relaxed));
+	g_log("Route: animation lazy append (%s) - since the start %llu appends, %llu of them from the kept end, %llu nodes passed on the way in all; "
+	      "compared with the game's walk %llu, mismatches %llu",
+	      g_mode == la::Mode::Check ? "check" : "route", g_appends.load(std::memory_order_relaxed), g_fromLast.load(std::memory_order_relaxed),
+	      g_steps.load(std::memory_order_relaxed), g_compared.load(std::memory_order_relaxed), g_mismatches.load(std::memory_order_relaxed));
 }
 
 }  // namespace obng::plugin

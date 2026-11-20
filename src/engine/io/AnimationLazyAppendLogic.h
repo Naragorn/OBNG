@@ -25,8 +25,12 @@ constexpr int Shipped() {
 	return 0;
 }
 
-constexpr bool OnOf(int ini) {
-	return ini == 1;
+// 1 routes the append; 2 checks it in the game: the append walks from the head as the game does and the game goes on
+// with that, while the node the kept end would have led to is compared with it (the class A gate).
+enum class Mode { Off, Route, Check };
+
+constexpr Mode ModeOf(int ini) {
+	return ini == 1 ? Mode::Route : ini == 2 ? Mode::Check : Mode::Off;
 }
 
 // One thread's set up in progress: the list appended to last and its last node.
