@@ -2,6 +2,8 @@
 
 #include "Memory.h"
 #include "OcclusionCull.h"
+#include "StepHooks.h"
+#include "engine/memory/StepLockWaitsLogic.h"
 
 #include <windows.h>
 
@@ -53,6 +55,37 @@ volatile LONG g_dropped = 0;
 volatile LONG g_interlockedInPass = 0;
 volatile LONG g_interlockedOutside = 0;
 UInt32 g_lastPasses = 0;
+
+// The main thread's waits of the running update step (StepLockWaitsLogic.h): added on the main thread only, written
+// and reset by the step hook, which also says which thread the main one is.
+namespace slw = obng::engine::memory::step_lock_waits;
+constexpr std::uint64_t kStepFloorUs = 2000;
+constexpr unsigned kStepLines = 400;
+volatile LONG g_mainThread = 0;
+slw::StepWaits g_stepWaits;
+unsigned g_stepLines = 0;
+
+void BeforeStep() {
+	InterlockedExchange(&g_mainThread, static_cast<LONG>(GetCurrentThreadId()));
+	if (slw::Worth(g_stepWaits, kStepFloorUs) && g_stepLines < kStepLines) {
+		++g_stepLines;
+		LARGE_INTEGER now{};
+		QueryPerformanceCounter(&now);
+		char line[600];
+		int at = std::snprintf(line, sizeof(line), "Probe: main-thread lock waits - the step ending at tick %lld: %.2f ms; section waits / ms / longest ms at site:",
+		                       now.QuadPart, slw::TotalUs(g_stepWaits) / 1000.0);
+		for (std::uint32_t i = 0; i < g_stepWaits.used && at > 0 && static_cast<std::size_t>(at) < sizeof(line) - 70; ++i) {
+			const slw::Slot& slot = g_stepWaits.slots[i];
+			at += std::snprintf(line + at, sizeof(line) - at, " %08X %u / %.2f / %.2f at %08X;", slot.section, slot.waits, slot.us / 1000.0,
+			                    slot.longestUs / 1000.0, slot.longestSite);
+		}
+		if (g_stepWaits.otherWaits != 0 && at > 0 && static_cast<std::size_t>(at) < sizeof(line) - 50) {
+			std::snprintf(line + at, sizeof(line) - at, " others %u / %.2f;", g_stepWaits.otherWaits, g_stepWaits.otherUs / 1000.0);
+		}
+		g_log("%s", line);
+	}
+	slw::Reset(g_stepWaits);
+}
 
 Entry* Find(Entry* table, UInt32 key) {
 	UInt32 i = (key * 2654435761u) >> 22;
@@ -133,6 +166,9 @@ void __stdcall EnterReplacement(CRITICAL_SECTION* section) {
 		InterlockedExchange(&e->site, static_cast<LONG>(site));
 	}
 	NoteWait(Find(g_waitSites, site), us);
+	if (static_cast<LONG>(GetCurrentThreadId()) == g_mainThread) {
+		slw::Add(g_stepWaits, static_cast<UInt32>(reinterpret_cast<std::uintptr_t>(section)), static_cast<UInt32>(us), site);
+	}
 	if (holder != 0) {
 		NoteWait(Find(g_holderSites, static_cast<UInt32>(holder)), us);
 	}
@@ -264,6 +300,9 @@ void InstallLockProbe(const ShadowSettings& settings, LogFn log) {
 	                Swap(kSlotLeave, &LeaveReplacement, &g_leave) && Swap(kSlotIncrement, &IncrementReplacement, &g_increment) &&
 	                Swap(kSlotDecrement, &DecrementReplacement, &g_decrement);
 	g_installed = ok;
+	if (ok) {
+		AddStepHook(&BeforeStep, "the lock probe's main-thread waits a step", log);
+	}
 	log(ok ? "Probe: lock calls - the EXE's import slots for the critical section and interlocked calls are OBNG's counters"
 	       : "Probe: lock calls - an import slot could not be written, the count is incomplete");
 }

@@ -834,3 +834,21 @@ OBNG.dll f0398de7), `-100307` / `-100632` (`obng-measure-cell-unload-locks.ini`:
   section waits. Not proven per frame (the probe counts per window and all threads). The renderer's lock
   (18B05F0C / 18B0600C, the precache 0x00763F71 / 0x00763572) waits 1 - 7 ms a window, the light lock 0x00B3FC00 once
   1.2 - 3.5 ms.
+
+### The eviction's waits per frame: the heap lock is up to half of it, not all (measured)
+
+[Probe] LockCalls now keeps the main thread's critical section waits per update step
+(src/engine/memory/StepLockWaitsLogic.h; a line for a step with 2 ms of waits or more, joined with the spike lines by
+`tools/re/step-lock-waits.py`). Runs `20261120-102908` / `-103233` (OBNG.dll 39c568a9,
+`obng-measure-cell-unload-locks.ini`), the 14 steps with an eviction in the ride:
+
+- In 9 of them the main thread waited 2.1 - 8.3 ms on critical sections, nearly all on the heap lock 0x00B32B80 at the
+  free 0x00401D92: 1 924 - 7 453 contended frees a step, about 1 us each (the alloc's holder is another thread, the
+  loader by the window counts above). Beside the unload's 6.5 - 19.2 ms that is a third to a half (7.3 of 15.1, 7.8 of
+  19.2, 6.1 of 11.8, 5.4 of 11.0, 4.3 of 6.5 ms).
+- In 5 of them the waits were under 2 ms while the unload still took 9.1 - 12.3 ms (2.3 once): the unload's own work
+  (0x004CB4D0: every reference's 3D let go).
+- The owner lock's section 0x00B35D00 (0x00496ECC): 0.00 - 0.02 ms. The scene locks 0x00B3F600 / 0x00B3FA00: under
+  0.7 ms.
+So an eviction is about 5 - 12 ms of its own work plus 0 - 8 ms of heap lock contention with the loader. A heap with
+less contention would take off up to half; only spreading the unload over frames takes the frame under a period.
