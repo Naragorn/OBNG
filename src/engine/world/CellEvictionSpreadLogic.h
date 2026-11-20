@@ -11,7 +11,7 @@
 // The route: inside the frame's own pump call (0x0040D8D8) a cell task's end that would evict is held - a task done on
 // the loader's thread whose end has not run is a state the engine has every frame. While it is held the last slot's
 // cell, still a buffered cell, has its references' 3D let go in slices of a few ms a frame (the engine's own Set3D(null)
-// under its owner lock, placed references only, never an actor or the player); then the end runs and its eviction finds
+// under its owner lock; placed references up to the budget, or one actor a slice; never the player); then the end runs and its eviction finds
 // the 3D gone. Everything held ends at once ("flush") before anything that looks at the buffer or the tasks: the cell
 // request 0x004BE090, the grid move's task ends 0x004BE4E0, the grid's attach 0x00444340, every pump call outside the
 // frame's (the waits of 0x00434020), in menu mode and after too many frames. So a stripped cell is never refreshed or
@@ -29,7 +29,12 @@ inline Mode ModeOf(int value) {
 	return value == 1 ? Mode::On : Mode::Off;
 }
 
-constexpr std::uint32_t kPlacedReference = 0x31;  // TESForm's type byte of a placed reference (xOBSE kFormType_REFR)
+// TESForm's type byte (+4) of the three kinds of reference (measured 2026-11-20, run 20261120-122256, [Probe]
+// UnloadRefs: an unload's Set3D(null) calls by type - 0x31 4 305 references at 14 us each, 0x32 51 at 0.66 ms, the
+// longest 4.7 ms, 0x33 50 at 0.57 ms, the longest 5.3 ms; half of an unload's time is the hundred actors).
+constexpr std::uint32_t kPlacedReference = 0x31;
+constexpr std::uint32_t kCharacter = 0x32;
+constexpr std::uint32_t kCreature = 0x33;
 constexpr std::uint32_t kMaxHeld = 16;
 constexpr std::uint32_t kMaxFrames = 40;          // a hold longer than this ends at once
 
@@ -80,13 +85,22 @@ inline StepWay StepOf(std::uint32_t held, std::uint32_t frames, bool menuMode, b
 	return StepWay::Strip;
 }
 
-// A reference is stripped ahead when it is a placed reference with 3D that is not the player.
-inline bool Strippable(std::uint32_t formType, bool isPlayer, bool has3D) {
-	return formType == kPlacedReference && !isPlayer && has3D;
+inline bool IsActor(std::uint32_t formType) {
+	return formType == kCharacter || formType == kCreature;
 }
 
-// The slice goes on while its budget lasts.
-inline bool GoOn(std::uint64_t elapsedUs, std::uint64_t budgetUs) {
+// A reference is stripped ahead when it is a placed reference or an actor with 3D that is not the player. An actor
+// without 3D in a buffered cell is a state the engine has anyway (most of a buffered cell's characters are in it).
+inline bool Strippable(std::uint32_t formType, bool isPlayer, bool has3D) {
+	return (formType == kPlacedReference || IsActor(formType)) && !isPlayer && has3D;
+}
+
+// The slice goes on to the next reference while its budget lasts. An actor's Set3D(null) takes up to 5 ms, so one is
+// started only as a slice's first work: a slice is either cheap references up to the budget or one actor.
+inline bool GoOn(std::uint64_t elapsedUs, std::uint64_t budgetUs, bool nextIsActor, std::uint32_t doneInSlice) {
+	if (nextIsActor) {
+		return doneInSlice == 0;
+	}
 	return elapsedUs < budgetUs;
 }
 

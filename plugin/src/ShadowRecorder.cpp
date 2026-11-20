@@ -36,6 +36,7 @@
 #include "MusicAsync.h"
 #include "QuestTargetDefer.h"
 #include "CellEvictionSpread.h"
+#include "UnloadRefProbe.h"
 #include "SceneOrderCheck.h"
 #include "SoundCommit.h"
 #include "TimedCalls.h"
@@ -170,6 +171,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogMusicAsyncSummary();
 	LogQuestTargetDeferSummary();
 	LogCellEvictionSpreadSummary();
+	LogUnloadRefSummary();
 	LogVoiceDecodeSummary();
 	LogActorCensusSummary();
 	LogActorFarUpdateSummary();

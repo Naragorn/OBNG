@@ -62,7 +62,9 @@ void* g_cellRequest = nullptr;
 void* g_moveEnds = nullptr;
 void* g_gridAttach = nullptr;
 
-// The main thread's only (the thread that installs; a hook reached on another thread passes through).
+// The main thread's only. The main thread is the one that runs the update step (measured 2026-11-20: not the thread
+// that installs the plugin's hooks); until the first step says which, nothing is held, and a hook reached on another
+// thread passes through.
 DWORD g_mainThread = 0;
 bool g_framePump = false;
 bool g_flushing = false;
@@ -73,9 +75,14 @@ bool g_victimStripped = false;
 UInt32 g_victim = 0;  // the cell the strip state is about
 
 struct Stats {
-	unsigned long long holds = 0, ends = 0, slices = 0, stripped = 0, flushes = 0, flushedEnds = 0, timeouts = 0;
+	unsigned long long holds = 0, ends = 0, slices = 0, stripped = 0, actors = 0, flushes = 0, flushedEnds = 0, timeouts = 0;
 	double sliceMs = 0.0, longestSliceMs = 0.0, endMs = 0.0, longestEndMs = 0.0;
 	UInt32 flushBy[6] = {};
+	// What the ends looked like (the hold's conditions, counted): all ends, on the main thread, in the frame's pump,
+	// cell tasks there, and of those: menu mode, cancelled, with a cell, queued, with a node, exterior, in the buffer
+	// already, the last slot taken.
+	unsigned long long seen = 0, onMain = 0, inFramePump = 0, cellTasks = 0, menu = 0, cancelled = 0, withCell = 0, queued = 0, withNode = 0,
+	                   exterior = 0, inBuffer = 0, lastTaken = 0, framePumps = 0, otherPumps = 0;
 };
 Stats g_stats;
 enum FlushReason : UInt32 { kByRequest, kByMoveEnds, kByAttach, kByOtherPump, kByMenu, kByFrames };
@@ -158,27 +165,33 @@ void Flush(FlushReason reason) {
 // with 3D is left.
 bool StripSlice(UInt32 cell) {
 	const LONGLONG t0 = Now();
-	const std::uint64_t budgetTicks = static_cast<std::uint64_t>(static_cast<double>(g_budgetUs) * g_ticksPerUs);
 	const UInt32 player = At(kPlayer);
 	bool done = true;
+	UInt32 doneInSlice = 0;
 	reinterpret_cast<OwnerFn>(kOwnerTake)(reinterpret_cast<void*>(kOwnerLock), reinterpret_cast<void*>(cell));
-	for (UInt32 node = cell + kCellReferences; node != 0; node = At(node + 4)) {
+	UInt32 node = cell + kCellReferences;
+	while (node != 0) {
 		const UInt32 reference = At(node);
+		node = At(node + 4);  // the next first, as the engine's loop reads it before the call
 		if (reference == 0) {
 			continue;
 		}
 		const UInt32 type = *reinterpret_cast<const UInt8*>(reference + 4);
 		const UInt32 vtable = At(reference);
-		const bool has3D = type == ces::kPlacedReference && reinterpret_cast<GetNodeFn>(At(vtable + kSlotGetNiNode))(reinterpret_cast<void*>(reference)) != nullptr;
+		const bool kind = type == ces::kPlacedReference || ces::IsActor(type);
+		const bool has3D = kind && reinterpret_cast<GetNodeFn>(At(vtable + kSlotGetNiNode))(reinterpret_cast<void*>(reference)) != nullptr;
 		if (!ces::Strippable(type, reference == player, has3D)) {
 			continue;
 		}
-		if (!ces::GoOn(static_cast<std::uint64_t>(Now() - t0), budgetTicks)) {
+		const std::uint64_t elapsedUs = static_cast<std::uint64_t>(static_cast<double>(Now() - t0) / g_ticksPerUs);
+		if (!ces::GoOn(elapsedUs, g_budgetUs, ces::IsActor(type), doneInSlice)) {
 			done = false;
 			break;
 		}
 		reinterpret_cast<Set3DFn>(At(vtable + kSlotSet3D))(reinterpret_cast<void*>(reference), nullptr);
+		++doneInSlice;
 		++g_stats.stripped;
+		g_stats.actors += ces::IsActor(type) ? 1 : 0;
 	}
 	reinterpret_cast<OwnerFn>(kOwnerGive)(reinterpret_cast<void*>(kOwnerLock), reinterpret_cast<void*>(cell));
 	const double ms = static_cast<double>(Now() - t0) / g_ticksPerUs / 1000.0;
@@ -190,6 +203,7 @@ bool StripSlice(UInt32 cell) {
 
 // Before every update step: a slice, or the oldest end.
 void BeforeStep() {
+	g_mainThread = GetCurrentThreadId();
 	if (g_heldCount == 0) {
 		return;
 	}
@@ -221,7 +235,11 @@ void BeforeStep() {
 // In place of the pump's call of a task's end.
 void __fastcall End(void* task) {
 	ces::EndFacts f;
-	f.enabled = g_on && GetCurrentThreadId() == g_mainThread;
+	const bool onMain = GetCurrentThreadId() == g_mainThread;
+	f.enabled = g_on && onMain;
+	++g_stats.seen;
+	g_stats.onMain += onMain ? 1 : 0;
+	g_stats.inFramePump += g_framePump ? 1 : 0;
 	f.framePump = g_framePump;
 	f.flushing = g_flushing;
 	f.held = g_heldCount;
@@ -240,6 +258,15 @@ void __fastcall End(void* task) {
 			f.inBuffer = InBuffer(cell);
 		}
 		f.lastSlotTaken = LastSlotCell() != 0;
+		++g_stats.cellTasks;
+		g_stats.menu += f.menuMode;
+		g_stats.cancelled += f.cancelled;
+		g_stats.withCell += f.hasCell;
+		g_stats.queued += f.queued;
+		g_stats.withNode += f.cellHasNode;
+		g_stats.exterior += f.exterior;
+		g_stats.inBuffer += f.inBuffer;
+		g_stats.lastTaken += f.lastSlotTaken;
 	}
 	if (ces::WayOf(f) == ces::EndWay::Run) {
 		CallEnd(task);
@@ -253,12 +280,14 @@ void __fastcall End(void* task) {
 // In place of the update step's call of the pump: the frame's own pump call, the only one that holds.
 void __fastcall FramePump(void* io, void*) {
 	g_framePump = true;
+	++g_stats.framePumps;
 	reinterpret_cast<ThisFn>(kPump)(io);  // the entry detour below sees the flag
 	g_framePump = false;
 }
 
 void __fastcall Pump(void* io, void*) {
 	if (!g_framePump) {
+		++g_stats.otherPumps;
 		Flush(kByOtherPump);  // a wait for the queue must find every end run
 	}
 	reinterpret_cast<ThisFn>(g_pump)(io);
@@ -304,7 +333,6 @@ void InstallCellEvictionSpread(const char* iniPath, LogFn log) {
 		return;
 	}
 	g_log = log;
-	g_mainThread = GetCurrentThreadId();
 	const UINT tenths = GetPrivateProfileIntA("Route", "CellEvictionSliceTenthsMs", 20, iniPath);
 	g_budgetUs = (tenths == 0 ? 20 : tenths) * 100ull;
 	LARGE_INTEGER frequency;
@@ -348,11 +376,16 @@ void LogCellEvictionSpreadSummary() {
 	const Stats s = g_stats;
 	g_stats = Stats{};
 	g_log("Route: cell eviction spread - %llu ends held, %llu run later (%.2f ms in all, the longest %.2f); %llu slices (%.2f ms in all, the longest "
-	      "%.2f), %llu references stripped ahead; %llu flushes ending %llu at once (request %u, move %u, attach %u, other pump %u, menu %u, frames %u); "
+	      "%.2f), %llu references stripped ahead (%llu actors); %llu flushes ending %llu at once (request %u, move %u, attach %u, other pump %u, menu %u, frames %u); "
 	      "held now %u",
-	      s.holds, s.ends - s.flushedEnds, s.endMs, s.longestEndMs, s.slices, s.sliceMs, s.longestSliceMs, s.stripped, s.flushes, s.flushedEnds,
+	      s.holds, s.ends - s.flushedEnds, s.endMs, s.longestEndMs, s.slices, s.sliceMs, s.longestSliceMs, s.stripped, s.actors, s.flushes, s.flushedEnds,
 	      s.flushBy[kByRequest], s.flushBy[kByMoveEnds], s.flushBy[kByAttach], s.flushBy[kByOtherPump], s.flushBy[kByMenu], s.flushBy[kByFrames],
 	      g_heldCount);
+	g_log("Route: cell eviction spread - ends seen %llu (main thread %llu, in the frame's pump %llu; pump calls: the frame's %llu, others %llu); cell "
+	      "tasks there %llu: menu mode %llu, cancelled %llu, with a cell %llu, queued %llu, with a node %llu, exterior %llu, in the buffer already "
+	      "%llu, the last slot taken %llu",
+	      s.seen, s.onMain, s.inFramePump, s.framePumps, s.otherPumps, s.cellTasks, s.menu, s.cancelled, s.withCell, s.queued, s.withNode, s.exterior,
+	      s.inBuffer, s.lastTaken);
 }
 
 }  // namespace obng::plugin

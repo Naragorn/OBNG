@@ -888,3 +888,39 @@ less contention would take off up to half; only spreading the unload over frames
     a few ms while it is still in the buffer, then let the task end: its push evicts a cell whose 3D is gone already.
     Before a grid attach 0x00444340 everything held must be finished at once, so that no stripped cell is attached.
     Not read yet: who calls the task's end and what keeps the task alive after it (its reference count at +8).
+
+### CellEvictionSpread measured: no gain as built; where a frame has slack (measured 2026-11-20)
+
+`[Route] CellEvictionSpread` (plugin/src/CellEvictionSpread.cpp, src/engine/world/CellEvictionSpreadLogic.h; off
+everywhere). Rides with `obng-measure-eviction-on.ini` / `-off.ini`, frames over 20 ms in the ride's 120 s by where
+they fall (within 1.5 s of a half-cell line = the evictions, at a crossing, the first 6 s, elsewhere):
+
+| run | variant | all | evictions | crossings | first 6 s | elsewhere |
+|---|---|---:|---:|---:|---:|---:|
+| 114318, 115008, 121723, 123100, 123756 | off | 37, 36, 45, 46, 29 | 12, 12, 15, 12, 7 | 13, 13, 13, 14, 13 | 3, 3, 7, 11, 2 | 9, 8, 10, 9, 7 |
+| 120653, 121352 | on, placed references stripped ahead | 58, 58 | 15, 18 | 18, 15 | 14, 7 | 11, 18 |
+| 122731, 123428 | on, actors too (one a slice) | 66, 244 | 7, 15 | 12, 16 | 4, 7 | 43, 206 |
+
+- The route does what it was built to do: all 54 ends of a ride held and run later, 4 090 references stripped ahead in
+  slices of at most 2.2 ms, the unload's reference loop 0x004CB4D0 down to 1 ms a ride with the actors stripped too;
+  no flush but one by the cell request. (The first build held nothing: it took the thread that installs the hooks for
+  the main thread; the game's loop runs on another. The main thread is the one that runs the update step.)
+- **Why no gain with the placed references only:** half of an unload is its actors ([Probe] UnloadRefs, run
+  `20261120-122256`, a ride's 54 unloads: type 0x31, placed references, 4 305 calls, 62 ms, 14 us each; 0x32,
+  characters, 51 calls, 34 ms, 0.66 ms each, the longest 4.7 ms; 0x33, creatures, 50 calls, 29 ms, the longest 5.3
+  ms). The ends, one a frame now, still cost up to 13.9 - 17.6 ms each.
+- **Why it got worse with the actors:** an actor in a buffered cell that loses its 3D gets it made again by the engine
+  (98 actors stripped for 67 with 3D; five seconds of 27 - 44 ms frames at 35 - 40 s and 65 - 70 s with file reads on
+  the main thread in run 123428). An actor's 3D can only go once the unload has taken the cell's actors out of the
+  process lists (0x0067A8C0, the unload's first step).
+- **Where a frame has slack** (OBVR's capture against the step's spike lines, runs 121723, 123100, 123756): inside an
+  update step the order is the update's early part with the IO pump - OBVR's pose wait - the grid's move - the render -
+  the present. In a normal frame the pose wait starts 0.9 ms after the present and lasts 8.8 ms (median; 8.0 at the
+  5th percentile): work before it is free up to about 8 ms, work after it has none. An eviction step has 10 - 19 ms
+  (once 27) of work before the wait: over the slack. **A crossing step's pose wait starts at +0.6 - 4.5 ms: the grid's
+  move runs after the wait, where every millisecond delays the present** - that is why every crossing misses a period
+  whatever it costs (13 of 13 in every run), and why QuestTargetDefer's rebuild at the next step's start (before the
+  wait) is free.
+- The pump's budget is Oblivion.ini `[BackgroundLoad] iPostProcessMilliseconds` (0x00B048E4, 5 in Nadi's INI): the pump
+  ends finished tasks until 5 ms have passed, so two or three evictions land in one frame. At 1 it would end one a
+  frame (3 ms on average, under the slack) - to be measured (`tools/hand-scripts/obng-profile-ride-anvil-pp1.txt`).

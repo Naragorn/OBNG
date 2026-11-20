@@ -89,12 +89,17 @@ int main() {
 
 	Section("Which references are stripped ahead");
 	Check(Strippable(kPlacedReference, false, true), "a placed reference with 3D");
-	Check(!Strippable(kPlacedReference, false, false), "without 3D: nothing to do");
-	Check(!Strippable(kPlacedReference, true, true), "never the player");
-	Check(!Strippable(0x23, false, true) && !Strippable(0x24, false, true), "never an actor: the unload itself does those");
+	Check(Strippable(kCharacter, false, true) && Strippable(kCreature, false, true), "a character or a creature with 3D");
+	Check(!Strippable(kPlacedReference, false, false) && !Strippable(kCharacter, false, false), "without 3D: nothing to do");
+	Check(!Strippable(kPlacedReference, true, true) && !Strippable(kCharacter, true, true), "never the player");
+	Check(!Strippable(0x30, false, true) && !Strippable(0x34, false, true), "no other kind of form");
+	Check(IsActor(kCharacter) && IsActor(kCreature) && !IsActor(kPlacedReference), "which kinds are actors");
 
 	Section("The slice's budget");
-	Check(GoOn(0, 2000) && GoOn(1999, 2000), "under the budget: on");
-	Check(!GoOn(2000, 2000) && !GoOn(5000, 2000), "at or past it: stop");
+	Check(GoOn(0, 2000, false, 0) && GoOn(1999, 2000, false, 40), "a cheap reference under the budget: on");
+	Check(!GoOn(2000, 2000, false, 40) && !GoOn(5000, 2000, false, 1), "at or past it: stop");
+	Check(GoOn(0, 2000, true, 0), "an actor as the slice's first work: on");
+	Check(GoOn(9000, 2000, true, 0), "an actor first even past the budget (the walk itself took it): on, so the strip ends");
+	Check(!GoOn(10, 2000, true, 1), "an actor after other work: the next slice");
 	return Failures();
 }
