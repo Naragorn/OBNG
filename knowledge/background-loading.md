@@ -1064,3 +1064,31 @@ move (4.5 - 7.6 ms) and the work of the frame after it have to shrink too.
 - OBNG runs the per-frame move of 0x0040DD98 with the block behind it (to 0x0040DE3A) at the start of the next step,
   before the pump and the wait: the pattern of QuestTargetDefer, whose call then has to go one step further. It
   covers the move only, and the grid shifts one frame later. Not built; one of the two, not both.
+
+**Measured 2026-11-20 14:47 - 15:04, both ways in one block** (the same ride, `--exclusive`, the stand-in Beyond at 75
+Hz, the Windows mod list, TaskEndBudget 1 ms, OBNG.dll 0fee68e6, OBVR.dll md5 329d5906 = OBVR main fd1f0b7 with
+`[Render] LatePoseWait`; `obng-measure-grid-move-defer.ini` / `obng-measure-task-end-budget.ini`, the late rides with
+`tools/hand-scripts/obng-profile-ride-anvil-late.txt`; `crossing-slack.py`, `ride-long-frames.py [--over 14.5]`):
+
+| ride | crossings without a missed period (of 10) | frames over 20 ms at the crossings | frames over 14.5 ms: the ride's all / away from crossings, evictions and the first 6 s | mean | p99 |
+|---|---:|---:|---:|---:|---:|
+| both off, `obng-profile-ride-anvil/20261120-145414` | 1 | 13 | 125 / 72 | 13.38 | 14.8 |
+| GridMoveDefer, `-144725` | 6 | 10 | 119 / 70 | 13.39 | 14.8 |
+| GridMoveDefer, `-145739` | 5 | 6 | 121 / 68 | 13.37 | 14.8 |
+| OBVR's LatePoseWait, `obng-profile-ride-anvil-late/20261120-145049` | 6 | 8 | 47 / 17 | 13.38 | 14.1 |
+| OBVR's LatePoseWait, `-150104` | 7 | 5 | 42 / 20 | 13.37 | 14.1 |
+
+- Both ways clear the crossings as derived (5 - 7 of 10 against 1; derived 6.5). All five rides passed; the ride's
+  54 unloads ran in each.
+- **The late pose wait also takes two thirds of all frames over 14.5 ms** (42 - 47 against 119 - 125): every small
+  overrun of the update meets the wait, not the move's alone. GridMoveDefer cannot do that. So the late pose wait is
+  the way (Nadi's choice, 2026-11-20); GridMoveDefer stays built and off, as the fallback should the late wait fail
+  in the headset (the update then runs on predicted poses).
+- With GridMoveDefer the block ran at every step's start (about 750 runs a 10 s, 0.1 - 0.3 ms longest without a
+  crossing; at a crossing 4.0 - 7.5 ms, once 9.3 and once 14.3), and the quest targets' kept call one step after it
+  (3.5 - 5.1 ms).
+- **What still misses with either:** frames with 9.8 - 14.7 ms of update before the wait - the move at its dearer
+  crossings (7 - 14 ms) plus the rest of the update, over the 8.7 ms of slack. The move itself is the next lever
+  (docs/performance-backlog.md row 1).
+- Not covered: real SteamVR (the stand-in says no vsync-to-photons time, OBVR's prediction took 0 ms), 90 Hz, Windows,
+  the look in the headset.
