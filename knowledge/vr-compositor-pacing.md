@@ -53,3 +53,19 @@ the game, **derived** = follows from the two, **unverified** = not checked.
   work (DXVK's did; the native D3D9 driver's returned 1 µs for a whole
   scene pass - measured, cause unverified), and take the compositor's
   pre-submit number as wall time between two markers, not as GPU load.
+
+## 2026-11-20: the hitch on opening and closing a menu is OBVR's frame flow, not the engine (read in OBVR's captures)
+
+OBVR's runs `tablet-open-hitch/20261120-111035-slot1` and `tablet-open-hitch-off/20261120-111245-slot1` (OBVR repo,
+artifacts/hand-script; Linux, the stand-in Dream Air at 72 Hz), read with `tools/re/frame-gap-samples.py` and the
+capture's cpu_events (no run of OBNG's):
+
+- **Closing a menu, one frame of 24.6 - 26.6 ms every time:** the frame holds two pose waits - one of about 10 ms
+  inside OBVR's present / frame-end callback and the regular one of about 11.5 ms - after a frame of 1.5 ms without
+  any (the switch from the live menu to the world). The samples there are ntdll's ZwDelayExecution under
+  openvr_mock (the stand-in's WaitGetPoses).
+- **Opening one, a frame of 17 - 23 ms:** 3.1 - 5.6 ms in OBVR's span between the passes (OBVR.dll, D3D9, d3dx9) and
+  2.5 - 3.0 ms between the pose's end and the scene pass with ZwOpenFile / ZwReadFile under OBVR.dll.
+- The capture's stack words (w0..w7) showed Havok's 0x00893B90 chain in these frames; they are stale, as in the
+  ride's frames of 2026-11-19. The eip is what a sample was doing.
+Told to OBVR; nothing in the engine to rebuild here.

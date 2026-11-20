@@ -3,14 +3,15 @@
 sampler's eip only (its stack words can be stale): engine functions by the export's starts, other code by module (the
 capture's samples-modules.csv), Wine's ntdll by export name when --ntdll gives the DLL. Over the frames longer than
 --over ms between two marks.
-Usage: frame-gap-samples.py <run folder> [--over 30] [--from ride] [--to ride-120] [--ntdll path] [--top 8]"""
+Usage: frame-gap-samples.py <run folder> [--over 30] [--from ride] [--to ride-120] [--ntdll path] [--top 8]
+       [--capture OBVR-performance-1-5]"""
 import bisect, collections, csv, os, re, struct, sys
 
 run = sys.argv[1]
 def opt(name, default):
     return sys.argv[sys.argv.index(name) + 1] if name in sys.argv else default
 over, first, last, top = float(opt('--over', '30')), opt('--from', 'ride'), opt('--to', 'ride-120'), int(opt('--top', '8'))
-cap = os.path.join(run, 'OBVR-performance-1-5')
+cap = os.path.join(run, opt('--capture', 'OBVR-performance-1-5'))
 export = 're/export/rea-all/functions'
 starts = sorted(int(x[2:-2], 16) for x in os.listdir(export) if x.startswith('0x') and x.endswith('.c'))
 modules = list(csv.DictReader(open(os.path.join(cap, 'samples-modules.csv'))))
