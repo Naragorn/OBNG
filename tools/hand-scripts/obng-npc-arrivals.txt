@@ -1,0 +1,176 @@
+# Thirty named NPCs arriving one by one at a fixed place, for what an NPC's arrival costs the frame (2026-11-20,
+# knowledge/npc-arrival.md): the ride towards Anvil meets other leveled NPCs each time, and its count of late frames
+# swings by twenty between rides - more than the NPC-arrival routes take. Here the player stands in the cell -27 -3 and
+# every three seconds one NPC of Oblivion.esm is placed before the eyes (player.placeatme, a new reference of a named
+# base: the same face, body and clothes in every run), with the AI off so that nobody walks away. Each arrival goes the
+# game's own way: a queued character on the loader's thread, its head, its end on the main thread. The same thirty in the
+# same order in every run, so two runs compare arrival by arrival: tools/re/npc-arrivals.py <run> [<run> ...].
+# Run with the Windows mod list (its bodies, skeletons and Blockhead are what an arrival costs in Nadi's game):
+#   python3 tools/run-with-windows-mods.py -- tools/shadow-run.sh \
+#     --ini tools/hand-scripts/obng-ride-facegen-on.ini \
+#     tools/hand-scripts/obng-npc-arrivals.txt --save OBVRHarnessMOO --run-timeout 480 --no-steamvr --headset beyond --exclusive
+ini Render SinglePassStereo=1
+ini Render LatePoseWait=1
+expect Poses: the late pose wait is on
+ini SelfCheck ShowPanel=0
+ini Render GameResolutionWidth=4036
+ini Render GameResolutionHeight=3376
+expect Single-pass stereo: OBNG took the eyes ok (0)
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Hands BodyCollision=1
+ini Hands PhysicsRate=0
+ini Performance Enabled=1
+ini Performance GpuTiming=1
+ini Performance StartAfterSeconds=36
+ini Performance CaptureSeconds=104
+ini Performance MaxRecords=262144
+ini Performance Sampler=1
+console-at ready cow Tamriel -27 -3
+console-at ready set gamehour to 12
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at placed CloseAllMenus
+console-at placed player.setangle z 90
+console-at placed tai
+# The scroll a mod of the Windows list hands the player 20 to 30 s after the load opens the Book menu and pauses the
+# world (obng-profile-ride-anvil.txt): closed again before the first arrival and twice on the way.
+console-at settle CloseAllMenus
+console-at a11 CloseAllMenus
+console-at a21 CloseAllMenus
+# Thiirchel, Wood Elf f
+console-at a01 player.placeatme 00002E94 1 290 0
+# Hil the Tall, Nord m
+console-at a02 player.placeatme 000034C6 1 320 0
+# Dervera Romalen, Dark Elf f
+console-at a03 player.placeatme 000034C0 1 350 0
+# Ra'qanar, Khajiit m
+console-at a04 player.placeatme 000034CE 1 380 0
+# Mariana Ancharia, Imperial f
+console-at a05 player.placeatme 000034C2 1 410 0
+# Dulfish gro-Orum, Orc m
+console-at a06 player.placeatme 000034D4 1 440 0
+# Shelley, Redguard f
+console-at a07 player.placeatme 000034C3 1 470 0
+# Errandil, High Elf m
+console-at a08 player.placeatme 000034C8 1 500 0
+# Mariette Rielle, Breton f
+console-at a09 player.placeatme 000038B3 1 530 0
+# Shamar, Redguard m
+console-at a10 player.placeatme 000039AB 1 560 0
+# Dro'Nahrahe, Khajiit f
+console-at a11 player.placeatme 0000A08F 1 590 0
+# Ulrich Leland, Breton m
+console-at a12 player.placeatme 000034CC 1 620 0
+# Borba gra-Uzgash, Orc f
+console-at a13 player.placeatme 000034C4 1 650 0
+# Cingaer, Wood Elf m
+console-at a14 player.placeatme 00002E95 1 680 0
+# Olava the Fair, Nord f
+console-at a15 player.placeatme 0000A08D 1 710 0
+# Andel Indarys, Dark Elf m
+console-at a16 player.placeatme 000034CA 1 740 0
+# Elante of Alinor, High Elf f
+console-at a17 player.placeatme 00003435 1 770 0
+# Wilbur, Redguard m
+console-at a18 player.placeatme 0000A27E 1 800 0
+# Tertia Viducia, Imperial f
+console-at a19 player.placeatme 000034C5 1 830 0
+# Keld of the Isles, Nord m
+console-at a20 player.placeatme 000034CF 1 860 0
+# Ulene Hlervu, Dark Elf f
+console-at a21 player.placeatme 000034CD 1 890 0
+# Ohtimbar, High Elf m
+console-at a22 player.placeatme 000034D0 1 920 0
+# Nahsi, Khajiit f
+console-at a23 player.placeatme 0000A095 1 950 0
+# Rythe Lythandas, Dark Elf m
+console-at a24 player.placeatme 000034D2 1 980 0
+# Rogmesh gra-Coblug, Orc f
+console-at a25 player.placeatme 000034D9 1 1010 0
+# Mathieu Bellamont, Breton m
+console-at a26 player.placeatme 0000398A 1 1040 0
+# Vigdis, Nord f
+console-at a27 player.placeatme 0000A28F 1 1070 0
+# K'Sharr, Khajiit m
+console-at a28 player.placeatme 00003946 1 1100 0
+# Ohtesse, High Elf f
+console-at a29 player.placeatme 000034C7 1 1130 0
+# Biene Amelion, Breton f
+console-at a30 player.placeatme 000091F5 1 1160 0
+expect HandScript: finished
+expect Performance: capture armed, it starts in 36 seconds
+expect Performance: capture 1 started
+expect Performance: export
+reject Performance: export partial
+reject menu Container
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 16
+mark placed
+wait 8
+mark settle
+wait 6
+mark a01
+wait 3
+mark a02
+wait 3
+mark a03
+wait 3
+mark a04
+wait 3
+mark a05
+wait 3
+mark a06
+wait 3
+mark a07
+wait 3
+mark a08
+wait 3
+mark a09
+wait 3
+mark a10
+wait 3
+mark a11
+wait 3
+mark a12
+wait 3
+mark a13
+wait 3
+mark a14
+wait 3
+mark a15
+wait 3
+mark a16
+wait 3
+mark a17
+wait 3
+mark a18
+wait 3
+mark a19
+wait 3
+mark a20
+wait 3
+mark a21
+wait 3
+mark a22
+wait 3
+mark a23
+wait 3
+mark a24
+wait 3
+mark a25
+wait 3
+mark a26
+wait 3
+mark a27
+wait 3
+mark a28
+wait 3
+mark a29
+wait 3
+mark a30
+wait 3
+mark done
+wait 6

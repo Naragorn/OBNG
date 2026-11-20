@@ -26,6 +26,8 @@
 #include "ContactDedup.h"
 #include "FaceGenCacheBudget.h"
 #include "FaceGenLoad.h"
+#include "SoundFileCache.h"
+#include "AnimationNameArena.h"
 #include "FileFindCache.h"
 #include "PoolPageRelease.h"
 #include "LooseFileList.h"
@@ -182,6 +184,8 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogTaskEndSummary();
 	LogFaceGenCacheSummary();
 	LogFaceGenLoadSummary();
+	LogSoundFileCacheSummary();
+	LogAnimationNameArenaSummary();
 	LogBodyTexturePremakeSummary();
 	LogAnimationLazyAppendSummary();
 	LogVoiceDecodeSummary();

@@ -31,6 +31,8 @@
 #include "ContactDedup.h"
 #include "FaceGenCacheBudget.h"
 #include "FaceGenLoad.h"
+#include "SoundFileCache.h"
+#include "AnimationNameArena.h"
 #include "HangWatch.h"
 #include "FileFindCache.h"
 #include "PoolPageRelease.h"
@@ -394,6 +396,8 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 		obng::plugin::InstallFaceGenCacheBudget(path, &Log);  // the FaceGen cache's two limits, written at the first update step (no patch)
 		obng::plugin::InstallHangWatch(path, &Log);  // [Probe] HangWatch: a thread that dumps every thread's place when the update steps stop (no patch but a step hook)
 		obng::plugin::InstallFaceGenLoad(path, &Log);  // a find's reads of a model's .egm / .egt files, timed and (routed) outside the cache's lock
+		obng::plugin::InstallSoundFileCache(path, &Log);  // the WAV reader's mmio procedure (its address at 0x006AAC4A) and the sound folder's pick 0x006A9CD0: files and listings kept after the first read
+		obng::plugin::InstallAnimationNameArena(path, &Log);  // the calls of 0x00435830 at 0x004E38C5 / 0x004E3B94 and the list's three frees in 0x00475D80: an actor's animation file names in a block of OBNG's own
 		obng::plugin::InstallBodyTexturePremake(path, &Log);  // QueuedHead's run slot 0x00A36CE8 and the skin parts' call at 0x0047ADFF: the NPC's body textures made on the loader's thread
 		obng::plugin::InstallMusicGraphProbe(path, &Log);  // the music player's seven CoCreateInstance calls (no entry)
 		obng::plugin::InstallArchiveLooseCheck(path, &Log);  // the archives' loose file check's entry 0x0042C1D0 (not with a [Timed] line on it)
