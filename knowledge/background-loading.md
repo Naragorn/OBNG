@@ -1199,3 +1199,17 @@ stays off (`kShippedEgmMb` / `kShippedEgtMb` 0): no gain for the main thread, 30
 Levers left (nothing built): the file read moved out of the lock in 0x005515B0 (needs a per-entry "being loaded"
 state); or the body texture made a frame later when the lock is held (needs the skin applied again, 0x0047AC20 from
 0x0047B090 / 0x0047BC40).
+
+**A queued character's end, second split** (`obng-measure-char-finish-2.ini`, run
+`obng-profile-ride-anvil-late/20261120-171759`, 19 ends over 3 ms in the ride; read: 0x00441EF0 gets the actor's 3D
+through its vtable +0x14C, 0x00659F30 -> the reference's 0x004E4080 -> the base form's slot 0x114, for an NPC
+0x00521A40): the unnamed 3.5 - 5 ms of every end are the actor's 3D made on the main thread -
+- the skeleton's model made for the reference, 0x004B3750 under 0x00521A40: 0.9 - 1.6 ms;
+- the animation set up 0x004E3490 without the body: about 2 - 3.5 ms (323 model lookups 0x00439FF0 of 0.1 ms among
+  them, so the files are cached; the rest is the set up's own work);
+- the body 0x00526DB0 -> 0x0047BC40 -> 0x0047B5B0 -> 0x0047B090 -> the skin parts 0x0047AC20 -> the body texture
+  0x0052D2C0: 0.4 - 1.2 ms, and 10.5 - 12.3 ms in the three ends where the body texture waited on FaceGen's lock.
+Over the whole run: 0x004E4080 1 863 calls, 472 ms; the animation set up 1 288 calls, 349 ms; the NPC's model 38
+calls, 47 ms; a creature's model 0x0051C640 79 calls, 32 ms. So an end is 3.4 - 6.3 ms of the engine's own
+instantiation (it fits a 75 Hz frame beside 2 ms of update, not a 90 Hz frame for the larger ones), and what breaks
+a 75 Hz frame is the wait on FaceGen's lock.
