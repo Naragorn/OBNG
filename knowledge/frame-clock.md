@@ -173,6 +173,28 @@ details per function in `re/functions/<address>.md`, states in
   STEP (a hitch frame drained over the following ones) or from a frame of
   two display periods. Not run through the emulator; the 90 Hz numbers are
   the model's (derived).
+  **Measured 2026-11-20 with STEP = 1/60** (OBVR `[Hands] PhysicsRate=0`,
+  the shipped default; OBVR's `[Debug] HandLagTrace` reads 0x00BA7914 and
+  0x00BA790C every frame; Linux harness, stand-in runtime at 90 Hz, the
+  frame made longer by the hand script's `load`; OBVR run
+  half-sword-lag 20261120-092413-slot2): at 90 fps 0.99 steps a frame,
+  11.11 ms long on average - one step of the frame's own length (P4), as
+  claim 10 derives; at 45 fps (22.2 ms frames) 1.33 steps a frame of 16.70
+  ms, so the frames alternate one and two steps (P2 with the carry); at 30
+  fps (33.3 ms) 2.00 steps of 16.70 ms. Physics keeps real
+  time in all three. **What it does to a thrown body (measured, OBVR
+  weapon-throw-smooth*.txt, 20261120-094245 to -094400):** the sword's
+  model per frame, units a second over the frame's own time - at 90 fps
+  411 352 499 429 441 456 ..., at 30 fps 394 395 414 456 452 ..., at 45
+  fps 295 593 333 313 714 373 366 730 389 ...: every third frame twice as
+  far, the one-one-two steps drawn as they come - a 15 Hz stutter in the
+  flight. A modern engine either splits each frame into equal steps no
+  longer than its maximum (Glenn Fiedler, "Fix Your Timestep!",
+  gafferongames.com/post/fix_your_timestep, read 2026-11-20: the
+  semi-fixed timestep) or draws every body between its last two physics
+  states (the same article's "final touch", where the accumulator's
+  remainder otherwise "causes a subtle but visually unpleasant stuttering
+  of the physics simulation on the screen").
 - **The time multiplier at 0x00B06704 is the INI setting
   `fGlobalTimeMultiplier` ([General])** (read, 2026-10-27): the static
   initialiser 0x009DC2D0 registers the SettingInfo (value +0x00 = 1.0f,
