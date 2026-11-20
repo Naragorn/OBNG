@@ -809,3 +809,28 @@ set it to 1. The crossings (every 11.8 s of the ride, ten a ride) and the first 
   ZwWaitForAlertByThreadId / RtlpWaitForCriticalSection (11 of 13 samples at 51.5 s in `-091951`), and with
   [Probe] LockCalls on (`-092621`) the waits are reached from OBNG's critical section replacement - the game's own
   critical sections through its imports. Which one and who holds it the next runs (with summaries) tell.
+
+### QuestTargetDefer measured, and what the eviction waits on (measured, with summaries)
+
+Runs `20261120-094923` / `-095252` (off; the first started while OBVR Helper's last slot batch ran out and has 196
+frames over 20 ms in the ride, so it is left out), `-095617` / `-095942` (`[Route] QuestTargetDefer=1`,
+OBNG.dll f0398de7), `-100307` / `-100632` (`obng-measure-cell-unload-locks.ini`: LockCalls and the owner lock
+0x00496EA0 timed). Summaries on this time.
+
+- **QuestTargetDefer:** every crossing's rebuild ran at the next step's start, 3.37 - 5.15 ms each, none dropped,
+  none merged. The longest frame within 0.15 s of a crossing (OBVR's capture, the eight crossings that fall in the
+  ride's first 100 s): off 24.8 / 23.5 / 24.1 / 22.5 / 33.6 / 23.7 / 21.7 / 21.8 ms (mean 24.5), on 20.8 / 21.9 / 23.4 /
+  24.6 / 25.5 / 21.5 / 21.4 / 19.3 (22.3) and 20.0 / 21.6 / 23.6 / 19.6 / 31.4 / 19.6 / 21.2 / 19.5 (22.1); frames over
+  14 ms around the crossings 22 off, 23 and 17 on. So 2 - 2.5 ms off the crossing's frame; at 75 Hz the crossing still
+  takes two periods (derived: 13.3 ms a period), at 90 Hz (11.1 ms) a 22 ms frame is two periods where 24.5 was three
+  (derived, not measured at 90 Hz). It does not end the crossing's hitch on its own.
+- **The eviction does not wait on the owner lock:** 0x00496EA0 (timed on the main thread) shows in one of the
+  eviction steps only (69 calls, 10.1 ms, at 51.5 s in `-100307`); in the other nine it is under the spike line's
+  floor. The critical sections LockCalls sees: the game's heap lock 0x00B32B80 holds nearly all waits (20 - 65 ms of
+  waits a 10 s window over all threads, the longest 0.1 - 4.3 ms), at its allocation 0x00401AF6 and its free
+  0x00401D92; the free's waits rise in the windows with an eviction (9 531 - 22 125 waits, 11 - 30 ms) and nearly
+  vanish without one. Derived: the eviction's thousands of frees (every reference's 3D let go) meet the loader
+  thread's allocations on the one heap lock - the main thread's ntdll waits in those frames are these critical
+  section waits. Not proven per frame (the probe counts per window and all threads). The renderer's lock
+  (18B05F0C / 18B0600C, the precache 0x00763F71 / 0x00763572) waits 1 - 7 ms a window, the light lock 0x00B3FC00 once
+  1.2 - 3.5 ms.
