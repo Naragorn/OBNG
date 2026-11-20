@@ -242,14 +242,14 @@ TaskEnds):
 Seven NPCs a run were in the map already, none was skipped for the main thread being inside. Three rides and the
 save's load passed; the hang watch wrote nothing after the loading screen.
 
-**What the ride's count of late frames says: nothing yet.** Frames over 14.5 ms in the ride
-(`tools/re/ride-long-frames.py`): off 37, 54, 52; the two routes 69, 51, 55; all three 60, 71, 71 - and of those the
-ones away from crossings and evictions 16, 19, 12 against 20, 23, 21 against 25, 27, 27. That reads as more late
-frames with the routes, not fewer. It is not the locks (the main thread's waits fall, the table above) and not the
+**What the ride's late frames say: no difference shown, either way.** Frames over 14.5 ms in the ride, present to
+present from OBVR's capture: off 43, 40; the two routes 40, 45; all three 44, 60, 58. The sum of their lateness over
+13.4 ms: 460, 487 ms against 365, 448 against 508, 531, 467; frames over 25 ms: 27, 27 against 20, 27 against 25, 28,
+24. The higher counts of two rides are the ride's first ten seconds (21 marginal frames there against 2 - 13 in the
+others), before any NPC arrives. It is not the locks (the main thread's waits fall, the table above) and not the
 heap's lock (300 - 330 ms of waits a run on all threads in every one of the nine rides). The rides are not the same
-ride: the mod list's leveled spawns and schedules change who is on the road. In `-193032` the animation update made
-2 478 sequences in twenty seconds at 100 - 120 us each, where every other interval of every timed run has 13 - 25
-us: another set of actors with larger animation files. With three rides a side and a spread of twenty the count cannot
-judge routes that take two to nine frames a ride; the numbers of what the routes touch can. Open: a scenario with a
-fixed set of arriving NPCs, or many more rides a side.
-
+ride: the mod list's leveled spawns and schedules change who is on the road - in `-193032` the animation update made
+2 478 sequences in twenty seconds at 100 - 120 us each, where every other interval of every timed run has 13 - 25 us.
+The routes take two to nine late frames a ride out of forty to sixty; three rides a side cannot show that. The
+numbers of what the routes touch can. Open: a scenario with a fixed set of arriving NPCs (the long session's city
+legs), or many more rides a side.
