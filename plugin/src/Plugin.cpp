@@ -40,6 +40,7 @@
 #include "AnimationPauseBatch.h"
 #include "MusicGraphProbe.h"
 #include "MusicAsync.h"
+#include "GridMoveDefer.h"
 #include "QuestTargetDefer.h"
 #include "CellEvictionSpread.h"
 #include "UnloadRefProbe.h"
@@ -378,6 +379,7 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 		obng::plugin::InstallAnimationPauseBatch(path, &Log);  // the animation setup's entry 0x00475D80 and the resume's call at 0x0043A088
 		obng::plugin::InstallMusicAsync(path, &Log);  // the music player's seven CoCreateInstance calls (before the probe, which then stays out)
 		obng::plugin::InstallQuestTargetDefer(path, &Log);  // the grid's call of the quest targets at 0x004454E6, run a step later (StepHooks)
+		obng::plugin::InstallGridMoveDefer(path, &Log);  // the step's block 0x0040DD6E - 0x0040DE3E run at the step's start; after the quest targets' hook, so their call kept by this move runs a step later still
 		obng::plugin::InstallCellEvictionSpread(path, &Log);  // the task pump, the cell request, the grid move's ends and the grid attach (entries), two call sites
 		obng::plugin::InstallUnloadRefProbe(path, &Log);  // the unload's reference loop 0x004CB4D0 (entry)
 		obng::plugin::InstallTaskEndBudget(path, &Log);  // the pump's read of its budget at 0x004335D4 (no entry)

@@ -34,6 +34,7 @@
 #include "SlowCallProbe.h"
 #include "AnimationPauseBatch.h"
 #include "MusicAsync.h"
+#include "GridMoveDefer.h"
 #include "QuestTargetDefer.h"
 #include "CellEvictionSpread.h"
 #include "UnloadRefProbe.h"
@@ -170,6 +171,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogAnimationPauseBatchSummary();
 	LogMusicAsyncSummary();
 	LogQuestTargetDeferSummary();
+	LogGridMoveDeferSummary();
 	LogCellEvictionSpreadSummary();
 	LogUnloadRefSummary();
 	LogVoiceDecodeSummary();
