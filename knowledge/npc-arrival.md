@@ -1,0 +1,215 @@
+# An NPC's arrival: FaceGen's cache and locks, the body textures, the animation set up
+
+What the main thread spends when an NPC comes into view, beyond the files the loader reads for it: the end of its
+queued character task attaches the actor's 3D (the skeleton's model, the animation set up, the body with its
+textures), and FaceGen's model cache stands between that and the loader's thread. Marks as in AGENTS.md: read,
+measured, derived, unverified. The frame around it (the pump, the pose wait, a crossing) is in
+`knowledge/background-loading.md`.
+
+## FaceGen's model cache and the main thread's wait on its lock (2026-11-20, read and measured)
+
+**What the 4 ms of a body texture are (measured, `obng-measure-body-texture.ini`, run
+`obng-profile-ride-anvil-late/20261120-160018`).** Not the synthesis loops: of 90 ms a ride in 0x0052D2C0 (117 calls),
+59 ms are the model's fetch 0x00553620 (24 calls; 5 - 14 ms in six of them, else microseconds), 28 ms the synthesis
+0x00557E60, and of those 25.5 ms are 0x0054DA40 (the float image made into a texture, 0.5 - 4.1 ms a call). The
+accumulate loops at 0x005582CA are about 0.1 ms a call - a faster loop would gain nothing.
+
+**The cache (read).** `[[0x00B39B80] + 0xDAC]`, made on first use with two limits copied from the settings
+uiFaceGenMaxEGMDataSize (value at 0x00B120EC -> cache +0x18, the shape modes of the .egm files) and
+uiFaceGenMaxEGTDataSize (0x00B120F4 -> +0x1C, the texture modes of the .egt files), 64 MB each as shipped and in
+Nadi's INI. An entry holds two data objects (+8 the EGM's, +0xC the EGT's: the path at [0], the data at [2]). The
+fetch 0x00553620 finds the entry (0x005515B0) or makes and inserts one (0x00559B50, 0x00551450). **Every find and
+insert takes the cache's lock 0x00B39C00 and, holding it, runs the purge 0x005506B0** - for each kind, while the
+data (summed by a walk of the whole map, 0x0054F890) is over the limit, 0x0054FC30 drops the oldest entry's data, the
+entry stays - **and then loads the entry's missing data from its files, still under the lock** (0x00559190 ->
+0x00558770 for the EGM, 0x00558520 -> 0x00557C80 for the EGT). `bLoadBackgroundFaceGen` (0x00B1210C) is read by
+nothing but its own initialiser. Guides (Step Mods' INI guide) give the two limits' defaults and no description.
+
+**Measured (`obng-measure-facegen-cache.ini`: the cache's functions timed on the main thread, [Probe] LockCalls;
+runs `-160558`, `-161036`, `-163524`).** The fetch's time is the find's, and the find's is the wait for the lock:
+three to five waits a ride of 4.7 - 13.0 ms at 0x005515E2, each in the frame a queued character's body texture is
+made; the holder's last enter site is the purge's 0x005506C3 (once the size walk's 0x0054F8D0). The main thread's own
+reloads are small (2 EGM loads 3.8 - 5.2 ms, 3 EGT loads 1.4 - 1.9 ms a ride), its purges 2 ms in 54 calls, one
+eviction. Nadi's mod list has 415 loose .egm files of 511 MB and 26 loose .egt files of 161 MB (a head's .egt 9.4 MB).
+
+**`[Route] FaceGenCacheEgmMB` / `FaceGenCacheEgtMB` measured: the waits stay** (plugin/src/FaceGenCacheBudget.cpp,
+src/engine/facegen/FaceGenCacheBudgetLogic.h; the two limits raised at the first update step, never below the game's;
+OBNG.dll 4877e1fe, `obng-measure-facegen-budget.ini` with 512 / 256 MB against `obng-measure-facegen-cache.ini`, one
+ride each, `-163158` / `-163524`):
+
+| | limits 512 / 256 MB | the game's 64 / 64 MB |
+|---|---:|---:|
+| the cache's data at the ride's end: shapes / textures | 42 / 94 MB | (not read) |
+| evictions on the main thread | 0 | 1 |
+| the main thread's waits on the lock | 5: 6.5 - 13.3 ms (52 ms) | 3: 4.8 - 9.5 ms (20 ms) |
+| committed memory at the end | 755 MB | 725 MB |
+
+So a ride's texture modes (94 MB) are over the game's 64 MB and get dropped and read again, but that is not what the
+main thread waits for: with nothing dropped it waits as long. Derived (the probe keeps a holder's last enter site
+only, and the purge is the last enter of a find): the holder is another thread inside a find or an insert, reading a
+model's files under the lock - a head's 9.4 MB .egt on the loader's thread. Not proven on that thread then;
+measured since (the next section). The route stays off (`kShippedEgmMb` / `kShippedEgtMb` 0): no gain for the main thread, 30 MB more memory.
+Levers left (nothing built): the file read moved out of the lock in 0x005515B0 (needs a per-entry "being loaded"
+state); or the body texture made a frame later when the lock is held (needs the skin applied again, 0x0047AC20 from
+0x0047B090 / 0x0047BC40).
+
+**A queued character's end, second split** (`obng-measure-char-finish-2.ini`, run
+`obng-profile-ride-anvil-late/20261120-171759`, 19 ends over 3 ms in the ride; read: 0x00441EF0 gets the actor's 3D
+through its vtable +0x14C, 0x00659F30 -> the reference's 0x004E4080 -> the base form's slot 0x114, for an NPC
+0x00521A40): the unnamed 3.5 - 5 ms of every end are the actor's 3D made on the main thread -
+- the skeleton's model made for the reference, 0x004B3750 under 0x00521A40: 0.9 - 1.6 ms;
+- the animation set up 0x004E3490 without the body: about 2 - 3.5 ms (323 model lookups 0x00439FF0 of 0.1 ms among
+  them, so the files are cached; the rest is the set up's own work);
+- the body 0x00526DB0 -> 0x0047BC40 -> 0x0047B5B0 -> 0x0047B090 -> the skin parts 0x0047AC20 -> the body texture
+  0x0052D2C0: 0.4 - 1.2 ms, and 10.5 - 12.3 ms in the three ends where the body texture waited on FaceGen's lock.
+Over the whole run: 0x004E4080 1 863 calls, 472 ms; the animation set up 1 288 calls, 349 ms; the NPC's model 38
+calls, 47 ms; a creature's model 0x0051C640 79 calls, 32 ms. So an end is 3.4 - 6.3 ms of the engine's own
+instantiation (it fits a 75 Hz frame beside 2 ms of update, not a 90 Hz frame for the larger ones), and what breaks
+a 75 Hz frame is the wait on FaceGen's lock.
+
+## Who holds the cache's lock: the loader's thread, in two ways (2026-11-20, measured and read)
+
+The derived holder above is measured now (`[Probe] FaceGenLoads`, plugin/src/FaceGenLoad.cpp: the finds' four calls
+of the loads timed by kind and thread; runs `obng-profile-ride-anvil-late/20261120-175137`, `-183808`):
+
+- **A model's data files are read by the first find of it, under the lock.** A model is made with its mesh and the
+  two files' paths only (0x00559330, 0x00556A00); the find - 0x005515B0 (both kinds), 0x005516B0 (the shape modes,
+  reached through 0x00551930), 0x005517F0 (the texture modes, through 0x00551960) - calls 0x00559190 and 0x00558520
+  after its purge, and those read the file when the model has no data. On the loader's thread a ride reads 82 - 86
+  .egm files in 268 - 330 ms (a head's 8 - 22 ms) and 31 - 40 .egt files in 226 - 301 ms (a head's 5 - 51 ms), many of
+  them again and again: the same head's files come back three and four times a ride, because the purge dropped
+  them (the 64 MB limits) - which is what `FaceGenCacheEgmMB` / `EgtMB` would spare the loader, not the main thread.
+- **The head's texture synthesis holds the lock for all of itself.** 0x005551C0 (the head's FaceGen textures;
+  QueuedHead's run on the loader's thread reaches it through 0x00523220 -> 0x0052DED0) wraps each call of the
+  synthesis 0x00557E60 in the cache's lock (`mov ecx, 0x00B39C00` before the enter 0x0043F2E0 at 0x00555483 and the
+  leave 0x0043F300 at 0x0055549B; again at 0x00555509 / 0x00555525): the find with its .egt read, the synthesis and
+  the texture's making 0x0054DA40. The body textures' path 0x0052D2C0 calls the same synthesis with no lock.
+
+Other holders (read): 0x00527860 (the NPC's age morph, called at a character's end on the main thread) holds the
+lock across its loop of morphs 0x00558840; the finds inside it are entered a second time. A second lock,
+0x00B39C80, is FaceGen's data lock: QueuedHead's run holds it for all of the run ("QueuedHead::Run()", 0x0043530D),
+QueuedHelmet's poll takes it around its morph (0x0043EDC4), and the evictions only try it (0x00401030 in
+0x0054FC30, 0x0054F9C0, 0x0054FB00) - nothing is evicted while a head is being made. The data's users take the
+model's own flags around each use (+0x14 the shapes', +0x18 the textures'; 0x00558840, 0x00557E60) and check the
+data again under the flag; an eviction frees under the same flag (0x00559BA0, 0x00559C40); a user that finds the
+flag taken returns without having done its work (0x00557F64: no texture).
+
+**The threads (measured, run `-182603`):** the main thread is 432 in these runs, the loader's 584 - the id at
+`[[0x00B33A10] + 0x30]`, the one the texture load 0x00442890 loads on without the pause. OBSE loads its plugins on
+neither (436). An IO task's slot 1 is its run on the loader's thread (QueuedHead 0x00435300); a queued character or
+reference has none (0x0060D0A0): its slot 11 (0x0043DC00, 0x0043C9B0) queues its children on the main thread, slot
+10 is the pump's poll, slot 5 the end.
+
+## `[Route] FaceGenLoadOutside`: the reads and the head's synthesis off the cache's lock (class B, measured)
+
+plugin/src/FaceGenLoad.cpp, src/engine/facegen/FaceGenLoadLogic.h, tests/FaceGenLoadLogicTest.cpp. Two changes
+behind one key:
+
+1. The finds' four calls of the loads (0x0055163C, 0x00551643, 0x00551781, 0x005518C1) go to OBNG. When the load
+   would read a file and the lock is entered exactly once (the engine's depth word 0x00B39C7C and the critical
+   section's count both 1), the lock is given up for the read and taken again after it; loads of one model take
+   turns on one of sixteen locks of OBNG's, so no file is read twice at once. Otherwise the call is the game's.
+2. The head synthesis's four `mov ecx, 0x00B39C00` (0x0055547E, 0x00555496, 0x00555504, 0x00555520) name a lock of
+   OBNG's in the engine's shape instead: the syntheses of 0x005551C0 still take turns among themselves and no longer
+   hold up the cache. Without this, 17 of 107 loads sat under a lock entered twice and the main thread still waited
+   5 - 11 ms (run `-175504`, the reads alone).
+
+What it leans on (read): the data pointer is already written and read across threads without the cache's lock (the
+users' flags; both users read a file with no lock at all when the model is not in the cache), and the body path runs
+the synthesis without the lock. What changes: between a find's return and the user's flag an eviction on another
+thread is no longer shut out for the head's path - as it never was for the body's; the just-stamped entry is the
+last the purge would pick.
+
+Measured (the ride towards Anvil with OBVR's late pose wait, Linux, no SteamVR, stand-in Beyond at 75 Hz, exclusive,
+`tools/re/facegen-ride.py`; "off" is OBNG.dll with the route's key at 0):
+
+| run | route | main-thread steps waiting on the cache's lock (ms each) | queued characters' ends: ms in all / longest | frames over 14.5 ms |
+|---|---|---|---:|---:|
+| `-175137` | off | 1 (13.7) | 390 / 42.5 | 31 |
+| `-183808` | off | 2 (11.6, 10.4) | 439 / 28.2 | 43 |
+| `-181126` | off (a build beside it: frames not usable) | 3 (12.3, 11.4, 7.5) | 527 / 45.4 | - |
+| `-175504` | the reads only | 4 (10.7, 10.6, 5.3, 1.1) | 305 / 30.9 | 39 |
+| `-185026` | on | 0 | 323 / 22.6 | 59 |
+| `-185353` | on | 0 | 357 / 34.6 | 40 |
+| `-185719` | on | 0 | 326 / 17.1 | 45 |
+
+The waits are gone in every ride with the route (and in `-182603`, a fourth, with the timed list). All 115 - 120
+reads of a ride run outside the lock, none under a lock entered twice. The ride's count of frames over 14.5 ms does
+not show it: 40 - 59 against 31 - 43, one to four frames in a spread of twenty - the pump's other ends, the grid's
+move and the scripts hold the rest (background-loading.md). Not covered: real SteamVR, 90 Hz, Windows, a long
+session, Nadi's look. Off as shipped (`Shipped()` 0) until those gates have run.
+
+## The animation set up 0x004E3490 by its parts, and the engine's own spreading (2026-11-20, read and measured)
+
+**Read.** 0x004E3490 makes the actor's animation data (0x00473EB0, 0xDC bytes), the body (0x004E1580 -> for an NPC
+0x00526DB0), gets the skeleton folder's KF files as a fresh list of copied names (0x00435830: from a kept list per
+folder, 0x00521190, else a directory listing 0x00431970) and hands it to 0x00475D80. That finds five named nodes
+(0x004D96F0), makes the controller manager (0x006C5610) and, for each file, looks its model up (0x00439FF0) and
+calls 0x00474070, then frees the name and the node. 0x00474070 finds or makes the group's entry in the animation
+data's map (0x00470960, 0x00470820) and either makes the sequence at once (0x0049FD90, added to the manager with
+0x006C5760) or - in play - appends the file to the data's list at +0xB4 (0x0067B1E0) to be cloned later: 0x00476D10,
+each actor's animation update, clones while a global count 0x00B33C28 is under the setting
+**iAnimationClonePerLoop:BackgroundLoad** (0x00B06548; 5 as compiled and in Nadi's INI). At once only: group 0 (idle),
+0x20 and, in one menu, 0x21; and everything when the player has no 3D yet, in menu mode, or for the player's own
+nodes. So the engine already spreads an NPC's 300 sequences over frames; what a set up costs is the list work.
+
+**Measured** (`obng-measure-facegen-load.ini`, run `-175137`, an NPC with 323 KF files in the ride, the timed
+list's own cost in the numbers): a set up of 3.1 - 4.3 ms is
+
+| part | ms |
+|---|---:|
+| the body 0x004E1580 (its textures 0x0052D2C0 0.6 - 1.6 of it: the synthesis 0.5 - 0.8, the fetch up to 1.0) | 1.1 - 2.3 |
+| 0x00474070, 290 - 295 calls: 273 appends 0x0067B1E0 0.27 - 0.45, 17 - 22 sequences made 0x0049FD90 0.26 - 0.41 and added 0x006C5760 0.14 - 0.24, the rest its own | 1.0 - 1.7 |
+| the list of names 0x00435830 (646 allocations) | 0.3 - 0.4 |
+| the 323 model lookups 0x00439FF0 | 0.1 - 0.15 |
+| the manager 0x006C5610 | 0.1 |
+| not named | 0.3 |
+
+Over the whole run: 0x00474070 21 723 calls 397 ms, the sequences made 13 523 times 235 ms (17 us each) and added
+125 ms (9 us each); the animation update 0x00476D10 340 248 calls. A first set up of a kind pays its KF files
+besides (323 lookups 4 - 21 ms once).
+
+**`[Route] AnimationLazyAppend` (class A, built, measured in part).** The append 0x0067B1E0 walks the list from its
+head each time: 37 000 steps for 273 appends. plugin/src/AnimationLazyAppend.cpp replaces the call at 0x00474348
+and keeps the list's last node between the appends of one set up (the begin and end come from AnimationPauseBatch's
+detour of 0x00475D80; outside a set up the walk is the game's); src/engine/io/AnimationLazyAppendLogic.h,
+tests/AnimationLazyAppendLogicTest.cpp (the same nodes as the game's append, node for node). In the game (runs
+`-185026` to `-185719`): 9 740 appends a run, 9 312 of them from the kept end, 5 382 nodes passed in all; the set
+up's 0x00474070 share 0.6 - 1.0 ms with it against 1.0 - 1.7 (run `-182603`, three set ups - a small sample). Off as
+shipped until measured over more set ups.
+
+**Not built: the set up on the loader's thread.** It was the plan (lever C); the reading says no. A queued
+character has no run on the loader's thread to put it in, the 3D it would make is attached, given Havok bodies and
+entered into the process lists on the main thread, and the engine already defers what is large (the sequences).
+What is left to take is about 1 ms of list work an NPC: the names' copy 0x00435830 with its 646 allocations and
+frees, and the map's bookkeeping in 0x00474070 - a rebuild of 0x00475D80's loop (class A), not a thread move.
+
+## The body textures made ahead: `[Route] BodyTexturePremake` (class B, built, first form froze the game)
+
+Read: the body textures need the NPC's form and the race only (0x0052D2C0 is `__thiscall(race, base out, own out,
+npc, part)`, RET 0x10; the only call in the EXE is the skin parts' at 0x0047ADFF) and are kept in the texture map
+`[0x00B35300]` by the NPC's form id - "%08XModUpperBodyFemale" / "...Male" for the upper body, "%08XModBody" for
+lower body, hand, foot and tail. The map's find 0x004A1D80 takes its own lock 0x00B35380. So they can be made
+before the character's end asks for them, on the loader's thread, after the NPC's queued head has run
+(plugin/src/BodyTexturePremake.cpp, src/engine/facegen/BodyTexturePremakeLogic.h).
+
+Three things stand against a simple call there, all found the hard way on 2026-11-20:
+
+- **A lock held across 0x0052D2C0 on the main thread deadlocks with the loader's pause.** The race texture's load
+  0x00442890, missed on the main thread, pauses the loader until its running task ends (0x00432860 -> 0x004322B0); a
+  task waiting for a lock the main thread holds never ends. Run `-180702`: the save never loaded. So the loader's
+  side only tries the lock.
+- **0x0052D2C0 must not run on two threads at once.** The synthesis gives up when another thread has the model's
+  flag. And Blockhead (shadeMe's OBSE plugin, in Nadi's mod list; its source, BodyOverride.cpp) hooks the function at
+  0x0052D4C9 and 0x0052D612 and passes the body's .egt path through one static TESModel written at every call.
+- **Two of three rides froze** with the first form in (OBNG.dll 1bd87069: a hook on the queued character's slot 11
+  and a lock around the synthesis's call; runs `-182929`, `-184134`): the main thread stood in the loader's pause
+  from a model lookup (0x0043231A <- 0x00432865 <- 0x00439F11) and once on a lock inside Blockhead.dll; the loader's
+  thread never ended its task. With that form off, three of three rides passed (`-185026` to `-185719`). Which wait
+  closed the ring is not known - OBVR's watchdog names the render thread only. `[Probe] HangWatch`
+  (plugin/src/HangWatch.cpp) was built for the next time: after ten seconds without an update step it writes every
+  thread's place and the holders of the locks made known to it.
+
+The form built since: the queued head's run slot (0x00A36CE8) is followed by the premake, which tries a lock of
+OBNG's and skips the NPC when the main thread has it; the main thread's call at 0x0047ADFF takes the same lock
+around the whole function. Not run in the game yet in this form; off as shipped.

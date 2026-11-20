@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cstring>
 
+#include "AnimationLazyAppend.h"
 #include "Memory.h"
 #include "engine/io/AnimationPauseBatchLogic.h"
 
@@ -41,7 +42,9 @@ void __fastcall Resume(void* io, void*) {
 
 char __fastcall Setup(void* self, void*, void* list, void* actor, void* third) {
 	apb::Enter(t_batch);
+	AnimationSetupBegins();  // [Route] AnimationLazyAppend keeps a list's end for the time of this set up
 	const char result = reinterpret_cast<SetupFn>(g_setup)(self, list, actor, third);
+	AnimationSetupEnds();
 	const UInt32 give = apb::Leave(t_batch);
 	if (give > 1) {
 		g_batched.fetch_add(1, std::memory_order_relaxed);

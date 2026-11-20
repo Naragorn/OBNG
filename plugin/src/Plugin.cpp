@@ -30,6 +30,8 @@
 #include "CodePatchProbe.h"
 #include "ContactDedup.h"
 #include "FaceGenCacheBudget.h"
+#include "FaceGenLoad.h"
+#include "HangWatch.h"
 #include "FileFindCache.h"
 #include "PoolPageRelease.h"
 #include "LooseFileList.h"
@@ -37,7 +39,9 @@
 #include "TextureLockSkip.h"
 #include "LoaderWaitProbe.h"
 #include "BodyTexturePreload.h"
+#include "BodyTexturePremake.h"
 #include "SlowCallProbe.h"
+#include "AnimationLazyAppend.h"
 #include "AnimationPauseBatch.h"
 #include "MusicGraphProbe.h"
 #include "MusicAsync.h"
@@ -379,6 +383,7 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 		obng::plugin::InstallBodyTexturePreload(path, &Log);  // the loading screen's call of the loader pause at 0x005ADADC (no entry)
 		obng::plugin::InstallSlowCallProbe(path, &Log);  // the script line 0x005169A0 and the source texture 0x00701E00 (not with [Timed] lines on them)
 		obng::plugin::InstallAnimationPauseBatch(path, &Log);  // the animation setup's entry 0x00475D80 and the resume's call at 0x0043A088
+		obng::plugin::InstallAnimationLazyAppend(path, &Log);  // the append's call at 0x00474348 in 0x00474070 (the set up's begin and end come from the detour above)
 		obng::plugin::InstallMusicAsync(path, &Log);  // the music player's seven CoCreateInstance calls (before the probe, which then stays out)
 		obng::plugin::InstallQuestTargetDefer(path, &Log);  // the grid's call of the quest targets at 0x004454E6, run a step later (StepHooks)
 		obng::plugin::InstallGridMoveDefer(path, &Log);  // the step's block 0x0040DD6E - 0x0040DE3E run at the step's start; after the quest targets' hook, so their call kept by this move runs a step later still
@@ -387,6 +392,9 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 		obng::plugin::InstallTaskEndBudget(path, &Log);  // the pump's read of its budget at 0x004335D4 (no entry)
 		obng::plugin::InstallTaskEndProbe(path, &Log);  // the pump's call of a task's end at 0x00433632 (after CellEvictionSpread, which takes the site when on)
 		obng::plugin::InstallFaceGenCacheBudget(path, &Log);  // the FaceGen cache's two limits, written at the first update step (no patch)
+		obng::plugin::InstallHangWatch(path, &Log);  // [Probe] HangWatch: a thread that dumps every thread's place when the update steps stop (no patch but a step hook)
+		obng::plugin::InstallFaceGenLoad(path, &Log);  // a find's reads of a model's .egm / .egt files, timed and (routed) outside the cache's lock
+		obng::plugin::InstallBodyTexturePremake(path, &Log);  // QueuedHead's run slot 0x00A36CE8 and the skin parts' call at 0x0047ADFF: the NPC's body textures made on the loader's thread
 		obng::plugin::InstallMusicGraphProbe(path, &Log);  // the music player's seven CoCreateInstance calls (no entry)
 		obng::plugin::InstallArchiveLooseCheck(path, &Log);  // the archives' loose file check's entry 0x0042C1D0 (not with a [Timed] line on it)
 		obng::plugin::InstallPoolPageRelease(path, &Log);  // the purge's and the release's entries (not with [Timed] lines on 0x0043FC20 / 0x00402740)

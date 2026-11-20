@@ -25,6 +25,7 @@
 #include "CodePatchProbe.h"
 #include "ContactDedup.h"
 #include "FaceGenCacheBudget.h"
+#include "FaceGenLoad.h"
 #include "FileFindCache.h"
 #include "PoolPageRelease.h"
 #include "LooseFileList.h"
@@ -32,7 +33,9 @@
 #include "TextureLockSkip.h"
 #include "LoaderWaitProbe.h"
 #include "BodyTexturePreload.h"
+#include "BodyTexturePremake.h"
 #include "SlowCallProbe.h"
+#include "AnimationLazyAppend.h"
 #include "AnimationPauseBatch.h"
 #include "MusicAsync.h"
 #include "GridMoveDefer.h"
@@ -178,6 +181,9 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogUnloadRefSummary();
 	LogTaskEndSummary();
 	LogFaceGenCacheSummary();
+	LogFaceGenLoadSummary();
+	LogBodyTexturePremakeSummary();
+	LogAnimationLazyAppendSummary();
 	LogVoiceDecodeSummary();
 	LogActorCensusSummary();
 	LogActorFarUpdateSummary();
