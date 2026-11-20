@@ -852,3 +852,39 @@ OBNG.dll f0398de7), `-100307` / `-100632` (`obng-measure-cell-unload-locks.ini`:
   0.7 ms.
 So an eviction is about 5 - 12 ms of its own work plus 0 - 8 ms of heap lock contention with the loader. A heap with
 less contention would take off up to half; only spreading the unload over frames takes the frame under a period.
+
+### The exterior cell buffer and its eviction, read for a spread over frames (read 2026-11-20)
+
+- **The buffer** is one most-recently-used array, TES (`*0x00B333A0`) +0x3C, `uExterior Cell Buffer` entries
+  (0x00B051DC); its first grids² (0x00B06A2C squared) slots are the grid's cells, the rest the cells kept beyond it.
+  0x0043FED0 (`__thiscall(TES, cell)`) pushes a cell: at slot 0 when its state byte +0x26 is 5 or 6, behind the
+  grid's part otherwise; a cell already in the array moves up; the cell shifted out of the last slot is unloaded,
+  `0x00447BA0(DataHandler *0x00B33A98, cell)` at 0x0043FF68. 0x0043FEA0 says whether a cell is in the array.
+- **Who evicts in the ride:** the background loader's cell task ends on the main thread in its method 0x004BDDF0
+  (no direct caller: a vtable slot), which pushes the loaded cell through 0x00442740 -> 0x0043FED0. Several tasks
+  ending in one frame are the two to four evictions of one step.
+- **The unload 0x00447BA0**, for a cell without flag bit 5: 0x0067A8C0; state = 1; 0x004CB4D0 (under the object owner
+  lock `0x00496EA0(0x00B35C80, cell)` / 0x00496F50: every reference of the list at cell +0x48 but the player gets
+  `Set3D(null)`, vtable +0x150; xOBSE's TESObjectREFR slot 0x54); 0x004CB010; the land 0x004E7690; an exterior's path
+  grid 0x004C6280; the cell's node let go 0x004CE320 (state 0); then for an exterior 0x004F1840, which takes the cell
+  out of the worldspace's map and **destroys the cell form** (vtable +0x10 with 1) unless 0x0046B680 / 0x0044FAA0
+  keep it.
+- **Who looks a cell up meanwhile:** by coordinate through the worldspace's map 0x004EFE80: the grid's attach
+  0x004441A0 (0x004F1630 gets or loads the cell at once), 0x00447740, and the background load request 0x004BE090,
+  which for a cell that exists and is in the buffer only refreshes it and otherwise queues a load task for it.
+- **A cell re-entering the grid from the buffer** takes 0x004D5BD0's short way (0x0043FEA0 true: 0x004CB790, no walk
+  of the references); only a cell not in the buffer has each reference's 3D queued (0x00438060) and attached. So a
+  buffered cell's references are expected to have their 3D.
+- **What follows for a spread** (derived):
+  - Unloading one cell a frame instead of several makes it worse at a fixed rate: three evictions in one 26.7 ms step
+    miss one period, three steps of one each would miss three (measured: `buf:Add ... x3` in one two-period step).
+    Only slices that fit the frame's slack help.
+  - Putting the evicted cell aside and unloading it over frames breaks "out of the buffer means unloaded": the load
+    request 0x004BE090 would queue a load for a cell that is half unloaded and about to be destroyed.
+  - Stripping the next victims' 3D ahead while they stay in the buffer breaks the short way's expectation if one of
+    them re-enters the grid.
+  - The way with the fewest new states: hold the cell task's end 0x004BDDF0 (a task done on the loader's thread whose
+    main-thread end has not run yet is a state the engine has every frame), strip the last slot's cell in slices of
+    a few ms while it is still in the buffer, then let the task end: its push evicts a cell whose 3D is gone already.
+    Before a grid attach 0x00444340 everything held must be finished at once, so that no stripped cell is attached.
+    Not read yet: who calls the task's end and what keeps the task alive after it (its reference count at +8).
