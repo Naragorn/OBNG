@@ -997,4 +997,21 @@ Oblivion.ini stay as they are; 0 leaves the game's setting. Built 2026-11-20 (co
   finished background tasks for ..." unless the run's INI sets `TaskEndBudget=0`;
 - the INI template ships `TaskEndBudget=1`.
 1 ms does not depend on the headset's rate: the pump never cuts an end short, so 1 ms means one costly end a frame.
-Open: the route's own rides, flat mode (no pose wait; the present's wait should absorb the same way - unverified).
+Open: flat mode (no pose wait; the present's wait should absorb the same way - unverified).
+
+**The route's own rides** (OBNG.dll e0d1cf94, `obng-measure-task-end-budget.ini` / `-off.ini`, one block): 1 ms
+`-131633` and `-132325`, the game's 5 ms `-131959`. All of the day's rides together, by the update steps over 20 ms
+that hold an unload (the spike lines) and by the frames over 20 ms within 1.5 s of a half-cell line
+(`tools/re/ride-long-frames.py`):
+
+| budget | rides | long steps with an unload | long frames at the evictions | the ride's unloads |
+|---|---|---|---|---|
+| 5 ms | 114318, 115008, 121723, 123100, 123756, 125058, 125751, 131959 | 10, 13, 11, 9, 7, 11, 14, 11 (mean 10.8) | 12, 12, 15, 12, 7, 11, 15, 11 (mean 11.9) | 157 - 197 ms |
+| 1 ms, console | pp1/124732, pp1/125424 | 3, 4 | 6, 5 | 131, 119 ms |
+| 1 ms, the route | 131633, 132325 | 11, 5 | 16, 10 | 160, 122 ms |
+
+Three of the four rides at 1 ms have 3 - 5 long steps with an unload against 7 - 14 at 5 ms; one (`-131633`) has 11,
+with unloads as costly as at 5 ms (160 ms) and more long frames at the crossings too (18 against 11 - 16), which the
+budget does not touch - a noisier ride, cause not known. At 1 ms a long step holds one unload (twice two), at 5 ms up
+to four. So: about half the eviction hitches on average, not all, and not in every ride. On in both games since
+2026-11-20 13:30 (OBNG.ini `TaskEndBudget=1`; also OBNG's value without the key).
