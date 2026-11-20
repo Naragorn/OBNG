@@ -195,6 +195,22 @@ details per function in `re/functions/<address>.md`, states in
   states (the same article's "final touch", where the accumulator's
   remainder otherwise "causes a subtle but visually unpleasant stuttering
   of the physics simulation on the screen").
+  **OBVR's even plan (built 2026-11-20, OBVR 68650e7, game/PhysicsPlan.cpp):**
+  the call at 0x0040D8C2 (`E8 49 BF 47 00`, read) rerouted to a planner that
+  splits each frame into the fewest equal steps no longer than STEP (or 5 %
+  over it), at most the cap, writing the same globals; measured at 45 fps
+  with STEP 1/60: two steps of 11.1 ms every frame, the thrown sword's model
+  386 399 407 430 453 ... units a second per frame - even. **What a step
+  costs (measured, OBVR `[Debug] PhysicsStepTimes`: hkWorld::stepDeltaTime
+  0x00898B70, thiscall(world, float), ret 4, entry `83 EC 08 56 57`, timed on
+  QPC; Linux, interior test hall, run alone):** 0.001 to 0.003 ms a step
+  with three frozen bandits; 0.021 to 0.039 ms on average with fifteen
+  longswords falling, the single longest 0.6 to 2.0 ms (the frame they were
+  placed). The step count matches the planner's every frame (450 steps in
+  225 frames at 45 fps). So in that scene the step itself is cheap; the ~1 ms
+  a frame of Havok code found by sampling (render-thread-outside-the-pass.md)
+  lies mostly outside the world's step (casts, character controllers -
+  derived, not split by measurement).
 - **The time multiplier at 0x00B06704 is the INI setting
   `fGlobalTimeMultiplier` ([General])** (read, 2026-10-27): the static
   initialiser 0x009DC2D0 registers the SettingInfo (value +0x00 = 1.0f,
