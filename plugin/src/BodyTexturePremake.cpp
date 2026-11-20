@@ -30,9 +30,10 @@ constexpr UInt32 kActorFlags = 0x28;         // an NPC's flags, bit 0 female (re
 constexpr UInt32 kSkinCall = 0x0047ADFF;     // the skin parts' call of 0x0052D2C0 on the main thread (read; the only call in the EXE)
 
 using RunFn = void(__thiscall*)(void* task);
-using BodyTextureFn = bool(__thiscall*)(void* race, UInt32* base, UInt32* own, void* npc, int part);
 using DeleteFn = void(__thiscall*)(void* object, UInt32 flags);
 using FindFn = UInt32(__thiscall*)(void* map, const char* name, UInt32 zero);
+
+bool __cdecl CallBodyTexture(void* race, void* npc, int part, UInt32* results);
 
 LogFn g_log = nullptr;
 bool g_on = false;
@@ -104,26 +105,76 @@ void Premake(UInt32 npc) {
 	QueryPerformanceCounter(&t0);
 	unsigned textures = 0;
 	for (const int part : pm::kParts) {
-		UInt32 base = 0, own = 0;
-		reinterpret_cast<BodyTextureFn>(static_cast<std::uintptr_t>(kBodyTexture))(Pointer(race), &base, &own, Pointer(npc), part);
-		textures += own != 0 ? 1 : 0;
-		Release(base);  // the texture map keeps both
-		Release(own);
+		UInt32 results[2] = {0, 0};
+		CallBodyTexture(Pointer(race), Pointer(npc), part, results);
+		textures += results[1] != 0 ? 1 : 0;
+		Release(results[0]);  // the texture map keeps both
+		Release(results[1]);
 	}
 	LeaveCriticalSection(&g_bodyLock);
 	QueryPerformanceCounter(&t1);
 	Count(pm::Skip::None, static_cast<std::uint64_t>(t1.QuadPart - t0.QuadPart), textures);
 }
 
-// In place of the skin parts' call on the main thread: the same call under OBNG's lock, so it never runs beside a
-// premake's on the loader's thread (BodyTexturePremakeLogic.h). It may wait for one NPC's premake; the premake never
-// waits for it.
-bool __fastcall SkinTexture(void* race, void*, UInt32* base, UInt32* own, void* npc, int part) {
+void __cdecl LockBody() {
 	EnterCriticalSection(&g_bodyLock);
-	const bool result = reinterpret_cast<BodyTextureFn>(static_cast<std::uintptr_t>(kBodyTexture))(race, base, own, npc, part);
-	LeaveCriticalSection(&g_bodyLock);
-	return result;
 }
+
+void __cdecl UnlockBody() {
+	LeaveCriticalSection(&g_bodyLock);
+}
+
+// In place of the skin parts' call on the main thread (ECX the race; base out, own out, NPC, part on the stack, RET
+// 0x10): the same call under OBNG's lock, so it never runs beside a premake's (BodyTexturePremakeLogic.h). The
+// engine's pushed arguments stay untouched where they are - Blockhead reads the part and the NPC from them through
+// the base pointer - and the function gets copies.
+__declspec(naked) void SkinTexture() {
+	__asm {
+		push ecx
+		call LockBody
+		pop ecx
+		push dword ptr [esp + 0x10]  // part
+		push dword ptr [esp + 0x10]  // NPC
+		push dword ptr [esp + 0x10]  // own out
+		push dword ptr [esp + 0x10]  // base out
+		mov eax, kBodyTexture
+		call eax
+		push eax
+		call UnlockBody
+		pop eax
+		ret 0x10
+	}
+}
+
+// 0x0052D2C0 called with the engine's stack shape: the base local kBaseAboveArguments above the stack top the four
+// arguments are pushed from (0x0047ADF3 - 0x0047ADFF). results[0] the race's texture, results[1] the NPC's own.
+__declspec(naked) bool __cdecl CallBodyTexture(void* race, void* npc, int part, UInt32* results) {
+	__asm {
+		push ebp
+		mov ebp, esp
+		sub esp, 0x24                 // E = esp: the base at [E + 0x18], the own at [E + 0x20]
+		mov dword ptr [esp + 0x18], 0
+		mov dword ptr [esp + 0x20], 0
+		push dword ptr [ebp + 0x10]   // part, at E - 4
+		push dword ptr [ebp + 0x0C]   // NPC, at E - 8
+		lea edx, [esp + 0x28]         // the own, E + 0x20
+		push edx
+		lea eax, [esp + 0x24]         // the base, E + 0x18
+		push eax
+		mov ecx, [ebp + 0x08]         // race
+		mov eax, kBodyTexture
+		call eax                      // RET 0x10
+		mov edx, [ebp + 0x14]
+		mov ecx, [esp + 0x18]
+		mov [edx], ecx
+		mov ecx, [esp + 0x20]
+		mov [edx + 4], ecx
+		mov esp, ebp
+		pop ebp
+		ret
+	}
+}
+static_assert(pm::kBaseAboveArguments == 0x18, "CallBodyTexture's frame is written for this shape");
 
 // In place of the queued head's run: the run (the head, under FaceGen's data lock 0x00B39C80), then the same NPC's
 // body textures. The NPC is read before the run; a form outlives the task.

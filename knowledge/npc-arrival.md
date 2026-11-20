@@ -48,10 +48,10 @@ So a ride's texture modes (94 MB) are over the game's 64 MB and get dropped and 
 main thread waits for: with nothing dropped it waits as long. Derived (the probe keeps a holder's last enter site
 only, and the purge is the last enter of a find): the holder is another thread inside a find or an insert, reading a
 model's files under the lock - a head's 9.4 MB .egt on the loader's thread. Not proven on that thread then;
-measured since (the next section). The route stays off (`kShippedEgmMb` / `kShippedEgtMb` 0): no gain for the main thread, 30 MB more memory.
-Levers left (nothing built): the file read moved out of the lock in 0x005515B0 (needs a per-entry "being loaded"
-state); or the body texture made a frame later when the lock is held (needs the skin applied again, 0x0047AC20 from
-0x0047B090 / 0x0047BC40).
+measured since (the next section). The route stays off (`kShippedEgmMb` / `kShippedEgtMb` 0): no gain for the main
+thread, 30 MB more memory. Levers left (nothing built): the file read moved out of the lock in 0x005515B0 (needs a
+per-entry "being loaded" state); or the body texture made a frame later when the lock is held (needs the skin applied
+again, 0x0047AC20 from 0x0047B090 / 0x0047BC40).
 
 **A queued character's end, second split** (`obng-measure-char-finish-2.ini`, run
 `obng-profile-ride-anvil-late/20261120-171759`, 19 ends over 3 ms in the ride; read: 0x00441EF0 gets the actor's 3D
@@ -184,7 +184,7 @@ entered into the process lists on the main thread, and the engine already defers
 What is left to take is about 1 ms of list work an NPC: the names' copy 0x00435830 with its 646 allocations and
 frees, and the map's bookkeeping in 0x00474070 - a rebuild of 0x00475D80's loop (class A), not a thread move.
 
-## The body textures made ahead: `[Route] BodyTexturePremake` (class B, built, first form froze the game)
+## The body textures made ahead: `[Route] BodyTexturePremake` (class B, built)
 
 Read: the body textures need the NPC's form and the race only (0x0052D2C0 is `__thiscall(race, base out, own out,
 npc, part)`, RET 0x10; the only call in the EXE is the skin parts' at 0x0047ADFF) and are kept in the texture map
@@ -193,23 +193,63 @@ lower body, hand, foot and tail. The map's find 0x004A1D80 takes its own lock 0x
 before the character's end asks for them, on the loader's thread, after the NPC's queued head has run
 (plugin/src/BodyTexturePremake.cpp, src/engine/facegen/BodyTexturePremakeLogic.h).
 
-Three things stand against a simple call there, all found the hard way on 2026-11-20:
+**Why the first three forms froze the game: Blockhead reads the engine caller's stack (measured, `[Probe]
+HangWatch`, run `-191622`).** Blockhead (shadeMe's OBSE plugin, in Nadi's mod list; its source, BodyOverride.cpp)
+hooks the race texture's path in 0x0052D2C0 at 0x0052D4C9 and takes the body part and the NPC from `[ebp - 0x1C]`
+and `[ebp - 0x20]`. In that function EBP is the base out pointer (0x0052D302), so these are words of the caller's
+frame: at the engine's call (0x0047ADF3 - 0x0047ADFF: push part, push npc, push &own, push &base) the base local
+sits 0x18 above the stack top the arguments are pushed from, and the two words are the pushed part and NPC. Called
+from OBNG's C++ they were whatever lay under OBNG's local: Blockhead's assertion failed and its message box stood
+on the calling thread for good - the hang watch shows the loader's thread in user32 under Blockhead.dll with
+"Assertion failed" on its stack, holding OBNG's lock, and the main thread in the loader's pause (0x0043231A <-
+0x00432865). The same explains the earlier freezes (the save that did not load in `-180702`, two of three rides
+with OBNG.dll 1bd87069: `-182929`, `-184134`), where OBVR's watchdog named the main thread only - once in the
+pause, once waiting on a lock inside Blockhead.dll, which the thread with the message box held. The second hook,
+0x0052D612 (the body's .egt), takes its values from the function's own frame (EBP is the part again from
+0x0052D5AF on) but passes the path through one static TESModel written at every call.
 
-- **A lock held across 0x0052D2C0 on the main thread deadlocks with the loader's pause.** The race texture's load
-  0x00442890, missed on the main thread, pauses the loader until its running task ends (0x00432860 -> 0x004322B0); a
-  task waiting for a lock the main thread holds never ends. Run `-180702`: the save never loaded. So the loader's
-  side only tries the lock.
-- **0x0052D2C0 must not run on two threads at once.** The synthesis gives up when another thread has the model's
-  flag. And Blockhead (shadeMe's OBSE plugin, in Nadi's mod list; its source, BodyOverride.cpp) hooks the function at
-  0x0052D4C9 and 0x0052D612 and passes the body's .egt path through one static TESModel written at every call.
-- **Two of three rides froze** with the first form in (OBNG.dll 1bd87069: a hook on the queued character's slot 11
-  and a lock around the synthesis's call; runs `-182929`, `-184134`): the main thread stood in the loader's pause
-  from a model lookup (0x0043231A <- 0x00432865 <- 0x00439F11) and once on a lock inside Blockhead.dll; the loader's
-  thread never ended its task. With that form off, three of three rides passed (`-185026` to `-185719`). Which wait
-  closed the ring is not known - OBVR's watchdog names the render thread only. `[Probe] HangWatch`
-  (plugin/src/HangWatch.cpp) was built for the next time: after ten seconds without an update step it writes every
-  thread's place and the holders of the locks made known to it.
+What the route does about it:
 
-The form built since: the queued head's run slot (0x00A36CE8) is followed by the premake, which tries a lock of
-OBNG's and skips the NPC when the main thread has it; the main thread's call at 0x0047ADFF takes the same lock
-around the whole function. Not run in the game yet in this form; off as shipped.
+- OBNG calls 0x0052D2C0 from a thunk with the engine's stack shape (the base local 0x18 above the pushed
+  arguments), and its wrapper of the engine's own call at 0x0047ADFF is a thunk that leaves the engine's pushed
+  arguments where they are and hands the function copies.
+- The function never runs on two threads at once (Blockhead's static, and the synthesis gives up when another
+  thread has the model's flag): the main thread's call and the premake take turns on a lock of OBNG's around the
+  whole function.
+- The premake only tries that lock and skips the NPC when the main thread is inside. Derived, not seen in a run:
+  the race texture's load 0x00442890, missed on the main thread, pauses the loader until its running task ends
+  (0x00432860 -> 0x004322B0), and a task that waited for the lock would never end.
+- The premake runs after the queued head's run (QueuedHead's vtable slot 1 at 0x00A36CE8, the NPC at task +0x20),
+  only on the thread the texture load takes for the loader's.
+
+A general lesson for calls into the engine from OBNG: another plugin's hook may depend on the engine caller's
+frame. A function with one call site in the EXE is a candidate; its hooks are worth reading before it is called
+from anywhere else.
+
+**Measured with that form in** (OBNG.dll 68e6b3c2; all three routes on: runs `-192338`, `-192706` plain and `-193032`
+with the timed list; `-193357` off in the same block; `tools/re/facegen-ride.py`, the timed totals, [Probe]
+TaskEnds):
+
+| | routes off | FaceGenLoadOutside + AnimationLazyAppend | all three |
+|---|---:|---:|---:|
+| NPCs' body textures made on the loader's thread, a run | - | - | 40 - 44 in 56 - 62 ms (longest 3.1 - 3.8) |
+| the main thread in 0x0052D2C0, a run (timed) | 86 calls, 80.5 ms, longest 19.5 | - | 105 calls, 1.6 ms, longest 0.03 |
+| the synthesis 0x00557E60 on the main thread, a run | 24 calls, 42.6 ms | - | 0 calls |
+| a queued character's end 0x0043B090, a run (timed) | 40 calls, 410 ms, longest 42.5 | - | 43 calls, 315 ms, longest 17.2 |
+| queued characters' ends of 6 ms or more in the ride: count, ms | 9 - 10, 85 - 130 | 4 - 6, 47 - 48 | 2, 19 - 38 |
+| main-thread steps with 2 ms or more of lock waits in the ride: count, ms | 6 - 11, 40 - 77 | 4 - 7, 21 - 25 | 2 - 3, 9 - 19 |
+
+Seven NPCs a run were in the map already, none was skipped for the main thread being inside. Three rides and the
+save's load passed; the hang watch wrote nothing after the loading screen.
+
+**What the ride's count of late frames says: nothing yet.** Frames over 14.5 ms in the ride
+(`tools/re/ride-long-frames.py`): off 37, 54, 52; the two routes 69, 51, 55; all three 60, 71, 71 - and of those the
+ones away from crossings and evictions 16, 19, 12 against 20, 23, 21 against 25, 27, 27. That reads as more late
+frames with the routes, not fewer. It is not the locks (the main thread's waits fall, the table above) and not the
+heap's lock (300 - 330 ms of waits a run on all threads in every one of the nine rides). The rides are not the same
+ride: the mod list's leveled spawns and schedules change who is on the road. In `-193032` the animation update made
+2 478 sequences in twenty seconds at 100 - 120 us each, where every other interval of every timed run has 13 - 25
+us: another set of actors with larger animation files. With three rides a side and a spread of twenty the count cannot
+judge routes that take two to nine frames a ride; the numbers of what the routes touch can. Open: a scenario with a
+fixed set of arriving NPCs, or many more rides a side.
+

@@ -24,17 +24,26 @@
 // engine's own design. Only on the thread 0x00442890 takes for the loader's ([[0x00B33A10] + 0x30]): from any other a
 // texture miss would pause the loader.
 //
-// 0x0052D2C0 must not run on two threads at once. The synthesis takes the model's flag (+0x18) and, when another
-// thread has it, returns with no texture (0x00557F64). And Blockhead (shadeMe's OBSE plugin, in Nadi's mod list;
-// read in its source, BodyOverride.cpp) hooks the function at 0x0052D4C9 and 0x0052D612 and hands the body's .egt
-// path through one static TESModel, written at every call. The game never runs it twice at once: all body textures
-// are made on the main thread. So the main thread's call (0x0047ADFF, the only one in the EXE) and the premake take
-// turns on a lock of OBNG's around the whole function.
+// 0x0052D2C0 can only be called the way the engine calls it. Blockhead (shadeMe's OBSE plugin, in Nadi's mod list;
+// read in its source, BodyOverride.cpp) hooks the race texture's path at 0x0052D4C9 and takes the body part and the
+// NPC not from the function's arguments but from the caller's stack, through the base pointer the function keeps in
+// EBP: `[ebp - 0x1C]` and `[ebp - 0x20]`. At the engine's one call (0x0047ADF3 - 0x0047ADFF: push part, push npc, push
+// &own, push &base) the base local sits 0x18 above the stack top the arguments are pushed from, so those two words
+// are the pushed part and NPC. A call from anywhere else hands Blockhead whatever lies there, its assertion fails and
+// its message box stands on the calling thread for good. Measured 2026-11-20 with [Probe] HangWatch (run
+// obng-profile-ride-anvil-late/20261120-191622): the loader's thread in user32 under Blockhead.dll with "Assertion
+// failed" on its stack, holding OBNG's lock; the main thread in the loader's pause. So OBNG calls the function from a
+// thunk with the engine's stack shape (kBaseAboveArguments), and its wrapper of the engine's own call leaves the
+// engine's pushed arguments where they are.
+//
+// The function must not run on two threads at once either: the synthesis gives up when another thread has the
+// model's flag (+0x18; 0x00557F64, no texture), and Blockhead's hook at 0x0052D612 passes the body's .egt path through
+// one static TESModel written at every call. The game never runs it twice at once (all body textures are made on the
+// main thread), so the main thread's call and the premake take turns on a lock of OBNG's around the whole function.
 // The premake only tries the lock and skips the NPC when the main thread is inside: the race texture's load in
 // 0x0052D2C0, missed on the main thread, pauses the loader until its running task ends (0x00432860), and a task that
-// waited for the lock would never end (measured so 2026-11-20, run obng-profile-ride-anvil-late/20261120-180702: with
-// a waiting premake the save never loaded). The main thread waits for a premake in progress, one NPC at most; nothing
-// in the premake waits for the main thread.
+// waited for the lock would never end (derived from the read; not seen in a run). The main thread waits for a
+// premake in progress, one NPC at most; nothing in the premake waits for the main thread.
 // Class B: the same textures, made earlier and on another thread.
 #include <cstddef>
 #include <cstdint>
@@ -51,6 +60,14 @@ constexpr bool OnOf(int ini) {
 }
 
 constexpr std::uint8_t kNpcFormType = 0x23;
+
+// The engine's call shape that Blockhead's hook reads through: with E the stack top before the four arguments are
+// pushed, the base local is at E + kBaseAboveArguments, the pushed part at E - 4 and the pushed NPC at E - 8.
+constexpr std::uint32_t kBaseAboveArguments = 0x18;
+constexpr std::uint32_t kPartBelowBase = 0x1C;  // Blockhead's `[ebp - 0x1C]`
+constexpr std::uint32_t kNpcBelowBase = 0x20;   // Blockhead's `[ebp - 0x20]`
+static_assert(kBaseAboveArguments + 4 == kPartBelowBase && kBaseAboveArguments + 8 == kNpcBelowBase,
+              "the base local's place is the one that makes Blockhead's two reads the pushed part and NPC");
 
 // The parts 0x0047AC20 asks 0x0052D2C0 for: upper body, lower body, hand, foot, tail.
 constexpr int kParts[] = {2, 3, 4, 5, 15};

@@ -12,6 +12,14 @@ int main() {
 	Check(!OnOf(0) && OnOf(1) && !OnOf(2) && !OnOf(-1), "1 is on, anything else is off");
 	Check(Shipped() == 0, "off as shipped until the game's gates have run");
 
+	Section("The call shape Blockhead's hook reads through");
+	{
+		const std::uint32_t top = 0x00F0F000u;                 // the stack top before the arguments are pushed
+		const std::uint32_t base = top + kBaseAboveArguments;  // where the base local must be
+		Check(base - kPartBelowBase == top - 4, "its [base - 0x1C] is the first pushed argument, the part");
+		Check(base - kNpcBelowBase == top - 8, "its [base - 0x20] is the second, the NPC");
+	}
+
 	Section("The parts a body texture is asked for (0x0047AC20's switch, read)");
 	Check(kPartCount == 5, "five");
 	Check(kParts[0] == 2 && kParts[1] == 3 && kParts[2] == 4 && kParts[3] == 5 && kParts[4] == 15, "upper body, lower body, hand, foot, tail");
