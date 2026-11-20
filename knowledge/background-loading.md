@@ -1152,3 +1152,50 @@ calls it with the task's reference +0x20 and model +0x2C). Three parts:
   times each for 0.2 ms): not named yet.
 - **the model lookup 0x00439FF0 once: 323 calls, 21.8 ms** in one end of 26.8 ms (an NPC's animation files; the
   first of its kind).
+
+## FaceGen's model cache and the main thread's wait on its lock (2026-11-20, read and measured)
+
+**What the 4 ms of a body texture are (measured, `obng-measure-body-texture.ini`, run
+`obng-profile-ride-anvil-late/20261120-160018`).** Not the synthesis loops: of 90 ms a ride in 0x0052D2C0 (117 calls),
+59 ms are the model's fetch 0x00553620 (24 calls; 5 - 14 ms in six of them, else microseconds), 28 ms the synthesis
+0x00557E60, and of those 25.5 ms are 0x0054DA40 (the float image made into a texture, 0.5 - 4.1 ms a call). The
+accumulate loops at 0x005582CA are about 0.1 ms a call - a faster loop would gain nothing.
+
+**The cache (read).** `[[0x00B39B80] + 0xDAC]`, made on first use with two limits copied from the settings
+uiFaceGenMaxEGMDataSize (value at 0x00B120EC -> cache +0x18, the shape modes of the .egm files) and
+uiFaceGenMaxEGTDataSize (0x00B120F4 -> +0x1C, the texture modes of the .egt files), 64 MB each as shipped and in
+Nadi's INI. An entry holds two data objects (+8 the EGM's, +0xC the EGT's: the path at [0], the data at [2]). The
+fetch 0x00553620 finds the entry (0x005515B0) or makes and inserts one (0x00559B50, 0x00551450). **Every find and
+insert takes the cache's lock 0x00B39C00 and, holding it, runs the purge 0x005506B0** - for each kind, while the
+data (summed by a walk of the whole map, 0x0054F890) is over the limit, 0x0054FC30 drops the oldest entry's data, the
+entry stays - **and then loads the entry's missing data from its files, still under the lock** (0x00559190 ->
+0x00558770 for the EGM, 0x00558520 -> 0x00557C80 for the EGT). `bLoadBackgroundFaceGen` (0x00B1210C) is read by
+nothing but its own initialiser. Guides (Step Mods' INI guide) give the two limits' defaults and no description.
+
+**Measured (`obng-measure-facegen-cache.ini`: the cache's functions timed on the main thread, [Probe] LockCalls;
+runs `-160558`, `-161036`, `-163524`).** The fetch's time is the find's, and the find's is the wait for the lock:
+three to five waits a ride of 4.7 - 13.0 ms at 0x005515E2, each in the frame a queued character's body texture is
+made; the holder's last enter site is the purge's 0x005506C3 (once the size walk's 0x0054F8D0). The main thread's own
+reloads are small (2 EGM loads 3.8 - 5.2 ms, 3 EGT loads 1.4 - 1.9 ms a ride), its purges 2 ms in 54 calls, one
+eviction. Nadi's mod list has 415 loose .egm files of 511 MB and 26 loose .egt files of 161 MB (a head's .egt 9.4 MB).
+
+**`[Route] FaceGenCacheEgmMB` / `FaceGenCacheEgtMB` measured: the waits stay** (plugin/src/FaceGenCacheBudget.cpp,
+src/engine/facegen/FaceGenCacheBudgetLogic.h; the two limits raised at the first update step, never below the game's;
+OBNG.dll 4877e1fe, `obng-measure-facegen-budget.ini` with 512 / 256 MB against `obng-measure-facegen-cache.ini`, one
+ride each, `-163158` / `-163524`):
+
+| | limits 512 / 256 MB | the game's 64 / 64 MB |
+|---|---:|---:|
+| the cache's data at the ride's end: shapes / textures | 42 / 94 MB | (not read) |
+| evictions on the main thread | 0 | 1 |
+| the main thread's waits on the lock | 5: 6.5 - 13.3 ms (52 ms) | 3: 4.8 - 9.5 ms (20 ms) |
+| committed memory at the end | 755 MB | 725 MB |
+
+So a ride's texture modes (94 MB) are over the game's 64 MB and get dropped and read again, but that is not what the
+main thread waits for: with nothing dropped it waits as long. Derived (the probe keeps a holder's last enter site
+only, and the purge is the last enter of a find): the holder is another thread inside a find or an insert, reading a
+model's files under the lock - a head's 9.4 MB .egt on the loader's thread. Not proven on that thread. The route
+stays off (`kShippedEgmMb` / `kShippedEgtMb` 0): no gain for the main thread, 30 MB more memory.
+Levers left (nothing built): the file read moved out of the lock in 0x005515B0 (needs a per-entry "being loaded"
+state); or the body texture made a frame later when the lock is held (needs the skin applied again, 0x0047AC20 from
+0x0047B090 / 0x0047BC40).
