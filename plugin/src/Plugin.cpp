@@ -40,6 +40,7 @@
 #include "AnimationPauseBatch.h"
 #include "MusicGraphProbe.h"
 #include "MusicAsync.h"
+#include "QuestTargetDefer.h"
 #include "SceneOrderCheck.h"
 #include "SoundCommit.h"
 #include "TimedCalls.h"
@@ -373,6 +374,7 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 		obng::plugin::InstallSlowCallProbe(path, &Log);  // the script line 0x005169A0 and the source texture 0x00701E00 (not with [Timed] lines on them)
 		obng::plugin::InstallAnimationPauseBatch(path, &Log);  // the animation setup's entry 0x00475D80 and the resume's call at 0x0043A088
 		obng::plugin::InstallMusicAsync(path, &Log);  // the music player's seven CoCreateInstance calls (before the probe, which then stays out)
+		obng::plugin::InstallQuestTargetDefer(path, &Log);  // the grid's call of the quest targets at 0x004454E6, run a step later (StepHooks)
 		obng::plugin::InstallMusicGraphProbe(path, &Log);  // the music player's seven CoCreateInstance calls (no entry)
 		obng::plugin::InstallArchiveLooseCheck(path, &Log);  // the archives' loose file check's entry 0x0042C1D0 (not with a [Timed] line on it)
 		obng::plugin::InstallPoolPageRelease(path, &Log);  // the purge's and the release's entries (not with [Timed] lines on 0x0043FC20 / 0x00402740)

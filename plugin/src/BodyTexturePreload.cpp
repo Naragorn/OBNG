@@ -8,6 +8,7 @@
 #include <cstring>
 
 #include "Memory.h"
+#include "StepHooks.h"
 #include "engine/render/BodyTexturePreloadLogic.h"
 
 namespace obng::plugin {
@@ -18,10 +19,7 @@ namespace btp = obng::engine::render::body_texture_preload;
 
 constexpr UInt32 kLoadingSite = 0x005ADADC;                          // call 0x00432860 in LoadingMenu::Tick (read)
 constexpr UInt8 kLoadingBytes[] = {0xE8, 0x7F, 0x4D, 0xE8, 0xFF};    // call rel32 -> 0x00432860
-constexpr UInt32 kStepSite = 0x0040F270;                             // the main loop's call of the update step 0x0040D800 (read)
-constexpr UInt8 kStepBytes[] = {0xE8, 0x8B, 0xE5, 0xFF, 0xFF};       // call rel32 -> 0x0040D800
 constexpr UInt32 kPauseLoader = 0x00432860;                          // __thiscall(io manager) (read)
-constexpr UInt32 kUpdateStep = 0x0040D800;                           // __thiscall(main) (read; ECX = *0x00B33398 at 0x0040F26A)
 constexpr UInt32 kCreateImage = 0x00442890;                          // (out, path, 0, 0), RET 0x10 (read; the body build's call at 0x0052D4E8)
 constexpr UInt32 kShaderTexture = 0x007B8200;                       // __cdecl(out, path, load, check mips) (read; the body's normal maps at 0x007B82C3)
 constexpr UInt32 kDataHandler = 0x00B33A98;                          // DataHandler* (xOBSE g_dataHandler; read at 0x005C7BA0)
@@ -33,7 +31,6 @@ constexpr UInt32 kMaxRaces = 128;
 constexpr UInt32 kMaxPointers = kMaxRaces * btp::kCount;
 
 using PauseFn = void(__thiscall*)(void* io);
-using StepFn = void(__thiscall*)(void* main);
 using CreateFn = void*(__stdcall*)(void** out, const char* path, UInt32, UInt32);
 using ShaderTextureFn = void(__cdecl*)(void** out, const char* path, UInt32 load, UInt32 checkMips);
 
@@ -187,13 +184,12 @@ void __fastcall PauseThenPass(void* io, void*) {
 	CheckAndPass("at a loading screen");
 }
 
-// In place of the main loop's call of the update step: after the first pass, a pass when a script changed a race's
-// paths (measured: a body mod does so in the first frames after a load), then the step.
-void __fastcall CheckThenStep(void* main, void*) {
+// Before every update step (StepHooks.h): after the first pass, a pass when a script changed a race's paths
+// (measured: a body mod does so in the first frames after a load).
+void CheckBeforeStep() {
 	if (g_preloaded) {
 		CheckAndPass("after a race's paths changed");
 	}
-	reinterpret_cast<StepFn>(kUpdateStep)(main);
 }
 
 bool PatchCall(UInt32 site, const UInt8* bytes, const void* replacement, LogFn log) {
@@ -230,7 +226,7 @@ void InstallBodyTexturePreload(const char* iniPath, LogFn log) {
 	if (!PatchCall(kLoadingSite, kLoadingBytes, reinterpret_cast<const void*>(&PauseThenPass), log)) {
 		return;
 	}
-	const bool step = PatchCall(kStepSite, kStepBytes, reinterpret_cast<const void*>(&CheckThenStep), log);
+	const bool step = AddStepHook(&CheckBeforeStep, "the body texture preload's check", log);
 	log("Route: body texture preload (%s) - every race's body textures loaded and held at a loading screen (the call at %08X)%s",
 	    g_mode == btp::Mode::Async ? "async not built yet, as on" : "on", kLoadingSite,
 	    step ? ", again when a script changes a race's paths (checked every step at 0x0040F270)" : "; the step's check is not in");

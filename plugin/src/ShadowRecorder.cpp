@@ -34,6 +34,7 @@
 #include "SlowCallProbe.h"
 #include "AnimationPauseBatch.h"
 #include "MusicAsync.h"
+#include "QuestTargetDefer.h"
 #include "SceneOrderCheck.h"
 #include "SoundCommit.h"
 #include "TimedCalls.h"
@@ -166,6 +167,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogSlowCallSummary();
 	LogAnimationPauseBatchSummary();
 	LogMusicAsyncSummary();
+	LogQuestTargetDeferSummary();
 	LogVoiceDecodeSummary();
 	LogActorCensusSummary();
 	LogActorFarUpdateSummary();

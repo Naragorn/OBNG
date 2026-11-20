@@ -786,3 +786,26 @@ the handover) without a long frame. Frames over 30 ms with Wine's GStreamer and 
 wait: 2 / 2 / 2 in the three last rides without the route (and 0 - 1 in the rides before them: a track starts in the
 ride only when the music changes, a fight's for one), 0 in all four with it. Not measured: Windows' cost of RenderFile;
 how the music sounds (Nadi's ears).
+
+## 2026-11-20: a cell crossing with every route of 2026-11-19 on, and the cell buffer's eviction (measured)
+
+Runs `obng-profile-ride-anvil/20261120-090130`, `-091623`, `-091951`, `-092621` (Linux, the stand-in Beyond at 75 Hz,
+`--exclusive`, the Windows mod list, the Linux game's OBNG.ini of the day, OBNG.dll 402b7a8e;
+`obng-measure-crossing-now.ini`, `obng-measure-cell-unload.ini`). A note on those INIs: the game's OBNG.ini has
+`SummaryTimer=0`, so these runs wrote no summaries and the spike watch stopped after 60 lines; the later rides' INIs
+set it to 1. The crossings (every 11.8 s of the ride, ten a ride) and the first evictions are in the 60 lines.
+
+- **The crossing:** the grid's move 0x00444FB0 is 6.9 - 12.0 ms. Its largest part is the quest targets' rebuild
+  0x00665260: **3.1 - 4.6 ms at every crossing**, all of it one call of the door pathing 0x0065D8D0 (the pathing
+  0x0068B030 / 0x0068AB20 from the player to each target over the doors; the first door kept at target +0x10 for the
+  compass; read). Then the attach 0x00444340 1.9 - 6.1 ms, 0x004D5BD0 0.7 - 2.9, the map scan 0x007B3A40 and the far
+  grid's update 0x00483D60 about 1 each.
+- **The cell buffer's eviction, a second stall between the crossings:** about 6 s after a crossing (when the loader
+  has the new cells) the buffer's add 0x00442740 / push 0x0043FED0 drops its oldest cell and unloads it,
+  0x00447BA0: **6.2 - 22.9 ms in one frame**, one to three cells at once, four to six times a ride. Nearly all of it is
+  0x004CB4D0, the loop that calls every reference's vtable +0x150 with 0 (its 3D let go; read) between 0x00496EA0 and
+  0x00496F50: 2.4 - 21.5 ms. The rest of the unload (0x004CB010, 0x004E7690, 0x004F1840, 0x004D1570) is 1 - 2 ms.
+- **The main thread mostly waits in it:** in those frames the sampler's eip is in ntdll's
+  ZwWaitForAlertByThreadId / RtlpWaitForCriticalSection (11 of 13 samples at 51.5 s in `-091951`), and with
+  [Probe] LockCalls on (`-092621`) the waits are reached from OBNG's critical section replacement - the game's own
+  critical sections through its imports. Which one and who holds it the next runs (with summaries) tell.
