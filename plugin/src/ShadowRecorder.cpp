@@ -24,6 +24,7 @@
 #include "VoiceProbe.h"
 #include "CodePatchProbe.h"
 #include "ContactDedup.h"
+#include "FaceGenCacheBudget.h"
 #include "FileFindCache.h"
 #include "PoolPageRelease.h"
 #include "LooseFileList.h"
@@ -176,6 +177,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogCellEvictionSpreadSummary();
 	LogUnloadRefSummary();
 	LogTaskEndSummary();
+	LogFaceGenCacheSummary();
 	LogVoiceDecodeSummary();
 	LogActorCensusSummary();
 	LogActorFarUpdateSummary();

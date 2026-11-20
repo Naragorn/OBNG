@@ -29,6 +29,7 @@
 #include "VoiceProbe.h"
 #include "CodePatchProbe.h"
 #include "ContactDedup.h"
+#include "FaceGenCacheBudget.h"
 #include "FileFindCache.h"
 #include "PoolPageRelease.h"
 #include "LooseFileList.h"
@@ -385,6 +386,7 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 		obng::plugin::InstallUnloadRefProbe(path, &Log);  // the unload's reference loop 0x004CB4D0 (entry)
 		obng::plugin::InstallTaskEndBudget(path, &Log);  // the pump's read of its budget at 0x004335D4 (no entry)
 		obng::plugin::InstallTaskEndProbe(path, &Log);  // the pump's call of a task's end at 0x00433632 (after CellEvictionSpread, which takes the site when on)
+		obng::plugin::InstallFaceGenCacheBudget(path, &Log);  // the FaceGen cache's two limits, written at the first update step (no patch)
 		obng::plugin::InstallMusicGraphProbe(path, &Log);  // the music player's seven CoCreateInstance calls (no entry)
 		obng::plugin::InstallArchiveLooseCheck(path, &Log);  // the archives' loose file check's entry 0x0042C1D0 (not with a [Timed] line on it)
 		obng::plugin::InstallPoolPageRelease(path, &Log);  // the purge's and the release's entries (not with [Timed] lines on 0x0043FC20 / 0x00402740)
