@@ -1035,9 +1035,9 @@ cell 0x004D6670 against TES's 0x0043F270, then 0x0066EAF0) - the render 0x0040D4
 
 **What a crossing does (measured, 40 crossings).**
 - The crossing's frame: its wait ends on the beat, then the grid's move runs: 4.5 - 7.6 ms more work after the wait
-  than a normal frame has (33 of 38; five times 9.5 - 15.8 ms, with 1.4 and 1.8 the two small ones), so the present
-  comes that much late: a frame of 18 - 23 ms. Where the step is over SpikeMs the spike line gives the move itself
-  (6.5 - 13.1 ms) and the rest is the render of the new cells (0 - 2.7 ms; once 8.2 ms with a move of 4.3).
+  than a normal frame has (30 of 38 late frames; six times 9.5 - 15.8 ms, twice 1.4 - 1.8), so the present comes
+  that much late: a frame of 18 - 23 ms. Where the step is over SpikeMs (11 of the 38) the spike line gives the move
+  itself (4.3 - 13.1 ms); the rest of the extra, 0 - 3.5 ms and once 5.2, is the render of the new cells.
 - The frame after it starts late, has 5.0 - 8.9 ms of work before its wait (QuestTargetDefer's 3.4 - 5.2 ms among
   it), is past its beat and waits for the next one: 20 - 22 ms. Two frames in three periods.
 - 36 of 40 crossings miss at least one period; 4 do not (the last crossing of each ride, where no move ran).
