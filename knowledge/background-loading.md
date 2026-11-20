@@ -1092,3 +1092,63 @@ Hz, the Windows mod list, TaskEndBudget 1 ms, OBNG.dll 0fee68e6, OBVR.dll md5 32
   (docs/performance-backlog.md row 1).
 - Not covered: real SteamVR (the stand-in says no vsync-to-photons time, OBVR's prediction took 0 ms), 90 Hz, Windows,
   the look in the headset.
+
+## With the late pose wait: what still misses a period, and the ends of background tasks by kind (2026-11-20, measured)
+
+Since 2026-11-20 15:30 both games run OBVR's `[Render] LatePoseWait=1` (Nadi's headset test); a harness run takes the
+live OBVR.ini, so the ride runs with it unless the scenario pins `ini Render LatePoseWait=0`. With the wait at the
+render's entry a normal frame has 1.8 - 2.1 ms of update before the wait (median; p90 3.0 - 3.2, p99 5.3) and about
+8.7 ms of room at 75 Hz (derived for 90 Hz: about 6.5).
+
+**A crossing's grid move by its callees** (`obng-measure-crossing-move.ini`: the spike watch on the move itself, run
+`obng-profile-ride-anvil/20261120-151020`, ten crossings): the move is 4.0 - 7.9 ms, 11.2 at the diagonal crossing
+(nine new cells). No part is large: the attach 0x00444340 2.0 - 5.0 (8.5) with the new cells' references attached
+0x004D5BD0 0.5 - 2.6 (five calls; 3.4 for nine), the grid slots' cells set 0x004441A0 0.4 - 1.5 (25 calls), the Ni
+updates 0.4 - 0.9; the far grid 0x00483D60 0.9 - 1.4 and its shift 0x00483B60 0.5 - 1.2 with the map's scan
+0x007B3A40 inside them (115 calls, about 1.1); the near grid's shift 0x00482090 0.4 - 1.4; 0x004A25F0 0.2 - 0.8;
+Havok 0.2 - 0.3. Read: the engine has no state "in the grid, not attached" between frames (0x004441A0 loads a
+missing cell at once; 0x004D5BD0's other callers are the interior transition 0x00441D50 and 0x004455E0), so the
+new cells' attach cannot simply be spread; the far grid's update could run a step later, at the price of the row
+that left the near grid having no LOD for that frame (not built).
+
+**The steps that missed a period in a ride with the late wait** (`obng-measure-late-step.ini`: the update step's
+direct callees timed; runs `obng-profile-ride-anvil-late/20261120-153153` - the first of the two, 18 steps in 119 s -
+and `-153809`): the IO pump 0x00433590 8.3 - 15.4 ms (once 21.9 and 37.1) in six to twelve of them; the grid's move
+7.0 - 13.4 ms in four to five (moves of 4 - 6.5 ms fit now); 0x004402F0 - the quest scripts 0x00529AA0 and the grid
+cells' scripts 0x004CB8C0 - 8.1 / 8.2 / 25.0 ms in three; the actors' ProcessManager 7.9 - 13.3 ms in two; the sound
+update 0x006AE860 13.7 ms once; the render alone in one or two. (The [Timed] list holds 48 functions; lines beyond
+are dropped without a word - the unload's line was among them in these two runs.)
+
+**The pump's ends by the task's kind** (`[Probe] TaskEnds=1`, plugin/src/TaskEndProbe.cpp: the call of a task's end
+at 0x00433632 timed by vtable; RTTI names from the EXE; run `-153809`, the whole run):
+
+| kind (vtable; its end) | ends | ms in all | longest ms |
+|---|---:|---:|---:|
+| QueuedCharacter (0x00A36DDC; slot 5 0x004BDDA0 jumps to slot 14, 0x0043B090) | 46 | 403 | 37.1 |
+| QueuedCreature (0x00A36E1C; slot 14 0x0043B000) | 150 | 187 | 12.5 |
+| ExteriorCellLoaderTask (0x00A45BE8; 0x004BDDF0, the buffer's push and eviction) | 65 | 167 | 21.8 |
+| QueuedReference (0x00A36D5C; 0x0043B000) | 5 571 | 107 | 22.8 |
+| DistantLODLoaderTask (0x00A45A68; 0x004BD1F0) | 1 235 | 78 | 1.4 |
+| QueuedTreeBillboard (0x00A36BDC; 0x00434690) | 2 864 | 76 | 13.4 |
+| QueuedTree (0x00A36D9C) | 1 135 | 20 | 0.6 |
+| QueuedPlayer (0x00A36E5C; 0x0043B090) | 1 | 16 | 16.4 |
+
+The characters come in runs of seven ends in seven frames when a cell with NPCs is loaded (12.3 s, 47.9 s, 103.8 s
+of the ride), 4 - 5 ms each with single ones of 11, 16, 17 and 37 ms.
+
+**A queued character's end by its callees** (`obng-measure-char-finish.ini`: the spike watch on 0x0043B090 at 3 ms,
+run `-154330`, 26 ends over 3 ms in the ride): all of it is 0x00441EF0, the reference's 3D attached (0x0043B000
+calls it with the task's reference +0x20 and model +0x2C). Three parts:
+- **the body textures 0x0052D2C0 under the skin parts 0x0047AC20: 8.8 - 15.5 ms in seven ends** (2 - 4 calls of about
+  4 ms), 0.7 - 3 ms in seven more. Read: after the race's texture (BodyTexturePreload has it loaded) 0x0052D2C0 looks
+  the NPC's own texture up in the texture map `[0x00B35300]` by name ("%08XModUpperBodyFemale", "...Male",
+  "%08XModBody" with the NPC's form id, when the setting byte 0x00B10D3C is set) and, when it is not there, makes it:
+  the EGT file (0x005500C0, 0x00553620) and FaceGen's texture synthesis 0x00557E60, then adds it to the map. The
+  synthesis is, for up to 30 modes and three channels, `acc[3x + c] += (signed char)mode[x] * k` over the EGT's
+  pixels (the loops at 0x005582CA - 0x0055831D; k = ftol(mode scale) * ftol(coefficient), the same for the three
+  channels), then the sums times 2^-16 as floats and 0x0054DA40 makes the texture. Which of these holds the 4 ms is
+  the next run (`obng-measure-body-texture.ini`).
+- **about 3.5 - 5 ms in every end that none of the timed callees holds** (0x007C7050 and 0x00481410 run about 300
+  times each for 0.2 ms): not named yet.
+- **the model lookup 0x00439FF0 once: 323 calls, 21.8 ms** in one end of 26.8 ms (an NPC's animation files; the
+  first of its kind).
