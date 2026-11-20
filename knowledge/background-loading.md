@@ -1015,3 +1015,52 @@ with unloads as costly as at 5 ms (160 ms) and more long frames at the crossings
 budget does not touch - a noisier ride, cause not known. At 1 ms a long step holds one unload (twice two), at 5 ms up
 to four. So: about half the eviction hitches on average, not all, and not in every ride. On in both games since
 2026-11-20 13:30 (OBNG.ini `TaskEndBudget=1`; also OBNG's value without the key).
+
+## A cell crossing against the headset's beat: what the pose wait's place costs (2026-11-20, measured and derived)
+
+Tool: `tools/re/crossing-slack.py <run folder>... [--lines] [--margin MS]` (OBVR's capture: `present` and
+`poses_wait` of cpu_events.csv; the step's spike lines of OBNG.log for the move's own time). Four rides with the
+shipped routes and a task end budget of 1 ms (`obng-profile-ride-anvil-pp1/20261120-124732`, `-125424`,
+`obng-profile-ride-anvil/20261120-131633`, `-132325`; Linux, the stand-in Beyond at 75 Hz, `--exclusive`), 40 crossings.
+
+**A normal frame (measured).** The present, 0.8 ms of work, OBVR's pose wait from +0.8 to +9.7 ms, 3.6 ms after it
+(the scene pass and OBVR's submit hold of 1.2 ms), the present. The wait ends on a fixed beat (its phase is the same
+over the whole ride), so 8.9 ms of a frame is the wait: slack, for work that runs before it only.
+
+**The order in the update step 0x0040D800 (read: the calls; measured: against the wait).** The IO pump 0x00433590
+(call at 0x0040D8D8) - OBVR's camera hook 0x0066BE6E with the pose wait - the grid's move 0x00444FB0 (the per-frame
+call at 0x0040DD98: `TES->move(player + 0x2C, 1)` outside menus while player +0x7F8 is 0; another at 0x0040DD31) -
+the player's cell brought in line with the grid's (0x0040DD9D - 0x0040DE3A: TES +0x51 / +0x52 / +0x34, the player's
+cell 0x004D6670 against TES's 0x0043F270, then 0x0066EAF0) - the render 0x0040D4D0 (call at 0x0040DF54).
+
+**What a crossing does (measured, 40 crossings).**
+- The crossing's frame: its wait ends on the beat, then the grid's move runs: 4.5 - 7.6 ms more work after the wait
+  than a normal frame has (33 of 38; five times 9.5 - 15.8 ms, with 1.4 and 1.8 the two small ones), so the present
+  comes that much late: a frame of 18 - 23 ms. Where the step is over SpikeMs the spike line gives the move itself
+  (6.5 - 13.1 ms) and the rest is the render of the new cells (0 - 2.7 ms; once 8.2 ms with a move of 4.3).
+- The frame after it starts late, has 5.0 - 8.9 ms of work before its wait (QuestTargetDefer's 3.4 - 5.2 ms among
+  it), is past its beat and waits for the next one: 20 - 22 ms. Two frames in three periods.
+- 36 of 40 crossings miss at least one period; 4 do not (the last crossing of each ride, where no move ran).
+- 10 more long frames at the crossings have 8.8 - 18.6 ms of work before the wait (ends of background tasks): not
+  a matter of the wait's place.
+
+**Derived: the wait after the move.** A late frame fits when its work before the wait plus the move is at most the
+normal wait end less a margin, and the rest of its extra work after the wait is at most the submit hold:
+
+| margin | late frames that fit (of 38) | crossings without a missed period (of 40; now 4) |
+|---:|---:|---:|
+| 0.3 ms | 31 | 29 |
+| 1.0 ms | 27 | 26 |
+| 2.0 ms | 25 | 20 |
+| 3.0 ms | 15 | 11 |
+
+The eight rides at a budget of 5 ms give 8 -> 34 of 80 at 1 ms of margin. At 90 Hz a frame has 2.2 ms less, about
+the margin of 3 ms in this table (derived; not measured at 90 Hz): the wait's place alone is then not enough, the
+move (4.5 - 7.6 ms) and the work of the frame after it have to shrink too.
+
+**Two ways to bring the move before the wait.**
+- OBVR waits for the poses late (just before the render) and gives its camera hook a pose without waiting. It covers
+  every piece of update work, not the move alone. Asked of OBVR 2026-11-20 13:40; its decision.
+- OBNG runs the per-frame move of 0x0040DD98 with the block behind it (to 0x0040DE3A) at the start of the next step,
+  before the pump and the wait: the pattern of QuestTargetDefer, whose call then has to go one step further. It
+  covers the move only, and the grid shifts one frame later. Not built; one of the two, not both.
