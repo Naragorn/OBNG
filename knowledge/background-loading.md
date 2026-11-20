@@ -924,3 +924,65 @@ they fall (within 1.5 s of a half-cell line = the evictions, at a crossing, the 
 - The pump's budget is Oblivion.ini `[BackgroundLoad] iPostProcessMilliseconds` (0x00B048E4, 5 in Nadi's INI): the pump
   ends finished tasks until 5 ms have passed, so two or three evictions land in one frame. At 1 it would end one a
   frame (3 ms on average, under the slack) - to be measured (`tools/hand-scripts/obng-profile-ride-anvil-pp1.txt`).
+
+## iPostProcessMilliseconds: the main thread's per-frame budget for ending background tasks (2026-11-20)
+
+**What it is (read).** The IO manager's pump 0x00433590 runs once a frame from the update step (call at
+0x0040D8D8) and ends the background tasks that are done: it calls a task's slot 5 on the main thread (0x00433632),
+then looks at the clock, and goes on with the next finished task while its budget lasts. A task's end is never cut
+short, so the first costly end always runs whole. The budget in milliseconds is read at 0x004335D4:
+
+| setting (Oblivion.ini `[BackgroundLoad]`) | value's address | shipped | used when |
+|---|---|---:|---|
+| `iPostProcessMilliseconds` | 0x00B048E4 | 5 | the manager's +0x38 is 6 (the game running) |
+| `iPostProcessMillisecondsLoadingQueuedPriority` | 0x00B048EC | 20 | otherwise (derived: the waits of a loading screen, 0x00434020 sets +0x38) |
+| `iPostProcessMillisecondsEditor` | 0x00B048F4 | 50 | not read by the pump (unverified: the editor) |
+
+The names are read from the setting objects' name pointers in the EXE's data (0x00B048E8, 0x00B048F0, 0x00B048F8).
+The three settings came with patch 1.2 (TweakGuides); 5 / 20 / 50 are the defaults (Step Mods' default INI), and
+Nadi's Oblivion.ini has them unchanged. Nothing to do with image post-processing, as TweakGuides guessed.
+
+**What a task's end costs.** Mostly microseconds (200 - 800 ends a 10 s window in the ride). A background cell task's
+end (slot 5 of vtable 0x00A45BE8, 0x004BDDF0) pushes the loaded cell into the exterior buffer and so evicts and
+unloads the oldest one: 3 ms on average, up to 17 ms (54 a ride). With a budget of 5 ms the pump ends cell tasks until
+5 ms have passed: two to four evictions in one frame, 10 - 19 ms.
+
+**Why that matters in VR (measured).** Inside the update step the pump runs before OBVR's pose wait. In a normal
+frame the wait lasts 8.8 ms (median): work before it is free up to about 8 ms, more than that misses the headset's
+period. So one eviction a frame is mostly free, two or three are a missed period.
+
+**Measured, the setting at 1 through the console** (`SetNumericINISetting "iPostProcessMilliseconds:BackgroundLoad" 1`,
+scenario `tools/hand-scripts/obng-profile-ride-anvil-pp1.txt` against `obng-profile-ride-anvil.txt`, the same block,
+alternating; Linux, the stand-in Beyond at 75 Hz, `--exclusive`, the Windows mod list, OBNG.dll 136b7cc6 with every
+route as shipped, `obng-measure-eviction-off.ini`; frames over 20 ms in the ride's 120 s):
+
+| run | budget | at the evictions | at the crossings | all | evictions in one long step | the ride's unloads |
+|---|---:|---:|---:|---:|---|---:|
+| obng-profile-ride-anvil-pp1/20261120-124732 | 1 | 6 | 14 | 33 | 1 each | 54, 131 ms |
+| obng-profile-ride-anvil-pp1/20261120-125424 | 1 | 5 | 11 | 26 | 1 each | 54, 119 ms |
+| obng-profile-ride-anvil/20261120-125058 | 5 | 11 | 12 | 38 | up to 4 | 54, 166 ms |
+| obng-profile-ride-anvil/20261120-125751 | 5 | 15 | 11 | 36 | up to 4 | 54, 197 ms |
+
+Five earlier rides of the day at 5 had 12, 12, 15, 12, 7 long frames at the evictions. All 54 unloads still happen
+within the ride at 1 (nothing piles up); the frame's mean (13.37 - 13.38 ms) and p99 (14.8 - 14.9 ms) are the same.
+The unloads' total time is lower at 1 (derived: fewer frees meet the loader's allocations on the heap lock when
+they are spread). What is left at 1 are the cells whose unload alone is over the slack (many actors). Not measured:
+whether objects appear later when much is loading at once (a city), and Windows.
+
+**What guides say** (looked up 2026-11-20):
+- TweakGuides (tweakguides.dmegaming.com/Oblivion_9.html): added with patch 1.2; "not certain what they do", guesses
+  post-process effects; found the loading one at 5 instead of 20 most noticeable.
+- Oblivion Reloaded's recommendations (github.com/mcstfuerson/TES-Reloaded releases, repeated on Reddit and Nexus):
+  `iPostProcessMilliseconds=25`, `iPostProcessMillisecondsLoadingQueuedPriority=100`, no reason given.
+- A Nexus tweaking guide (nexusmods.com/oblivion/articles/44297): "contradictory information as to what these do".
+- A guru3d forum post (forums.guru3d.com, thread 301288): 16 recommended; "decreasing the value increases stuttering
+  during loading ... at 1 stuttering is much worse".
+- Step Mods' INI guide: the default 5, no description.
+The guru3d observation is the opposite direction. It fits a flat screen at 30 - 60 fps (derived): there a few big
+hitches read better than a backlog worked off over many frames, and nothing absorbs a small one. In VR the pose wait
+absorbs up to 8 ms a frame, so small pieces are free and big ones cost a whole period. The measurement above is VR's.
+
+**The route.** `[Route] TaskEndBudget=N` (plugin/src/TaskEndBudget.cpp, src/engine/io/TaskEndBudgetLogic.h; class B):
+the pump's read at 0x004335D4 is pointed at OBNG's own value, so the game runs with N ms while the setting and
+Oblivion.ini stay as they are; 0 leaves the game's setting. Built 2026-11-20 (commit 14830e9); its own rides and the
+switch in the games' OBNG.ini follow.
