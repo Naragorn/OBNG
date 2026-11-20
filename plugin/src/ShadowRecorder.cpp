@@ -37,6 +37,7 @@
 #include "GridMoveDefer.h"
 #include "QuestTargetDefer.h"
 #include "CellEvictionSpread.h"
+#include "TaskEndProbe.h"
 #include "UnloadRefProbe.h"
 #include "SceneOrderCheck.h"
 #include "SoundCommit.h"
@@ -174,6 +175,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogGridMoveDeferSummary();
 	LogCellEvictionSpreadSummary();
 	LogUnloadRefSummary();
+	LogTaskEndSummary();
 	LogVoiceDecodeSummary();
 	LogActorCensusSummary();
 	LogActorFarUpdateSummary();
