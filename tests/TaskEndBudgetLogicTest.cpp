@@ -15,5 +15,8 @@ int main() {
 	Check(BudgetOf(5).routed && BudgetOf(5).ms == 5, "5 ms");
 	Check(BudgetOf(50).ms == 50, "the largest");
 	Check(BudgetOf(51).routed && BudgetOf(51).ms == kMaxMs && BudgetOf(100000).ms == kMaxMs, "more than that: the largest");
+
+	Section("Without a key in OBNG.ini");
+	Check(BudgetOf(kShippedMs).routed && BudgetOf(kShippedMs).ms == 1, "OBNG's own budget: 1 ms, routed");
 	return Failures();
 }

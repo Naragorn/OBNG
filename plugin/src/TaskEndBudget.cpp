@@ -26,8 +26,9 @@ void InstallTaskEndBudget(const char* iniPath, LogFn log) {
 		return;
 	}
 	s_done = true;
-	const teb::Budget budget = teb::BudgetOf(static_cast<int>(GetPrivateProfileIntA("Route", "TaskEndBudget", 0, iniPath)));
+	const teb::Budget budget = teb::BudgetOf(static_cast<int>(GetPrivateProfileIntA("Route", "TaskEndBudget", teb::kShippedMs, iniPath)));
 	if (!budget.routed) {
+		log("Route: task end budget - off in OBNG.ini; the game's iPostProcessMilliseconds (%u ms) stays", *reinterpret_cast<const UInt32*>(0x00B048E4));
 		return;
 	}
 	if (!Verify(kSite, kSiteBytes, sizeof(kSiteBytes))) {

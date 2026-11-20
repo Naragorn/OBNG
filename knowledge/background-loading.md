@@ -984,5 +984,17 @@ absorbs up to 8 ms a frame, so small pieces are free and big ones cost a whole p
 
 **The route.** `[Route] TaskEndBudget=N` (plugin/src/TaskEndBudget.cpp, src/engine/io/TaskEndBudgetLogic.h; class B):
 the pump's read at 0x004335D4 is pointed at OBNG's own value, so the game runs with N ms while the setting and
-Oblivion.ini stay as they are; 0 leaves the game's setting. Built 2026-11-20 (commit 14830e9); its own rides and the
-switch in the games' OBNG.ini follow.
+Oblivion.ini stay as they are; 0 leaves the game's setting. Built 2026-11-20 (commit 14830e9).
+
+**OBNG always runs with its own budget** (Nadi, 2026-11-20: it is part of the engine OBNG builds). How that is held:
+- the constant `kShippedMs = 1` in the logic header is OBNG's budget; a rebuilt task pump takes it from there, not
+  from the game's setting;
+- without a `TaskEndBudget` key in OBNG.ini the plugin uses it (an old or a missing INI still gets it); only an
+  explicit `TaskEndBudget=0` hands the budget back to the game, and OBNG.log says so;
+- OBNG.log says at every start which budget the pump runs with; when the pump's read is not the game's own bytes
+  the route says that instead;
+- `tools/shadow-run.sh` fails every run whose OBNG.log lacks the line "Route: task end budget - the pump ends
+  finished background tasks for ..." unless the run's INI sets `TaskEndBudget=0`;
+- the INI template ships `TaskEndBudget=1`.
+1 ms does not depend on the headset's rate: the pump never cuts an end short, so 1 ms means one costly end a frame.
+Open: the route's own rides, flat mode (no pose wait; the present's wait should absorb the same way - unverified).

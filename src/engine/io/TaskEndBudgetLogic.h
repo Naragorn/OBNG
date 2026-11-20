@@ -20,6 +20,12 @@ namespace obng::engine::io::task_end_budget {
 
 constexpr std::uint32_t kMaxMs = 50;  // the editor's own budget; more is not a frame's work
 
+// What OBNG runs with when OBNG.ini has no TaskEndBudget key (decided 2026-11-20, Nadi: OBNG always sets it, it is
+// part of the engine OBNG builds): 1 ms, which ends one costly task a frame whatever the headset's rate is, because the
+// pump never cuts an end short. A rebuilt task pump takes this constant as its budget; the game's setting
+// iPostProcessMilliseconds is the original's, not OBNG's.
+constexpr int kShippedMs = 1;
+
 struct Budget {
 	bool routed = false;       // false: the game's own setting
 	std::uint32_t ms = 0;

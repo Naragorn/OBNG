@@ -129,6 +129,14 @@ grep -E 'Shadow|Route|Probe|Settings|^Log:' "$log" 2>/dev/null | tail -25
 
 verdict=0
 [[ $harness -eq 0 ]] || verdict=1
+# OBNG's own task end budget is part of every run (knowledge/background-loading.md "iPostProcessMilliseconds"): unless
+# the INI switches it off with TaskEndBudget=0, OBNG.log must say the pump runs with it.
+if [[ ! "$(ini_value "$test_ini" Route TaskEndBudget)" =~ ^0+$ ]]; then
+	if ! grep -q '^Route: task end budget - the pump ends finished background tasks for' "$log" 2>/dev/null; then
+		echo "FAIL: OBNG's task end budget is not in (no 'Route: task end budget - the pump ends ...' line in OBNG.log)"
+		verdict=1
+	fi
+fi
 if [[ $shadow_on -eq 1 ]]; then
 	summary="$(grep -E '^Shadow: ' "$log" 2>/dev/null | tail -1)"
 	if [[ -z "$summary" ]]; then
