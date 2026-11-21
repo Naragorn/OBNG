@@ -26,4 +26,4 @@ Status: read in the EXE and in apphelp.dll (2026-11-21); the shim's presence obs
 ## What a modern engine does instead
 
 - Make one factory, keep it, and create the device from it; query adapter data from the same object. A port that owns its renderer has no shared method table for a shim or an overlay to fight over.
-- A mod that must change device creation in the 1.2.416 EXE should do it at the engine's call sites in 0x0076A1C0 (code the shim never patches), not in the runtime's method table.
+- The engine's two CreateDevice call sites in 0x0076A1C0 are 0x0076A542 and 0x0076A5AF (`mov eax,[ecx+40h]` `call eax`, read). They are not free: oblivion_display_tweaks.dll holds 0x0076A542 and its return address 0x0076A547 (derived: it hooks the first). OBVR therefore stays in the method table and takes slot 16 back after every factory (OBVR render/CreateDeviceSlot.h, 2026-11-21).
