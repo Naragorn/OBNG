@@ -305,15 +305,22 @@ thing to split (the Timed list on one arrival), before more runs.
 ## What an arrival's late frames are made of (2026-11-22, measured, Linux stand-in headset, not comparable with Windows)
 
 `obng-measure-arrival-split.ini` (run `obng-npc-arrivals/20261122-214509`, the update step's spikes, 433 late frames
-more than 3 ms over the window median against 2 174 normal ones) and `obng-measure-arrival-render.ini` (run
-`-215926`, 9 363 frames). **Late against normal frames: the render 17.1 against 7.5 ms (+9.6 of the +13.2), the actors'
-update 6.1 against 3.8 (+2.3, of it the animation +1.0), the arrival's own parts (the character's end, body, animation
-set up, name list) about +0.6 together.** So the routes of this file (and the sound and name routes) work on about 5 %
-of what makes a frame late here. Per frame over the whole run: render 11.2 ms, of which RenderScene 2.4 (the two draws
-NiDrawScene ~2.0, the actor shadow maps 0.13 ms) and **8.7 ms in no timed function** of the render: the interface pass
-0x00579260 (refused by the probe: a call in its first bytes) and the present, which waits for DXVK's GPU work at
-8072x3376 with MSAA (derived: the time is in the render call but in no CPU function timed there; not measured apart).
-The late frames are GPU-bound waits in this setup, not work of the arrival. Open: split the 8.7 ms (time the present's
-call site and the interface pass's callees) before any claim about Windows; the Windows captures
-(2026-11-22 session: scene pass 5.7 - 10 ms median / p90 CPU) say the scene pass is the place there.
-Caveat: both runs overlapped DMCS's B&S harness (`--exclusive` does not see it).
+more than 3 ms over the window median against 2 174 normal ones), `obng-measure-arrival-render.ini` (run `-215926`)
+and OBVR's capture of the same runs read with `tools/re/frame-waits.py`.
+
+**A late frame is a missed interval, not 13 ms of work (measured).** The stand-in paces at 75 Hz: of 7 921 frames
+7 021 are one interval long (13.33 ms) and 806 two, almost nothing between. Inside the render call sits OBVR's late
+pose wait: 4.0 ms in a frame of one interval, 10.4 ms in a late one - the frame overran and waited for the next
+interval. (A first reading of the same numbers took the render's 8.7 ms "in no timed function" for the GPU; it is
+this wait.) The work a frame - its length less the pose wait - is 9.4 ms near the median and about 16 in a late
+frame: **+3.6 ms update (the actors' update +2.3, of it the animation +1.0; the arrival's own parts - the
+character's end, body, animation set up, name list - +0.6 together) and +3.2 ms render work (the scene pass +1.6)**
+against a slack of 4 ms. The routes of this file work on the 0.6.
+
+**Why the scenario is no ruler in frames (measured).** The count of late frames is a cliff: a frame 0.1 ms over
+the slack counts like one 10 ms over. And the work a frame differs between runs of one setting by more than any
+route gives: median work 9.4, 8.0, 10.5, 8.3, 7.7 ms in the five runs `-205020` to `-210223`, 10.3 and 11.5 in the
+two timed ones (both beside DMCS's B&S harness, which `--exclusive` does not see; the Timed list costs too). For a
+route worth 0.2 ms an arrival the evidence is the timed call (microseconds, in one run); frames can show it only
+with both settings inside one run (a route switched by the script between arrivals - not built) or on a machine
+nothing else uses.
