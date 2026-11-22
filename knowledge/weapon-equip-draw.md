@@ -141,3 +141,24 @@ frame (it was 7 frames later, at the Unequip group's Detach key) and the
 group's own hang at Detach finds the hand empty [M, OBVR
 weapon-release-holster.txt]. For a rebuild: the sheathe, like the draw, is
 one call; the animation is optional.
+
+### Correction 2026-11-22: the hang back before the Unequip makes the engine draw again (read and seen, OBVR)
+
+[R] The actor's anim update 0x005FCAB0 (re/export/rea-all/functions/0x5fcab0.c,
+lines 585-600): the weapon out (HighProcess +0x114) but not on the hand
+(+0x115) with no action running (-1) plays group 0x11 Equip. Clearing +0x115
+and hanging the weapon on the sheath in the let go's frame, before the
+Unequip action has begun (the 2026-11-18 measurement above), leaves exactly
+that state for a frame: the engine answers with a draw.
+[M, Nadi's Windows run 2026-11-22, OBVR.log] every holstering: hung back in
+the let go's frame, then the Equip ("the draw animation's time runs 10x
+faster"), only then the ready click and the sheathe - seen as "equipped,
+then put away over several seconds". On 2026-11-16, without the early hang,
+the sheathe was done in 0.13-0.15 s with no draw.
+OBVR now hangs it back the frame the player's action reads the Unequip (1),
+when neither branch of the rule fires (game/WeaponRelease.h StepSheathHang)
+[D from the rule; not yet run in the game].
+For a rebuild: "out" and "on the hand" are two flags the anim update reads
+every frame; a sheathe that clears one without the action that explains it
+is read as a request to draw. A modern engine keeps one state (sheathed /
+drawing / drawn / sheathing) so no frame can sit between.
