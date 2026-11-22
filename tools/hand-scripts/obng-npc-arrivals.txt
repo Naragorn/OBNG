@@ -1,7 +1,8 @@
 # Thirty named NPCs arriving one by one at a fixed place, for what an NPC's arrival costs the frame (2026-11-20,
 # knowledge/npc-arrival.md): the ride towards Anvil meets other leveled NPCs each time, and its count of late frames
 # swings by twenty between rides - more than the NPC-arrival routes take. Here the player stands in the cell -27 -3 and
-# every three seconds one NPC of Oblivion.esm is placed before the eyes (player.placeatme, a new reference of a named
+# every three seconds one NPC of Oblivion.esm is placed behind the player (player.placeatme, direction 1: thirty figures
+# before the eyes made every second frame late by themselves, run 20261122-203519; a new reference of a named
 # base: the same face, body and clothes in every run), with the AI off so that nobody walks away. Each arrival goes the
 # game's own way: a queued character on the loader's thread, its head, its end on the main thread. The same thirty in the
 # same order in every run, so two runs compare arrival by arrival: tools/re/npc-arrivals.py <run> [<run> ...].
@@ -23,7 +24,7 @@ ini Hands PhysicsRate=0
 ini Performance Enabled=1
 ini Performance GpuTiming=1
 ini Performance StartAfterSeconds=36
-ini Performance CaptureSeconds=104
+ini Performance CaptureSeconds=118
 ini Performance MaxRecords=262144
 ini Performance Sampler=1
 console-at ready cow Tamriel -27 -3
@@ -38,65 +39,65 @@ console-at settle CloseAllMenus
 console-at a11 CloseAllMenus
 console-at a21 CloseAllMenus
 # Thiirchel, Wood Elf f
-console-at a01 player.placeatme 00002E94 1 290 0
+console-at a01 player.placeatme 00002E94 1 290 1
 # Hil the Tall, Nord m
-console-at a02 player.placeatme 000034C6 1 320 0
+console-at a02 player.placeatme 000034C6 1 320 1
 # Dervera Romalen, Dark Elf f
-console-at a03 player.placeatme 000034C0 1 350 0
+console-at a03 player.placeatme 000034C0 1 350 1
 # Ra'qanar, Khajiit m
-console-at a04 player.placeatme 000034CE 1 380 0
+console-at a04 player.placeatme 000034CE 1 380 1
 # Mariana Ancharia, Imperial f
-console-at a05 player.placeatme 000034C2 1 410 0
+console-at a05 player.placeatme 000034C2 1 410 1
 # Dulfish gro-Orum, Orc m
-console-at a06 player.placeatme 000034D4 1 440 0
+console-at a06 player.placeatme 000034D4 1 440 1
 # Shelley, Redguard f
-console-at a07 player.placeatme 000034C3 1 470 0
+console-at a07 player.placeatme 000034C3 1 470 1
 # Errandil, High Elf m
-console-at a08 player.placeatme 000034C8 1 500 0
+console-at a08 player.placeatme 000034C8 1 500 1
 # Mariette Rielle, Breton f
-console-at a09 player.placeatme 000038B3 1 530 0
+console-at a09 player.placeatme 000038B3 1 530 1
 # Shamar, Redguard m
-console-at a10 player.placeatme 000039AB 1 560 0
+console-at a10 player.placeatme 000039AB 1 560 1
 # Dro'Nahrahe, Khajiit f
-console-at a11 player.placeatme 0000A08F 1 590 0
+console-at a11 player.placeatme 0000A08F 1 590 1
 # Ulrich Leland, Breton m
-console-at a12 player.placeatme 000034CC 1 620 0
+console-at a12 player.placeatme 000034CC 1 620 1
 # Borba gra-Uzgash, Orc f
-console-at a13 player.placeatme 000034C4 1 650 0
+console-at a13 player.placeatme 000034C4 1 650 1
 # Cingaer, Wood Elf m
-console-at a14 player.placeatme 00002E95 1 680 0
+console-at a14 player.placeatme 00002E95 1 680 1
 # Olava the Fair, Nord f
-console-at a15 player.placeatme 0000A08D 1 710 0
+console-at a15 player.placeatme 0000A08D 1 710 1
 # Andel Indarys, Dark Elf m
-console-at a16 player.placeatme 000034CA 1 740 0
+console-at a16 player.placeatme 000034CA 1 740 1
 # Elante of Alinor, High Elf f
-console-at a17 player.placeatme 00003435 1 770 0
+console-at a17 player.placeatme 00003435 1 770 1
 # Wilbur, Redguard m
-console-at a18 player.placeatme 0000A27E 1 800 0
+console-at a18 player.placeatme 0000A27E 1 800 1
 # Tertia Viducia, Imperial f
-console-at a19 player.placeatme 000034C5 1 830 0
+console-at a19 player.placeatme 000034C5 1 830 1
 # Keld of the Isles, Nord m
-console-at a20 player.placeatme 000034CF 1 860 0
+console-at a20 player.placeatme 000034CF 1 860 1
 # Ulene Hlervu, Dark Elf f
-console-at a21 player.placeatme 000034CD 1 890 0
+console-at a21 player.placeatme 000034CD 1 890 1
 # Ohtimbar, High Elf m
-console-at a22 player.placeatme 000034D0 1 920 0
+console-at a22 player.placeatme 000034D0 1 920 1
 # Nahsi, Khajiit f
-console-at a23 player.placeatme 0000A095 1 950 0
+console-at a23 player.placeatme 0000A095 1 950 1
 # Rythe Lythandas, Dark Elf m
-console-at a24 player.placeatme 000034D2 1 980 0
+console-at a24 player.placeatme 000034D2 1 980 1
 # Rogmesh gra-Coblug, Orc f
-console-at a25 player.placeatme 000034D9 1 1010 0
+console-at a25 player.placeatme 000034D9 1 1010 1
 # Mathieu Bellamont, Breton m
-console-at a26 player.placeatme 0000398A 1 1040 0
+console-at a26 player.placeatme 0000398A 1 1040 1
 # Vigdis, Nord f
-console-at a27 player.placeatme 0000A28F 1 1070 0
+console-at a27 player.placeatme 0000A28F 1 1070 1
 # K'Sharr, Khajiit m
-console-at a28 player.placeatme 00003946 1 1100 0
+console-at a28 player.placeatme 00003946 1 1100 1
 # Ohtesse, High Elf f
-console-at a29 player.placeatme 000034C7 1 1130 0
+console-at a29 player.placeatme 000034C7 1 1130 1
 # Biene Amelion, Breton f
-console-at a30 player.placeatme 000091F5 1 1160 0
+console-at a30 player.placeatme 000091F5 1 1160 1
 expect HandScript: finished
 expect Performance: capture armed, it starts in 36 seconds
 expect Performance: capture 1 started

@@ -68,7 +68,7 @@ them the tiles' update 1.6 - 4.0 ms and single draws 0x007693E0 of 1 - 3.9 ms. W
 in two of five opens. The trigger is not found; a hover's focus change is a guess (a UI sound plays 250 ms after
 the open).
 
-## `[Route] SoundFileCache` (class A, built, checked in a slot, not deployed)
+## `[Route] SoundFileCache` (class A, verified, on in both games since 2026-11-22)
 
 plugin/src/SoundFileCache.cpp, src/engine/sound/SoundFileCacheLogic.h, tests/SoundFileCacheLogicTest.cpp. The WAV
 reader keeps its own code; the four bytes of its mmio procedure's address at 0x006AAC4A are replaced by OBNG's
@@ -78,13 +78,24 @@ from memory (files up to 1 MiB, 24 MiB in all, the least recently played dropped
 as the game draws it. 1 routes, 2 checks (the game's file open beside the kept bytes, every answer of the
 procedure compared; every folder listed again and compared).
 
-- **Checked** (run `artifacts/shadow/obng-menu-open-check/20261120-205752-slot3`, a --parallel slot, the DLL
-  48564921 through --plugin, `obng-check-sound-cache.ini`): 16 opens, 8 of them from kept bytes, 836 answers
-  compared, 0 mismatches; 10 folder listings compared, 0 mismatches.
-- **Not done**: a check run with many sounds (a ride, a fight), the route's own timing against the table above,
-  a long session, the deploy. Off as shipped (`Shipped()` 0); in no game's OBNG.ini.
+- **Verified** (the check, `obng-check-sound-names.ini`, OBNG.dll fea5b1e9): the ride towards Anvil
+  (`obng-profile-ride-anvil-late/20261122-203824`) 1 796 opens, 40 272 answers and 1 756 listings compared; the
+  arrivals scenario (`obng-npc-arrivals/20261122-203519`) 365 opens, 10 842 answers, 345 listings; the menus
+  (`obng-menu-open-check/20261120-205752-slot3`) 836 answers, 10 listings. 0 mismatches in all.
+- **Measured** (the route, `obng-measure-menu-open-cache.ini`, runs `tablet-open-hitch-late/20261122-204150`,
+  `-204422`): a sound served from memory costs 0.28 - 0.53 ms (the DirectSound buffer's making is what is left)
+  against 0.5 - 2.7 ms; **a file's first play costs as before** (2.0 - 3.1 ms, its whole read). The menus' sounds
+  have several files a folder, so in a run of five opens 9 - 10 of 17 plays were first plays; in the ride 1 638 of
+  1 796 plays came from memory. The ride plays about nine WAV files a second.
+- The budget is reached in a ride: 149 files, 23.8 MiB, 6 dropped.
+- **Not done**: a long session with it; the first plays (lever below). Both harness runs of the menu scenario are
+  marked FAIL for OBVR's own expectation "Tablet: the Inventory page read" (not looked into; OBVR told).
 
 ## Levers left (not built)
+
+- A sound's first play: the folder's other files read on a worker when its listing is first kept (the menus'
+  sounds are a handful of files), or the UI folders at the loading screen. The game's file open on another thread
+  is what the loader's thread does already; not read through for the sound files.
 
 - The figure kept between opens instead of destroyed at the close: 1.0 - 1.2 ms an open. It needs a rule for when
   the kept figure is stale (equipment changed while the menu was shut); class B.

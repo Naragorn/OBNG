@@ -273,3 +273,31 @@ legs), or many more rides a side.
   pool allocator at 0x004025D2 unlinking a free 12-byte block whose link words had been overwritten, on the loader's
   thread while it read a NIF. Not reproduced in the next run. Nothing ties it to OBNG, Walkers or the game yet.
 
+
+## `[Route] AnimationNameArena` (class A, verified, on in both games since 2026-11-22)
+
+plugin/src/AnimationNameArena.cpp, src/engine/io/AnimationNameArenaLogic.h, tests/AnimationNameArenaLogicTest.cpp.
+The two calls of 0x00435830 in the set up 0x004E3490 (0x004E38C5 an NPC's, 0x004E3B94 a creature's) go to OBNG's
+function: the folder's kept list (0x00521190 on the table at 0x00B362C0) copied into a block of the thread's own
+(256 KB) in the order and shape the game makes it - from the last kept name to the first, a head and a node of
+8 bytes a name. The three frees of the list in 0x00475D80 (0x00475F9D a name, 0x00475FB8 a node, 0x00475FEF the
+head) leave what lies in the block alone; the block is given back at the head's free or when the set up returns
+(AnimationPauseBatch's detour says when). Without a kept list, or with the block full, the game's own function runs.
+
+- **Verified** (the check `AnimationNameArena=2`, both lists made and compared name for name; runs
+  `obng-npc-arrivals/20261122-203519` and `obng-profile-ride-anvil-late/20261122-203824`): 237 lists, 0 mismatches.
+- **Measured in the same runs**: the game's copy 149 - 214 us a list (84 and 154 lists, 18.0 and 22.9 ms a run),
+  OBNG's 4.0 - 5.4 us. As the route (runs `obng-npc-arrivals/20261122-205020`, `-205922`): 120 and 87 lists, all
+  given back, 26 826 and 27 486 frees left alone, both runs passed. The frees' own saving is not measured apart.
+
+## The arrivals scenario (2026-11-22): not yet a ruler
+
+`tools/hand-scripts/obng-npc-arrivals.txt` places thirty named NPCs of Oblivion.esm one every three seconds behind
+the player (before the eyes thirty figures made every second frame late by themselves, run `-203519`);
+`tools/re/npc-arrivals.py` compares runs arrival by arrival against each window's median frame. Five runs
+(`obng-npc-arrivals/20261122-205020` to `-210223`): frames more than 3 ms over the median 314 - 386 a run in four
+of them (815 in one, whose median frame doubled by the end - not looked into), about ten an arrival; the queued
+characters' ends 230 and 318 ms a run with every route on, 290 as played before today, 277 and 408 with the three
+arrival routes off. The spread between two runs of one setting is as large as the difference between settings, so
+the scenario shows no gain of any route in frames. What an arrival's ten late frames are made of is the next
+thing to split (the Timed list on one arrival), before more runs.
