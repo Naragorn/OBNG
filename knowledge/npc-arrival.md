@@ -301,3 +301,19 @@ characters' ends 230 and 318 ms a run with every route on, 290 as played before 
 arrival routes off. The spread between two runs of one setting is as large as the difference between settings, so
 the scenario shows no gain of any route in frames. What an arrival's ten late frames are made of is the next
 thing to split (the Timed list on one arrival), before more runs.
+
+## What an arrival's late frames are made of (2026-11-22, measured, Linux stand-in headset, not comparable with Windows)
+
+`obng-measure-arrival-split.ini` (run `obng-npc-arrivals/20261122-214509`, the update step's spikes, 433 late frames
+more than 3 ms over the window median against 2 174 normal ones) and `obng-measure-arrival-render.ini` (run
+`-215926`, 9 363 frames). **Late against normal frames: the render 17.1 against 7.5 ms (+9.6 of the +13.2), the actors'
+update 6.1 against 3.8 (+2.3, of it the animation +1.0), the arrival's own parts (the character's end, body, animation
+set up, name list) about +0.6 together.** So the routes of this file (and the sound and name routes) work on about 5 %
+of what makes a frame late here. Per frame over the whole run: render 11.2 ms, of which RenderScene 2.4 (the two draws
+NiDrawScene ~2.0, the actor shadow maps 0.13 ms) and **8.7 ms in no timed function** of the render: the interface pass
+0x00579260 (refused by the probe: a call in its first bytes) and the present, which waits for DXVK's GPU work at
+8072x3376 with MSAA (derived: the time is in the render call but in no CPU function timed there; not measured apart).
+The late frames are GPU-bound waits in this setup, not work of the arrival. Open: split the 8.7 ms (time the present's
+call site and the interface pass's callees) before any claim about Windows; the Windows captures
+(2026-11-22 session: scene pass 5.7 - 10 ms median / p90 CPU) say the scene pass is the place there.
+Caveat: both runs overlapped DMCS's B&S harness (`--exclusive` does not see it).
