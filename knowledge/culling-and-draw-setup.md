@@ -981,3 +981,13 @@ for one engine pass; its "up to 12 point lights" are lights that cast shadows. O
 (nexusmods.com/oblivion/mods/51927): no public source found, so not read; its changelog names culling, shadows,
 memory and "most calculations moved from render pass" (3.0.0), nothing about fewer passes (unverified beyond that).
 None of the three merges a geometry's lighting passes.
+
+**Do mods make the lights reach further there? (2026-11-23, read and measured.)** `tools/re/esm-lights.py` over
+Nadi's 87 active plugins: no plugin changes the radius of a light another plugin made (Torch02 0002CF9F stays 768
+through the Unofficial Patch, Ascension and the Bashed Patch). `tools/re/cell-lights.py`: ImperialDungeon01 has 19
+light references, all Oblivion.esm's. Maskar's Oblivion Overhaul adds 40 lights of its own (its NPC torches 768
+like the game's, MOODungeonTorchOn 512) and lowers the dungeons' ambient light by script (its INI), which costs no
+draw. SnusDungeons.esp has ambient lights of a radius up to 3 000 in its own cells - not looked at in the game. The
+tutorial save without MOO (OBNG_WITHOUT_PLUGINS, run obng-profile-prison-tutorial/20261123-122830): scene pass
+5.4 ms against 4.1 with it (-120715) - not cheaper; one run each and the save's scene is not the same without the
+mod's forms. Lights that scripts place while the game runs are not in these counts.
