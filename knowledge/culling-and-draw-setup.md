@@ -868,6 +868,25 @@ vtables by their RTTI names in the EXE's data (2026-11-12). Names are proposals.
 
 ## The tutorial dungeon: the eye pass is draws, and a third to a half of them are the specular pass (2026-11-23, measured and read)
 
+**Correction (2026-11-23): the numbers of this section and of the FogPassFold section below it are without the
+occlusion culler.** Their measuring INIs were copies of the Linux game's OBNG.ini, which has far fewer routes on
+than Nadi's Windows OBNG.ini (no OcclusionCull, DrawInstancing, VolatilePack, ActorFar*, ActorShadowEvery,
+ReferenceAnimEvery). With the Windows INI itself (tools/as-played-ini.py, fSpecularLOD 500/800, the same phase
+"still"):
+
+| run (obng-profile-prison-tutorial/) | OBNG.ini | records a frame, all finishes | scene pass ms (p90) | work a frame ms |
+|---|---|---:|---:|---:|
+| 20261123-120715 | Nadi's Windows INI | 1 308 | 4.1 (4.5) | 5.9 |
+| 20261123-120930 | the same, OcclusionCull=0 | 2 266 | 8.5 (9.0) | 10.6 |
+| 20261123-093642 | the Linux game's routes | 2 360 | 9.7 (10.4) | 11.9 |
+
+**The occlusion culler halves this place's scene pass** (per pass 1 767 objects visited, 75 of 84 candidate nodes
+left out). As played the pass is Oblivion.exe 1.5 ms, D3D9 1.0, OBNG.dll 0.8 (the culler's own work in it), OBVR.dll
+0.3, FoliageAA.dll 0.15, OblivionFrameFixes.dll 0.05; the pass without lights 253 records of the 1 308. On Linux
+the place has 8 ms to spare at 72 Hz and would hold 90 Hz; Nadi's Windows captures of 2026-11-22 show 5.7 - 10 ms
+for the same pass with the same INI, at 4x MSAA - that gap is Windows' (the Direct3D 9 driver's cost a draw, or the
+pass waiting for the GPU) and is not explained from here. The pass ids' meaning and what was read stand.
+
 Nadi's Windows session of 2026-11-22 ran at half rate through the Imperial Prison (ImperialDungeon01). The same
 place under Linux: `tools/hand-scripts/obng-profile-prison-tutorial.txt` loads a copy of that session's autosave
 (the tutorial's NPCs as they stood), Windows mod list, the Dream Air's frame size, stand-in headset at 72 Hz, the
