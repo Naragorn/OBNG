@@ -324,3 +324,17 @@ two timed ones (both beside DMCS's B&S harness, which `--exclusive` does not see
 route worth 0.2 ms an arrival the evidence is the timed call (microseconds, in one run); frames can show it only
 with both settings inside one run (a route switched by the script between arrivals - not built) or on a machine
 nothing else uses.
+
+## A crash at the lazy clone list: the queued item is held raw (2026-11-23, read; one crash, cause not settled)
+
+Walkers' fight run `OblivionWalkers/artifacts/hand-script/necro-daedra/20261122-223536` (all five arrival routes on)
+crashed in InterlockedIncrement called at 0x004740AC, return 0x004740B2, esi = 0x1B0: 0x00474070 reading [item+8]
+of the item 0x00476D10's clone loop took from the head of the animation data's list (+0xB4 item, +0xB8 next; the
+actor a temporary creature of Maskar's Oblivion Overhaul). Read in the pseudocode (instructions not checked): the
+append at 0x00474348 stores the item's pointer and nothing else - 0x00474070 holds a reference on [item+8] only
+for its own call - so an item freed while it waits in the list is read from freed memory at the pop. That would be
+the engine's own lifetime bug; who frees a queued item is not read. Of the 76 logs in the Linux game's Crash Logs
+this is the only one with 0x004740B2. `[Route] AnimationLazyAppend` writes this list (the call at 0x00474348): no
+pop runs inside a set up (0x00475D80's callees do not reach 0x00476D10; read), and its check compared 9 740 appends
+with the game's walk without a mismatch, but it is the one route that touches the list - if the crash returns, the
+first arm to run is that route off. A fix on the engine's side would hold a reference while an item is queued.
