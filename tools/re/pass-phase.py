@@ -28,6 +28,8 @@ pages = {r['page']: r['module'] for r in csv.DictReader(open(os.path.join(cap, '
 events = [e for e in csv.DictReader(open(os.path.join(cap, 'cpu_events.csv'), newline='')) if lo <= int(e['start_tick']) < hi]
 passes = [(int(e['end_tick']) - int(e['start_tick'])) / 1e4 for e in events if e['event_type'] == 'scene_pass']
 frames = sum(e['event_type'] == 'present' for e in events)
+if events:  # the capture can end before the phase does: the span is the events', not the marks'
+    hi = min(hi, max(int(e['end_tick']) for e in events))
 mods, funcs, incl, n, total = collections.Counter(), collections.Counter(), collections.Counter(), 0, 0
 def func(eip):
     i = bisect.bisect_right(starts, eip) - 1

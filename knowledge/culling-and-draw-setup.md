@@ -865,3 +865,46 @@ vtables by their RTTI names in the EXE's data (2026-11-12). Names are proposals.
 - Correction: 0x007D21F0 (a hidden shadow light) does not leave its geometry list intact - after dropping itself
   from each geometry's property it empties the lists at +0xE4 and +0x134 (0x00573880, read 2026-11-12), so a light
   that stays hidden drops its geometry once (knowledge/shadow-light-list-remove.md says otherwise).
+
+## The tutorial dungeon: the eye pass is draws, and a third to a half of them are the specular pass (2026-11-23, measured and read)
+
+Nadi's Windows session of 2026-11-22 ran at half rate through the Imperial Prison (ImperialDungeon01). The same
+place under Linux: `tools/hand-scripts/obng-profile-prison-tutorial.txt` loads a copy of that session's autosave
+(the tutorial's NPCs as they stood), Windows mod list, the Dream Air's frame size, stand-in headset at 72 Hz, the
+routes as in the game; the measuring INI has more probes on than the game ([Probe] LockCalls about 0.3 ms of the
+pass, the sampler, GpuPasses). Read with `tools/re/phase-frames.py still done`, `pass-phase.py`, `[Probe] GpuPasses`.
+
+**Measured, looking the way the save looks (the phase "still"):**
+
+| run (obng-profile-prison-tutorial/) | Oblivion.ini | records a frame, all finishes | scene pass ms | work a frame ms | frames |
+|---|---|---:|---:|---:|---|
+| 20261122-230053, 20261123-092504 | Linux: fSpecularLOD1/2 1000/1300 | 3 240 | 11.6 - 12.0 | 13.7 - 14.4 | a quarter to most of them two intervals long |
+| 20261123-093642 | fSpecularLOD1/2 500/800 (Nadi's Windows values) | 2 360 | 9.7 | 11.9 | one interval (13.9 ms) |
+| 20261123-093341 | bDoSpecularPass=0 | 1 760 | 7.9 | 10.0 | one interval |
+
+Looking away from the scene the pass is 0.6 - 2.4 ms. The pass's samples by module (run -230053): Oblivion.exe 4.5 ms,
+D3D9 (DXVK) 2.6, OBNG.dll 1.5 (the eye switch a third of it, the draw route, LockCalls's replacements a quarter),
+OblivionFrameFixes.dll 1.0, OBVR.dll 1.0, FoliageAA.dll 0.4. No function stands out: about 3.7 us a record for both
+eyes, the cost is the count. The Market District's eye pass has 860 records.
+
+**Records a frame by pass id (summed over the finishes, run -092504):** 291 + 294 (0x123, 0x126) 974; 400 + 402
+(0x190, 0x192) 512; the base passes 96, 146, 101, 118 (0x60, 0x92, 0x65, 0x76) 650; 264, 260, 263 (0x108, 0x104,
+0x107) 490; the further lights 232, 235, 246 (0xE8, 0xEB, 0xF6) 250; the actor shadows' receivers 375 (0x177) 180.
+
+**Read (pseudocode of 0x00406950, 0x007D85D0, 0x0085AE20, 0x00859880, 0x00854190; the instructions not checked):**
+- The pass mask 0x00B42F40 is bDoAmbientPass (1) | bDoDiffusePass (2) | bDoTexturePass (4) | bDoSpecularPass (8).
+  GetRenderPasses 0x007D85D0 fades a property's specular by its distance to the camera between fSpecularLOD1 and
+  fSpecularLOD2 (copies at 0x00B4308C / 0x00B43090; the video menu's "Specular Distance" slider sets them through
+  0x00497D20, LOD2 = LOD1 + 300).
+- With flag 8 the builder adds **one pass per light on the geometry** through 0x00859880: 0x123..0x129 for a light
+  with +0xFC set, 0x115..0x122 else. That is 291 / 294: 974 records at 1000/1300, 175 at 500/800.
+- When all four flags are set (`(flags & 0xF) == 0xF`), 0x00854190 adds **a pass without lights, 0x190..0x194, to
+  every such geometry**; when one flag is missing the builder instead sets byte +7 of the list's last record. That
+  is 400 / 402: 510 records, there at any specular distance, gone with bDoSpecularPass=0. What the pass draws and
+  what byte +7 makes the last pass do is not read yet.
+
+**Derived.** On Windows (500/800) the per-light specular passes are mostly out of range already; the specular
+setting still costs the 510 records of 0x190 / 0x192, about 1.8 ms of the pass here. Levers, none built: fold
+0x190 into the last pass the way the builder does it itself with a flag missing (if the picture is the same);
+fewer passes for a geometry with more than two lights (490 + 250 records are the chain behind the base pass);
+the plugins' own time inside the pass (3.9 ms of 11.6).
