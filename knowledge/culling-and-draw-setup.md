@@ -942,3 +942,15 @@ both eyes dumped every 2 s over nine switches), `tools/re/fold-pictures.py`:
 learnt: **bDoSpecularPass=0 changes the fog the same way for every geometry**, not only the highlights (derived:
 it is the builder's same ending). The alternation with the rebuild bit is the tool for any route that changes
 what a pass list holds.
+
+**A second source for the fog pass (read 2026-11-23, github.com/llde/TESReloaded10 at its commit of 2026-11-10).**
+Oblivion Reloaded names 0x00B46688 `Toggles` (a vector; `Toggles->y` is 0x00B4668C, set per pass in its hook of
+SetupShaderPrograms: "supposed to make the shader render the fog color on objects, however it lacks depth, causing
+a washed out effect; not all shaders consider this Toggle") and has `RemoveFogPass`: a jump at 0x007AE6F5 in the
+accumulator's walk over the pass lists that steps over list 0x190 (`cmp edi,0x190 / add edi,1`), with its own
+VolumetricFog screen effect drawing the fog instead (Core/Hooks/Oblivion/Render.cpp, Framework/Oblivion/Base.h; its
+changelog: removed in 10.0.2 "restore the proper fog behaviour", back as an option in 10.1.0). It does not touch
+the pass builder: its shader replacement is one program for one engine pass, the lists and their draws stay the
+engine's. Derived: the fog as one screen pass (from depth, or from a fog factor kept in the target's alpha) would
+take all 510 records of 0x190 / 0x192, not the 160 the fold took - not built; reading the depth of a multisampled
+target is the open point (their notes: INTZ on NVIDIA, RESZ on DXVK).
