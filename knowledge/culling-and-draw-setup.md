@@ -954,3 +954,11 @@ the pass builder: its shader replacement is one program for one engine pass, the
 engine's. Derived: the fog as one screen pass (from depth, or from a fog factor kept in the target's alpha) would
 take all 510 records of 0x190 / 0x192, not the 160 the fold took - not built; reading the depth of a multisampled
 target is the open point (their notes: INTZ on NVIDIA, RESZ on DXVK).
+The forks, for the same question (2026-11-23): Oblivion Reloaded E3 (github.com/mcstfuerson/TES-Reloaded, a fork of
+OR 8.3, last commit 2024-07-07, read) writes nothing into the pass builder or the accumulator's walk - its code
+patches in 0x007A0000 - 0x0085FFFF are the two shader object sizes (0x00801BCB, 0x008023A1), the water map size and
+the anisotropy - and its shader repository holds 115 files named after the engine's own SLS2 programs: one program
+for one engine pass; its "up to 12 point lights" are lights that cast shadows. Oblivion Reloaded Combined
+(nexusmods.com/oblivion/mods/51927): no public source found, so not read; its changelog names culling, shadows,
+memory and "most calculations moved from render pass" (3.0.0), nothing about fewer passes (unverified beyond that).
+None of the three merges a geometry's lighting passes.
