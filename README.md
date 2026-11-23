@@ -2,7 +2,7 @@
 
 Working name for a community modernisation of Oblivion.exe (2006, 1.2.0.416):
 read the hot functions with Ghidra, rebuild them in C++, test them against
-the original, route the game through them. Separate from OBVR (VR) and from
+the original, route the game through them. Separate from [OBVR](https://github.com/Naragorn/OBVR) (VR) and from
 the mods.
 
 The binary is the Steam GOTY build, md5 `cdd2f0c5eff198d4f26b7b5b54ce4930`,
@@ -36,7 +36,7 @@ ImageBase 0x00400000. Nothing here modifies it on disk.
 - `tools/difftest/` - the emulator side of the differential test: the
   original's exported bytes run in Unicorn on the image's constants, the
   results become the rebuild's expected bit patterns.
-- `plugin/` - `OBNG.dll`, the xOBSE plugin for shadow mode: the original and
+- `plugin/` - `OBNG.dll`, the [xOBSE](https://github.com/llde/xOBSE) plugin for shadow mode: the original and
   the rebuild run side by side in the game, compared bit for bit, the game
   keeps the original's result. `tools/build-plugin.sh` builds, tests and
   deploys it; `tools/shadow-run.sh` runs the scenario through OBVR's
