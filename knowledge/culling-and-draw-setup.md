@@ -908,3 +908,37 @@ setting still costs the 510 records of 0x190 / 0x192, about 1.8 ms of the pass h
 0x190 into the last pass the way the builder does it itself with a flag missing (if the picture is the same);
 fewer passes for a geometry with more than two lights (490 + 250 records are the chain behind the base pass);
 the plugins' own time inside the pass (3.9 ms of 11.6).
+
+## `[Route] FogPassFold` (class C, built 2026-11-23, off, rejected by its picture gate) and an A/B inside one run
+
+`plugin/src/FogPassFold.{h,cpp}`, `src/engine/render/FogPassFoldLogic.h`, tests/FogPassFoldLogicTest.cpp. The
+builder's two endings, now read in the instructions (0x0085B99C - 0x0085BA2A): with the byte at [esp+0x16] clear
+the last record's byte +7 is set (unless it is a 0x190 / 0x192); with it set, 0x00854190 is called at 0x0085BA25
+(ECX the property; the list's last node at +0x30, its count at +0x34, a node {next, prev, record}). The route
+replaces that call: for a list without a specular light pass (0x115..0x129) and without the object at +0x8C it
+leaves the pass out and marks the last record, as the builder does with the specular pass off. 2 is a census, 1
+folds lists of one record only, 3 every such list.
+
+**Census** (run obng-profile-prison-tutorial/20261123-102546, the Linux INI): of 220 407 lists built with the pass
+asked for, 57 % have a specular light pass, 42 % have several records and none, 0.2 % one record; the builder never
+only counts there. So the fold that is exact by construction (one record) has nothing to take.
+
+**The gate inside one run.** `[Route] FogPassFoldAlternate=1` switches the route at every summary and flips bit
+0x40 of the pass mask 0x00B42F40: the mask is part of every list's key (0x007D85D0, the flags as 0x007AD270 passes
+them), so every list builds anew; the builder reads bits 1, 2, 4, 8 and 0x007D85D0 bit 0x10 (read). Runs against
+runs do not work here: after a `coc` two runs' pictures differ in half of their pixels (the camera), and the
+tutorial's fight differs run by run. `tools/hand-scripts/obng-prison-tutorial-alternate.txt` (AI off, time stopped,
+both eyes dumped every 2 s over nine switches), `tools/re/fold-pictures.py`:
+- run obng-prison-tutorial-alternate/20261123-104142: pictures inside a phase differ in 0.41 % of their pixels
+  (median, 17 pairs, max 0.99), across a switch in 1.12 % (9 pairs, max 1.73). The difference is one place: the lit
+  room at the end of the corridor is warmer and clearer with the route - **the far geometry loses fog**
+  (artifacts/evidence/fog-fold-game-vs-route.png). So the pass without lights is the fog, and the marked last
+  pass of a list of several records does not give the same picture.
+- run obng-prison-tutorial-alternate-timing/20261123-105003 (no dumps, the machine quiet): the eye pass 4 375
+  records with the game's ending, 4 215 with the route's; the scene pass 18.73 -> 18.06 ms mean (710 / 596 frames),
+  -0.7 ms, 3.6 %.
+
+**Rejected**: a visible change for 0.7 ms. The route stays in the DLL, off (OBNG.dll 0a9ef089 in both games). Also
+learnt: **bDoSpecularPass=0 changes the fog the same way for every geometry**, not only the highlights (derived:
+it is the builder's same ending). The alternation with the rebuild bit is the tool for any route that changes
+what a pass list holds.

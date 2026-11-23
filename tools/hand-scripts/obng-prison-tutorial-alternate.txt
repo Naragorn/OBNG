@@ -1,0 +1,91 @@
+# The fog pass fold's picture gate inside one run: obng-profile-prison-tutorial.txt's place (save OBNGPrisonTutorial),
+# AI off and the game's time stopped, the head still, both eyes dumped every two seconds for 56 s while
+# [Route] FogPassFoldAlternate switches between the game's ending and the route's every summary (6 s) - the
+# pictures of one phase against each other are the noise, across a switch the route's change. Read with
+# tools/re/fold-pictures.py. With the capture (the scene pass per phase), so exclusive by itself.
+# Run with the Windows mod list:
+#   python3 tools/run-with-windows-mods.py -- tools/shadow-run.sh --ini tools/hand-scripts/obng-measure-fog-fold-alternate.ini \
+#     tools/hand-scripts/obng-prison-tutorial-alternate.txt --save OBNGPrisonTutorial --run-timeout 300 --no-steamvr
+ini Render SinglePassStereo=1
+ini SelfCheck ShowPanel=0
+ini Render GameResolutionWidth=4036
+ini Render GameResolutionHeight=3376
+expect Single-pass stereo: OBNG took the eyes ok (0)
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Debug EyeDump=1
+ini Debug EyeDumpFrames=1
+ini Performance Enabled=1
+ini Performance StartAfterSeconds=22
+ini Performance CaptureSeconds=70
+ini Performance MaxRecords=262144
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at ready tai
+console-at ready set timescale to 0
+console-at settle CloseAllMenus
+expect HandScript: finished
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 8
+mark settle
+head yaw 0
+wait 6
+mark d01
+wait 2
+mark d02
+wait 2
+mark d03
+wait 2
+mark d04
+wait 2
+mark d05
+wait 2
+mark d06
+wait 2
+mark d07
+wait 2
+mark d08
+wait 2
+mark d09
+wait 2
+mark d10
+wait 2
+mark d11
+wait 2
+mark d12
+wait 2
+mark d13
+wait 2
+mark d14
+wait 2
+mark d15
+wait 2
+mark d16
+wait 2
+mark d17
+wait 2
+mark d18
+wait 2
+mark d19
+wait 2
+mark d20
+wait 2
+mark d21
+wait 2
+mark d22
+wait 2
+mark d23
+wait 2
+mark d24
+wait 2
+mark d25
+wait 2
+mark d26
+wait 2
+mark d27
+wait 2
+mark d28
+wait 2
+mark done

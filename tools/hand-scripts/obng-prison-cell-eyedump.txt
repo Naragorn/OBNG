@@ -1,0 +1,42 @@
+# A still place for comparing pictures between two settings: the Imperial Prison's first cell (coc ImperialDungeon01
+# on the harness save, nobody fighting), AI off, the game's time stopped, both eyes dumped for two frames looking at
+# the back wall, at the bars and the corridor behind them, and half way. No capture.
+# Run with the Windows mod list, once per setting:
+#   python3 tools/run-with-windows-mods.py -- tools/shadow-run.sh --ini <ini> \
+#     tools/hand-scripts/obng-prison-cell-eyedump.txt --save OBVRHarnessMOO --run-timeout 300 --no-steamvr
+ini Render SinglePassStereo=1
+ini SelfCheck ShowPanel=0
+ini Render GameResolutionWidth=4036
+ini Render GameResolutionHeight=3376
+expect Single-pass stereo: OBNG took the eyes ok (0)
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Debug EyeDump=1
+ini Debug EyeDumpFrames=2
+console-at ready tgm
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at ready coc ImperialDungeon01
+console-at placed tai
+console-at placed set timescale to 0
+console-at placed CloseAllMenus
+expect HandScript: finished
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 16
+mark placed
+wait 8
+head yaw 0
+wait 2
+mark back-wall
+wait 3
+head yaw 180
+wait 2
+mark bars
+wait 3
+head yaw 90
+wait 2
+mark side
+wait 3
+mark done

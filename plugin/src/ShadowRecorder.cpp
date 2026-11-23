@@ -38,6 +38,7 @@
 #include "BodyTexturePremake.h"
 #include "SlowCallProbe.h"
 #include "AnimationLazyAppend.h"
+#include "FogPassFold.h"
 #include "AnimationPauseBatch.h"
 #include "MusicAsync.h"
 #include "GridMoveDefer.h"
@@ -188,6 +189,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogAnimationNameArenaSummary();
 	LogBodyTexturePremakeSummary();
 	LogAnimationLazyAppendSummary();
+	LogFogPassFoldSummary();
 	LogVoiceDecodeSummary();
 	LogActorCensusSummary();
 	LogActorFarUpdateSummary();

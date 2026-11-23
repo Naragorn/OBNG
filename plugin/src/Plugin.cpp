@@ -44,6 +44,7 @@
 #include "BodyTexturePremake.h"
 #include "SlowCallProbe.h"
 #include "AnimationLazyAppend.h"
+#include "FogPassFold.h"
 #include "AnimationPauseBatch.h"
 #include "MusicGraphProbe.h"
 #include "MusicAsync.h"
@@ -386,6 +387,7 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 		obng::plugin::InstallSlowCallProbe(path, &Log);  // the script line 0x005169A0 and the source texture 0x00701E00 (not with [Timed] lines on them)
 		obng::plugin::InstallAnimationPauseBatch(path, &Log);  // the animation setup's entry 0x00475D80 and the resume's call at 0x0043A088
 		obng::plugin::InstallAnimationLazyAppend(path, &Log);  // the append's call at 0x00474348 in 0x00474070 (the set up's begin and end come from the detour above)
+		obng::plugin::InstallFogPassFold(path, &Log);  // the pass builder's call of 0x00854190 at 0x0085BA25
 		obng::plugin::InstallMusicAsync(path, &Log);  // the music player's seven CoCreateInstance calls (before the probe, which then stays out)
 		obng::plugin::InstallQuestTargetDefer(path, &Log);  // the grid's call of the quest targets at 0x004454E6, run a step later (StepHooks)
 		obng::plugin::InstallGridMoveDefer(path, &Log);  // the step's block 0x0040DD6E - 0x0040DE3E run at the step's start; after the quest targets' hook, so their call kept by this move runs a step later still
