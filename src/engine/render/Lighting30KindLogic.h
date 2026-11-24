@@ -21,8 +21,8 @@
 // GetShaderDefinition. The kinds' classes are the RTTI names of the vtables their creators write.
 //
 // What Lighting30's list does not have (read, 0x008637D0): a record for an actor's shadow falling on the geometry
-// (the game's lists get one 2x_SIMPLESHADOW record per shadow light, 0x177..0x17A) - a geometry moved here
-// receives no actor shadow. So this is the probe for the count of records and the picture, not yet a route.
+// (the game's lists get one 2x_SIMPLESHADOW record per shadow light, 0x177..0x17A). Lighting30ShadowLogic.h adds
+// them for the geometry moved here; for that the plugin makes a moved geometry's property itself and marks it.
 //
 // 64-bit clean: plain values, no pointers.
 
