@@ -994,6 +994,49 @@ Read with `tools/re/capture-row.py --period 11.11`, `capture-frames.py`, `pass-s
 - The window pictures of a headless single-pass run (`NN-<mark>-game.png`) are black, and `dump` writes nothing
   without SteamVR; a film (`--record`) is the way to a picture there (confirmed by OBVR).
 
+## What the specular setting costs in the fight: `[Probe] PassMaskAlternate` (measured 2026-11-24)
+
+The question: would the fight hold the period with a third fewer draws - the ceiling of any rebuild that takes the
+specular light passes and the pass without lights out of the pass lists. Runs against runs cannot answer it (the
+fight's scene pass differs by 2 ms from run to run), so the comparison is made inside one run:
+`[Probe] PassMaskAlternate=<bits>` (plugin/src/PassMaskAlternate.cpp, src/engine/render/PassMaskAlternateLogic.h,
+tests/PassMaskAlternateLogicTest.cpp) flips bits of the lighting pass mask 0x00B42F40 at every summary; the mask is
+part of every pass list's key, so each list builds anew under the other mask. 8 is bDoSpecularPass, 64 a bit nothing
+reads (the control). `tools/hand-scripts/obng-profile-prison-fight-hold.txt` walks into the ambush and holds the head
+on the fight for 66 s; `tools/re/alternate-phases.py <run> --from arrived --to done` reads the phases. The game's
+mask reads 0x3F in this place. Runs obng-profile-prison-fight-hold/, the routes as played (OBNG.dll b48ba404), the
+stand-in headset at 72 Hz, Oblivion.ini's [Display] at Nadi's Windows values (fSpecularLOD 500/800,
+iActorShadowCountInt 4), a summary every 5 s, the first second after a switch left out:
+
+| run | what alternates | phases | records a frame | scene pass ms | own work ms |
+|---|---|---|---:|---:|---:|
+| 20261124-130042 | the game's mask | 6 | 1 869 | 6.57 | 8.54 |
+| | bit 8 off (no specular pass) | 6 | 1 093 | 4.45 | 6.32 |
+| 20261124-130308 (control) | the game's mask | 6 | 2 086 | 7.11 | 8.92 |
+| | bit 0x40 set (lists rebuilt, none changed) | 5 | 2 071 | 7.01 | 8.81 |
+| 20261124-125730 | bDoSpecularPass=0 in Oblivion.ini, no switching | - | 1 040 (steady) | 4.8 (arrived - h06) | 6.9 |
+
+- **Without the specular pass: 776 records fewer (41.5 %), the scene pass 2.13 ms shorter (32 %), the frame's own
+  work 2.22 ms** - 2.7 us a record. Every pair of neighbouring phases shows it (1.9 - 2.6 ms). The control's
+  difference is 0.09 ms with the fight's own drift in it (the records fall from 2 370 to 1 930 over the run and
+  the control has one phase more on the early side): building every list anew every 5 s costs nothing that shows.
+- **The mask's bit is the setting**: the run with bDoSpecularPass=0 in Oblivion.ini has the flipped phases' record
+  count (1 040 against 1 035 - 1 065).
+- **What goes** (`[Probe] GpuPasses`, records a frame by pass id, a phase late in the run): the specular light
+  passes 0x123 / 0x126 400 + 45, the pass without lights 0x190 / 0x192 240 + 37, 0xC6 33; 0x92 (base, one light)
+  grows from 115 to 160. So about 57 % of the saving is the specular light passes (1.2 ms), 36 % the pass without
+  lights (0.75 ms; derived from the shares). At 500/800 the fight's lit geometry is inside the specular distance:
+  the room is small.
+- **For Windows (derived, not measured there)**: the fight's own work was 15.6 ms against 11.1. If the records'
+  mix is the same, a pass 32 % shorter is 11.2 -> 7.6 ms and the work about 12.0 ms: still over the period by
+  itself, at the period with PoolScan (0.35 - 0.72 ms) and OBVR's draw hooks, with nothing to spare. And that is the
+  ceiling - no specular at all and the fog changed (the section below); a rebuild that keeps the picture gets less.
+- Two runs taken first (20261124-125235, -125502) had another session's Blade & Sorcery beside them and are not
+  used; the first of them shows the same difference (2.38 ms) at a higher level (8.96 against 6.58 ms).
+- The summary writes its switch line before the window's record count: a count after a switch line belongs to
+  the phase that switch ended. OBVR's `StartAfterSeconds` counts from the plugin's start, about 24 s before the
+  hand script's clock.
+
 ## `[Route] FogPassFold` (class C, built 2026-11-23, off, rejected by its picture gate) and an A/B inside one run
 
 `plugin/src/FogPassFold.{h,cpp}`, `src/engine/render/FogPassFoldLogic.h`, tests/FogPassFoldLogicTest.cpp. The
