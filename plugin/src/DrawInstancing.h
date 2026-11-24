@@ -34,13 +34,22 @@ void LogDrawInstancingSummary();
 
 namespace draw_instancing {
 
-// On when installed; the whole draw's device port asks the two below only then.
+// On when installed; the whole draw's device port asks the ones below only then.
 inline bool g_on = false;
 
-// Every indexed device draw of the whole draw (render thread): true when the
+// What the whole draw's device port reads before it asks anything (DrawInstancingLogic.h DrawPathOf): whether a
+// flush is drawing its waiting records again, and the geometry whose next device draw teaches a prediction
+// (0: none). The render thread's.
+inline bool g_replaying = false;
+inline std::uint32_t g_learnGeometry = 0;
+
+// The device draw DrawPathOf gave to the learning: the record's prediction noted (once a record).
+void LearnDraw(std::uint32_t device, std::uint32_t shader, std::uint32_t geometry);
+
+// An indexed device draw of the whole draw while a flush replays: true when the
 // instancing drew the call itself (the instanced draw of a group's leader).
-// Otherwise it may only have looked (a prediction learned, mode 1's state read).
-bool RouteIndexedDraw(std::uint32_t device, std::uint32_t shader, std::uint32_t geometry, const IndexedCall& call);
+// Otherwise it may only have looked (mode 1's state read).
+bool RouteReplayedDraw(std::uint32_t device, std::uint32_t shader, std::uint32_t geometry, const IndexedCall& call);
 
 // A plain (not indexed) device draw of the whole draw: a group's leader drawn
 // so cannot be instanced.

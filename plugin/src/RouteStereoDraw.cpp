@@ -716,7 +716,7 @@ UInt32 __fastcall RouteDrawPrimitive(void* self, void* /*edx*/, UInt32 geometry,
 	const auto plan = route::PlanFor(g_settings, eyes != nullptr || (!outside && TestMode()));
 	draw_timer::g_timers.eyeDraw = eyes != nullptr;
 	const RoutedDevice<whole_engine::EnginePorts, whole::IndexedDraw, whole::PlainDraw> routedDevice{&ports, &shader.lastShader, geometry};
-	const std::uint64_t wholeStart = __rdtsc();
+	const std::uint64_t wholeStart = draw_timer::g_timers.on ? __rdtsc() : 0;  // read for the timer only: the read is microcoded
 	const whole::Outcome outcome = RoutedDeviceWanted() ? whole::Draw(in, plan, ports, shader, routedDevice, routedDevice, timed)
 	                                                     : whole::Draw(in, plan, ports, shader, ports, ports, timed);
 	if (draw_timer::g_timers.on) {

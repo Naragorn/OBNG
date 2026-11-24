@@ -94,3 +94,50 @@ device returns still holds the cycles in the eye switch (+0x3a, +0xbf) and in th
 By the operation samples those loads miss neither cache nor TLB and complete in 7 - 25 cycles, but wait 130 - 200
 cycles to retire: something older, in the device call's tail, is not done. No module of the game uses AVX on
 that path (DXVK and Wine's DLLs have no VEX instruction at all), so it is not the SSE / AVX state change.
+
+## Clock reads sampled, and the instancing asked only when it has something to do (measured 2026-11-24)
+
+Two things the operation samples named, changed together (OBNG.dll f323e009, md5 1d49cae7):
+
+- **`rdtsc` in every decision.** The occlusion culler's `DecideDraw` and draw instancing's `DecideRecord` read the
+  clock twice a call for their summary lines (and the culler for its stand-down's account), the whole draw once
+  more for a timer that is off in play: about 10 000 reads a frame in the fight, each microcoded. Now the whole
+  draw reads the clock only with `[Route] StereoDrawTimer` on, and the two decisions read it in one frame (eye
+  pass) of four, a timed frame's ticks counting for four (plugin/src/SampledTimerLogic.h, tests in
+  plugin/tests/SampledTimerLogicTest.cpp). The sums are estimates from a quarter of the frames: the same over a
+  summary's hundreds of frames; the stand-down judges its window of 32 passes on eight timed ones.
+- **An argument block nobody read.** Every indexed device draw called `draw_instancing::RouteIndexedDraw` with the
+  draw's six values as a struct - built in memory by the caller with a 16-byte load over fields written one by
+  one - and the function returned at once unless a flush was replaying records or this draw was the one to learn
+  a prediction from. The device port now reads two plain values itself (`DrawPathOf`, DrawInstancingLogic.h:
+  replaying, the geometry to learn from) and calls `LearnDraw` or `RouteReplayedDraw` only then; the block is
+  built for the replay alone. The same decisions (the learning's own tests stay in it).
+
+Four runs of the fight in turn, the old build (A, d2ac0027) and the new (B), `tools/measure-fight.sh` with
+`PERF=1`, the new build swapped in per run (`OBNG_DLL`); OBVR.dll md5 fa14e359 in all four:
+
+| run (obng-profile-prison-fight-hold/) | build | pass ms | second-eye draws a frame | OBNG.dll | D3D9.DLL | Oblivion.exe | OBVR.dll |
+|---|---|---:|---:|---:|---:|---:|---:|
+| 20261124-201042 | A | 6.57 | 1 942 | 1.04 | 2.23 | 2.08 | 0.35 |
+| 20261124-201335 | B | 6.58 | 2 094 | 0.87 | 2.25 | 2.09 | 0.42 |
+| 20261124-201627 | A | 7.11 | 2 172 | 1.05 | 2.53 | 2.14 | 0.41 |
+| 20261124-201920 | B | 6.59 | 2 065 | 0.81 | 2.23 | 2.15 | 0.44 |
+
+A draw (us, the mean of the two runs): OBNG.dll 0.509 -> 0.404 (-21 %), D3D9.DLL 1.157 -> 1.077 (-7 %), OBVR.dll
+0.184 -> 0.207 (+12 %), Oblivion.exe 1.028 -> 1.020 (the control), **the pass 3.33 -> 3.17 (-4.8 %): about 0.3 ms
+a frame at 2 100 draws** (0.27 - 0.35 against a line through the two A runs; two runs a side).
+
+**Time moves across the module borders.** cycles:u charges a wait to the instruction after the slow one. OBNG.dll's
+last instructions before a device call are followed by OBVR's hook and then DXVK, so a wait OBNG.dll caused was
+partly booked there: with the change D3D9.DLL fell and OBVR.dll rose although neither was touched. A module's own
+column is not the measure of a change in it; the sum over the modules on the call path (OBNG + OBVR + D3D9: 1.850
+-> 1.688 us a draw) or the pass per draw is. The 0.19 ms of the inlining above were OBNG.dll's column alone and may
+understate it the same way.
+
+OBNG.dll's 0.81 ms after it (run -201920): the eye switch 0.27, the whole draw 0.10 (0.24 before), the culler's
+`CullDrawRenderPass` 0.07 and `DecideDraw` 0.03 (0.07 before), instancing's `ReadFactsUnguarded` 0.05 and
+`DecideRecord` 0.02 (0.05 before), the skinned draw 0.03.
+
+The instancing's replay path does not run in the fight (nothing is grouped indoors). Checked on the Gold Road with
+the new build (obng-profile-gold-road-single-dreamair/20261124-202353): every group of two or more drawn instanced
+in every window (4 332 of 4 332 in the busiest), no fallback of any kind, as with the build before (-141901).

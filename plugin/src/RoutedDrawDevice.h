@@ -8,6 +8,7 @@
 #include <cstdint>
 
 #include "DrawInstancing.h"
+#include "DrawInstancingLogic.h"
 #include "StereoDrawTimer.h"
 
 namespace obng::plugin {
@@ -27,11 +28,22 @@ struct RoutedDevice {
 
 	// Always inlined into the draw: see IssueDraws (NiDX9Renderer_DrawPrimitiveLogic.h).
 	[[clang::always_inline]] void DrawIndexedPrimitive(const IndexedDraw& d) const {
-		if (draw_instancing::g_on &&
-		    draw_instancing::RouteIndexedDraw(Device(), *shader, geometry,
-		                                      draw_instancing::IndexedCall{d.primitiveType, static_cast<std::int32_t>(d.baseVertexIndex), d.minVertexIndex,
-		                                                                   d.vertexCount, d.startIndex, d.primitiveCount})) {
-			return;
+		if (draw_instancing::g_on) {
+			// The usual draw is neither a replay nor one to learn from: two reads, no call.
+			switch (draw_instancing::DrawPathOf(draw_instancing::g_replaying, geometry, draw_instancing::g_learnGeometry)) {
+			case draw_instancing::DrawPath::kNone:
+				break;
+			case draw_instancing::DrawPath::kLearn:
+				draw_instancing::LearnDraw(Device(), *shader, geometry);
+				break;
+			case draw_instancing::DrawPath::kReplay:
+				if (draw_instancing::RouteReplayedDraw(Device(), *shader, geometry,
+				                                       draw_instancing::IndexedCall{d.primitiveType, static_cast<std::int32_t>(d.baseVertexIndex),
+				                                                                    d.minVertexIndex, d.vertexCount, d.startIndex, d.primitiveCount})) {
+					return;
+				}
+				break;
+			}
 		}
 		if (draw_timer::g_timers.on) {
 			Timed().DrawIndexedPrimitive(d);

@@ -59,6 +59,30 @@ struct Facts {
 	bool multiPass = false;        // the geometry's shader property has more than one render pass, and those may not wait
 };
 
+// What an indexed device draw of the whole draw asks of the instancing (RoutedDrawDevice.h): nothing, in nearly
+// every case; the learning of a prediction, at the device draw of the geometry the last record named for it; the
+// replay's own handling while a flush draws its waiting records again. Decided from two plain values so that the
+// usual draw makes no call and builds no argument block - the block for a call that only looked at it was a
+// wide load over narrow stores at every draw (measured 2026-11-24, knowledge/render-thread-hardware-profile.md).
+enum class DrawPath : std::uint8_t {
+	kNone,
+	kLearn,
+	kReplay,
+};
+
+constexpr DrawPath DrawPathOf(bool replaying, std::uint32_t geometry, std::uint32_t learnGeometry) {
+	if (replaying) {
+		return DrawPath::kReplay;
+	}
+	return geometry == learnGeometry ? DrawPath::kLearn : DrawPath::kNone;
+}
+
+// The geometry whose next device draw teaches a prediction: the record's, while it can be learnt from and has not
+// been; 0 for none. (A draw of geometry 0 against "none" asks for the learning, which then finds nothing to do.)
+constexpr std::uint32_t LearnGeometry(bool learnable, bool learned, std::uint32_t geometry) {
+	return learnable && !learned ? geometry : 0;
+}
+
 enum class Why : std::uint8_t {
 	kWaits,
 	kNotInList,

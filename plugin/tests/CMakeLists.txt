@@ -102,6 +102,11 @@ target_include_directories(OcclusionCullStandDownLogicTest PRIVATE ../src ../../
 target_compile_options(OcclusionCullStandDownLogicTest PRIVATE -Wall -Wextra -Werror)
 add_test(NAME OcclusionCullStandDownLogicTest COMMAND OcclusionCullStandDownLogicTest)
 
+add_executable(SampledTimerLogicTest SampledTimerLogicTest.cpp)
+target_include_directories(SampledTimerLogicTest PRIVATE ../src ../../tests)
+target_compile_options(SampledTimerLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME SampledTimerLogicTest COMMAND SampledTimerLogicTest)
+
 add_executable(SoundCommitLogicTest SoundCommitLogicTest.cpp)
 target_include_directories(SoundCommitLogicTest PRIVATE ../src ../../tests)
 target_compile_options(SoundCommitLogicTest PRIVATE -Wall -Wextra -Werror)

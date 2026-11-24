@@ -1,4 +1,5 @@
 #include "DrawInstancing.h"
+#include "SampledTimerLogic.h"
 
 #include <windows.h>
 
@@ -121,7 +122,10 @@ std::uint32_t g_ignored = 0;     // [Route] DrawInstancingIgnore: key words left
 bool g_multiPass = false;        // [Route] DrawInstancingMultiPass: geometries with more render passes may wait too (for the comparison)
 std::uint32_t g_lightsMode = 2;  // [Route] DrawInstancingLights: 2 all of the record's lights in the key, 1 the first, 0 none
 di::InstanceData g_rows[di::Pending::kMaxRecords];  // one flush's instance stream
-bool g_replaying = false;  // a flush draws through DrawRenderPass again
+using draw_instancing::g_learnGeometry;  // DrawInstancing.h: read by the whole draw's device port
+using draw_instancing::g_replaying;      // a flush draws through DrawRenderPass again
+bool g_timedFrame = true;  // this frame's record decisions read the clock (SampledTimerLogic.h)
+unsigned __int64 g_frameIndex = 0;
 UInt32 g_lastClock = 0;
 volatile LONG g_summaryRequested = 0;
 unsigned __int64 g_summaryTsc = 0;
@@ -450,6 +454,13 @@ void Flush(di::Flush why) {
 	g_counts.flushTicks += __rdtsc() - t0;
 }
 
+// The record decision's time, in the frames that are timed.
+void NoteSiteTicks(unsigned __int64 t0) {
+	if (g_timedFrame) {
+		g_counts.siteTicks += sampled_timer::Whole(__rdtsc() - t0);
+	}
+}
+
 // The record step: DrawRenderPass 0x007A9820 right after it published its
 // pass id and record (0x007A983B, before the record's light constants and
 // draw). 1: the record waits - DrawRenderPass returns at once; 0: it goes on.
@@ -457,7 +468,7 @@ UInt32 __stdcall DecideRecord(UInt32 record) {
 	if (g_list.depth != 1 || g_replaying || !g_onNow) {
 		return 0;
 	}
-	const unsigned __int64 t0 = __rdtsc();
+	const unsigned __int64 t0 = g_timedFrame ? __rdtsc() : 0;
 	++g_counts.records;
 	const UInt32 geometry = Dword(record);
 	const UInt32 pass = Dword(kPassIdGlobal) & 0xFFFFu;
@@ -475,7 +486,7 @@ UInt32 __stdcall DecideRecord(UInt32 record) {
 	if (why == di::Why::kWaits) {
 		di::LeaveOut(&r.key, g_ignored);
 		const bool full = g_pending.Add(r.key, record, geometry) == di::Pending::Added::kFull;
-		g_counts.siteTicks += __rdtsc() - t0;
+		NoteSiteTicks(t0);
 		if (full) {
 			Flush(di::Flush::kFull);
 			g_pending.Add(r.key, record, geometry);
@@ -483,7 +494,8 @@ UInt32 __stdcall DecideRecord(UInt32 record) {
 		return 1;
 	}
 	g_drawing = Drawing{geometry, r.predict, r.facts.readable && r.facts.geometry && !r.facts.skinned, false};
-	g_counts.siteTicks += __rdtsc() - t0;
+	g_learnGeometry = di::LearnGeometry(g_drawing.learnable, g_drawing.learned, g_drawing.geometry);
+	NoteSiteTicks(t0);
 	if (!g_pending.Empty() && !di::OrderFree(r.facts)) {
 		// The waiting records first. Their replays publish their own pass id and
 		// record; this record's are written back before DrawRenderPass goes on.
@@ -523,6 +535,7 @@ void Learn(UInt32 device, UInt32 shader, UInt32 geometry) {
 		return;
 	}
 	g_drawing.learned = true;
+	g_learnGeometry = 0;
 	if (shader == 0 || shader != g_drawing.predict.shader) {
 		return;  // the cast gave the renderer's default shader
 	}
@@ -681,6 +694,7 @@ UInt32 __fastcall RenderPassList(void* self, void* /*edx*/, UInt32 pass, UInt32 
 		if (clock != g_lastClock) {
 			g_lastClock = clock;
 			++g_counts.frames;
+			g_timedFrame = sampled_timer::Times(g_frameIndex++);
 			if (g_alternate == 2) {
 				g_onNow = !g_onNow;
 			}
@@ -734,11 +748,11 @@ bool PatchRecordStep() {
 
 namespace draw_instancing {
 
-bool RouteIndexedDraw(std::uint32_t device, std::uint32_t shader, std::uint32_t geometry, const IndexedCall& call) {
-	if (!g_replaying) {
-		Learn(device, shader, geometry);
-		return false;
-	}
+void LearnDraw(std::uint32_t device, std::uint32_t shader, std::uint32_t geometry) {
+	Learn(device, shader, geometry);
+}
+
+bool RouteReplayedDraw(std::uint32_t device, std::uint32_t shader, std::uint32_t geometry, const IndexedCall& call) {
 	if (g_verifying.on) {
 		VerifyAt(device, geometry);
 		return false;

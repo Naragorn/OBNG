@@ -32,6 +32,7 @@
 // flight are dropped.
 
 #include "OcclusionCull.h"
+#include "SampledTimerLogic.h"
 
 #include <windows.h>
 
@@ -478,6 +479,15 @@ void NoteCamera() {
 	}
 }
 
+// The draw decisions read the clock in one eye pass of four (SampledTimerLogic.h): two reads a decision, thousands
+// a pass, and the read is microcoded. The summary's "decide" time and the stand-down's account get the estimate.
+bool g_timedPass = true;
+void NoteDecideTicks(unsigned __int64 t0) {
+	if (g_timedPass) {
+		g_stats.decideTicks += sampled_timer::Whole(__rdtsc() - t0);
+	}
+}
+
 // The decision for one draw inside the eye pass; a skipped geometry's test
 // of this pass is marked, so the result says whether the skip was confirmed.
 // A geometry asked about before in this frame gets the frame's decision at
@@ -488,21 +498,21 @@ cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind, bool countRepeat
 	if (g_occlusionCullRests) {
 		return cull::Decision::kDraw;  // [Route] OcclusionCullStandDown: undecided, untested
 	}
-	const unsigned __int64 t0 = __rdtsc();
+	const unsigned __int64 t0 = g_timedPass ? __rdtsc() : 0;
 	cull::Verdict* const seen = g_table.Find(geometry);
 	if (seen != nullptr && seen->seenFrame == g_frame) {
 		if (countRepeat) {
 			const oc::RectKind none[2] = {oc::RectKind::kTestable, oc::RectKind::kTestable};
 			cull::Count(&g_stats, kind, seen->decision, cull::TestKind::kTest, false, none);
 		}
-		g_stats.decideTicks += __rdtsc() - t0;
+		NoteDecideTicks(t0);
 		return seen->decision;
 	}
 	D3DVIEWPORT9 port{};
 	if (FAILED(g_device->GetViewport(&port)) || port.X != g_ports[0].x || port.Y != g_ports[0].y || port.Width != g_ports[0].width ||
 	    port.Height != g_ports[0].height) {
 		++g_stats.outsideEyeViewport;
-		g_stats.decideTicks += __rdtsc() - t0;
+		NoteDecideTicks(t0);
 		return cull::Decision::kDraw;
 	}
 	NoteCamera();
@@ -565,7 +575,7 @@ cull::Decision DecideDraw(UInt32 geometry, cull::DrawKind kind, bool countRepeat
 			++g_stats.testsBeyondCapacity;
 		}
 	}
-	g_stats.decideTicks += __rdtsc() - t0;
+	NoteDecideTicks(t0);
 	return decided.decision;
 }
 
@@ -734,6 +744,7 @@ bool BeginEyePass() {
 	}
 	const unsigned __int64 t0 = __rdtsc();
 	++g_frame;
+	g_timedPass = sampled_timer::Times(g_frame);
 	++g_stats.eyePasses;
 	Collect();
 	OcclusionCullGuardPass(g_frame, g_stats);

@@ -385,6 +385,19 @@ int main() {
 		Check(!InvertAffine(zero, &inverse), "a zero scale: refused");
 	}
 
+	Section("DrawPathOf and LearnGeometry: what a device draw asks of the instancing");
+	{
+		Check(DrawPathOf(false, 0x1000, 0) == DrawPath::kNone && DrawPathOf(false, 0x1000, 0x2000) == DrawPath::kNone,
+		      "no flush replaying, not the geometry to learn from: nothing");
+		Check(DrawPathOf(false, 0x1000, 0x1000) == DrawPath::kLearn, "the geometry the last record named: the learning");
+		Check(DrawPathOf(true, 0x1000, 0) == DrawPath::kReplay && DrawPathOf(true, 0x1000, 0x1000) == DrawPath::kReplay,
+		      "while a flush replays: the replay's handling, whatever is to learn");
+		Check(DrawPathOf(false, 0, 0) == DrawPath::kLearn, "geometry 0 against none asks for the learning, which finds nothing to do");
+		Check(LearnGeometry(true, false, 0x1000) == 0x1000, "a record that can be learnt from and has not been");
+		Check(LearnGeometry(false, false, 0x1000) == 0 && LearnGeometry(true, true, 0x1000) == 0 && LearnGeometry(false, true, 0x1000) == 0,
+		      "not learnable, or learnt already: none");
+	}
+
 	Section("Derive and ExpectFor: an instance's uploads rebuilt from the leader's");
 	{
 		const Mat4 vp = SomeViewProj();
