@@ -94,3 +94,48 @@ chooser's call at 0x007B8091 goes through the probe, which turns the game's answ
 2) or 0x0F (bit 4) into 0x1A when the card's flag is set, and counts what it moved. Every geometry prepared after
 the plugin's start is concerned - all of them. It is a measuring instrument: moved geometry receives no actor
 shadow (above), so the picture changes.
+
+## Measured: the probe in the tutorial's fight and in the tutorial's first room (2026-11-24)
+
+`[Probe] Lighting30Kinds=1` against 0, the same build for both (OBNG.dll md5 852878c0, swapped in per run), the
+routes as played, `tools/measure-fight.sh`, Linux, the stand-in headset at 72 Hz (period 13.9 ms), the Dream Air's
+frame size. The fight is tools/hand-scripts/obng-profile-prison-fight-hold.txt between the marks arrived and done
+(`tools/re/phase-frames.py arrived done`); draws, records and the GPU's time are the means of the 17 summaries of
+the hold (`[Probe] GpuPasses`: the GPU from the frame's first stamp to its last).
+
+| run (obng-profile-prison-fight-hold/) | key | draws an eye pass | records a frame | scene pass ms (p90) | own work ms | GPU ms |
+|---|---|---:|---:|---:|---:|---:|
+| 20261124-214716 | 0 | 2 291 | 2 008 | 6.2 (7.0) | 8.2 | 6.24 |
+| 20261124-214421 | 1 | 678 | 574 | 2.7 (3.1) | 4.5 | 4.03 |
+| 20261124-220130 (filmed) | 0 | | | 6.2 (7.0) | 8.4 | |
+| 20261124-215816 (filmed) | 1 | | | 2.7 (3.1) | 4.7 | |
+
+**The scene pass falls from 6.2 to 2.7 ms (-56 %), the frame's own work from 8.2 to 4.5 ms (-45 %), the draws of an
+eye pass from 2 291 to 678, the GPU's time from 6.2 to 4.0 ms.** Two runs a side agree to 0.1 ms. The tutorial's
+first room held still (obng-prison-tutorial-alternate.txt, every frame's eye read back, so slower by itself;
+runs obng-prison-tutorial-alternate/20261124-215336 and -215012): scene pass 7.3 -> 3.0 ms, work 11.3 -> 6.7 ms.
+
+- **What moved**: of 1 075 geometries the chooser was asked for, 789 were ShadowLightShader's and went to
+  Lighting30Shader (21 SkinShader's and 19 ParallaxShader's stayed, 68 were Lighting30Shader's already, 178
+  others). The eye pass's records with the probe: 3XLIGHTING_Vc 441, 3XLIGHTING 62, 3XLIGHTING_S 54, 3XLIGHTING_G
+  11, 3XLIGHTING_VcS 8; SkinShader's chain about 30 a frame.
+- **The picture is close, not the same.** The still room, the left eye at 31 marks (`tools/re/run-pictures.py`):
+  1.55 % of the pixels differ between the runs (median; 0.5 - 0.7 % from mark to mark inside one run, the torches).
+  The dark corridor near the camera is the same within 2 % (the floor 7 % darker); the lit room's stone is 5 - 15 %
+  darker with the probe (the arch's mean colour (60 - 65, 63 - 66, 49 - 51) against (54 - 58, 59 - 62, 47 - 49)).
+  The actors stand elsewhere in the two runs (the script stops the AI twelve seconds in), so this is no pixel
+  gate. The fight's films show the same look at their size (640 pixels wide, the right eye). Sheets:
+  artifacts/evidence/lighting30-still-d14-room.png, lighting30-fight-h03.png. **Why the stone is darker is not
+  read** (candidates: the specular term, the sums clipped between the passes of the chain, the fog).
+- **No actor shadow, as read**: the GPU's time for the actor shadows' stage falls from 0.36 to 0.04 ms.
+- **No fault in six runs** (three with the probe: -214421, -215012, -215816): no crash, no "SHADER ERROR" line.
+  Single-pass stereo draws both eyes of the moved geometry (the dumps are the left eye, the films the right).
+- **Derived for Windows** (not measured there): the fight's own work was 15.6 ms against a period of 11.1; with the
+  same share (-45 %) it is about 8.6 ms.
+
+**Not measured or not built yet**: outdoors (the projected shadow's variants, the sun; draw instancing replaces
+SLS2003 only, so moved geometry is not instanced there); SkinShader's and ParallaxShader's geometry (bits 2 and
+4); a geometry under more than eight lights (the ninth and further are dropped); a long session; Windows and the
+look in the headset. For a route the list needs its actor shadow records (0x14E .. 0x151, as the chain's builder
+adds 0x177 ..: a record a shadow light, read at the end of 0x0085AE20) and a picture gate in a place without
+actors.
