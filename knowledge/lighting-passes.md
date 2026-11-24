@@ -154,8 +154,13 @@ obng-profile-gold-road-single-dreamair/20261124-222251 (the game) and -221838 (`
 whole run the eye pass has 936 draws with the game (max 1 270) and 723 with the probe (max 1 038), the GPU 4.6
 against 4.3 ms. Draw instancing groups nothing with the probe (0 groups against up to 7 475 a window): it replaces
 SLS2003's programs only, and the moved geometry draws with SM3's - one record a geometry does about what the
-instancing did. An instanced SM3 vertex program would be the next step there (not built). No fault in the run; the
-outdoor picture was not looked at.
+instancing did. An instanced SM3 vertex program would be the next step there (not built). No fault in the run.
+
+The outdoor picture, looked at afterwards (obng-profile-gold-road-eyedump/20261124-230907 the game, -230445 the
+probe; the eye dumps of both at four marks in artifacts/evidence/lighting30-road.jpg): rocks, the castle, tents and
+trees are lit from the same side and look alike in both. No pixel comparison there - after a `cow` two runs' cameras
+differ, the weather and the people on the road too (one run has rain at the second spot, the other a group of
+walkers at the third). The sepia tone is the save's look with this mod list, in both runs.
 
 ## More of the two paths, read for the route (2026-11-24)
 
@@ -239,12 +244,20 @@ of named regions. Test build dc68d66b, the routes as played, runs obng-lighting-
 - **Specular is not the difference**: without the specular pass the regions differ as before (the walls -3.6 %,
   the lit floor -11.9 %, the far room +3.7 %), and taking it out changes both paths alike (the far room -4.3 % in
   the game, -3.3 % in B; the lit arch -4.7 and -3.8 %).
-- **What is left has a shape** (artifacts/evidence/lighting30-still2-ratio-nospec.png, B' against A', the mean of
-  twelve marks): floors are darker with the one pass, the arches above them the same or brighter, the walls a
-  little darker; the same lights with the same colours are drawn (0x007EDCD0 and 0x007ED6C0 compute a light's
-  colour alike, the two list builders take the same lights). **Not resolved**: a light that reaches floors in the
-  chain and arches in the one pass - the scene's first, directional light is the suspect (its direction is turned
-  into the geometry's space in 0x007FB6F0 here and in the vertex program there).
+- **What is left has a shape and a cause** (artifacts/evidence/lighting30-still2-ratio-nospec.png, B' against A',
+  the mean of twelve marks): the floor around the torch carrier is darker with the one pass, the arches above the
+  same or brighter, surfaces no point light reaches the same. Read: **the chain turns a point light's direction
+  into a unit vector at every vertex and lets the rasteriser interpolate it** (SLS2029.vso: `add r0, -v0, c16 /
+  nrm r1, r0 / dp3 oT1.x, v1, r1 ...`; the pixel program normalises what arrives), **the one pass computes it at
+  every pixel from the interpolated position** (SM3000.pso: `add r7.xyz, <light>, -t6`). On a small triangle the
+  two agree. On a large floor polygon with a torch low above it the interpolated unit vectors point more upwards
+  than the true direction - a light a tenth of the polygon's length in from one end and as high above it gives
+  N.L 0.94 in the polygon's middle against a true 0.24 - so the chain lights such a floor more than the light's
+  place allows, and the one pass shows the falloff. Checked and not it: the lights taken (the same iterators' answers), their colours
+  (0x007EDCD0 and 0x007ED6C0 are the same formula), the radius (NiLight +0xF8 in both), the first light's
+  direction (negated and turned into the geometry's space the same way, 0x007FB6F0 and 0x007C9230), the tangent
+  space (unit length and orthogonal in five of the dungeon's meshes), the attenuation (`1 - d^2 / r^2` in both,
+  by two texture reads there, computed here), the vertex colours (both multiply the texture by them).
 - The scene pass in this room: 4.2 ms (p90 4.7) with the game, 2.7 (3.1) with B, both with every frame's eye read
   back.
 

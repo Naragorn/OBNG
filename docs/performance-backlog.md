@@ -2671,8 +2671,12 @@ lights), a pass per further pair of lights, a texture pass, a specular pass per 
   **The game has it already (the same evening, knowledge/lighting-passes.md):** Lighting30Shader lights a
   geometry in one pass and is used for hair, heads and blended geometry only. `[Probe] Lighting30Kinds=1` gives
   it ShadowLightShader's geometry: the fight's scene pass 6.2 -> 2.7 ms, the own work 8.2 -> 4.5 ms, 2 291 -> 678
-  draws an eye pass (Linux, two runs a side). Missing for a route: the actor shadow records, a picture gate (the
-  lit stone is 5 - 15 % darker), outdoors, Windows. So this rebuild is medium, not huge.
+  draws an eye pass (Linux, two runs a side). With the actor shadow records added (`[Probe] Lighting30Shadows`,
+  the same evening) 2.9 ms, 4.8 ms and 813 draws; the picture gate in a still room: 0.5 % of the pixels differ
+  (two runs of the game: 0.18 %), a floor beside a torch carrier about a tenth darker (the one pass computes a
+  light's direction at every pixel, the chain at every vertex); outdoors no gain and no loss. Open: Windows and
+  Nadi's look, a long session, SkinShader's and ParallaxShader's geometry, an instanced program for outdoors.
+  So this rebuild is medium, not huge.
 - **One draw for both eyes** (the second eye made in the backend, not by a second draw; needs the vertex programs
   or DXVK itself changed): about a quarter of what is left (derived: DXVK's half, the eye switch, OBVR's hooks
   and the view re-apply for the second eye are about 1.9 of 7 ms).
