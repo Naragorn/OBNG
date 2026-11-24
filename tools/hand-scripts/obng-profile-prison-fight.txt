@@ -1,0 +1,73 @@
+# The place just before the tutorial's fight, as Nadi played it on Windows on 2026-11-23 (the fight was that
+# session's long stretch at half rate: the scene pass 9 - 12.6 ms against 3 - 7 before it). The save is a copy of
+# that session's autosave of 22:21 (ImperialDungeon01; saved as OBNGPrisonFight in the Saves folder, not in Git).
+# It lies BEFORE the ambush: the player at 253 1665, the fight at about -8 2238 to -295 2744, and the scene here
+# is light (0.5 - 1.8 ms a pass, runs of 2026-11-24). No coc and no head turns: the game goes on from where the
+# save left it; a mark every five seconds. The start for a run that walks the player into the ambush.
+# Run with the Windows mod list and the routes as played (tools/as-played-ini.py writes the INI):
+#   python3 tools/as-played-ini.py <ini> Probe.GpuPasses=1 Log.SummaryTimer=1 Log.SummaryEverySeconds=5
+#   python3 tools/run-with-windows-mods.py -- tools/shadow-run.sh --ini <ini> \
+#     tools/hand-scripts/obng-profile-prison-fight.txt --save OBNGPrisonFight --run-timeout 420 --no-steamvr --exclusive
+ini Render SinglePassStereo=1
+ini SelfCheck ShowPanel=0
+ini Render GameResolutionWidth=4036
+ini Render GameResolutionHeight=3376
+expect Single-pass stereo: OBNG took the eyes ok (0)
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Performance Enabled=1
+ini Performance GpuTiming=1
+ini Performance StartAfterSeconds=14
+ini Performance CaptureSeconds=90
+ini Performance MaxRecords=262144
+ini Performance Sampler=1
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at go CloseAllMenus
+expect HandScript: finished
+expect Performance: capture 1 started
+expect Performance: export
+reject Performance: export partial
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 3
+mark go
+wait 2
+mark f00
+wait 5
+mark f01
+wait 5
+mark f02
+wait 5
+mark f03
+wait 5
+mark f04
+wait 5
+mark f05
+wait 5
+mark f06
+wait 5
+mark f07
+wait 5
+mark f08
+wait 5
+mark f09
+wait 5
+mark f10
+wait 5
+mark f11
+wait 5
+mark f12
+wait 5
+mark f13
+wait 5
+mark f14
+wait 5
+mark f15
+wait 5
+mark f16
+wait 5
+mark f17
+wait 5
+mark done

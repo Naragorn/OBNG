@@ -884,8 +884,9 @@ ReferenceAnimEvery). With the Windows INI itself (tools/as-played-ini.py, fSpecu
 left out). As played the pass is Oblivion.exe 1.5 ms, D3D9 1.0, OBNG.dll 0.8 (the culler's own work in it), OBVR.dll
 0.3, FoliageAA.dll 0.15, OblivionFrameFixes.dll 0.05; the pass without lights 253 records of the 1 308. On Linux
 the place has 8 ms to spare at 72 Hz and would hold 90 Hz; Nadi's Windows captures of 2026-11-22 show 5.7 - 10 ms
-for the same pass with the same INI, at 4x MSAA - that gap is Windows' (the Direct3D 9 driver's cost a draw, or the
-pass waiting for the GPU) and is not explained from here. The pass ids' meaning and what was read stand.
+for the same pass with the same INI, at 4x MSAA. **That gap is not Windows' (corrected 2026-11-24, the section
+below):** the Windows game runs DXVK too, its calm stretches show the same pass as Linux, and the 5.7 - 10 ms are
+another scene - the tutorial's fight, which this save does not hold. The pass ids' meaning and what was read stand.
 
 Nadi's Windows session of 2026-11-22 ran at half rate through the Imperial Prison (ImperialDungeon01). The same
 place under Linux: `tools/hand-scripts/obng-profile-prison-tutorial.txt` loads a copy of that session's autosave
@@ -927,6 +928,55 @@ setting still costs the 510 records of 0x190 / 0x192, about 1.8 ms of the pass h
 0x190 into the last pass the way the builder does it itself with a flag missing (if the picture is the same);
 fewer passes for a geometry with more than two lights (490 + 250 records are the chain behind the base pass);
 the plugins' own time inside the pass (3.9 ms of 11.6).
+
+## Nadi's Windows session of 2026-11-23: 2x MSAA halves the GPU's time, the fight is the CPU's pass (measured)
+
+Windows 11, SteamVR, Pimax Dream Air at 90 Hz, single pass, RTX 4090, the game's Direct3D 9 through **DXVK v3.1.1
+gplasync** (`Oblivion_d3d9.log` in the game folder - the same translation layer as under Linux), iMultiSample 2
+(4 the day before), OBNG.dll 0a9ef089, OBVR's captures with `Sampler=1`: OBVR-performance-1-50 (saved by itself
+after 30 s at half rate), 2-4 (saved by hand), 3-3 (at the quit). The whole session in ImperialDungeon01.
+Read with `tools/re/capture-row.py --period 11.11`, `capture-frames.py`, `pass-shares.py` and
+`tools/re/window-shares.py` (two time windows of one capture side by side).
+
+- **The session**: 20 episodes at half rate, 2 575 of about 53 000 world frames (4.9 %); the day before 81 episodes,
+  6 868 of about 44 000 (15.6 %). Not the same walk, so the two shares are not an A/B.
+- **2x against 4x MSAA at equal load** (world frames by their scene pass's length, compositor.csv's GPU time before
+  submit, medians): pass 0 - 3 ms 2.3 against 4.4 - 6.4 ms; 3 - 5 ms 2.7 - 2.9 against 4.8 - 5.8; 5 - 8 ms
+  2.9 - 3.6 against 5.0 - 7.1. About half; outside the fight the GPU has 7 ms to spare at 90 Hz.
+- **The calm stretches are Linux's numbers**: capture 1-50's 32nd to 60th second, scene pass 4.33 ms - Oblivion.exe
+  1.80, D3D9 0.88, OBNG.dll 0.73, OBVR.dll 0.31, FoliageAA.dll 0.13; the Linux run 20261123-120715 (3.9 ms): 1.45,
+  0.91, 0.75, 0.26, 0.13.
+- **The fight** (the assassins' ambush, capture 1-50 from its 88th second; OBVR's log has five people in combat near
+  the player at about -8 2238 to -295 2744): the scene pass 9 - 12.6 ms (4-second medians), 11.2 ms over the 90th
+  to 120th second, the frame's own work 15.6 ms against a period of 11.1 - 1 532 frames at half rate in one
+  episode. Every module grows by the same factor, about 2.6 (Oblivion.exe 4.22 ms, D3D9 2.45, OBNG.dll 1.91,
+  OBVR.dll 0.96, ntdll 0.61, FoliageAA.dll 0.47), and so do the draw functions: **more records, not slower ones**
+  (derived from the even factor; the records were not counted on Windows). The compositor's GPU time reads
+  8.6 - 10.4 ms there, but only in frames shown twice - what it holds at half rate is not known, so the GPU's
+  share in the fight is unverified. The CPU alone keeps the frame over the period.
+- **After the fight** (capture 2-4): 15 short episodes in about 32 s, 22 to 76 frames apiece (22 is SteamVR's
+  shortest), the frame's own work p90 11.1 ms - single frames over the period, each paid with a quarter second at
+  half rate. The slow frames there are waiting (ntdll 46 % of their samples), not work. The last three and a half
+  minutes (capture 3-3): 0.1 % of the frames shown again, own work p95 9.7 ms.
+- **The small-block pool's page scan (read 0x00402480, measured)**: `MemoryHeap`'s pool takes a block from its
+  free list (+0x44); with the list empty it walks the pool's page table (+0x108, a 16-bit use count a page, +0x10C
+  entries) from the first entry for one that is 0xFFFF (a page not committed) - 0x004024A3 to 0x004024B6, no
+  shortcut when every page is committed - and returns 0 when there is none. That loop is the top Oblivion.exe
+  function of the pass on Windows: 0.35 ms a frame in the calm stretch, 0.72 ms in the fight (1 733 of the
+  capture's 1 771 in-pass samples of the function sit on the loop's two branches), against 0.10 ms in the Linux
+  run. Its callers by the stack words (which can be stale): the allocation 0x00401F00 from 0x007E23BB under the
+  pass builder 0x0085AE20 (0x00859880's per-light passes, 0x00859160's, 0x0085A200's) under GetRenderPasses
+  0x007D85D0 - pass lists built anew during the pass, each record an allocation. Whether the walks end at a free
+  page or run the whole table in vain (the pool full) is not measured; 17 samples on the "none" exit against 7
+  on the commit path hint at in vain.
+- **OBVR's `GpuTiming` gives nothing there**: in all 92 161 rows of the three gpu_samples.csv start and end are the
+  same value, one to three distinct values a capture (told to OBVR).
+- **The fight is not reproduced under Linux yet**: the session's autosave of 22:21 (copied as OBNGPrisonFight,
+  `tools/hand-scripts/obng-profile-prison-fight.txt`) lies before the ambush - the player at 253 1665, the scene
+  pass 0.5 - 1.8 ms in every direction, 84 - 420 records (runs obng-profile-prison-fight/20261124-082613,
+  obng-profile-prison-tutorial/20261124-082907 with that save). What the fight's records are - the Blades'
+  torches as moving lights giving every lit geometry in reach further passes and a rebuilt list each frame is the
+  guess that fits the builder's callers above - needs the player walked into it with `[Probe] GpuPasses` on.
 
 ## `[Route] FogPassFold` (class C, built 2026-11-23, off, rejected by its picture gate) and an A/B inside one run
 
