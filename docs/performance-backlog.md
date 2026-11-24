@@ -2636,3 +2636,38 @@ The long render frames at crossings are gone in the ride (render frames of 20 ms
 Nadi's look in the headset (textures at a crossing: no flicker, nothing missing) before it is accepted. Left of a
 crossing: the update step's grid move and its parts (attach, 0x00665260, 0x004D5BD0, 0x004A25F0), the heap lock's
 short waits (349 ms a ride).
+
+## 2026-11-24: the tutorial's fight - five small gains, and where the large one is
+
+The fight (ImperialDungeon01, five people) is the place Nadi's Windows session ran at half rate in: the frame's
+own work 15.6 ms against 11.1. The day's levers, each measured under Linux (details: knowledge/
+background-loading.md, skinned-vertex-streams.md, render-thread-hardware-profile.md; OBVR's
+docs/performance-draw-hooks.md): `[Route] PoolScan` 0.23 ms a frame, the volatile pack's compare 0.13, OBVR's draw
+hooks 0.19, three draw wrappers inlined 0.19 (OBNG.dll's column), the routes' clock reads sampled and the
+instancing asked only when needed 0.3 (the pass per draw). About 1 ms together (added, not measured as a sum);
+4.5 ms are missing on Windows.
+
+**Small things left, set aside** (class A unless said, none built):
+- the eye switch, 0.27 ms: its instructions finish in 7 - 25 cycles and wait 130 - 200 behind the device call
+  before them. Read from the recordings (run -201920): locked instructions are 1 % of D3D9.DLL's operations and
+  0.9 % of the pass's operation latency (the device is created multithreaded, flags 0x54, and DXVK locks every
+  call - that is not it), no single slow instruction stands out in the call's tail. Nothing to fix in the switch
+  itself; the wait goes with the draw it follows.
+- narrow reads for the carried registers: built, not exact outdoors (c13), no gain; taken out.
+- the camera follower's walk up the parents, about 0.015 ms; the culler 0.15 ms and the instancing 0.09 ms a frame
+  for a place where the instancing groups nothing.
+
+**The large one: the frame is its draws.** No function is hot; the pass's cost is the count of draws times the
+layers each goes through (engine, OBNG, OBVR, DXVK). In the fight an eye pass has about 660 distinct geometries
+(the culler's draws less its repeats: 2 574 - 1 912, 2 480 - 1 816, 2 466 - 1 804) in 1 900 pass-list records, and
+every record is drawn once an eye: about 4 200 device draws. A lit geometry gets a base pass (ambient and two
+lights), a pass per further pair of lights, a texture pass, a specular pass per light, the pass without lights
+(the fog) and the shadow receivers' pass: of about 1 790 lit records a frame 430 are base passes (0x60, 0x92, 0x65).
+- **One lighting pass a geometry** (the pass builder 0x0085AE20 and ShadowLightShader's programs rebuilt as one
+  program with a light array; class C): up to 1 360 records fewer. At the 2.7 us a record measured with the
+  specular pass off (776 records, 2.13 ms) that is about 3.7 ms of the 6.6 - 7 ms pass under Linux, less what a
+  heavier single draw costs; for Windows about 15.6 -> 9 - 10 ms of own work (derived, same share), and each
+  geometry rasterised once instead of three to four times.
+- **One draw for both eyes** (the second eye made in the backend, not by a second draw; needs the vertex programs
+  or DXVK itself changed): about a quarter of what is left (derived: DXVK's half, the eye switch, OBVR's hooks
+  and the view re-apply for the second eye are about 1.9 of 7 ms).
