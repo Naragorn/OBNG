@@ -5,6 +5,10 @@ pass a geometry instead of three to four pass-list records; B, one device draw f
 Oblivion's graphics mods do about them, and what the engine's successors do. Findings of the rebuild itself go
 here too, once it starts.
 
+**The game itself has A** (found the same day, after this survey): Lighting30Shader lights a geometry in one pass
+and is used for hair, heads, blended and morphing geometry only - knowledge/lighting-passes.md. None of the mods
+below uses it for more.
+
 ## Oblivion's graphics mods do neither (read 2026-11-24)
 
 The addresses looked for: the pass builder 0x0085AE20, the per-light passes 0x00859880, the fog pass 0x00854190,

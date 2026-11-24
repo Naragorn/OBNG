@@ -40,6 +40,7 @@
 #include "AnimationLazyAppend.h"
 #include "FogPassFold.h"
 #include "PoolScan.h"
+#include "Lighting30Kind.h"
 #include "PassMaskAlternate.h"
 #include "AnimationPauseBatch.h"
 #include "MusicAsync.h"
@@ -194,6 +195,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogFogPassFoldSummary();
 	LogPoolScanSummary();
 	LogPassMaskAlternateSummary();
+	LogLighting30KindSummary();
 	LogVoiceDecodeSummary();
 	LogActorCensusSummary();
 	LogActorFarUpdateSummary();

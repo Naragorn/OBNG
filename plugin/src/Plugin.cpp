@@ -46,6 +46,7 @@
 #include "AnimationLazyAppend.h"
 #include "FogPassFold.h"
 #include "PoolScan.h"
+#include "Lighting30Kind.h"
 #include "PassMaskAlternate.h"
 #include "AnimationPauseBatch.h"
 #include "MusicGraphProbe.h"
@@ -392,6 +393,7 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 		obng::plugin::InstallFogPassFold(path, &Log);  // the pass builder's call of 0x00854190 at 0x0085BA25
 		obng::plugin::InstallPoolScan(path, &Log);  // a patch inside the pool allocation 0x00402480 (its entry stays free)
 		obng::plugin::InstallPassMaskAlternate(path, &Log);  // no patch: the lighting pass mask 0x00B42F40 flipped at every summary
+		obng::plugin::InstallLighting30Kind(path, &Log);  // the object preparation's call of the shader kind chooser at 0x007B8091
 		obng::plugin::InstallMusicAsync(path, &Log);  // the music player's seven CoCreateInstance calls (before the probe, which then stays out)
 		obng::plugin::InstallQuestTargetDefer(path, &Log);  // the grid's call of the quest targets at 0x004454E6, run a step later (StepHooks)
 		obng::plugin::InstallGridMoveDefer(path, &Log);  // the step's block 0x0040DD6E - 0x0040DE3E run at the step's start; after the quest targets' hook, so their call kept by this move runs a step later still
