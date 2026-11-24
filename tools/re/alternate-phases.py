@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A run with [Probe] PassMaskAlternate: the phases the plugin switched through (OBNG.log's switch lines and OBVR's
+"""A run with [Probe] PassMaskAlternate (or another alternation that logs the same switch lines): the phases the plugin switched through (OBNG.log's switch lines and OBVR's
 capture carry the same counter's ticks), a line a phase - the mask, the records a frame of the summary that ended
 the phase, the scene pass and the frame's own work from OBVR's capture - and both sides summed up.
 Usage: alternate-phases.py <run folder> [--from <mark>] [--to <mark>] [--guard 1.0] [--period 13.89]
@@ -31,7 +31,7 @@ for line in open(os.path.join(run, 'OBNG.log'), errors='replace'):
     m = re.search(r'draw instancing \(\w+\) - ([\d.]+) records a frame in pass lists', line)
     if m and ended is not None:
         ended[4], ended = float(m.group(1)), None
-    m = re.search(r"pass mask alternate - switch \d+ at tick (\d+): the mask ([0-9A-Fa-f]+) from here \((flipped|the game's)\)", line)
+    m = re.search(r"alternate - switch \d+ at tick (\d+): the (?:mask|carry's reads) (\w+) from here \((flipped|the game's)\)", line)
     if m:
         tick = int(m.group(1))
         if start is not None:
@@ -40,7 +40,7 @@ for line in open(os.path.join(run, 'OBNG.log'), errors='replace'):
         start, side, mask = tick, 'flipped' if m.group(3) == 'flipped' else 'game', m.group(2)
 phases = [p for p in phases if p[0] >= lo and p[1] <= hi]
 if not phases:
-    sys.exit(f'{run}: no whole phase between the marks (switch lines in OBNG.log: [Probe] PassMaskAlternate on?)')
+    sys.exit(f'{run}: no whole phase between the marks (switch lines in OBNG.log: is the alternation on?)')
 
 caps = [d for d in sorted(os.listdir(run)) if d.startswith('OBVR-performance') and not d.endswith('report')]
 cap = os.path.join(run, caps[0])
@@ -71,19 +71,24 @@ print(f'{run}: {len(phases)} whole phases, guard {guard} s, period {period} ms')
 by = {'game': [[], [], []], 'flipped': [[], [], []]}
 for a, b, side, mask, records in phases:
     if a + guard * 1e7 < captured[0] or b > captured[1]:
-        print(f'  {side:7s} mask {mask}  {(b - a) / 1e7:4.1f} s  records {records}  (outside the capture)')
+        print(f'  {side:7s} {mask:>6s}  {(b - a) / 1e7:4.1f} s  records {records}  (outside the capture)')
         continue
     scene, work = measure(a + guard * 1e7, b)
     by[side][0] += scene
     by[side][1] += work
-    by[side][2].append(records)
-    print(f'  {side:7s} mask {mask}  {(b - a) / 1e7:4.1f} s  records {records:7.1f}  {len(scene):4d} frames  scene pass {st.mean(scene):5.2f} ms'
+    if records == records:  # a phase whose summary's count was not found in the log has none
+        by[side][2].append(records)
+    print(f'  {side:7s} {mask:>6s}  {(b - a) / 1e7:4.1f} s  records {records:7.1f}  {len(scene):4d} frames  scene pass {st.mean(scene):5.2f} ms'
           f'  own work mean {st.mean(work):5.2f} p90 {q(work, .9):5.2f}')
+def mean(values):
+    return st.mean(values) if values else float('nan')
+
+
 for side, (scene, work, records) in by.items():
     if scene:
-        print(f"{side:7s}: {len(records)} phases, {len(scene)} frames, records a frame {st.mean(records):.0f}; scene pass mean {st.mean(scene):.2f} ms, median {st.median(scene):.2f}, "
+        print(f"{side:7s}: {len(scene)} frames, records a frame {mean(records):.0f} ({len(records)} phases counted); scene pass mean {st.mean(scene):.2f} ms, median {st.median(scene):.2f}, "
               f"p90 {q(scene, .9):.2f}; own work mean {st.mean(work):.2f}, median {st.median(work):.2f}, p90 {q(work, .9):.2f}, over {period} ms {100 * sum(w > period for w in work) / len(work):.1f} %")
 if by['game'][0] and by['flipped'][0]:
     g, f = by['game'], by['flipped']
-    print(f"flipped against the game's: records {st.mean(f[2]) - st.mean(g[2]):+.0f} ({100 * (st.mean(f[2]) / st.mean(g[2]) - 1):+.1f} %), "
+    print(f"flipped against the game's: records {mean(f[2]) - mean(g[2]):+.0f} ({100 * (mean(f[2]) / mean(g[2]) - 1):+.1f} %), "
           f"scene pass {st.mean(f[0]) - st.mean(g[0]):+.2f} ms ({100 * (st.mean(f[0]) / st.mean(g[0]) - 1):+.1f} %), own work {st.mean(f[1]) - st.mean(g[1]):+.2f} ms")

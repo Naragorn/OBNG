@@ -924,3 +924,38 @@ per-reference animation gate's cold loads (0.26 ms), the actors (0.2 ms) and a
 long tail. The sampler's stack scan makes the inclusive column unreliable for
 big-frame functions (the Havok words under the pose wait are stale); the
 knowledge file explains the reading method.
+
+## The route's own cost per draw in the tutorial's fight (2026-11-24)
+
+Runs obng-profile-prison-fight-hold/ (the fight held still, about 2 400 second-eye draws a frame, the routes as
+played, Linux, the stand-in headset at 72 Hz). OBNG.dll holds 21.6 % of the scene pass's samples there, 1.5 ms of
+7.1 (run 20261124-130308, `tools/re/dll-samples.py`): the eye switch 22 %, `_memcmp` 12 % (the volatile pack's
+source check - knowledge/skinned-vertex-streams.md; replaced), `RoutedDevice::DrawIndexedPrimitive` 11 %,
+`RouteDrawPrimitive` 8 %, `CullDrawRenderPass` 7 %, `IssueDraws` 5 %, `EnginePorts::Slot` 5 %.
+
+- **The switch's device calls are cheap** (`[Route] StereoDrawTimer=1`, run 20261124-135224, a call with OBVR's
+  hooks and DXVK under it, the timer's own floor about 8 ns): SetTransform(VIEW) 19 ns, SetViewport 10 ns,
+  GetViewport 11 ns, GetVertexShaderConstantF 28 ns (c0..c47), SetVertexShaderConstantF 26 ns; the whole switch
+  0.52 us with the timers on, the re-apply 0.09 us of it. Taking calls out of the switch gains little.
+- **Where the samples sit** (`tools/re/dll-function-samples.py`, the instruction after the slow one): on the first
+  instructions after a draw call returns - the eye switch's first SSE instruction in each direction (219 samples
+  each of its 1 415), `RoutedDevice`'s copy of the draw's arguments (295 of 688), `IssueDraws`'s first read of
+  the record (172 + 86 of 343), the culler's first reads of the pass record and its geometry (161 + 115 + 91 of
+  429), the camera follower's walk up the parents (180 of 508). About a quarter of OBNG.dll's samples, 0.4 ms a
+  frame, at about 15 ns an execution. Cache or front-end effects by their look (derived); which, the sampler cannot
+  say - a hardware profile (`perf` with AMD's IBS; not installed on 2026-11-24) would.
+- **Narrow reads for the carry: built, measured, taken out again.** The carry reads c0..c47 before and after the
+  re-apply and compares them. The re-apply walks a constant map, and the map's entries name their registers
+  (+0x1C, +0x20), so a switch could read and compare those and the remembered pairs only. Built with a check mode
+  (the full reads, and a count of switches in which a register changed that the map had not named) and an
+  alternation for timing:
+  - the fight: 12.8 million switches checked, 0 with a register outside the named ones (4.0 named a switch);
+  - the Gold Road (obng-profile-gold-road-single-dreamair/20261124-141336 and -141901): 52 010 and 52 243 of 9.0
+    million with **c13 changed without being named** (3.1 - 3.5 named a switch). Not an entry with count 0
+    (naming one register for it, as the upload 0x007830C0 takes it, changed nothing). Unexplained: which shader
+    class and entry uploads to c13 beyond its own range was not looked up - a log of the shader's maps at a miss
+    (`LogShaderMaps`) would say. Whoever keys anything on a map entry's register range should know it;
+  - narrow against full inside one run (20261124-141044): the scene pass 6.46 against 6.50 ms, OBNG.dll 1.28
+    against 1.30, D3D9 1.61 against 1.65 - within the noise. The compare of 48 registers is vectorised and was
+    not the cost.
+  Not exact outdoors and no gain: the code is not in the tree (it was in OBNG.dll 0a50152f and 25bc35f1 only).

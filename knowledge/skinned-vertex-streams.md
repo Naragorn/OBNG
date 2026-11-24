@@ -384,3 +384,21 @@ the unlock whatever was written).
   packed for a changed source (the face still animates). [Route]
   VolatilePack=1 was set in the Windows OBNG.ini on Nadi's word for the
   look in the headset; the shipped default stays 0 until then.
+
+## The source check's compare was the C runtime's memcmp (measured 2026-11-24)
+
+In the tutorial's fight (obng-profile-prison-fight-hold, five people near the player, the routes as played)
+`_memcmp` was the second function of OBNG.dll inside the scene pass: 729 of 29 381 in-pass samples, 0.18 ms a
+frame, all of it under the volatile pack's `SameSource` (the sampler's stack words: `PackerReplacement` +0x67F and
++0x836, positions and normals) - about 245 KB compared a frame, 1.4 GB/s. The DLL's memcmp is the static 32-bit C
+runtime's. `memory::EqualBytes` (src/engine/memory/EqualBytesLogic.h, tests/EqualBytesLogicTest.cpp: every length to
+300 bytes at four alignments, a difference at every place) compares sixteen bytes a step with SSE2 and answers
+equality only; `SameSource` uses it. No key: the answer is memcmp's.
+
+| run (obng-profile-prison-fight-hold/) | OBNG.dll | the compare and its caller, in-pass samples | ms a frame |
+|---|---|---:|---:|
+| 20261124-130308 | b48ba404 | `_memcmp` 729 + `PackerReplacement` 18 of 29 381 (2.54 %) | 0.18 |
+| 20261124-140820 | 0a50152f | `EqualBytes` 105 + `PackerReplacement` 111 of 29 128 (0.74 %) | 0.05 |
+
+About 0.13 ms a frame in this place (by the sampler's shares; the pass's own time differs by more than that from
+run to run). The share grows with the heads in view. OBNG.dll 7a21897b in both games.

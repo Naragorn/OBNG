@@ -29,6 +29,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "engine/memory/EqualBytesLogic.h"
+
 namespace obng::engine::render::volatile_pack {
 
 using Handle = std::uint32_t;
@@ -97,18 +99,19 @@ struct Source {
 	std::vector<unsigned char> normals;    // vertices * 12, empty without normals
 };
 
-// True when the arrays the next pack would read equal the kept ones.
+// True when the arrays the next pack would read equal the kept ones. Compared with memory::EqualBytes: this runs
+// for every head in every frame, and the C runtime's memcmp took 0.18 ms a frame for it in the tutorial's fight.
 inline bool SameSource(const Source& kept, Handle data, std::uint32_t vertices, const unsigned char* positions, const unsigned char* normals) {
 	if (kept.data != data || kept.vertices != vertices || vertices == 0 || positions == nullptr) {
 		return false;
 	}
-	if (kept.positions.size() != static_cast<std::size_t>(vertices) * 12 || std::memcmp(kept.positions.data(), positions, kept.positions.size()) != 0) {
+	if (kept.positions.size() != static_cast<std::size_t>(vertices) * 12 || !memory::EqualBytes(kept.positions.data(), positions, kept.positions.size())) {
 		return false;
 	}
 	if (normals == nullptr) {
 		return kept.normals.empty();
 	}
-	return kept.normals.size() == static_cast<std::size_t>(vertices) * 12 && std::memcmp(kept.normals.data(), normals, kept.normals.size()) == 0;
+	return kept.normals.size() == static_cast<std::size_t>(vertices) * 12 && memory::EqualBytes(kept.normals.data(), normals, kept.normals.size());
 }
 
 inline void Keep(Source& kept, Handle data, std::uint32_t vertices, const unsigned char* positions, const unsigned char* normals) {
