@@ -652,7 +652,8 @@ struct RecordingShaderPort {
 	whole::Handle lastShader = 0;
 	whole::ShaderCall lastSetup{};
 
-	std::uint32_t Slot(whole::Handle shader, const whole::ShaderCall& call) {
+	// Always inlined into the draw, with the engine port's Slot (NiDX9Renderer_DrawPrimitive.h).
+	[[clang::always_inline]] std::uint32_t Slot(whole::Handle shader, const whole::ShaderCall& call) {
 		if (call.slot == 14) {
 			lastShader = shader;
 			lastSetup = call;

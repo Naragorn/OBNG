@@ -25,7 +25,8 @@ struct RoutedDevice {
 	draw_timer::TimedDevice<Ports, IndexedDraw, PlainDraw> Timed() const { return {inner}; }
 	std::uint32_t Device() const { return static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(inner->renderer->device)); }
 
-	void DrawIndexedPrimitive(const IndexedDraw& d) const {
+	// Always inlined into the draw: see IssueDraws (NiDX9Renderer_DrawPrimitiveLogic.h).
+	[[clang::always_inline]] void DrawIndexedPrimitive(const IndexedDraw& d) const {
 		if (draw_instancing::g_on &&
 		    draw_instancing::RouteIndexedDraw(Device(), *shader, geometry,
 		                                      draw_instancing::IndexedCall{d.primitiveType, static_cast<std::int32_t>(d.baseVertexIndex), d.minVertexIndex,

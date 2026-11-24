@@ -218,7 +218,10 @@ struct EnginePorts {
 		return FromHandle<const std::uint16_t>(lengths)[index];
 	}
 
-	std::uint32_t Slot(Handle shaderHandle, const ShaderCall& call) const {
+	// Always inlined (measured 2026-11-24 with perf in the tutorial's fight): as a function of its own it copied the
+	// caller's freshly written fields four at a time, a wide load over narrow stores that the processor cannot
+	// forward - the instruction after it held 5 - 10 % of OBNG.dll's cycles in the scene pass.
+	[[clang::always_inline]] std::uint32_t Slot(Handle shaderHandle, const ShaderCall& call) const {
 		auto* shader = FromHandle<ShaderInterfaceView>(shaderHandle);
 		const ShaderInterfaceVtableView& vt = *shader->vtable;
 		const Handle* a = call.arguments;
@@ -246,7 +249,7 @@ struct EnginePorts {
 		state->vtable->setDrawFlag(state, value);
 	}
 
-	void DrawIndexedPrimitive(const IndexedDraw& d) const {
+	[[clang::always_inline]] void DrawIndexedPrimitive(const IndexedDraw& d) const {
 		DeviceView* device = renderer->device;  // re-read per DIP (0x00767443)
 		device->vtable->drawIndexedPrimitive(device, d.primitiveType, static_cast<std::int32_t>(d.baseVertexIndex),
 			d.minVertexIndex, d.vertexCount, d.startIndex, d.primitiveCount);

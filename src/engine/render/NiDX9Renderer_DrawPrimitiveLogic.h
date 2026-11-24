@@ -232,9 +232,12 @@ constexpr ShaderCall NoArgumentCall(std::uint8_t slot) {
 // memory - the last part is unverified). The lengths are read per DIP, as in
 // the original.
 
-// The pass's device draw(s) for one eye: B5..B8.
+// The pass's device draw(s) for one eye: B5..B8. Always inlined: as a function of its own it read the record's
+// fields two at a time right after the caller had written them one by one, and built the draw's arguments in
+// memory for the device port to copy - loads the processor cannot forward from the stores before them (measured
+// 2026-11-24 with perf, the tutorial's fight: the two places held 17 % of OBNG.dll's cycles in the scene pass).
 template <class Memory, class Device>
-void IssueDraws(const BufferRecord& record, Memory& memory, Device& device) {
+[[clang::always_inline]] inline void IssueDraws(const BufferRecord& record, Memory& memory, Device& device) {
 	if (!IsIndexed(record)) {  // B5
 		device.DrawPrimitive(MakePlainDraw(record));
 		return;
