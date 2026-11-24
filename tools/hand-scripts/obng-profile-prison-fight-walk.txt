@@ -1,0 +1,85 @@
+# The tutorial's fight as Nadi played it on Windows on 2026-11-23 (that session's long stretch at half rate, the
+# scene pass 9 - 12.6 ms): from the save just before it (OBNGPrisonFight: the player at 253 1665 heading 282.7,
+# ImperialDungeon01; a copy of that session's autosave, not in Git) the player is walked into the ambush - a second
+# west, then north (a head yaw of -77 turns the walk to heading 0; a second of the left stick is about 350 units,
+# obng-prison-fight-walk-probe.txt) to about -70 2200, where the Windows log has the fight (-8 2238 to -295 2744).
+# The player cannot be hurt (tgm). A mark and an eye dump every stretch; OBVR's capture with the render sampler
+# runs over all of it, at the Dream Air's frame size. Read with tools/re/phase-frames.py <mark> <mark> <run>.
+# Run with the Windows mod list and the routes as played (tools/as-played-ini.py writes the INI):
+#   python3 tools/as-played-ini.py <ini> Probe.GpuPasses=1 Log.SummaryTimer=1 Log.SummaryEverySeconds=5
+#   python3 tools/run-with-windows-mods.py -- tools/shadow-run.sh --ini <ini> \
+#     tools/hand-scripts/obng-profile-prison-fight-walk.txt --save OBNGPrisonFight --run-timeout 420 --no-steamvr --exclusive
+ini Render SinglePassStereo=1
+ini SelfCheck ShowPanel=0
+ini Render GameResolutionWidth=4036
+ini Render GameResolutionHeight=3376
+expect Single-pass stereo: OBNG took the eyes ok (0)
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Hands WalkDirection=head
+ini Performance Enabled=1
+ini Performance GpuTiming=1
+ini Performance StartAfterSeconds=14
+ini Performance CaptureSeconds=62
+ini Performance MaxRecords=262144
+ini Performance Sampler=1
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at ready tgm
+console-at go CloseAllMenus
+expect HandScript: finished
+expect Performance: capture 1 started
+expect Performance: export
+reject Performance: export partial
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 3
+mark go
+wait 3
+mark before
+dump
+wait 5
+left stick 0 1
+wait 1
+left stick 0 0
+head yaw -77
+wait 0.5
+left stick 0 1
+wait 1.3
+left stick 0 0
+wait 0.5
+mark arrived
+dump
+wait 6
+mark n1
+dump
+wait 6
+head yaw -32
+wait 0.5
+mark nw1
+dump
+wait 6
+head yaw -122
+wait 0.5
+mark ne1
+dump
+wait 6
+head yaw -77
+wait 0.5
+mark n2
+dump
+wait 6
+mark n3
+dump
+wait 6
+mark n4
+dump
+wait 6
+mark n5
+dump
+wait 6
+mark n6
+dump
+wait 6
+mark done

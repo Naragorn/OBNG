@@ -1157,3 +1157,40 @@ calls it with the task's reference +0x20 and model +0x2C). Three parts:
 
 What an NPC's arrival costs the main thread beyond the loader's files - FaceGen's cache and its locks, the body
 textures, the animation set up, and the routes on them - is in `knowledge/npc-arrival.md`.
+
+## A full pool walks its whole page table at every allocation: `[Route] PoolScan` (class A, verified 2026-11-24)
+
+**Read (0x00402480, the instructions).** `MemoryHeap`'s pool allocation takes a block from the pool's free list
+(+0x44). With the list empty it looks for a page to commit: it walks the page table (+0x108, a 16-bit word a page:
+0xFFFF not committed, else the page's blocks in use) from its first entry over all +0x10C reserved pages
+(0x004024A3 - 0x004024B6), commits the first 0xFFFF page (0x004024D1 on: `GlobalMemoryStatus`, `VirtualAlloc`
+MEM_COMMIT, the entry 0, the blocks onto the free list, +0x118 one up) and returns 0 when there is none - the caller
+0x00401AA0 then serves the request from the heap's size classes. There is no shortcut for a pool whose every page is
+committed: each allocation of its size walks the whole table for nothing. +0x118 is exactly the number of entries
+that are not 0xFFFF: the pool's making 0x00402280 sets every entry to 0xFFFF and the counter to 0, the commit sets
+one to 0 and adds one, the release 0x00402640 sets one to 0xFFFF and takes one off (0x004026FE, 0x00402704).
+
+**Measured (the tutorial's fight, obng-profile-prison-fight-walk.txt, the routes as played, the check mode, run
+obng-profile-prison-fight-walk/20261124-084954).** After the load four pools are full and stay full: 8 bytes
+(3 072 pages), 16 bytes (1 024), 20 bytes (1 024), 36 bytes (1 024). In the fight **about 250 000 searches a
+5-second window with the free list empty, all but a handful answered "none"** - some 700 a frame, 410 million
+table entries read a window. On the render thread that is 0.23 ms a frame under Linux (the sampler's samples in
+0x00402480, run -084557); in Nadi's Windows session of 2026-11-23 0.35 ms a frame in a calm stretch and 0.72 ms in
+the fight, inside the scene pass alone (pass lists built anew, each record and node an allocation).
+
+**The route** (plugin/src/PoolScan.cpp, the decisions in src/engine/memory/PoolScanLogic.h, every flow in
+tests/PoolScanLogicTest.cpp): the sixteen bytes at 0x00402493 - the walk's set up, reached only with the free list
+empty - jump to OBNG's search; its index goes to EDI and the game's own compare at 0x004024C2 goes on to the commit
+or to the return of 0. `PoolScan=1`: with +0x118 at +0x10C the answer is "none" without a walk, else the same walk.
+`PoolScan=2`, the check: the walk as the game's, its answer compared with the count's.
+
+| run (obng-profile-prison-fight-walk/, the fight from "arrived" to "n2") | 0x00402480 on the render thread | OBNG's search |
+|---|---:|---:|
+| 20261124-084557, OBNG.dll 0a9ef089 (no route) | 0.232 ms a frame | - |
+| 20261124-084954, `PoolScan=2` | 0.003 | 0.317 (the walk, in OBNG's code) |
+| 20261124-085249, `PoolScan=1` | 0.002 | 0.006 |
+
+The check: 4.5 million searches, 0 mismatches. The route: every "none" answered without its walk (296 924 of
+296 924 in a window). OBNG.dll 79593c0a, `PoolScan=1` in both games since 2026-11-24. Not measured: the gain on
+Windows (expected at the 0.35 - 0.72 ms above) and the other threads' share. Not touched: that these four pools are
+too small for the mod list at all - every such allocation still goes to the heap's size classes, the slower way.

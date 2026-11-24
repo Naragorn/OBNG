@@ -967,16 +967,32 @@ Read with `tools/re/capture-row.py --period 11.11`, `capture-frames.py`, `pass-s
   run. Its callers by the stack words (which can be stale): the allocation 0x00401F00 from 0x007E23BB under the
   pass builder 0x0085AE20 (0x00859880's per-light passes, 0x00859160's, 0x0085A200's) under GetRenderPasses
   0x007D85D0 - pass lists built anew during the pass, each record an allocation. Whether the walks end at a free
-  page or run the whole table in vain (the pool full) is not measured; 17 samples on the "none" exit against 7
-  on the commit path hint at in vain.
+  page or run the whole table in vain (the pool full) was not measured there; under Linux it is in vain
+  (`[Route] PoolScan`, knowledge/background-loading.md "A full pool walks its whole page table").
 - **OBVR's `GpuTiming` gives nothing there**: in all 92 161 rows of the three gpu_samples.csv start and end are the
   same value, one to three distinct values a capture (told to OBVR).
-- **The fight is not reproduced under Linux yet**: the session's autosave of 22:21 (copied as OBNGPrisonFight,
-  `tools/hand-scripts/obng-profile-prison-fight.txt`) lies before the ambush - the player at 253 1665, the scene
-  pass 0.5 - 1.8 ms in every direction, 84 - 420 records (runs obng-profile-prison-fight/20261124-082613,
-  obng-profile-prison-tutorial/20261124-082907 with that save). What the fight's records are - the Blades'
-  torches as moving lights giving every lit geometry in reach further passes and a rebuilt list each frame is the
-  guess that fits the builder's callers above - needs the player walked into it with `[Probe] GpuPasses` on.
+- **The fight under Linux (measured 2026-11-24)**: the session's autosave of 22:21 (copied as OBNGPrisonFight)
+  lies just before the ambush - the player at 253 1665, the scene pass 0.5 - 1.8 ms in every direction, 84 - 420
+  records (`obng-profile-prison-fight.txt`). `tools/hand-scripts/obng-profile-prison-fight-walk.txt` walks the
+  player a second west and 1.3 s north to -55 2197 (WalkDirection=head: a head yaw of -77 turns the walk from
+  heading 282.7 to 0; a second of the left stick is about 350 units), tgm on; the fight begins as the player
+  arrives. Run obng-profile-prison-fight-walk/20261124-084557, the routes as played, the stand-in at 72 Hz:
+  **2 200 - 2 550 records a frame** (110 - 170 in the corridor before, 1 308 in the tutorial's first room), the
+  scene pass 7 - 10 ms by stretch (7.9 over the fight: Oblivion.exe 2.81, D3D9 1.88, OBNG.dll 1.64, OBVR.dll 0.61,
+  FoliageAA.dll 0.31), work 9.3 - 13.4 ms a frame.
+- **What the fight's records are** (`[Probe] GpuPasses`, records a frame over all finishes, one summary in the
+  fight): 0x123 (the specular pass of one light) about 470, 0x60 (base, two lights) 310, 0x108 (texture) 275,
+  0x190 (the pass without lights) 250, 0x177 170, 0xE8 (further lights) 145, 0x92 (base, one light) 120, 0x126
+  110; the actors' shadow maps about 40. No single culprit and nothing the corridor does not have: it is the
+  room's lit geometry times its lights, at the usual 3.1 - 3.7 us of CPU a record. The specular light passes and
+  the pass without lights are 36 % of the records. The occlusion culler leaves out 9 % of the draws there
+  (2 263 drawn, 209 skipped).
+- **OBNG.dll inside that pass** (run -085249, `tools/re/dll-samples.py`, 1.43 ms of 7.3): the eye switch 22 %,
+  the draw route (RoutedDevice, RouteDrawPrimitive, IssueDraws, the ports) about 30 %, the occlusion culler about
+  17 %, draw instancing about 8 % - with no group drawn instanced in this place ("0 of 0 groups"; every record
+  goes at once: more passes, not predicted, skinned), so about 0.1 ms a frame for nothing indoors.
+- The window pictures of a headless single-pass run (`NN-<mark>-game.png`) are black, and `dump` writes nothing
+  without SteamVR; a film (`--record`) is the way to a picture there (confirmed by OBVR).
 
 ## `[Route] FogPassFold` (class C, built 2026-11-23, off, rejected by its picture gate) and an A/B inside one run
 

@@ -1,0 +1,42 @@
+# A probe for walking the player from the save before the tutorial's fight (OBNGPrisonFight, the player at
+# 253 1665 heading 282.7) towards the ambush at about -8 2238: which way a head yaw turns the walk and how far a
+# second of the left stick goes - the player's place is logged at every mark.
+ini Render SinglePassStereo=1
+ini SelfCheck ShowPanel=0
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Hands WalkDirection=head
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at ready tgm
+console-at go CloseAllMenus
+expect HandScript: finished
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 3
+mark go
+wait 2
+mark p0
+left stick 0 1
+wait 1
+left stick 0 0
+wait 0.5
+mark p1
+head yaw 77
+wait 0.5
+left stick 0 1
+wait 1
+left stick 0 0
+wait 0.5
+mark p2
+head yaw -77
+wait 0.5
+left stick 0 1
+wait 1
+left stick 0 0
+wait 0.5
+mark p3
+head yaw 0
+wait 0.5
+mark done
