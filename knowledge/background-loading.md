@@ -1231,10 +1231,16 @@ to 111 s of each 120 s ride (its record limit): nine of the ten crossings.
   of update (median), the next frame - the quest targets' rebuild a step later - 5.6 - 5.8. In every ride the
   diagonal crossing misses one or two beats: 9.7 - 9.9 ms of update in the move's frame, 6.8 - 9.7 in the next, and
   in three of the four rides the new cells' first render 7.5 - 9.2 ms, which with any update after it is over the
-  period (in the fourth, -151457, the render took 3.9 ms and the two updates of 9.7 and 9.9 ms missed by themselves). The other misses:
-  the first 3.5 s after the load, and renders of 6 - 12 ms at the same places of the ride in most runs (31.4, 61.4,
-  72.0, 91.5 s; not explained - the sampler caught two to four samples each, in D3D9, ntdll, OBVR and the
-  renderer).
+  period (in the fourth, -151457, the render took 3.9 ms and the two updates of 9.7 and 9.9 ms missed by themselves). Most of the other misses
+  are the harness's own (next bullet). The rest outside the crossings - 1 to 6 a ride, some at the same spot in every
+  ride (110.7 - 110.8 s: 24 - 25 ms of update, the sampler in d3dx9_27 and 0x00745010) - are not explained.
+- **The harness's pictures cost beats.** The harness takes a picture of the game's window at every mark (a gamescope
+  screenshot when headless; ../OBVR/tools/hand-script-run.py `shot`), and about 1.4 s after each mark the game
+  loses one or two beats to it (measured: the misses at 1.4 - 2.2, 31.4, 61.4 and 91.5 s of the rides, the marks
+  ride, ride-30, -60 and -90; at 1.4 - 1.6 s after every mark of the fight's hold). With the beats from 0.8 to 2.6 s
+  after every mark left out (`ride-frame-split.py --skip-pictures`): 72 Hz 3 and 6 missed beats, 90 Hz 4 and 8
+  (0.05 - 0.09 %), with FarGridDefer 3 and 14; the crossings' counts do not change (no crossing lies in such a
+  stretch). `tools/hand-scripts/obng-profile-prison-fight-quiet.txt` is the fight's hold without marks inside it.
 - **Crossings without a missed beat** (counted at the wait's end, per crossing): 10 of 10 in both 72 Hz rides; at
   90 Hz 8 and 6 of 9 (7 and 4 of 9 with FarGridDefer).
 - **Corrected 2026-11-25, 15:40.** What was written here before - "3.4 - 4 % of the ride's frames miss a beat, in the
