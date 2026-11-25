@@ -96,6 +96,15 @@ the plugin's start is concerned - all of them but the terrain's blocks, which th
 2026-11-25 (build 9d91c7bf; "The picture gate outdoors" below). It is a measuring instrument: the picture
 changes. (As first built, moved geometry received no actor shadow; the shadow records came the same day, below.)
 
+**Where it is on (2026-11-25, 12:11): in the Windows game only**, `[Probe] Lighting30Kinds=1` in its OBNG.ini at
+Nadi's word, for his look in the headset and the Windows number (build dbf2b739; the shadow records and the clip
+are on with it as shipped; the file before in artifacts/backups/20261125-1211-lighting30-on-windows). The Linux
+game's OBNG.ini has no such key - it is the base of every session's harness run, and the one pass is not accepted.
+**What follows for measuring runs**: `tools/as-played-ini.py` (and so `tools/measure-fight.sh`) copies the Windows
+OBNG.ini, so a run "as played" has the one pass on from now - the game's side of a comparison passes
+`Probe.Lighting30Kinds=0`. The Windows game runs the same path as the Linux one (its RendererInfo.txt: RTX 4090,
+"3.0 Shaders: yes", Shader Package 4, PStarget ps_2_a - the package whose forty lighting programs the clip finds).
+
 ## Measured: the probe in the tutorial's fight and in the tutorial's first room (2026-11-24)
 
 `[Probe] Lighting30Kinds=1` against 0, the same build for both (OBNG.dll md5 852878c0, swapped in per run), the
