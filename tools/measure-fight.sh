@@ -14,6 +14,8 @@
 #   RECORD=<seconds>       film the right eye for that long from every mark (the harness's --record); the run is
 #                          for its pictures then, not for its times
 #   SCENARIO=, SAVE=, TIMEOUT=   another hand script, its save, the run's timeout in seconds
+#   HZ=<rate>              the stand-in headset's rate (the harness's --hz; the Dream Air's default is 72, Nadi
+#                          plays at 90)
 #
 # Prints the run's folder as its last line. Announce the run to the other sessions before and send FREE after.
 set -uo pipefail
@@ -44,6 +46,7 @@ if [[ -n "${PERF:-}" ]]; then
 fi
 run=(python3 tools/run-with-windows-mods.py -- tools/shadow-run.sh --ini "$ini" "$scenario" --save "$save" --run-timeout "${TIMEOUT:-420}" --no-steamvr --exclusive)
 [[ -n "${RECORD:-}" ]] && run+=(--record "$RECORD")
+[[ -n "${HZ:-}" ]] && run+=(--hz "$HZ")
 [[ -n "${OBNG_DLL:-}" ]] && run=(tools/with-plugin-dll.sh OBNG.dll "$OBNG_DLL" -- "${run[@]}")
 read -r -a more <<< "${GAME_INI:-}"
 tools/with-game-ini.sh Display:fSpecularLOD1=500.0000 Display:fSpecularLOD2=800.0000 Display:iActorShadowCountInt=4 "Display:bDoSpecularPass=${SPECULAR:-1}" "${more[@]}" -- \
