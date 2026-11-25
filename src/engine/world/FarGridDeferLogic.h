@@ -27,7 +27,8 @@
 // jump or a load in between (the centre or the worldspace changed, that path shifted and updated by itself) they are
 // dropped. One frame long the far LOD stays as it was: the row that entered the near grid keeps its LOD a frame
 // longer, the row that left it gets its LOD a frame later - two cells from the player. Class B: the same calls one
-// frame later.
+// frame later. Measured 2026-11-25 (A B A B at 90 Hz, OBVR's late pose wait on): it ran at every crossing and gained no
+// beat - it moves the peak into the next frame (knowledge/background-loading.md); off as shipped.
 //
 // The two sources for each address: the move's instructions and the two grids' vtables (0x00A3D79C, 0x00A3D7E0,
 // found through RTTI); the update's other callers and their arguments in the same instructions.

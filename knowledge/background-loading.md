@@ -1018,6 +1018,10 @@ to four. So: about half the eviction hitches on average, not all, and not in eve
 
 ## A cell crossing against the headset's beat: what the pose wait's place costs (2026-11-20, measured and derived)
 
+**Corrected 2026-11-25**: the frames over 14.5 ms counted here are intervals between presents, not missed beats.
+Counted at the pose wait's end, the per-crossing results hold and the counts over the whole ride do not
+("2026-11-25: the cell crossing as played", the bullet "Corrected").
+
 Tool: `tools/re/crossing-slack.py <run folder>... [--lines] [--margin MS]` (OBVR's capture: `present` and
 `poses_wait` of cpu_events.csv; the step's spike lines of OBNG.log for the move's own time). Four rides with the
 shipped routes and a task end budget of 1 ms (`obng-profile-ride-anvil-pp1/20261120-124732`, `-125424`,
@@ -1094,6 +1098,10 @@ Hz, the Windows mod list, TaskEndBudget 1 ms, OBNG.dll 0fee68e6, OBVR.dll md5 32
   the look in the headset.
 
 ## With the late pose wait: what still misses a period, and the ends of background tasks by kind (2026-11-20, measured)
+
+**Corrected 2026-11-25**: the frames over 14.5 ms counted here are intervals between presents, not missed beats.
+Counted at the pose wait's end, the per-crossing results hold and the counts over the whole ride do not
+("2026-11-25: the cell crossing as played", the bullet "Corrected").
 
 Since 2026-11-20 15:30 both games run OBVR's `[Render] LatePoseWait=1` (Nadi's headset test); a harness run takes the
 live OBVR.ini, so the ride runs with it unless the scenario pins `ini Render LatePoseWait=0`. With the wait at the
@@ -1197,28 +1205,48 @@ too small for the mod list at all - every such allocation still goes to the heap
 
 ## 2026-11-25: the cell crossing as played, with OBVR's late pose wait (measured)
 
-Two rides (`tools/hand-scripts/obng-profile-ride-anvil-late.txt`, save OBVRHarnessMOO; `tools/measure-fight.sh` with
-the grid move's callees timed from `obng-measure-crossing-move.ini`; runs obng-profile-ride-anvil-late/20261125-143623
-and -144020): Linux, the stand-in Dream Air at 72 Hz (13.9 ms), no SteamVR, the Windows mod list and the Windows
-OBNG.ini's routes (the one-pass lighting on, OBNG.dll dbf2b739), OBVR.dll 755d2172 with `[Render] LatePoseWait=1`.
+Two rides at 72 Hz and four at 90 Hz (`tools/hand-scripts/obng-profile-ride-anvil-late.txt`, save OBVRHarnessMOO;
+`tools/measure-fight.sh` with the grid move's callees timed from `obng-measure-crossing-move.ini`, `HZ=90` for the
+four): Linux, the stand-in Dream Air, no SteamVR, the Windows mod list and the Windows OBNG.ini's routes (the one-pass
+lighting and QuestTargetDefer on), OBVR.dll 755d2172 with `[Render] LatePoseWait=1`. Runs
+obng-profile-ride-anvil-late/20261125-143623 and -144020 (72 Hz, OBNG.dll dbf2b739), -150703 and -151457 (90 Hz),
+-151059 and -151855 (90 Hz with `[Route] FarGridDefer=1`; OBNG.dll 3df307e1 for the four). OBVR's capture holds 104
+to 111 s of each 120 s ride (its record limit): nine of the ten crossings.
 
-- **The move**: 3.7 - 5.3 ms at a straight crossing (five new cells), 6.0 - 8.5 ms at a diagonal one (nine). Of a
-  straight crossing's: the attach 0x00444340 2.0 - 3.1 ms (the cells set 0x004441A0, 25 calls, 0.6 - 0.9; the new
-  cells' references 0x004D5BD0, 5 calls, 0.6 - 1.0; the Ni updates 0.5 - 0.8; the far grid's update 0x00483D60
-  0.87 - 0.97), the map's scan 0x007B3A40 (115 calls) 0.9 - 1.2, the near grid's shift 0.66 - 0.82, the far grid's
-  0.55 - 0.98, the purge's 0x004A25F0 0.6 in every second crossing.
-- **The frame** (OBVR's capture: the present, the pose wait): a normal frame has 1.1 - 1.2 ms of work before the
-  wait, the wait ends 2.0 - 2.1 ms before the next present, and the render after it (the scene pass 1.5 ms median,
-  p90 1.9 - 2.0) fills those 2 ms. A crossing's move runs before the wait - 5.6 - 10.4 ms there - and the wait
-  absorbs it: **at 72 Hz the move costs no beat any more.**
-- **What misses a beat now is the render after the wait**: 3.4 - 4.0 % of the ride's frames are 14.5 - 15 ms (the
-  scene pass 2.3 - 2.4 ms in them against 1.5), at the crossings - one to seven a crossing, the new cells' first
-  draws - and as often away from them; 0.2 - 0.3 % are 18 - 29 ms (seven to 24 ms of update before the wait in some:
-  not timed in these runs). 95.9 - 96.5 % of the frames are in time.
-- **Derived for 90 Hz** (11.1 ms; not measured): the room before the wait shrinks to about 9 ms, so the straight
-  crossings' 5.6 - 8.1 ms still fit and the diagonal ones' 10.4 do not; the render after the wait keeps its 2 ms.
-  Whether the stand-in's 2 ms after the wait is SteamVR's on Nadi's machine is not known (a run without SteamVR
-  tests nothing of SteamVR's own timing).
+- **The move** (the 72 Hz rides): 3.7 - 5.3 ms at a straight crossing (five new cells), 6.0 - 8.5 ms at a diagonal
+  one (nine). Of a straight crossing's: the attach 0x00444340 2.0 - 3.1 ms (the cells set 0x004441A0, 25 calls,
+  0.6 - 0.9; the new cells' references 0x004D5BD0, 5 calls, 0.6 - 1.0; the Ni updates 0.5 - 0.8; the far grid's
+  update 0x00483D60 0.87 - 0.97), the map's scan 0x007B3A40 (115 calls) 0.9 - 1.2, the near grid's shift
+  0.66 - 0.82, the far grid's 0.55 - 0.98, the purge's 0x004A25F0 0.6 in every second crossing.
+- **How a missed beat is counted** (tools/re/ride-frame-split.py): the beat is the pose wait's end - the wait returns
+  once a period (measured: 99.8 % of the intervals between two wait ends are within 0.9 - 1.05 periods, the rest
+  about two). Between two waits one frame renders (from the wait's end to the present's end) and the next one
+  updates; a beat is missed only when the two together run past the next beat, and then two wait ends are two
+  periods apart. A present that comes late within its period is no missed beat: the beats stay regular, and the
+  next present comes as much earlier (derived from the regular wait ends).
+- **72 Hz**: between two waits 3.2 - 3.3 ms of work (median; p99 6.1 - 6.7). Missed beats 5 and 9 of about 8 270
+  (0.06 - 0.11 %), none at a crossing: the wait absorbs the move (5.6 - 10.4 ms of update in a crossing's frame).
+- **90 Hz**: between two waits 3.1 - 3.2 ms (median; p99 5.6 - 6.1). Missed beats 8 and 13 of about 9 330
+  (0.09 - 0.14 %), 2 and 4 at the crossings. At a straight crossing the update fits: the move's frame 5.9 - 6.1 ms
+  of update (median), the next frame - the quest targets' rebuild a step later - 5.6 - 5.8. In every ride the
+  diagonal crossing misses one or two beats: 9.7 - 9.9 ms of update in the move's frame, 6.8 - 9.7 in the next, and
+  the new cells' first render 7.5 - 9.2 ms, which with any update after it is over the period. The other misses:
+  the first 3.5 s after the load, and renders of 6 - 12 ms at the same places of the ride in most runs (31.4, 61.4,
+  72.0, 91.5 s; not explained - the sampler caught two to four samples each, in D3D9, ntdll, OBVR and the
+  renderer).
+- **Crossings without a missed beat** (counted at the wait's end, per crossing): 10 of 10 in both 72 Hz rides; at
+  90 Hz 8 and 6 of 9 (7 and 4 of 9 with FarGridDefer).
+- **Corrected 2026-11-25, 15:40.** What was written here before - "3.4 - 4 % of the ride's frames miss a beat, in the
+  render after the wait" - counted the intervals between presents (frames over 14.5 ms). Those are late presents
+  within their period, not missed beats; counted at the wait's end, 0.06 - 0.17 % of the beats are missed. For the
+  rides of 2026-11-20 (75 Hz, the sections above and the evidence pages of that day) the recount says: the per-crossing
+  counts hold - with both off every crossing missed one beat (0 of 10 without, 20261120-145414), with GridMoveDefer
+  and with LatePoseWait 6 of 10 crossings missed none (-144725, -145739; obng-profile-ride-anvil-late/20261120-145049,
+  -150104); the counts over the whole ride do not: "125 -> 42 - 47 frames over 14.5 ms" were 28 missed beats with
+  both off against 26, 23, 28 and 22, and QuestTargetDefer's rides missed 14 beats without it against 17 and 12 with
+  it (-095252; -095617, -095942).
+- A run without SteamVR says nothing of SteamVR's own timing, and the stand-in's GPU timestamps read 0: whether the
+  GPU keeps the beat at the Dream Air's 4036x3376 an eye is not in these runs.
 
 ### `[Route] FarGridDefer`: the far grid's part of a crossing a step later (built 2026-11-25)
 
@@ -1242,3 +1270,10 @@ plugin/src/FarGridDefer.{h,cpp}; off as shipped.
 - **What it costs**: for one frame the far LOD stays as it was - the row that entered the near grid keeps its LOD
   a frame longer, the row that left it gets its LOD a frame later, two cells (about 120 m) from the player
   (derived; the LOD of a row that has never been far is loaded on the IO thread and arrives frames later anyway).
+- **Measured 2026-11-25** (A B A B at 90 Hz, the runs above): it ran at every crossing (1.3 - 2.5 ms a step later,
+  nothing dropped or merged, no failure in four rides). It moves the work and gains no beat: the move's frame falls
+  from 5.9 - 6.1 to 4.2 - 4.5 ms of update (straight crossings, median) and the next frame - which already carries
+  the quest targets' rebuild - rises from 5.6 - 5.8 to 6.8; at the diagonal crossing the peak moves to the next frame
+  (7.8 / 9.1 and 6.9 / 11.3 ms against 9.7 / 6.8 and 9.9 / 9.7). Missed beats 7 and 17 (2 and 10 at the crossings)
+  against 8 and 13 (2 and 4) without it. **Off.** It could only help where the move runs after the wait (OBVR's
+  `LatePoseWait=0`, its default) - not measured.
