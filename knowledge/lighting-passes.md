@@ -379,7 +379,7 @@ the tent at full size), lighting30-road-ratio.jpg (where the one pass is brighte
   one-pass pixel programs - at least min(1, ambient + first light); whether the further lights belong inside it
   differs by the chain's pass family (BSSM_AD3 sums three lights before its texture pass, ADT2 two, more lights
   come by passes of their own) and has to be read first. The programs come out of the shader package, so that
-  is a change of their bytecode where the game loads them. Not built.
+  is a change of their bytecode where the game loads them. Built the same day: "`[Probe] Lighting30Clip`" below.
 
 **The frame's cost in this scene** (the phase d01 .. e06, both eyes dumped at every mark in it, so slower by
 itself; `[Probe] GpuPasses`: the mean of the summaries from the third on):
@@ -404,6 +404,87 @@ any more; **0x400000 does, in 49 lists - not read yet what the chain does with i
 its DLL from the Linux game's plugin folder (the Walkers session's note of 2026-11-25: the DLL had been back in
 the Linux game since 2026-11-20). The DLL was parked at 09:13:22 that day; the night pair above and the runs
 after it are without the DLL, the ESP still in the list. Both sides of every comparison here had the same state.
+
+## `[Probe] Lighting30Clip`: the light sum clipped at 1 (built and measured 2026-11-25)
+
+`src/engine/render/Lighting30ClipLogic.h`, tests/Lighting30ClipLogicTest.cpp, plugin/src/Lighting30Clip.{h,cpp};
+`tools/re/sm3-clip.py` applies the same rule to a package file. Nadi's choice of that day: the clip for
+everything the one-pass shader draws, the game's own hair and heads too, not for moved geometry alone.
+
+- **What the chain's sums hold** (read, package 004): SLS2003.pso `mad_sat_pp r2.xyz, r3, r1, c1` - the first
+  light x the projected shadow + ambient; SLS2012.pso (two lights) `add_sat_pp r2.xyz, r1, c1` - both lights +
+  ambient; SLS2005.pso (glow) `mad_sat_pp r2.xyz, r4, r2, r1` with r1 = ambient + emittance x glow map. So the
+  chain's first pass is min(1, ambient + its lights [+ glow]) times the texture, and BSSM_AD3 writes its clipped
+  sum of three lights into the target for the texture pass to multiply. One saturate on the one-pass program's
+  whole sum is the same thing for a geometry whose lights the chain's first pass holds (one or two outdoors,
+  three indoors). Not followed through: a geometry with more lights than that, where the chain adds the rest
+  by passes of their own.
+- **Where the programs are made** (read in the instructions; the function is missing from the decompile's
+  export): Lighting30Shader's program loader 0x007FD560 prints "SM3%03i.pso" and "SM3LL%03i.pso" and calls the
+  pixel program maker 0x00801C90 at 0x007FEAF0, 0x007FEB29 and 0x007FEBBC - a thiscall with six arguments (path,
+  macros, profile, name, 0, 0; `ret 0x18`). The maker looks the name up in the loaded shader package
+  (0x007DAC70 on the object at 0x00B430B8), takes the bytecode at the entry's +0x104 (the entry: a 0x100-byte
+  name, the length, the bytecode - the file's own layout) and gives it to the device's CreatePixelShader
+  (slot +0x1A8). The probe stands in the three calls and sets one bit in the package's bytecode before the
+  maker reads it; all three calls are redirected or none.
+- **Which bit**: the saturate modifier (bit 20) of the destination of the add that completes "ambient plus
+  lights" - found by the program's constant table, not by a place: the first instruction that takes the constant
+  named AmbientColor into a temporary's xyz, then the first `add` that writes that temporary's xyz from itself
+  and another temporary; a rework of the temporary from itself in between (the glow variant) is passed, anything
+  else that writes it ends the search without a change. One line a program changes, e.g. SM3000.pso `add_pp
+  r1.xyz, r2, r1` -> `add_sat_pp r1.xyz, r2, r1` (`sm3-clip.py <package> --diff SM3000.pso`).
+- **What it finds**: in package 004 (both games') one add in each of the forty lighting programs - SM3000 ..
+  SM3019 and SM3LL000 .. SM3LL019: plain, specular, hair, FaceGen, glow, each with and without the projected
+  shadow - and nothing in the nineteen others, which have no AmbientColor; the game's log of every run says the
+  same ("59 pixel programs made by the shader's loader: 40 clipped ... 19 without the constant AmbientColor").
+  Packages 007 and 013 the same. In the packages built for ps_3_0 (009, 018, 019) the twelve programs without
+  specular have another shape (the temporary is written anew before a sum is made of it) and are left as they
+  are - 28 of 40 clipped there; neither game runs those.
+
+**Measured outdoors at noon**, the camp from the save, build a463717f, one run each: -100648 the game, -100914
+the one pass with `Lighting30Clip=0`, -100421 with the clip (the same build for all three, OBVR.dll 20dfcfd2, the
+Walkers DLL parked). Against the game, the median of six marks:
+
+| region | without the clip | with the clip |
+|---|---:|---:|
+| the near rock, its top | +36.8 % | 0.0 % |
+| the near rock, its side | +17.9 % | 0.0 % |
+| the tent's roof | +7.3 % | +0.3 % |
+| the boots of the woman with the torch (moved, skinned) | +6.9 % | -0.3 % |
+| the fallen log | +0.1 % | +0.1 % |
+| the rack's post | -0.8 % | +0.4 % |
+| the ground by the torch (terrain) | +0.4 % | -0.2 % |
+| her face (the game's own one-pass geometry in all three) | -0.1 % | -0.2 % |
+| the other woman's hair (the same) | +1.7 % | +0.6 % |
+| the skin of her back (SkinShader in all three) | +0.2 % | -0.3 % |
+| the big rock, looking east | +3.1 % | +3.5 % |
+
+artifacts/evidence/lighting30-clip-rock.jpg (the rock and the tent three ways), lighting30-clip-ratio.jpg (where
+the one pass is brighter, without and with the clip), lighting30-clip-people.jpg.
+
+- **The sunlit surfaces are the game's now**: to 0.3 %, where two runs of the game agree to 0.1 %.
+- **The game's own hair and heads did not change here**: the face is the same without and with the clip, to
+  the 2 to 3 % the torch's flame moves it from mark to mark - its light sum does not reach 1 in this scene.
+  What a face in harder light does is not measured.
+- **Left over, and not the clip's**: the big rock looking east is 3 % brighter with the one pass, with the
+  clip and without, by day and by night (+2.5 %), with the specular pass and without it (+2.3 %); without the
+  canopy shadow pass it was +1.6 % (the morning's runs -090817, -091042). So about half of it has to do with the
+  trees' projected shadow. Not read.
+- **The frame's cost is the same**: scene pass 2.9 ms (p90 3.4) the game, 3.0 (3.5) with the clip, 3.0 (3.5)
+  without; the GPU 4.20, 4.27 and 4.22 ms a frame.
+
+**Measured indoors**, the still room (obng-lighting-still/20261125-101410 the game, -101642 without the clip,
+-101140 with it): **the clip changes nothing there** - without against with it 0.33 % of the pixels differ
+(the flames), the far room 0.0 %, the dark wall +0.1 %, the torch-lit floor, arch and pillars inside the
+flame's range (+1.9, +0.7, +0.2, -1.0 % in the median, -8 to +17 % from mark to mark). No light sum reaches 1 in
+that room. Against the game the room is as it was the day before: 0.58 % of the pixels with the clip (0.64 %
+without), the far room +1.8 %, the dark wall -3.7 %, the lit floor -6.7 % with these regions.
+
+**The fight**, one run a side with a463717f: the one pass with the clip 3.2 ms of scene pass (p90 3.8) and 5.3 ms
+of own work (-101913), the game 6.8 ms (7.6) and 8.9 ms (-102208). The one pass was 3.0, 3.2 and 3.2 ms in
+that day's three runs; the game was 6.1 ms at 09:36 and 6.8 ms at 10:22 (another OBVR.dll in between, and the
+fight is not the same load twice). In this run 888 of 202 983 lists built for moved geometry had eight lights on a
+record, one more than the programs without specular draw.
 
 ## A long session with the one pass (measured 2026-11-25)
 

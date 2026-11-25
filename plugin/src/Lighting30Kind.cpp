@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "Lighting30Clip.h"
 #include "Memory.h"
 #include "engine/render/Lighting30KindLogic.h"
 #include "engine/render/Lighting30ShadowLogic.h"
@@ -156,6 +157,7 @@ void InstallLighting30Kind(const char* iniPath, LogFn log) {
 	}
 	g_log = log;
 	g_on = true;
+	InstallLighting30Clip(iniPath, log, l30::On(g_bits));
 	const bool wanted = shadow::On(static_cast<int>(GetPrivateProfileIntA("Probe", "Lighting30Shadows", shadow::Shipped(), iniPath)));
 	g_shadows = wanted && RedirectCall(shadow::kLightingRecordAdd, shadow::kAddHead, reinterpret_cast<std::uintptr_t>(&LightingRecordAdded));
 	log("Probe: Lighting30 kinds - on at %08X: geometry the game gives %s%s%s is prepared with its one-pass Lighting30Shader instead "
@@ -200,6 +202,7 @@ void LogLighting30KindSummary() {
 	      g_shadows ? "on" : "off", g_shadowCounts.lists, g_shadowCounts.eligible, g_shadowCounts.withShadow, g_shadowCounts.records,
 	      g_shadowCounts.leftOut, shadow::kLightsDrawn, g_shadowCounts.mostLights);
 	LogFlagCounts();
+	LogLighting30ClipSummary();
 }
 
 }  // namespace obng::plugin

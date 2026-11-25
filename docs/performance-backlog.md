@@ -2681,12 +2681,13 @@ lights), a pass per further pair of lights, a texture pass, a specular pass per 
   knowledge/lighting-passes.md "The picture gate outdoors"): the probe drew the terrain with one texture - a
   land block is the chain's alone, and since build 9d91c7bf it stays there. And surfaces in the noon sun are
   brighter with the one pass (a rock's top +37 %, its side +18 %, a tent's roof +7 %; nothing at night): the
-  chain clips ambient plus light at 1 before the texture, the one-pass programs do not. **That clip is the next
-  step of this route and its gate outdoors**: a saturate put into the one-pass pixel programs' bytecode where
-  the game makes them (class C; eight shader classes make theirs through 0x00801C90, where Lighting30Shader
-  makes its SM3 programs is not read yet). Small to medium for all one-pass geometry alike - which also changes
-  the hair and the heads the game gives this shader today -, medium to large for moved geometry only (a second
-  set of programs and a choice per record). A fifteen-minute
+  chain clips ambient plus light at 1 before the texture, the one-pass programs do not. **The clip is built
+  (`[Probe] Lighting30Clip`, the same day, for all the shader draws as Nadi chose)**: the saturate set on one
+  add of each of the forty lighting pixel programs, in the shader package's bytecode as Lighting30Shader's
+  loader makes them. With it the rock's top, its side and the roof are the game's to 0.3 %, the game's own face
+  and hair did not change in that scene, the still room and the fight's 3.2 ms did not either. What is left
+  before Nadi's look: a rock under a tree 3 % brighter (not read), the flag 0x400000 on some moved geometry
+  outdoors (not read), and geometry with more than seven lights. A fifteen-minute
   flight with the probe on grew as the game's own (+118 MB against +120). Outdoors by day still nothing gained:
   2.9 ms against 2.7 - 2.8 in that camp, 56 records fewer of 790.
   What it leaves in the fight's pass (run -224725, 2.9 ms): Oblivion.exe 1.15 ms, D3D9 0.74, OBNG.dll 0.50,
