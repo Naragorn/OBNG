@@ -45,6 +45,7 @@
 #include "AnimationPauseBatch.h"
 #include "MusicAsync.h"
 #include "GridMoveDefer.h"
+#include "FarGridDefer.h"
 #include "QuestTargetDefer.h"
 #include "CellEvictionSpread.h"
 #include "TaskEndProbe.h"
@@ -182,6 +183,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogAnimationPauseBatchSummary();
 	LogMusicAsyncSummary();
 	LogQuestTargetDeferSummary();
+	LogFarGridDeferSummary();
 	LogGridMoveDeferSummary();
 	LogCellEvictionSpreadSummary();
 	LogUnloadRefSummary();

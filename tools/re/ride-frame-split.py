@@ -52,11 +52,20 @@ for run in [a for a in sys.argv[1:] if os.path.isdir(a)]:
           f"{st.median(f['scene'] for f in normal):.2f}, p90 {sorted(f['scene'] for f in normal)[int(len(normal) * 0.9)]:.2f})")
     print(f"  over {over:.1f} ms: {len(late)} frames ({len(late) * 100.0 / len(rows):.1f} %) - the update past the wait's end in {len(by_update)}, "
           f"the render after it in {len(late) - len(by_update)}; over {period * 1.5:.1f} ms: {sum(1 for f in late if f['ms'] > period * 1.5)}")
+    moves = []
     for k in range(10):
         at = 6.35 + 11.79 * k
+        window = [f for f in rows if -0.2 <= f['t'] - at <= 0.6]
+        if window:
+            moves.append(max(window, key=lambda f: f['before']))
         near = [f for f in late if -0.2 <= f['t'] - at <= 0.6]
         if near:
             print(f"  crossing {k + 1:2d} at {at:6.2f} s: " + '; '.join(text(f) for f in near))
+    if moves:
+        befores = sorted(f['before'] for f in moves)
+        print(f"  the crossings' move frames: {len(moves)}, work before the wait {befores[0]:.1f} - {befores[-1]:.1f} ms (median "
+              f"{st.median(befores):.1f}), over the beat {sum(1 for f in moves if f['ms'] > over)}; every frame over the beat within a "
+              f"crossing's window: {sum(1 for f in late if any(-0.2 <= f['t'] - (6.35 + 11.79 * k) <= 0.6 for k in range(10)))}")
     away = [f for f in late if all(not (-0.2 <= f['t'] - (6.35 + 11.79 * k) <= 0.6) for k in range(10))]
     worst = sorted(away, key=lambda f: -f['ms'])[:int(opt('--lines', '20'))]
     print(f"  away from the crossings: {len(away)}; the longest:")

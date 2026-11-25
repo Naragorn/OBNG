@@ -1219,3 +1219,26 @@ OBNG.ini's routes (the one-pass lighting on, OBNG.dll dbf2b739), OBVR.dll 755d21
   crossings' 5.6 - 8.1 ms still fit and the diagonal ones' 10.4 do not; the render after the wait keeps its 2 ms.
   Whether the stand-in's 2 ms after the wait is SteamVR's on Nadi's machine is not known (a run without SteamVR
   tests nothing of SteamVR's own timing).
+
+### `[Route] FarGridDefer`: the far grid's part of a crossing a step later (built 2026-11-25)
+
+`src/engine/world/FarGridDeferLogic.h` (the addresses with their sources), tests/FarGridDeferLogicTest.cpp,
+plugin/src/FarGridDefer.{h,cpp}; off as shipped.
+
+- **Read.** At a crossing the move shifts the near grid (TES +8, its slot +0x10 0x00482090) and then the far grid
+  (TES +4, GridDistantArray, its slot +0x10 0x00483B60: `mov eax,[edx+0x10]; push ebp; push edi; call eax` at
+  0x00445454 - 0x0044545A, the new centre that the move has just written to TES +0x20 / +0x24), and the attach
+  0x00444340 starts with the far grid's update 0x00483D60 (at 0x00444396; the worldspace TES +0x74 pushed) when the
+  far LOD is on. The shift moves the slots' entries and numbers the empty ones (0x00482050, 0x00483750); the update
+  hides the LOD of the slots inside the near grid, shows or queues it for the rest (0x004BD430, loaded on the IO
+  thread) and drops leaving cells from the LOD map (0x007B3A40). Nothing else in the move reads the far grid, and
+  the LOD nodes stand in world space.
+- **The route** takes the two calls (the seven bytes at 0x00445454 become `push ebp; push edi; call`; the update's
+  call is redirected) and makes them at the next update step's start (StepHooks.h), in the move's order, while
+  TES's far grid, centre and worldspace are still the ones they were kept for - after a jump or a load in between
+  they are dropped (that path shifts and updates by itself). The attach's other callers, 0x00444D3C and 0x00444E42
+  in 0x00444C70 (a jump or a load), shift the far grid at sites of their own, not redirected; their update runs in
+  place too: it is kept only while TES's centre is the kept shift's, even when a crossing's shift waits.
+- **What it costs**: for one frame the far LOD stays as it was - the row that entered the near grid keeps its LOD
+  a frame longer, the row that left it gets its LOD a frame later, two cells (about 120 m) from the player
+  (derived; the LOD of a row that has never been far is loaded on the IO thread and arrives frames later anyway).
