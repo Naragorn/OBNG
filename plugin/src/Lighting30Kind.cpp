@@ -65,6 +65,12 @@ bool IsLand(UInt32 geometry) {
 	return parent != 0 && Game<GetExtraDataFn>(l30::kGetExtraData)(parent, name) != 0;
 }
 
+// Whether the geometry is a distant tree's billboard: its makers name it "STBB" before they prepare it.
+bool IsTreeBillboard(UInt32 geometry) {
+	const char* name = reinterpret_cast<const char*>(static_cast<std::uintptr_t>(At<UInt32>(geometry, l30::kNameOfObject)));
+	return l30::NameBegins(name, l30::kTreeBillboardName);
+}
+
 // The moved geometry's property is made here, by the game's own preparation with the kind given, so that it can be
 // marked as the probe's. Whether the game's attach succeeded is handed back: the caller's own attach would find the
 // property and answer yes for one that came out without a texture.
@@ -82,9 +88,10 @@ bool MakeMoved(UInt32 geometry, UInt32 a, UInt32 b) {
 int __cdecl ChooseKind(UInt32 geometry, UInt32 a, UInt32 b) {
 	const int chosen = Game<ChooserFn>(l30::kChooser)(geometry, a, b);
 	const bool has30 = Has30();
-	const bool land = l30::WouldMove(chosen, has30, g_bits) && IsLand(geometry);
-	const int kind = l30::KindFor(chosen, has30, g_bits, land);
-	l30::Count(g_counts, chosen, kind, land);
+	const bool wouldMove = l30::WouldMove(chosen, has30, g_bits);
+	const l30::Stays stays = wouldMove ? l30::StaysFor(IsLand(geometry), IsTreeBillboard(geometry)) : l30::Stays::kNo;
+	const int kind = l30::KindFor(chosen, has30, g_bits, stays);
+	l30::Count(g_counts, chosen, kind, stays);
 	if (kind == chosen) {
 		return kind;
 	}
@@ -192,10 +199,10 @@ void LogLighting30KindSummary() {
 		return;
 	}
 	g_log("Probe: Lighting30 kinds - since the start %llu geometries chosen for (the game's choice: ShadowLightShader %llu, SkinShader %llu, "
-	      "ParallaxShader %llu, Lighting30Shader %llu, others %llu), %llu moved to Lighting30Shader, %llu marked, %llu land blocks left to "
-	      "the game; the card's flag is %s",
+	      "ParallaxShader %llu, Lighting30Shader %llu, others %llu), %llu moved to Lighting30Shader, %llu marked; left to the game: %llu land "
+	      "blocks, %llu distant trees' billboards; the card's flag is %s",
 	      g_counts.asked, g_counts.shadowLight, g_counts.skin, g_counts.parallax, g_counts.lighting30, g_counts.other, g_counts.moved, g_marked,
-	      g_counts.land, Has30() ? "set" : "clear - the game makes no Lighting30Shader, nothing is moved");
+	      g_counts.land, g_counts.treeBillboards, Has30() ? "set" : "clear - the game makes no Lighting30Shader, nothing is moved");
 	g_log("Probe: Lighting30 shadows (%s) - since the start %llu lists built for marked geometry, %llu of them with a lighting record that takes "
 	      "actor shadows, %llu with at least one shadow light, %llu shadow records added; %llu lists with more lights than the shader draws "
 	      "(%u), the most lights on one record %u",

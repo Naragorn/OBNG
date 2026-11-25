@@ -1,5 +1,5 @@
 // Every flow of the shader kind switch (src/engine/render/Lighting30KindLogic.h): the key's values, which of the
-// game's choices the probe moves to Lighting30Shader, what it leaves alone, the card's flag, the terrain, the counts.
+// game's choices the probe moves to Lighting30Shader, what it leaves alone, the card's flag, the terrain, the distant trees' billboards, the counts.
 
 #include "Check.h"
 #include "engine/render/Lighting30KindLogic.h"
@@ -27,20 +27,35 @@ int main() {
 	Check(!Moves(kShadowLight, 0) && !Moves(kSkin, 0) && !Moves(kParallax, 0), "no bits: nothing moves");
 
 	Section("The kind a geometry gets");
-	Check(KindFor(kShadowLight, true, kMoveShadowLight, false) == kLighting30, "moved: Lighting30Shader");
-	Check(KindFor(kSkin, true, 7, false) == kLighting30 && KindFor(kParallax, true, 7, false) == kLighting30, "all three with all bits");
-	Check(KindFor(kSkin, true, kMoveShadowLight, false) == kSkin, "a kind whose bit is not set keeps the game's choice");
-	Check(KindFor(0x11, true, 7, false) == 0x11 && KindFor(kLighting30, true, 7, false) == kLighting30 && KindFor(0, true, 7, false) == 0,
+	Check(KindFor(kShadowLight, true, kMoveShadowLight, Stays::kNo) == kLighting30, "moved: Lighting30Shader");
+	Check(KindFor(kSkin, true, 7, Stays::kNo) == kLighting30 && KindFor(kParallax, true, 7, Stays::kNo) == kLighting30, "all three with all bits");
+	Check(KindFor(kSkin, true, kMoveShadowLight, Stays::kNo) == kSkin, "a kind whose bit is not set keeps the game's choice");
+	Check(KindFor(0x11, true, 7, Stays::kNo) == 0x11 && KindFor(kLighting30, true, 7, Stays::kNo) == kLighting30 && KindFor(0, true, 7, Stays::kNo) == 0,
 	      "other kinds pass through");
 
 	Section("Without the card's flag");
-	Check(KindFor(kShadowLight, false, 7, false) == kShadowLight, "no SM3 programs: the game makes no Lighting30Shader, so the choice stays");
-	Check(KindFor(kSkin, false, 7, false) == kSkin && KindFor(kParallax, false, 7, false) == kParallax, "for every kind");
+	Check(KindFor(kShadowLight, false, 7, Stays::kNo) == kShadowLight, "no SM3 programs: the game makes no Lighting30Shader, so the choice stays");
+	Check(KindFor(kSkin, false, 7, Stays::kNo) == kSkin && KindFor(kParallax, false, 7, Stays::kNo) == kParallax, "for every kind");
 
 	Section("The terrain");
-	Check(KindFor(kShadowLight, true, 7, true) == kShadowLight, "a land block stays ShadowLightShader's: only its builder draws the texture layers");
-	Check(KindFor(kSkin, true, 7, true) == kSkin && KindFor(kParallax, true, 7, true) == kParallax, "whatever the game chose for it");
-	Check(KindFor(kShadowLight, false, 7, true) == kShadowLight && KindFor(0x11, true, 7, true) == 0x11, "and what would not move anyway stays as well");
+	Check(KindFor(kShadowLight, true, 7, Stays::kLand) == kShadowLight, "a land block stays ShadowLightShader's: only its builder draws the texture layers");
+	Check(KindFor(kSkin, true, 7, Stays::kLand) == kSkin && KindFor(kParallax, true, 7, Stays::kLand) == kParallax, "whatever the game chose for it");
+	Check(KindFor(kShadowLight, false, 7, Stays::kLand) == kShadowLight && KindFor(0x11, true, 7, Stays::kLand) == 0x11, "and what would not move anyway stays as well");
+
+	Section("A distant tree's billboard");
+	Check(KindFor(kShadowLight, true, 7, Stays::kTreeBillboard) == kShadowLight, "stays ShadowLightShader's: its pass has programs and a draw of its own");
+	Check(KindFor(kSkin, true, 7, Stays::kTreeBillboard) == kSkin && KindFor(0x11, true, 7, Stays::kTreeBillboard) == 0x11, "whatever the game chose for it");
+	Check(NameBegins("STBB", kTreeBillboardName) && NameBegins("STBB 12", kTreeBillboardName), "the name the makers give it, and a longer one");
+	Check(!NameBegins("STB", kTreeBillboardName) && !NameBegins("", kTreeBillboardName), "a shorter name and an empty one are not it");
+	Check(!NameBegins("stbb", kTreeBillboardName) && !NameBegins("XSTBB", kTreeBillboardName) && !NameBegins("Block 3", kTreeBillboardName),
+	      "nor another case, a name that only holds it, or a land block's");
+	Check(!NameBegins(nullptr, kTreeBillboardName), "a geometry without a name is not one");
+	Check(NameBegins("anything", "") && NameBegins("", ""), "an empty prefix begins every name");
+
+	Section("Why a geometry stays");
+	Check(StaysFor(false, false) == Stays::kNo, "neither: it moves");
+	Check(StaysFor(true, false) == Stays::kLand && StaysFor(false, true) == Stays::kTreeBillboard, "one of the two");
+	Check(StaysFor(true, true) == Stays::kLand, "both at once is counted as land");
 
 	Section("Whether the bits would move a choice");
 	Check(WouldMove(kShadowLight, true, 1) && WouldMove(kSkin, true, 2) && WouldMove(kParallax, true, 4), "the three kinds with their bits");
@@ -59,9 +74,11 @@ int main() {
 	Check(counts.shadowLight == 2 && counts.skin == 1 && counts.parallax == 1, "by the game's choice");
 	Check(counts.lighting30 == 1 && counts.other == 1, "the game's own Lighting30 geometry and the rest");
 	Check(counts.moved == 2, "moved: the result differs from the game's choice");
-	Check(counts.land == 0, "no land block among them");
-	Count(counts, kShadowLight, kShadowLight, true);
-	Count(counts, kShadowLight, kShadowLight, true);
+	Check(counts.land == 0 && counts.treeBillboards == 0, "no land block and no billboard among them");
+	Count(counts, kShadowLight, kShadowLight, Stays::kLand);
+	Count(counts, kShadowLight, kShadowLight, Stays::kLand);
 	Check(counts.land == 2 && counts.moved == 2 && counts.asked == 8 && counts.shadowLight == 4, "a land block is asked for, left and counted");
+	Count(counts, kShadowLight, kShadowLight, Stays::kTreeBillboard);
+	Check(counts.treeBillboards == 1 && counts.land == 2 && counts.moved == 2 && counts.asked == 9, "so is a tree's billboard, by itself");
 	return Failures();
 }

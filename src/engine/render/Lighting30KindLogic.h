@@ -77,29 +77,71 @@ inline constexpr std::uint32_t kParentOfObject = 0x1C;        // NiAVObject: the
 inline constexpr std::uint32_t kGetExtraData = 0x006FF9C0;    // extra data __thiscall (object, const char* name); 0: none
 inline constexpr std::uint32_t kLandSharesName = 0x00A46048;  // the game's string "tex %"
 
+// A distant tree's billboard stays the game's as well. Its two makers (0x00437E60 and 0x00562E20, through the quad
+// builder 0x004BA3C0) name the geometry "STBB" (0x006FF420 with the string at 0x00A451F0), prepare it with kind 1
+// and then set the flags 0x402000 on its lighting property. ShadowLightShader's builder gives a property with
+// 0x400000 the pass BSSM_ADT_Sbb (0x17B; 0x00856D60), whose programs are the "STBB" builds of the lighting
+// programs (the define in the shader loaders 0x007CD090 / 0x007CEFD0), which has a draw of its own for its list
+// (0x007AC9A0 -> 0x007F8DB0) and a constant of its own (0x007D1320); the tangent space maker 0x007B7710 gives a
+// geometry named so fixed tangents from a table. Lighting30's builder does not read the flag: a moved billboard
+// gets the ordinary programs and draw, and a far red-leaved tree came out green (measured 2026-11-25, artifacts/
+// shadow/obng-lighting-road-still-around; 24 billboards in that scene). The chooser itself still compares the
+// name with "STBB" at its end (0x007D1C18, the result unused), and 0x007B7710 goes by the same name: the name at
+// the object's +8 is the engine's own way to know one here - and the two sources for that offset.
+inline constexpr std::uint32_t kNameOfObject = 0x08;  // NiObjectNET: the name, a C string or null
+inline constexpr char kTreeBillboardName[] = "STBB";
+
+// Whether a name begins with a prefix, as the chooser's own strncmp reads it (case and all). A null name does not.
+constexpr bool NameBegins(const char* name, const char* prefix) {
+	if (name == nullptr) {
+		return false;
+	}
+	for (; *prefix != 0; ++name, ++prefix) {
+		if (*name != *prefix) {
+			return false;
+		}
+	}
+	return true;
+}
+
+// Why a geometry the bits would move stays the game's.
+enum class Stays {
+	kNo,
+	kLand,           // its parent carries the land's texture shares
+	kTreeBillboard,  // its name begins with "STBB"
+};
+
+constexpr Stays StaysFor(bool land, bool treeBillboard) {
+	return land ? Stays::kLand : treeBillboard ? Stays::kTreeBillboard : Stays::kNo;
+}
+
 // Whether the bits would move the game's choice. Without the card's flag the game makes no Lighting30Shader and
 // the preparation would leave the geometry without a shader, so nothing moves.
 constexpr bool WouldMove(int chosen, bool has30, std::uint32_t bits) {
 	return has30 && Moves(chosen, bits);
 }
 
-// The kind the geometry is prepared with: Lighting30Shader for a choice the bits move, unless it is a land block.
-constexpr int KindFor(int chosen, bool has30, std::uint32_t bits, bool land) {
-	return WouldMove(chosen, has30, bits) && !land ? kLighting30 : chosen;
+// The kind the geometry is prepared with: Lighting30Shader for a choice the bits move, unless it is a geometry
+// only the game's own path draws right.
+constexpr int KindFor(int chosen, bool has30, std::uint32_t bits, Stays stays) {
+	return WouldMove(chosen, has30, bits) && stays == Stays::kNo ? kLighting30 : chosen;
 }
 
 struct Counts {
 	std::uint64_t asked = 0;
 	std::uint64_t shadowLight = 0, skin = 0, parallax = 0, lighting30 = 0, other = 0;  // by the game's choice
 	std::uint64_t moved = 0;
-	std::uint64_t land = 0;  // a choice the bits would move, left the game's: a land block
+	std::uint64_t land = 0;            // a choice the bits would move, left the game's: a land block
+	std::uint64_t treeBillboards = 0;  // the same: a distant tree's billboard
 };
 
-// One call of the chooser. leftAsLand: the bits would have moved the choice and the geometry is a land block.
-constexpr void Count(Counts& counts, int chosen, int result, bool leftAsLand = false) {
+// One call of the chooser. stays: why a choice the bits would have moved was left (kNo for every other call).
+constexpr void Count(Counts& counts, int chosen, int result, Stays stays = Stays::kNo) {
 	++counts.asked;
-	if (leftAsLand) {
+	if (stays == Stays::kLand) {
 		++counts.land;
+	} else if (stays == Stays::kTreeBillboard) {
+		++counts.treeBillboards;
 	}
 	++(chosen == kShadowLight ? counts.shadowLight
 	   : chosen == kSkin      ? counts.skin

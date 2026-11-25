@@ -2685,9 +2685,11 @@ lights), a pass per further pair of lights, a texture pass, a specular pass per 
   (`[Probe] Lighting30Clip`, the same day, for all the shader draws as Nadi chose)**: the saturate set on one
   add of each of the forty lighting pixel programs, in the shader package's bytecode as Lighting30Shader's
   loader makes them. With it the rock's top, its side and the roof are the game's to 0.3 %, the game's own face
-  and hair did not change in that scene, the still room and the fight's 3.2 ms did not either. What is left
-  before Nadi's look: a rock under a tree 3 % brighter (not read), the flag 0x400000 on some moved geometry
-  outdoors (not read), and geometry with more than seven lights. A fifteen-minute
+  and hair did not change in that scene, the still room and the fight's 3.2 ms did not either. The two
+  leftovers of that measurement are read: the flag 0x400000 is a distant tree's billboard, which only the
+  chain draws right (moved, a far red tree was green) and which stays the game's since build dbf2b739; the
+  "rock 3 % brighter" was grass in the measured region - on clean parts it is +0.3 %. What is left before
+  Nadi's look: geometry with more than seven lights. A fifteen-minute
   flight with the probe on grew as the game's own (+118 MB against +120). Outdoors by day still nothing gained:
   2.9 ms against 2.7 - 2.8 in that camp, 56 records fewer of 790.
   What it leaves in the fight's pass (run -224725, 2.9 ms): Oblivion.exe 1.15 ms, D3D9 0.74, OBNG.dll 0.50,

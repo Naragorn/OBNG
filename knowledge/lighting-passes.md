@@ -312,7 +312,7 @@ holds one group: two people, one with a burning torch.
 **What two runs of the game differ by** (-085459 against -085756): 15 % of the pixels looking at the camp and
 36 % looking east - the grass is planted anew at every load and the trees sway, so that share says nothing here.
 The regions on what stands still agree to 0.1 %: the tent's roof, the near rock's top and side, the fallen log,
-the rack's post, a tree's trunk, the sky (the big rock to 0.3 %). The ground by the torch moves by up to 2.6 % at
+the rack's post, a tree's trunk, the sky, the big rock's face and top edge (0.0 %). The ground by the torch moves by up to 2.6 % at
 one mark - the flame.
 
 **The probe drew the terrain wrong until that day; these pictures found it.** With the builds before 9d91c7bf a
@@ -344,7 +344,8 @@ property is made by ShadowLightShader's attach like any other and filled by the 
 | the near rock, its top | (63.0, 68.9, 57.7) | (86.7, 92.9, 79.9) | +36.9 %, +37.2 % |
 | the near rock, its side | (76.2, 79.5, 67.8) | (89.1, 92.4, 82.2) | +17.8 %, +18.5 % |
 | the tent's roof | (81.4, 80.3, 68.1) | (84.8, 84.8, 77.1) | +7.3 %, +7.5 % |
-| the big rock (looking east) | (42.4, 50.9, 49.7) | (43.5, 52.0, 51.9) | +3.1 %, +1.7 % |
+| the big rock's face (looking east; a part of it without grass) | (41.7, 49.7, 49.1) | (42.3, 50.5, 50.2) | +1.7 %, +1.7 % |
+| the big rock's top edge | (39.2, 45.8, 42.8) | (39.9, 46.8, 44.3) | +2.6 %, +2.6 % |
 | the fallen log | (50.9, 60.2, 44.2) | (50.9, 60.2, 44.2) | 0.0 %, 0.0 % |
 | the rack's post | (74.2, 76.3, 63.2) | (73.4, 75.6, 62.8) | -0.8 %, +0.2 % |
 | the ground by the torch (terrain, the game's in both) | (78.6, 76.0, 52.4) | (78.1, 75.6, 52.2) | -0.6 %, +0.6 % |
@@ -369,7 +370,8 @@ the tent at full size), lighting30-road-ratio.jpg (where the one pass is brighte
 - **Confirmed at night** (the same script with `set gamehour to 1`, obng-lighting-road-still-night/20261125-092335
   the game, -092107 the one pass; the DLL of OblivionWalkers out of the game by then): the near rock's top
   +1.4 %, its side +2.1 %, the tent's roof +1.6 % - inside what the torch's flame moves there at night (-1.9 to
-  +4.7 % from mark to mark) -, the log +0.1 %, the post +0.4 %, the big rock +2.5 %. At night the light sums
+  +4.7 % from mark to mark) -, the log +0.1 %, the post +0.4 %, the big rock's face +0.5 % and its top edge
+  +0.3 %. At night the light sums
   stay below 1 (derived: the brightest of these regions is at 32 of 255), and the noon's differences are gone.
 - **Derived from the noon's numbers**: a region's ratio a channel is the unclipped light sum itself - the top's
   (1.38, 1.35, 1.39), the side's (1.17, 1.16, 1.21), the roof's (1.04, 1.06, 1.13): more excess the more a surface
@@ -398,7 +400,8 @@ frame, and none of them is the probe's.
 **The flags of moved geometry** (`Probe: Lighting30 flags`, counted as each pass list is built, -085231): of 4 573
 lists 0x1 in 2 988, 0x2 in 1 402, 0x80 in 396, 0x100 in 446, 0x2000 in 231, 0x20000 in 394, 0x400000 in 49. Of
 the three bits only the chain's builder reads, 0x1000 and 0x4000 (the terrain) do not occur on moved geometry
-any more; **0x400000 does, in 49 lists - not read yet what the chain does with it.**
+any more; 0x400000 did, in 49 lists - a distant tree's billboard, left to the game since build dbf2b739
+("Distant trees' billboards" below).
 
 **OblivionWalkers was loaded in every run of this file up to here**, its ESP through the Windows mod list and
 its DLL from the Linux game's plugin folder (the Walkers session's note of 2026-11-25: the DLL had been back in
@@ -457,7 +460,8 @@ Walkers DLL parked). Against the game, the median of six marks:
 | her face (the game's own one-pass geometry in all three) | -0.1 % | -0.2 % |
 | the other woman's hair (the same) | +1.7 % | +0.6 % |
 | the skin of her back (SkinShader in all three) | +0.2 % | -0.3 % |
-| the big rock, looking east | +3.1 % | +3.5 % |
+| the big rock's face, looking east (a part of it without grass) | +1.7 % | +0.3 % |
+| the big rock's top edge | +2.6 % | +0.1 % |
 
 artifacts/evidence/lighting30-clip-rock.jpg (the rock and the tent three ways), lighting30-clip-ratio.jpg (where
 the one pass is brighter, without and with the clip), lighting30-clip-people.jpg.
@@ -466,10 +470,23 @@ the one pass is brighter, without and with the clip), lighting30-clip-people.jpg
 - **The game's own hair and heads did not change here**: the face is the same without and with the clip, to
   the 2 to 3 % the torch's flame moves it from mark to mark - its light sum does not reach 1 in this scene.
   What a face in harder light does is not measured.
-- **Left over, and not the clip's**: the big rock looking east is 3 % brighter with the one pass, with the
-  clip and without, by day and by night (+2.5 %), with the specular pass and without it (+2.3 %); without the
-  canopy shadow pass it was +1.6 % (the morning's runs -090817, -091042). So about half of it has to do with the
-  trees' projected shadow. Not read.
+- **The big rock too**, and a correction: this file first said the big rock looking east stayed 3 % brighter with
+  the clip and tied half of that to the canopy shadow. The region it was read from held the grass at the rock's
+  foot, which is planted anew at every load - two runs of the game differ there by 2 % themselves. On parts of
+  the rock without grass the one pass was +1.7 % (the face) and +2.6 % (the top edge) without the clip, the same
+  with the specular pass off and with the canopy shadow pass off, and is **+0.3 % and +0.1 % with the clip**
+  (two runs of the game: 0.0 %); at night +0.5 % and +0.3 %. A region is clean only when two runs of the game
+  agree on it.
+- **What may be the last tenths** (read, not measured apart): for the first light the chain brings the light's
+  direction into the tangent space at every vertex, normalises it there and lets the rasteriser interpolate
+  (SLS2003.vso: three dp3 with c13, `nrm r4.xyz, r0`, `mov oT1.xyz, r4`); its pixel program takes the
+  interpolated vector as it comes (`dp3_pp r0.x, r0, t1`), shorter than 1 inside a triangle whose corners'
+  bases differ. The one pass hands the tangent, binormal and normal on (SM3006.vso `mov oT3 .. oT5`) and its
+  pixel program normalises each and projects the light at every pixel (SM3010.pso `nrm_pp r5.xyz, t3` ...).
+  On a flat face the two are the same, on a rounded mesh the chain's N.L is a little smaller. Read and the same
+  in both paths: the fog (0x007D1C90 and 0x007FEE40 are one code for two sets of globals - FogParam = far, far -
+  near, 1, 0 - and the one pass's extra factor FogParam.z is that 1) and the projected shadow's constants (set
+  by the same two functions from the same record).
 - **The frame's cost is the same**: scene pass 2.9 ms (p90 3.4) the game, 3.0 (3.5) with the clip, 3.0 (3.5)
   without; the GPU 4.20, 4.27 and 4.22 ms a frame.
 
@@ -485,6 +502,46 @@ of own work (-101913), the game 6.8 ms (7.6) and 8.9 ms (-102208). The one pass 
 that day's three runs; the game was 6.1 ms at 09:36 and 6.8 ms at 10:22 (another OBVR.dll in between, and the
 fight is not the same load twice). In this run 888 of 202 983 lists built for moved geometry had eight lights on a
 record, one more than the programs without specular draw.
+
+## Distant trees' billboards stay the game's (read and measured 2026-11-25)
+
+The flag 0x400000 of the pass-list counts, read through:
+
+- **Who sets it.** Two places in the binary write `flags |= 0x402000` on a lighting property (0x00437ED4 in
+  0x00437E60 and 0x00562FB6 in 0x00562E20; found by scanning the code for an `or [reg+0x1C], imm` with that bit -
+  the property's flag setter 0x00434980 has four callers, none with it). Both make a distant tree's billboard:
+  the quad builder 0x004BA3C0 (four vertices, the tree's width from its +0x7C, 1400 without), a tri shape named
+  "STBB" (0x006FF420 with the string at 0x00A451F0; in 0x004BA780 under a node named "Tree distant 3d
+  billboard"), the object preparation with kind 1 (0x007B8940), then the two flags: 0x2000 keeps the projected
+  shadow off, 0x400000 is the billboard's.
+- **What the chain does with it.** The first-pass builder 0x00856D60 gives a property with 0x400000 the pass
+  0x17B, BSSM_ADT_Sbb, where it would give 0x76, BSSM_ADT. Its programs are builds of the lighting programs
+  with the define "STBB" (the shader loaders 0x007CD090 and 0x007CEFD0 pass it to `lighting\2x\v\ADTS.v.hlsl`
+  and `...\p\ADTS.p.hlsl`); the accumulator draws that pass's list by a function of its own (0x007AC9A0:
+  `if (pass == 0x17B) ... 0x007F8DB0(list, 0x17B)`); the pass setup 0x007D1320 sets a constant for it alone
+  (0x21 from 0x00B2C728 .., by the console's wording the billboards' colour tweak) and skips a loop it runs
+  for every other pass (not read what that loop sets); and the tangent space maker 0x007B7710 gives a geometry
+  named "STBB" (`strnicmp(name, "STBB", 4)`) tangents and binormals copied from two fixed tables (twelve floats
+  each from 0x00B2C688 and 0x00B2C6B8) instead of computing them from the mesh.
+- **What the one pass does with it.** Its builder 0x008637D0 does not read the flag: the billboard gets the plain
+  lighting record - the ordinary programs, the ordinary draw, none of the billboards' constants. Which of the
+  three makes the colour wrong was not taken apart.
+- **Measured** (the camp's save looking behind and to the other side as well: a copy of obng-lighting-road-
+  still.txt with `head yaw 180` and `head yaw 90` after e06; runs obng-lighting-road-still-around/20261125-114017
+  the game, -114257 the one pass with build a463717f, -113735 with dbf2b739): 24 billboards in the scene. Moved,
+  a far red-leaved tree is green - its region (51.5, 47.4, 40.2) in the game, (51.3, 66.7, 53.6) with the one
+  pass, +23 % - and the far trees beside it differ in colour; artifacts/evidence/lighting30-billboards.jpg. The
+  two views of the gate (east, the camp) show no billboard, which is why the pictures had not said so.
+- **The rule** (build dbf2b739): a geometry whose name begins with "STBB" is not moved (`IsTreeBillboard` in
+  plugin/src/Lighting30Kind.cpp, `NameBegins`, `Stays` in the logic header). The name is what the engine itself
+  goes by here: the chooser 0x007D1920 ends with `strncmp(name, "Block", 5)` and `strncmp(name, "STBB", 4)`
+  (0x007D1C04 .. 0x007D1C20) and then returns 1 whatever they say - the tests are still there, their results
+  unused. With the rule: "left to the game: 100 land blocks, 24 distant trees' billboards", no list of moved
+  geometry carries 0x400000 any more (0 of 1 213; before 160 of 1 389), the far red tree is the game's to 0.0 %.
+- **The third bit only the chain reads, 0x1000**: the pass BSSM_ADT_Mn (0x77) with two constants of its own
+  (0x007D1320: a place less the camera's, two values less 15). No moved geometry carried it in any run (0 lists
+  in the camp, the still room and the fight); who sets it was not found (the scan for 0x400000's kind of
+  instruction finds no writer with 0x1000 alone - not looked for further).
 
 ## A long session with the one pass (measured 2026-11-25)
 
