@@ -1230,7 +1230,8 @@ to 111 s of each 120 s ride (its record limit): nine of the ten crossings.
   (0.09 - 0.14 %), 2 and 4 at the crossings. At a straight crossing the update fits: the move's frame 5.9 - 6.1 ms
   of update (median), the next frame - the quest targets' rebuild a step later - 5.6 - 5.8. In every ride the
   diagonal crossing misses one or two beats: 9.7 - 9.9 ms of update in the move's frame, 6.8 - 9.7 in the next, and
-  the new cells' first render 7.5 - 9.2 ms, which with any update after it is over the period. The other misses:
+  in three of the four rides the new cells' first render 7.5 - 9.2 ms, which with any update after it is over the
+  period (in the fourth, -151457, the render took 3.9 ms and the two updates of 9.7 and 9.9 ms missed by themselves). The other misses:
   the first 3.5 s after the load, and renders of 6 - 12 ms at the same places of the ride in most runs (31.4, 61.4,
   72.0, 91.5 s; not explained - the sampler caught two to four samples each, in D3D9, ntdll, OBVR and the
   renderer).
