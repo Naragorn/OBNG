@@ -755,3 +755,35 @@ twenty others as they were; the fade from 500 to 800 units read back from the ga
 Everything nearer than 500 units is as before (the still room's other regions within 0.7 %); in the fight 3.3 of
 4.6 million setups of a moved geometry's specular program a run, 2.4 million of them faded and 1.7 million to 0.
 No fault in the four runs.
+
+## The fight at 90 Hz, counted at the headset's beat (measured 2026-11-25)
+
+`tools/hand-scripts/obng-profile-prison-fight-quiet.txt` (the fight's hold with no marks inside it, save
+OBNGPrisonFight), `tools/measure-fight.sh` with `HZ=90`, `GAME_INI="BlurShader:bUseBlurShader=1"` (bloom, as in the
+Windows game) and `Probe.GpuPasses=1`, A B A B: the game's lighting (`Probe.Lighting30Kinds=0`) against the one pass
+as played. Linux, the stand-in Dream Air at 90 Hz, no SteamVR, OBNG.dll f47fa900 (the game's), OBVR.dll bcf499b8 with
+the late pose wait. Runs obng-profile-prison-fight-quiet/20261125-155036, -155621 (the game), -155329, -155912 (the
+one pass). Read with `tools/re/ride-frame-split.py <run> --from arrived --to done --skip-pictures` (66 s, about
+5 750 beats a run) and `tools/re/gpu-summaries.py` (the GPU from the frame's first stamp to its last, the hold's
+five-second windows).
+
+| | the game, -155036 | the game, -155621 | one pass, -155329 | one pass, -155912 |
+|---|---:|---:|---:|---:|
+| work between two waits, median (p99) | 6.65 (8.85) ms | 7.08 (9.75) | 4.56 (6.52) | 4.46 (6.48) |
+| the render (wait's end to present's end), median | 5.44 ms | 5.85 | 3.33 | 3.24 |
+| the update (to the next wait), median | 1.20 ms | 1.22 | 1.23 | 1.23 |
+| the GPU a frame, median | 4.88 ms | 5.31 | 3.44 | 3.48 |
+| missed beats | 10 (0.17 %) | 16 (0.28 %) | 3 (0.05 %) | 2 (0.03 %) |
+
+- **At 90 Hz the fight as played keeps the beat** on this machine: of the 11.1 ms a beat the CPU needs 4.5 (p99
+  6.5) and the GPU 3.5. The one pass takes 2.1 - 2.6 ms off the render and 1.4 - 1.8 ms off the GPU.
+- **With the game's lighting** the render spikes to 9 - 12 ms every 5.63 s (a strict period; 7 - 13 of its misses) -
+  gone with the one pass. The cause is not read (the sampler caught D3D9, OBNG.dll, the chain's getter 0x007D85D0
+  and others, two to five samples a spike).
+- **The misses that stay with the one pass**: one or two renders of 9 - 10 ms, and in every run one update of
+  23 - 25 ms (also once in the game's runs): the main thread reads a compressed texture out of an archive - zlib's
+  inflate 0x007425A0 / 0x00745010 under the archive's read 0x0042C8E0 / 0x00430010 and 0x00760DA0, d3dx9_27 beside
+  it (the stack words, which can be stale). The same stall sits at 110.7 - 110.8 s of the Anvil ride (24 - 25 ms in
+  the three rides whose capture reaches it). Which texture it is was not read.
+- **Not the Windows fight**: Nadi's fight of 2026-11-23 had 15.6 ms of own work on Windows (the live ambush, more
+  records than this hold); derived with the same share, about 8.6 ms with the one pass - not measured there.

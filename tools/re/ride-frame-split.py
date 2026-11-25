@@ -87,6 +87,9 @@ for run in [a for a in sys.argv[1:] if os.path.isdir(a) and a != export]:
     missed = [b for b in beats if b['beat'] > period * 1.5]
     print(f"{os.path.basename(os.path.normpath(run))}: {len(beats)} beats of {period:.2f} ms in the capture{f' ({skipped} left out after the pictures)' if SKIP else ''}; between two waits a render and an "
           f"update of {st.median(work):.2f} ms (median), p99 {work[int(len(work) * 0.99)]:.2f}, the longest {work[-1]:.1f}")
+    for part in ('render', 'update'):
+        values = sorted(b[part] for b in beats)
+        print(f"  the {part}: median {st.median(values):.2f} ms, p90 {values[int(len(values) * 0.9)]:.2f}, p99 {values[int(len(values) * 0.99)]:.2f}")
     at_crossings = f", {sum(1 for b in missed if at_crossing(b['t']))} at the crossings" if RIDE else ''
     print(f"  missed beats: {len(missed)} ({len(missed) * 100.0 / len(beats):.2f} %){at_crossings}; "
           f"the render over 5 ms in {sum(1 for b in missed if b['render'] > 5)}, the update in {sum(1 for b in missed if b['update'] > 5)}")

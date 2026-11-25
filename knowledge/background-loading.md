@@ -1232,8 +1232,9 @@ to 111 s of each 120 s ride (its record limit): nine of the ten crossings.
   diagonal crossing misses one or two beats: 9.7 - 9.9 ms of update in the move's frame, 6.8 - 9.7 in the next, and
   in three of the four rides the new cells' first render 7.5 - 9.2 ms, which with any update after it is over the
   period (in the fourth, -151457, the render took 3.9 ms and the two updates of 9.7 and 9.9 ms missed by themselves). Most of the other misses
-  are the harness's own (next bullet). The rest outside the crossings - 1 to 6 a ride, some at the same spot in every
-  ride (110.7 - 110.8 s: 24 - 25 ms of update, the sampler in d3dx9_27 and 0x00745010) - are not explained.
+  are the harness's own (next bullet). The rest outside the crossings, 1 to 6 a ride, are mostly not explained;
+  one, at 110.7 - 110.8 s in the three rides whose capture reaches it (24 - 25 ms of update), is the main thread
+  reading a compressed texture out of an archive (knowledge/lighting-passes.md, "The fight at 90 Hz").
 - **The harness's pictures cost beats.** The harness takes a picture of the game's window at every mark (a gamescope
   screenshot when headless; ../OBVR/tools/hand-script-run.py `shot`), and about 1.4 s after each mark the game
   loses one or two beats to it (measured: the misses at 1.4 - 2.2, 31.4, 61.4 and 91.5 s of the rides, the marks
