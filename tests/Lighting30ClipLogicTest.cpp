@@ -352,5 +352,35 @@ int main() {
 		Check(counts.already == 1 && counts.noProgram == 1 && counts.noAmbient == 1 && counts.noSum == 1 && counts.broken == 1, "one of each other outcome");
 		Check(counts.noEntry == 1, "a name the package does not hold counts as that alone");
 	}
+
+	Section("The registers a constant takes");
+	{
+		// The table's records are 20 bytes from byte 28 on; the count of registers is the word at +8 of a record -
+		// the low word of the comment's token 11 + 5 x the record's number.
+		auto withRegisters = [](Tokens table, std::size_t record, std::uint32_t registers) {
+			table[11 + 5 * record] = (table[11 + 5 * record] & 0xFFFF0000u) | registers;
+			return table;
+		};
+		const Tokens seven = Start(kPs2x, withRegisters(kAmbientAt0, 1, 14));
+		const Tokens eight = Start(kPs2x, withRegisters(kAmbientAt0, 1, 16));
+		Check(ConstantRegisters(seven.data(), seven.size(), "LightData") == 14, "LightData x14: seven lights, two registers each");
+		Check(ConstantRegisters(eight.data(), eight.size(), "LightData") == 16, "LightData x16: eight");
+		Check(ConstantRegisters(seven.data(), seven.size(), "AmbientColor") == 1, "another constant of the same table keeps its own count");
+		Check(ConstantRegisters(seven.data(), seven.size(), "LightDat") == 0 && ConstantRegisters(seven.data(), seven.size(), "LightData2") == 0,
+		      "a name that only begins so, or goes on: none");
+		const Tokens sampler = Start(kPs2x, withRegisters(Table({{"LightData", {3, 9}}}), 0, 14));
+		Check(ConstantRegisters(sampler.data(), sampler.size(), "LightData") == 0, "the name on a sampler is no float constant");
+		const Tokens bare{kPs2x, kEnd};
+		Check(ConstantRegisters(bare.data(), bare.size(), "LightData") == 0, "a program without a table");
+		Tokens cut = seven;
+		cut.resize(6);
+		Check(ConstantRegisters(cut.data(), cut.size(), "LightData") == 0, "a table that runs past the end of the stream");
+		Tokens wrong = withRegisters(kAmbientAt0, 1, 14);
+		wrong[2 + 4] = 0x00100000;  // the records' offset beyond the table
+		Check(ConstantRegisters(Start(kPs2x, wrong).data(), wrong.size() + 1, "LightData") == 0, "records beyond the table");
+		const TablePlace place = TableOf(seven.data(), seven.size());
+		Check(place.at == 3 && place.bytes == (kAmbientAt0.size() - 2) * 4, "the table's place: behind the version, the comment's token and 'CTAB'");
+		Check(TableOf(bare.data(), bare.size()).bytes == 0, "no table: no bytes");
+	}
 	return Failures();
 }

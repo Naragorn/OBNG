@@ -17,7 +17,7 @@ exclusive runs); the sections of 2026-11-19 below and knowledge/background-loadi
 
 | # | Item | Class | Measured | Cost | Next step |
 |---|---|---|---|---|---|
-| 1 | The grid's move 0x00444FB0 spread over frames: the cells' attach 0x00444340 (3 - 12 ms, twice 15 - 19), its far grid update 0x00483D60, the cell attach 0x004441A0, the Ni updates 0x00707610 | B | the move 9.6 ms mean, 12 - 14 ms longest with every route on; at 90 Hz (11.1 ms) it misses a frame at every crossing | large | read which of the attach's parts can run a frame later without a reader seeing a half-attached cell; the first candidates are the far grid's LOD queue and the map's scan |
+| 1 | The grid's move 0x00444FB0 spread over frames: the cells' attach 0x00444340 (3 - 12 ms, twice 15 - 19), its far grid update 0x00483D60, the cell attach 0x004441A0, the Ni updates 0x00707610 | B | the move 9.6 ms mean, 12 - 14 ms longest with every route on; at 90 Hz (11.1 ms) it misses a frame at every crossing. **2026-11-25, as played with OBVR's late pose wait** (knowledge/background-loading.md, the last section): the move is 3.7 - 5.3 ms (straight) and 6.0 - 8.5 ms (diagonal) and runs before the wait, which absorbs it at 72 Hz - the crossings' missed beats now come from the render after the wait (the new cells' first draws), as do 3 - 4 % of all the ride's frames | large | measure the ride at 90 Hz (the stand-in's `--hz 90`): the derived room before the wait is about 9 ms, so only the diagonal crossings would still miss for the move; then the far grid's update a step later (0.9 - 1.4 ms, a step hook) is the first part to move |
 | 1a | **The grid's move ran after OBVR's pose wait** - answered 2026-11-20 (knowledge/background-loading.md "A cell crossing against the headset's beat"): OBVR's `[Render] LatePoseWait` (the wait at the render's entry) and OBNG's `[Route] GridMoveDefer` (the step's block with the move at the next step's start) both measured in one block | B / OBVR | crossings without a missed period 1 of 10 -> 5 - 7 of 10 with either; the late wait also takes the ride's frames over 14.5 ms from 119 - 125 to 42 - 47 | done | OBVR switches LatePoseWait on after its own gates; GridMoveDefer stays off as the fallback. What still misses: 9.8 - 14.7 ms of update before the wait at the dearer crossings - row 1 |
 | 2 | The quest target's route through doors 0x0065D8D0: `[Route] QuestTargetDefer` (2026-11-20, class B, on in both games since 2026-11-20 11:30) runs the crossing's rebuild at the next step's start | 3.4 - 5.2 ms moved off every crossing; the crossing's longest frame 24.5 -> 22.2 ms mean; at 75 Hz still two periods (runs 20261120-095252 off, -095617 / -095942 on) | on in the games; it does not end the crossing's hitch alone: the attach and the eviction (row 12b) remain |
 | 3 | 0x004D5BD0 (per cell in the attach) and the purge's 0x004A25F0 | open | 0.8 - 3.9 ms (twice 11 - 17) and 0.7 - 4.6 ms at every second crossing | open | a [Timed] round over their callees, as for 0x00665260 |
@@ -2688,8 +2688,13 @@ lights), a pass per further pair of lights, a texture pass, a specular pass per 
   and hair did not change in that scene, the still room and the fight's 3.2 ms did not either. The two
   leftovers of that measurement are read: the flag 0x400000 is a distant tree's billboard, which only the
   chain draws right (moved, a far red tree was green) and which stays the game's since build dbf2b739; the
-  "rock 3 % brighter" was grass in the measured region - on clean parts it is +0.3 %. What is left before
-  Nadi's look: geometry with more than seven lights. A fifteen-minute
+  "rock 3 % brighter" was grass in the measured region - on clean parts it is +0.3 %. **The afternoon of
+  2026-11-25:** a geometry under more lights than its program draws (seven or eight, read from each program) goes
+  to the chain, which draws it as the game does (the still room with every moved geometry through the chain is
+  the game's to 0.14 % of the pixels) - in the fight no list ever needed it; the specular fades with distance as
+  the game's does (the still room's "far room +2.9 %" was the missing fade); with bloom the one pass differs from
+  the game as without; SkinShader's and ParallaxShader's geometry moved too gains nothing in the fight (3.3
+  against 3.2 ms). On in the Windows game since 12:11 for Nadi's look. A fifteen-minute
   flight with the probe on grew as the game's own (+118 MB against +120). Outdoors by day still nothing gained:
   2.9 ms against 2.7 - 2.8 in that camp, 56 records fewer of 790.
   What it leaves in the fight's pass (run -224725, 2.9 ms): Oblivion.exe 1.15 ms, D3D9 0.74, OBNG.dll 0.50,
@@ -2699,8 +2704,8 @@ lights), a pass per further pair of lights, a texture pass, a specular pass per 
   instancing's gain comes back on top (medium: the game's pixel programs can stay if the vertex program hands
   them world-space positions and the lights are set in world space for a group with the same lights; the Gold
   Road's pass is 2.2 - 3.2 ms either way today); the shader package's ps_3_0 builds of the same programs (ten
-  lights where the ps_2_a builds draw seven or eight; the fight had seven at most); SkinShader's and
-  ParallaxShader's geometry (about 30 records a frame in the fight); a one-pass program of OBNG's own that makes
+  lights where the ps_2_a builds draw seven or eight; the fight had eight at most, on eight-light programs);
+  a one-pass program of OBNG's own that makes
   the light's direction per vertex as the chain does - only if the floor's look beside a torch is wanted back
   (large: a direction per light through the interpolators).
 - **One draw for both eyes** (the second eye made in the backend, not by a second draw; needs the vertex programs

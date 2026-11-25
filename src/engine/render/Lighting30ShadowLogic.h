@@ -18,7 +18,9 @@
 // The probe marks the properties it made: the word at +0xFC, the fourth component of the hair tint. The
 // constructors zero it (0x00863430, 0x00863720), a clone copies it (0x00863540), and no hair program reads it
 // (every SM3 hair pixel program reads c2.xyz only). The game's own Lighting30 geometry - hair, heads, blended and
-// morphing geometry - carries no mark and keeps its lists as the game builds them.
+// morphing geometry - carries no mark and keeps its lists as the game builds them. The mark's low four bits say
+// how many lights the property's one-pass program was last seen to draw (0: not seen yet), for the rule that
+// hands a geometry under more lights to the game's chain (Lighting30ListLogic.h).
 //
 // The two sources for the addresses: the instructions of 0x0085AE20's ending and of 0x008637D0, which name the same
 // helpers for the same jobs.
@@ -42,12 +44,13 @@ inline constexpr std::uint32_t kRenderPath = 0x00B42F48, kPassMask = 0x00B42F40;
 
 inline constexpr std::uint32_t kShadeProperty = 4;                       // the property type of a shader property
 inline constexpr std::uint32_t kListOfProperty = 0x28;                   // the pass list inside the property
-inline constexpr std::uint32_t kMarkOfProperty = 0xFC, kMark = 0x4F424E47;  // 'OBNG' in the hair tint's fourth word
+inline constexpr std::uint32_t kMarkOfProperty = 0xFC;                    // the hair tint's fourth word
+inline constexpr std::uint32_t kMark = 0x4F424E40, kMarkLights = 0xF;     // 'OBN@' and the bits of the lights seen
 inline constexpr std::uint32_t kRecordBytes = 0x10, kRecordGeometry = 0x0, kRecordPass = 0x4, kRecordLast = 0x7, kRecordLights = 0x8;
-// The lights one lighting record is surely drawn with. The shader's setup 0x007FF4A0 caps the record's count at
-// the value of 0x00B2DCFC (8, set by the shader's constructor on every render path below 7), and the pixel
-// programs of the package in use cap it again: seven lights in the ones without specular (SM3000.pso, LightData
-// x14, its loop bound 7), eight in the ones with (SM3001.pso, x16).
+// The lights every one-pass lighting program of the package in use draws at least. The shader's setup 0x007FF4A0
+// caps the record's count at the value of 0x00B2DCFC (8, set by the shader's constructor on every render path
+// below 7), and the pixel programs cap it again by their own loop: seven lights in seventeen of the twenty
+// (LightData x14), eight in three (SM3001, SM3002, SM3010: x16).
 inline constexpr std::uint32_t kLightsDrawn = 7;
 inline constexpr std::uint32_t kLightIsActorShadow = 0xF4;
 
@@ -91,7 +94,17 @@ constexpr std::uint16_t ShadowPassFor(std::uint16_t lightingPass) {
 }
 
 constexpr bool IsMark(std::uint32_t word) {
-	return word == kMark;
+	return (word & ~kMarkLights) == kMark;
+}
+
+// The mark with the lights the property's one-pass program was seen to draw.
+constexpr std::uint32_t MarkWith(std::uint32_t lights) {
+	return kMark | (lights > kMarkLights ? kMarkLights : lights);
+}
+
+// The lights a marked property's program was last seen to draw; 0: none seen yet.
+constexpr std::uint32_t LightsKnown(std::uint32_t mark) {
+	return IsMark(mark) ? mark & kMarkLights : 0;
 }
 
 // The shadow pass to add records with for a property whose lighting record was just built; 0 for none.
@@ -99,9 +112,11 @@ constexpr std::uint16_t Receives(bool on, std::uint32_t markWord, bool shadowPas
 	return on && IsMark(markWord) && shadowPassesOn ? ShadowPassFor(lightingPass) : std::uint16_t{0};
 }
 
-// Whether a lighting record carries more lights than the shader draws: the ones beyond are left out of the picture.
-constexpr bool LightsLeftOut(std::uint32_t recordLights) {
-	return recordLights > kLightsDrawn;
+// Whether a lighting record carries more lights than its program draws (`drawn`: Lighting30ListLogic.h's
+// DrawnWith): the ones beyond are left out of the picture - unless the list goes to the chain, as it does with
+// [Probe] Lighting30MostLights at its shipped value.
+constexpr bool LightsLeftOut(std::uint32_t recordLights, std::uint32_t drawn) {
+	return recordLights > drawn;
 }
 
 struct Counts {
@@ -109,13 +124,13 @@ struct Counts {
 	std::uint64_t eligible = 0;    // of them, with a shadow pass to add
 	std::uint64_t withShadow = 0;  // lists that got at least one record
 	std::uint64_t records = 0;     // shadow records added
-	std::uint64_t leftOut = 0;     // lists whose lighting record has more lights than the shader draws
+	std::uint64_t leftOut = 0;     // lists whose lighting record has more lights than its program draws
 	std::uint32_t mostLights = 0;  // the largest light count of a lighting record
 };
 
-constexpr void Count(Counts& counts, std::uint16_t shadowPass, std::uint32_t added, std::uint32_t recordLights) {
+constexpr void Count(Counts& counts, std::uint16_t shadowPass, std::uint32_t added, std::uint32_t recordLights, std::uint32_t drawn) {
 	++counts.lists;
-	if (LightsLeftOut(recordLights)) {
+	if (LightsLeftOut(recordLights, drawn)) {
 		++counts.leftOut;
 	}
 	if (recordLights > counts.mostLights) {

@@ -7,11 +7,16 @@ itself and another temporary - and given the saturate modifier, which is what [P
 package in the game's memory. ShadowLightShader's passes clip that sum at 1 before the texture (SLS2003.pso:
 mad_sat), the one-pass programs do not; knowledge/lighting-passes.md, "The picture gate outdoors".
 
-Usage: sm3-clip.py <shaderpackageNNN.sdp> [--diff <name>.pso] [--write <out.sdp>]
+With --fade it does what [Probe] Lighting30SpecularFade does as well (src/engine/render/Lighting30SpecularLogic.h): in
+every program with specular - the one `mul rS.xyz, rN.w, rS`, rN the texld from the sampler named NormalMap - it puts
+`mul_pp rS.xyz, rS, cT.w` behind that multiply, cT the register of ToggleADTS by the program's table.
+
+Usage: sm3-clip.py <shaderpackageNNN.sdp> [--fade] [--diff <name>.pso] [--write <out.sdp>]
   no option   a line a program: clipped at which instruction, or why it is left
+  --fade      also the specular fade's multiply (the program grows by four tokens)
   --diff      that program's disassembly before and after (vkd3d-compiler), the changed lines only
   --write     the package with the clip applied, for looking at it with tools/re/sdp-shader.py - never for the game"""
-import struct, subprocess, sys, tempfile, os
+import difflib, struct, subprocess, sys, tempfile, os
 
 TEMP, CONST = 0, 2
 ADD, DCL, DEF = 2, 31, 81
@@ -33,6 +38,58 @@ def entries(data):
 
 def register(token):
     return ((token >> 28) & 7) | ((token >> 8) & 0x18), token & 0x7FF
+
+
+def table_register(tokens, wanted, register_set):
+    """The register of the constant named `wanted` in the register set (2 floats, 3 samplers), or None."""
+    i = 1
+    while i < len(tokens) and tokens[i] != 0x0000FFFF:
+        t = tokens[i]
+        if (t & 0xFFFF) == 0xFFFE:
+            words = (t >> 16) & 0x7FFF
+            if words >= 8 and i + 1 + words <= len(tokens) and tokens[i + 1] == 0x42415443:
+                table = struct.pack(f'<{words - 1}I', *tokens[i + 2:i + 1 + words])
+                count, info = struct.unpack_from('<II', table, 12)
+                for k in range(count):
+                    at = info + k * 20
+                    if at + 20 > len(table):
+                        return None
+                    name_at, rset, index = struct.unpack_from('<IHH', table, at)
+                    if rset == register_set and table[name_at:name_at + len(wanted) + 1] == wanted + b'\0':
+                        return index
+                return None
+            i += 1 + words
+        else:
+            i += 1 + ((t >> 24) & 0xF)
+    return None
+
+
+def gloss_multiply(tokens):
+    """(index behind the gloss multiply, the specular's temporary, ToggleADTS's register) or (None, why not)."""
+    normal, toggle = table_register(tokens, b'NormalMap', 3), table_register(tokens, b'ToggleADTS', 2)
+    if normal is None or toggle is None:
+        return None, 'no NormalMap or ToggleADTS in the table'
+    i, gloss, found, power = 1, None, None, False
+    while i < len(tokens) and tokens[i] != 0x0000FFFF:
+        t = tokens[i]
+        if (t & 0xFFFF) == 0xFFFE:
+            i += 1 + ((t >> 16) & 0x7FFF)
+            continue
+        op, length = t & 0xFFFF, (t >> 24) & 0xF
+        p = tokens[i + 1:i + 1 + length]
+        power = power or op == 32
+        if op == 66 and length == 3 and register(p[2]) == (10, normal) and register(p[0])[0] == TEMP:
+            gloss = register(p[0])[1]
+        elif op == 5 and length == 3 and gloss is not None and register(p[0])[0] == TEMP and ((p[0] >> 16) & 0xF) == 7 and not p[0] & SATURATE:
+            s = register(p[0])[1]
+            w = lambda q: register(q) == (TEMP, gloss) and ((q >> 16) & 0xFF) == 0xFF
+            other = lambda q: register(q) == (TEMP, s)
+            if s != gloss and ((w(p[1]) and other(p[2])) or (w(p[2]) and other(p[1]))):
+                if found is not None:
+                    return None, 'two gloss multiplies'
+                found = (i + 1 + length, s, toggle)
+        i += 1 + length
+    return (found, 'faded') if found and power else (None, 'no specular')
 
 
 def ambient_register(tokens):
@@ -103,11 +160,22 @@ def disassembly(code):
         os.unlink(f.name)
 
 
+def faded(tokens):
+    """The tokens with the fade's multiply behind the gloss multiply, and the text; the tokens as they were when none."""
+    found, text = gloss_multiply(tokens)
+    if found is None:
+        return tokens, text
+    after, s, toggle = found
+    added = [5 | (3 << 24), 0x80000000 | s | (7 << 16) | (1 << 21), 0x80000000 | s | (0xE4 << 16), 0x80000000 | (2 << 28) | toggle | (0xFF << 16)]
+    return tokens[:after] + added + tokens[after:], f'{text}: r{s}.xyz times c{toggle}.w after token {after}'
+
+
 def main():
     path = sys.argv[1]
     data = bytearray(open(path, 'rb').read())
     wanted = sys.argv[sys.argv.index('--diff') + 1] if '--diff' in sys.argv else None
-    clipped = left = 0
+    fade = '--fade' in sys.argv
+    clipped = left = with_fade = 0
     for name, at, length in entries(data):
         if not (name.upper().startswith('SM3') and name.lower().endswith('.pso')):
             continue
@@ -119,17 +187,27 @@ def main():
             clipped += 1
         else:
             left += 1
+        after = bytes(data[at:at + length])
+        fade_text = ''
+        if fade:
+            longer, fade_text = faded(list(struct.unpack_from(f'<{length // 4}I', after)))
+            if len(longer) > length // 4:
+                with_fade += 1
+            after = struct.pack(f'<{len(longer)}I', *longer)
+            fade_text = f'; fade: {fade_text}'
         if wanted is None:
-            print(f"{name:14s} {'clip ' if index is not None else 'leave'}  {text}")
+            print(f"{name:14s} {'clip ' if index is not None else 'leave'}  {text}{fade_text}")
         elif name == wanted:
-            old, new = disassembly(before), disassembly(bytes(data[at:at + length]))
-            changed = [(a, b) for a, b in zip(old, new) if a != b]
-            print(f'{name}: {text}; {len(old)} lines before, {len(new)} after, {len(changed)} changed')
-            for a, b in changed:
-                print(f'  - {a.strip()}\n  + {b.strip()}')
+            old, new = disassembly(before), disassembly(after)
+            print(f'{name}: {text}{fade_text}; {len(old)} lines before, {len(new)} after')
+            for line in difflib.unified_diff([a.strip() for a in old], [b.strip() for b in new], lineterm='', n=1):
+                if not line.startswith(('---', '+++')):
+                    print(f'  {line}')
     if wanted is None:
-        print(f'{clipped} programs clipped, {left} left')
+        print(f'{clipped} programs clipped, {left} left' + (f'; {with_fade} with the specular fade' if fade else ''))
     if '--write' in sys.argv:
+        if fade:
+            raise SystemExit('--write with --fade: the package keeps its lengths; not written')
         open(sys.argv[sys.argv.index('--write') + 1], 'wb').write(data)
 
 

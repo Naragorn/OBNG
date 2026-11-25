@@ -152,9 +152,34 @@ constexpr std::uint32_t RegisterInTable(const std::uint32_t* tokens, std::size_t
 	return kNone;
 }
 
-// The float register of the constant named AmbientColor by the program's constant table, or kNone - no table,
-// no such constant, or a stream that does not hold together.
-constexpr std::uint32_t AmbientRegister(const std::uint32_t* tokens, std::size_t count) {
+// The registers the float constant `name` takes in a constant table (the record's word at +8), or 0 - no such
+// constant, or a table that does not hold together.
+constexpr std::uint32_t RegistersInTable(const std::uint32_t* tokens, std::size_t table, std::uint32_t bytes, const char* name) {
+	if (bytes < 28) {
+		return 0;
+	}
+	const std::uint32_t constants = TableDword(tokens, table, 12);
+	const std::uint32_t records = TableDword(tokens, table, 16);
+	if (records > bytes || constants > (bytes - records) / 20) {
+		return 0;
+	}
+	for (std::uint32_t i = 0; i < constants; ++i) {
+		const std::uint32_t record = records + i * 20;
+		if (TableWord(tokens, table, record + 4) == kFloatSet && TableNameIs(tokens, table, bytes, TableDword(tokens, table, record), name)) {
+			return TableWord(tokens, table, record + 8);
+		}
+	}
+	return 0;
+}
+
+// A program's constant table: the index of its first token behind 'CTAB' and its bytes; bytes 0 - no table, or a
+// stream that does not hold together.
+struct TablePlace {
+	std::size_t at = 0;
+	std::uint32_t bytes = 0;
+};
+
+constexpr TablePlace TableOf(const std::uint32_t* tokens, std::size_t count) {
 	std::size_t i = 1;
 	while (i < count && tokens[i] != kEnd) {
 		const std::uint32_t token = tokens[i];
@@ -164,14 +189,28 @@ constexpr std::uint32_t AmbientRegister(const std::uint32_t* tokens, std::size_t
 		}
 		const std::uint32_t words = CommentWords(token);
 		if (i + 1 + words > count) {
-			return kNone;
+			return {};
 		}
 		if (words >= 1 && tokens[i + 1] == kConstantTable) {
-			return RegisterInTable(tokens, i + 2, (words - 1) * 4, "AmbientColor");
+			return {i + 2, (words - 1) * 4};
 		}
 		i += 1 + words;
 	}
-	return kNone;
+	return {};
+}
+
+// The float register of the constant named AmbientColor by the program's constant table, or kNone - no table,
+// no such constant, or a stream that does not hold together.
+constexpr std::uint32_t AmbientRegister(const std::uint32_t* tokens, std::size_t count) {
+	const TablePlace table = TableOf(tokens, count);
+	return RegisterInTable(tokens, table.at, table.bytes, "AmbientColor");
+}
+
+// The registers of the float constant `name` in the program's constant table, 0 for none. LightData takes two a
+// light, so half of its registers is the lights a lighting pixel program draws.
+constexpr std::uint32_t ConstantRegisters(const std::uint32_t* tokens, std::size_t count, const char* name) {
+	const TablePlace table = TableOf(tokens, count);
+	return RegistersInTable(tokens, table.at, table.bytes, name);
 }
 
 // Whether one of `sources` parameters is the register of that type and number.

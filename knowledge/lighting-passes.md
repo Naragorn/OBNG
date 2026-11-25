@@ -189,11 +189,14 @@ picture gate is `tools/hand-scripts/obng-lighting-road-still.txt` (below). `tool
 ## More of the two paths, read for the route (2026-11-24)
 
 - **The lights of one record.** The shader's setup caps a record's light count at 8 (0x00B2DCFC), and the pixel
-  programs cap it again by their own loop bound: in the package in use (004, ps_2_a builds) seven lights without
-  specular (SM3000.pso, `LightData` x14), eight with (SM3001.pso, x16), four in the SM3LL programs, which the
-  picker 0x00862AD0 takes when the light count is at most the value of 0x00B2DD00. The packages 009, 018 and 019
-  hold the same programs built for vs_3_0 / ps_3_0 with `LightData` x20 - ten lights. A geometry with more lights
-  than its program draws loses the last ones of its list; ShadowLightShader's chain draws them all.
+  programs cap it again by their own loop bound: in the package in use (004, ps_2_a builds) seven lights in
+  seventeen of the twenty lighting programs (`LightData` x14) and eight in three - SM3001 (plain with specular),
+  SM3002 (hair) and SM3010 (plain with the projected shadow), x16 (corrected 2026-11-25: "seven without specular,
+  eight with" held for SM3000 / SM3001 only) -, four in the SM3LL programs, which the picker 0x00862AD0 takes when
+  the light count is at most the value of 0x00B2DD00 (4, written by nothing). The packages 009, 018 and 019 hold
+  the same programs built for vs_3_0 / ps_3_0 with `LightData` x20 - ten lights. A geometry with more lights than
+  its program draws loses the last ones of its list; ShadowLightShader's chain draws them all ("More lights than
+  the one pass draws" below).
 - **The same specular flag.** Both properties get their flags from the same setup (0x007DA220; the one-pass
   property's 0x00864400 calls it and then drops the geometry's property of type 7) and the same texture setter
   (0x007D8160): bit 0, specular, is set when the normal map's format has an alpha channel (the gloss) or the
@@ -571,3 +574,184 @@ them, 1 089 shadow records, at most six lights on a record. This build still mov
 **The growth over a long flight is the game's with this mod list, not the probe's**: the two grow alike. The one
 pass holds 7 to 38 MB more commit at the same summary (every twentieth compared: a median of 18), from the start
 on. The address space reaches 3.3 of 4 GB in both.
+
+## More lights than the one pass draws: the chain takes the list (`[Probe] Lighting30MostLights`, built and measured 2026-11-25)
+
+`src/engine/render/Lighting30ListLogic.h` (its comment holds every address with its two sources),
+tests/Lighting30ListLogicTest.cpp, plugin/src/Lighting30List.{h,cpp}.
+
+**Read.**
+- Lighting30ShaderProperty (vtable 0x00A9576C) is a BSShaderPPLightingProperty (0x00A91384): of the base's slots it
+  replaces the destructor, the type, the clone, +0x30, the kind (+0x54: 10 where the base has 5), the setup (+0x58),
+  the pass list getter (+0x5C: 0x008637D0, the base's 0x007D85D0), +0x60 and the texture setter (+0x6C). It keeps
+  the base's list builders +0x98 = 0x00855240 and +0x9C = 0x0085AE20 - the chain's. So the chain's getter can build
+  a list for a moved geometry's property as it is.
+- ShadowLightShader takes such a property: its attach 0x0080B190 keeps a shader property of kind 5 .. 10, and every
+  kind test in the chain's code is that range; the chain's builder tests the run-time type only for the three
+  SpeedTree properties. The two shaders' makers (0x007CBDC0, 0x007FC7D0) build the same four vertex declarations,
+  instruction for instruction (compared with their addresses masked).
+- A pass list of one pass id is set up by the shader of its first record's geometry (0x007AC9A0 reads
+  [geometry+0xBC]: 0x007D1320 for the shader ids 1 .. 5, 0x007FD260 for 0x1B) and every record is drawn through its
+  own geometry's shader (0x007A9820) - so a geometry whose list the chain built has to carry ShadowLightShader.
+- The getters keep their lists in the base's fields: the key at +0x24 (0: build anew; a light added 0x007EE330 or
+  taken away 0x007EE3E0 writes that 0), the lists at +0x28 (passes), +0x38 (shadow maps), +0x48 (local map);
+  0x007E24C0 empties them.
+- The one-pass builder puts every light of the property that is no actor's shadow into its record behind the scene's
+  first light, with no cap; the setup caps at 8; the record's program at 7 or 8 (above, "The lights of one
+  record"). The picker 0x00862B40 chooses the program by the pass id and the specular flag: plain, skinned and with
+  vertex colours SM3000 (SM3001 with specular), hair 2 / 3, parallax 4 / 5, FaceGen 6 / 7, glow 8 / 9, each ten more
+  with the projected shadow. A property's lights are in the order of (distance to the geometry's bound less its
+  radius) / the light's radius (0x007ECC60), so on a large mesh the lights left out are not the weakest.
+- The shader package lives only while the renderer makes its shaders: 0x007BA0F0 loads it into 0x00B430B8, makes
+  the shaders of every kind and frees it (the pointer set to 0). A program's light count can be read only then -
+  the pixel program maker's calls that `[Probe] Lighting30Clip` takes.
+
+**The rule.** The one-pass property's getter slot (0x00A957C8) goes through the probe. For a marked property whose
+list is to be built anew (the key 0) it counts the lights as the builder will put them in, and a geometry under
+more lights than its record's program draws - or with a glow the bloom is to take ("With bloom" below) - has its
+lists emptied, is given ShadowLightShader (the definition's object, its reference count kept as the game's smart
+pointer keeps it) and gets the chain's list; when the count falls again it goes back. A list built by the one pass
+is looked at after the build: the record's pass id and specular flag name its program, the program's light count
+(its `LightData` registers / 2, read from its constant table as the loader makes it) goes into the mark's low four
+bits for the next decision, and a record with more lights than that has its list built by the chain after all.
+`[Probe] Lighting30MostLights` (shipped 8): a lower value is a limit of its own, 0 sends every moved geometry
+through the chain, 255 leaves the lights out as before.
+
+**The chain draws a moved geometry as the game does** (`Lighting30MostLights=0`, build 6425b5d2, runs
+obng-lighting-still/20261125-131236 the game, -131508 everything moved through the chain): 0.14 % of the pixels
+differ (two runs of the game: 0.18 %), the regions 0.0 to +2.3 % within the flames' range (the game against
+itself: -0.6 to +1.2 %); 518 501 lists built by the chain, 1 019 geometries handed over, none under another shader.
+At the camp (obng-lighting-road-still/20261125-132745 the game, -133010): the rock's top and side 0.0 %, the tent's
+roof -0.3 %, the far rock +0.8 % (two runs of the game: +1.7 % there); 4 666 lists, 456 geometries. No fault.
+
+**Measured with more lights** (tools/hand-scripts/obng-lighting-still-lights.txt: the still room with four lights of
+Oblivion.esm placed 450 - 900 units ahead, up to nine on one list; runs obng-lighting-still-lights/20261125-132011
+the game, -132244 the one pass without the rule (`Lighting30MostLights=255`), -132515 a first build that sent every
+list over seven lights to the chain (6425b5d2), -140124 the rule as shipped, each program's own count (91246342)):
+
+| region (left eye, fractions) | no rule | over seven: the chain | the rule as shipped | the still room, no extra lights |
+|---|---:|---:|---:|---:|
+| a floor tile under the far lights (0.51 - 0.57, 0.665 - 0.715) | +8.0 % | -3.0 % | +9.6 % | +3.6 % |
+| the tile left of it (0.40 - 0.46) | -10.1 % | -3.7 % | -9.8 % | -10.1 % |
+| the far room | +3.8 % | +3.3 % | +3.8 % | +2.9 % |
+
+- **What the rule finds**: the programs' counts as made, in every run: SM3001, SM3002 and SM3010 draw eight, the
+  other seventeen seven ("0:7 1:8 2:8 3:7 ... 10:8 ..."). In this room 8 lists with nine lights went to the chain
+  (8 geometries over, 8 back); no list had more lights than its program draws.
+- **The floor's difference is not a light left out.** The tile's list holds eight lights and is drawn by SM3001,
+  which draws eight; with every list over seven sent to the chain the tile is the game's (-3.0 %), drawn by the one
+  pass it is +9.6 % - the per-pixel light direction of "The picture gate" above, which grows with the lights low
+  over a large floor polygon (the same tile +3.6 % in the room without the extra lights, the tile left of it -10 %
+  in both). The ninth light that the setup's cap of eight left out without the rule shows nowhere in the regions
+  (no rule against the rule: 0.0 to 0.4 % but at the tile under the flames).
+- **The fight** (obng-profile-prison-fight-hold/20261125-135829, 91246342): eight lights on a record at most, 0 of
+  262 474 lists over their program's count - so the morning's "888 lists with eight lights" were all drawn by
+  eight-light programs, and no light was left out in the fight. Scene pass 3.2 ms (p90 3.8), 686 records a frame
+  (median), as without the rule. The first build's limit of seven for every program sent 774 lists and 25
+  geometries to the chain for nothing: 3.6 ms (-133235).
+
+## SkinShader's and ParallaxShader's geometry through the one pass (measured 2026-11-25)
+
+`Lighting30Kinds=3` (skin too) and `5` (parallax too), build 6425b5d2 and 91246342. A skinned body's property gets
+the flag 0x400 from the body parts' setup (0x0047AC20, as the heads' from 0x005551C0), so a moved body is drawn by
+the FaceGen programs SM3006 / SM3007 - the skin shader's rim term `(1 - N.V)^3 x 0.5` is in them as in SKIN2000.pso,
+clipped before the colour where the skin program clips after it. The parallax programs (SM3004 / SM3005) take the
+height offset of PAR2000.pso with the same constants (0.04, -0.02), the view per pixel.
+- **The fight, kinds 7** (all three, -140354): 829 geometries moved (40 more), scene pass 3.3 ms (p90 3.9) against
+  3.2 (3.8) with kinds 1, 650 records a frame against 686: no gain a run can show.
+- **The picture**: in the still room the change that follows the geometry (`tools/re/geometry-changes.py`: the
+  median over the marks of each pixel's ratio, less its own blur) covers 4.5 % of the lit pixels with kinds 3 and
+  3.8 % with kinds 5, against 2.9 % between two runs of kinds 1 - the guard's body and the arches; at the camp the
+  people's skin within the torch's noise.
+- **Left at kinds 1**: no measured gain for a changed look.
+
+## With bloom (read and measured 2026-11-25)
+
+Nadi's Windows game renders with bloom (its RendererInfo.txt: "Bloom lighting: yes", Oblivion.ini `[BlurShader]
+bUseBlurShader=1`); the Linux game does not, so every run above is without it. `GAME_INI="BlurShader:bUseBlurShader=1"`
+(tools/measure-fight.sh) turns it on for a run.
+
+**Read.** With bloom (the byte 0x00B43073) the bloom's first pass takes the frame's alpha as self-illumination
+(ISBLUR2000.pso: the picture x ((luminance x y)^2 + alpha x z + alphaAdd)). Who writes that alpha:
+- the chain's lighting passes write the colour alone (0x007D1320: colour write mask 7); its builder ends an ordinary
+  geometry's list with BSSM_SELFILLUMALPHABLOCK (0x0A / 0x0B, 0x00855170; mask 8, SLS1038.pso writes 0) - not for
+  land, a tree billboard, parallax, hair, 0x1000 or a SpeedTree branch - and a glowing one's with
+  BSSM_SELFILLUMALPHA (0x19E / 0x19F, 0x00854FF0) when its material's emissive colour (+0x40) is not the black at
+  0x00B3FA90 and the ambient pass is on; its specular passes write colour and alpha (mask 0xF; SLS2037.pso: the
+  alpha is the specular colour's r + g + b);
+- the sky writes its own (SKY.pso the vertex alpha, SKYSI.pso 0.5, SKYSICLOUDS.pso the clouds');
+- the one-pass lighting passes write the colour alone (0x007FD260: mask 7 for 0x12B .. 0x15F) and its builder has
+  none of those alpha passes - a moved geometry keeps the alpha drawn under it, its glow never reaches the bloom, and
+  neither do its highlights.
+
+**The glow rule** (in `[Probe] Lighting30MostLights`, above): with bloom on, a moved geometry whose material glows
+(the chain's own test: the ambient pass on, a material, its emissive colour not black) has its list built by the
+chain. In the still room 15 geometries, at the camp 6.
+
+**Measured** (build 91246342 and 6425b5d2, bloom on for both sides):
+- **The still room**: the game against the one pass as without bloom - the far room +3.2 % (+2.9 % without), the
+  dark wall -3.6 % (-3.7 %), the near floor -8.7 % (-8.6 %); bloom itself lifts both alike (the far room +25.4 % in
+  the game, +25.9 % with the one pass). With and without the glow rule the map of the difference to the game is the
+  same (runs obng-lighting-still/20261125-125310 the game, -125541 without the rule, -134542 with it).
+- **The camp**, two pairs: the stable regions agree - the rock's top and side 0.0 to +0.1 %, the tent's roof +0.5 and
+  +1.0 %, the people -0.9 to +0.7 %. The far rock (+4.5 %, then -6.7 %) and the ground near the bush (+6.9 %, then
+  +0.2 %) are no gate under bloom: two runs of the game differ there by +9.2 % and +7.1 % (obng-lighting-road-still/
+  20261125-130117 and -140648 the game, -130342 and -140912 the one pass).
+- So the missing alpha passes show in neither scene: the one pass under bloom differs from the game as it does
+  without.
+
+## Specular at a distance: `[Probe] Lighting30SpecularFade` (built 2026-11-25)
+
+`src/engine/render/Lighting30SpecularLogic.h` (the addresses with their sources), tests/Lighting30SpecularLogicTest.cpp,
+plugin/src/Lighting30Specular.{h,cpp}.
+
+**Read.** The chain fades a geometry's specular out with distance: its getter 0x007D85D0 computes, for a property
+with the specular flag while the value at 0x00B43090 is above 0, the distance from the camera (0x00B46658 ..) to the
+geometry's world bound less its radius, and from it a fade at +0x9C - 1 nearer than the value at 0x00B4308C, linear
+to 0 at 0x00B43090 (Oblivion.ini `fSpecularLOD1` / `fSpecularLOD2`; 500 and 800 in Nadi's Windows INI and in every
+measuring run of tools/measure-fight.sh), 0 beyond; its light setup 0x007ED6C0 multiplies the light's colour by it in
+every specular pass, and its builder leaves those passes out at 0. The one-pass getter computes the environment
+map's fade only (+0xA4), and the one-pass setup 0x007FF4A0 picks the specular program by the pass mask and the
+flag alone and writes that choice (1 or 0) into ToggleADTS.w (0x00B46FD4), which no lighting program reads. So a
+moved geometry kept its highlights at any distance.
+
+**Measured: it is the far room's difference.** The game's own picture without the fade (`fSpecularLOD1` /
+`fSpecularLOD2` at 100 000 / 150 000 for the run, obng-lighting-still-lights/20261125-143351, against -132011 with
+500 / 800): the far room +2.8 % (from +2.5 to +2.9), everything nearer within the flames' noise. The one pass
+against that game: the far room +0.9 % - against the game as played +3.8 %. So the far room's "+2.9 %" of every
+still room run since 2026-11-24 was the specular the game fades out and the one pass kept (the test of 2026-11-24
+with bDoSpecularPass=0 could not show it: with the specular pass off the chain's fog changes too, "The picture gate"
+above). The floor's band under the extra lights is not specular - it is the same with and without the fade.
+
+**The fade.** Every one-pass program with specular - the ten odd ones of SM3000 .. SM3019 and of the four-light
+SM3LL000 .. SM3LL019, the only ones with a `pow` - ends its specular with one multiply by the normal map's alpha,
+`mul_pp rS.xyz, rN.w, rS` (rN the texld from the sampler named NormalMap). Of the programs without specular only
+SM3016 / SM3LL016 (FaceGen with the projected shadow) multiply by that alpha, saturated and not for specular: the
+rule takes an unsaturated multiply in a program with a pow (`tools/re/sm3-clip.py <package> --fade [--diff <name>]`
+shows each program's changed lines; package 004: twenty programs). The probe puts `mul_pp rS.xyz, rS, cT.w` behind
+it as the loader makes the program - cT
+the register of ToggleADTS by the program's own table - through the pixel program maker's package lookup (its call
+at 0x00801D2D, taken only while Lighting30Clip.cpp has one of the loader's three maker calls): the lookup hands the
+maker a copy of the package entry with the four tokens more; the maker passes the bytes behind the entry to
+CreatePixelShader and reads no length. The shader's setup slot (0x00A930F0) then writes the chain's fade, by the
+same distance, into ToggleADTS.w for a marked property's specular program. Everything else - the game's own hair and
+heads - draws with the toggle at 1, as before.
+
+**The fight with bloom**, as Nadi's game renders it (`GAME_INI="BlurShader:bUseBlurShader=1"`, build 91246342, runs
+obng-profile-prison-fight-hold/20261125-142009 the game, -142304 the one pass): the game 7.0 ms of scene pass (p90
+8.0) and 9.0 ms of own work, 2 055 records a frame; the one pass 3.4 ms (4.1) and 5.4 ms, 643 records - the glow rule
+handed 41 geometries and 46 203 lists to the chain, about 0.2 ms against the fight without bloom (3.2 ms).
+
+**Measured with the fade** (build f47fa900; package 004: the twenty specular programs made with the multiply, the
+twenty others as they were; the fade from 500 to 800 units read back from the game):
+
+| | without the fade | with it | the game without its fade |
+|---|---:|---:|---:|
+| the still room's far room, against the game (obng-lighting-still/20261125-131236 against -141137, -144713) | +2.9 % | **+0.2 %** | |
+| the lights room's far room (obng-lighting-still-lights/20261125-132011 against -140124, -144439, -143351) | +3.8 % | **+0.7 %** | +2.8 % |
+| the camp: the rock's top and side, the tent's roof (obng-lighting-road-still/20261125-132745 against -100421, -144945) | 0.0, 0.0, +0.7 % | 0.0, 0.0, +0.7 % | |
+| the fight's scene pass (obng-profile-prison-fight-hold/20261125-135829, -145211) | 3.2 ms (p90 3.8) | 3.2 ms (p90 3.8) | |
+
+Everything nearer than 500 units is as before (the still room's other regions within 0.7 %); in the fight 3.3 of
+4.6 million setups of a moved geometry's specular program a run, 2.4 million of them faded and 1.7 million to 0.
+No fault in the four runs.

@@ -1194,3 +1194,28 @@ The check: 4.5 million searches, 0 mismatches. The route: every "none" answered 
 296 924 in a window). OBNG.dll 79593c0a, `PoolScan=1` in both games since 2026-11-24. Not measured: the gain on
 Windows (expected at the 0.35 - 0.72 ms above) and the other threads' share. Not touched: that these four pools are
 too small for the mod list at all - every such allocation still goes to the heap's size classes, the slower way.
+
+## 2026-11-25: the cell crossing as played, with OBVR's late pose wait (measured)
+
+Two rides (`tools/hand-scripts/obng-profile-ride-anvil-late.txt`, save OBVRHarnessMOO; `tools/measure-fight.sh` with
+the grid move's callees timed from `obng-measure-crossing-move.ini`; runs obng-profile-ride-anvil-late/20261125-143623
+and -144020): Linux, the stand-in Dream Air at 72 Hz (13.9 ms), no SteamVR, the Windows mod list and the Windows
+OBNG.ini's routes (the one-pass lighting on, OBNG.dll dbf2b739), OBVR.dll 755d2172 with `[Render] LatePoseWait=1`.
+
+- **The move**: 3.7 - 5.3 ms at a straight crossing (five new cells), 6.0 - 8.5 ms at a diagonal one (nine). Of a
+  straight crossing's: the attach 0x00444340 2.0 - 3.1 ms (the cells set 0x004441A0, 25 calls, 0.6 - 0.9; the new
+  cells' references 0x004D5BD0, 5 calls, 0.6 - 1.0; the Ni updates 0.5 - 0.8; the far grid's update 0x00483D60
+  0.87 - 0.97), the map's scan 0x007B3A40 (115 calls) 0.9 - 1.2, the near grid's shift 0.66 - 0.82, the far grid's
+  0.55 - 0.98, the purge's 0x004A25F0 0.6 in every second crossing.
+- **The frame** (OBVR's capture: the present, the pose wait): a normal frame has 1.1 - 1.2 ms of work before the
+  wait, the wait ends 2.0 - 2.1 ms before the next present, and the render after it (the scene pass 1.5 ms median,
+  p90 1.9 - 2.0) fills those 2 ms. A crossing's move runs before the wait - 5.6 - 10.4 ms there - and the wait
+  absorbs it: **at 72 Hz the move costs no beat any more.**
+- **What misses a beat now is the render after the wait**: 3.4 - 4.0 % of the ride's frames are 14.5 - 15 ms (the
+  scene pass 2.3 - 2.4 ms in them against 1.5), at the crossings - one to seven a crossing, the new cells' first
+  draws - and as often away from them; 0.2 - 0.3 % are 18 - 29 ms (seven to 24 ms of update before the wait in some:
+  not timed in these runs). 95.9 - 96.5 % of the frames are in time.
+- **Derived for 90 Hz** (11.1 ms; not measured): the room before the wait shrinks to about 9 ms, so the straight
+  crossings' 5.6 - 8.1 ms still fit and the diagonal ones' 10.4 do not; the render after the wait keeps its 2 ms.
+  Whether the stand-in's 2 ms after the wait is SteamVR's on Nadi's machine is not known (a run without SteamVR
+  tests nothing of SteamVR's own timing).

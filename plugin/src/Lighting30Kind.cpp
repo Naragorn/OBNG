@@ -7,6 +7,8 @@
 #include <cstring>
 
 #include "Lighting30Clip.h"
+#include "Lighting30List.h"
+#include "Lighting30Specular.h"
 #include "Memory.h"
 #include "engine/render/Lighting30KindLogic.h"
 #include "engine/render/Lighting30ShadowLogic.h"
@@ -130,10 +132,13 @@ void __fastcall LightingRecordAdded(UInt32 list, void*, UInt32* slot) {
 	}
 	shadow::CountFlags(g_flagCounts, At<UInt32>(property, shadow::kFlagsOfProperty));
 	const UInt32 record = *slot;
+	const UInt16 lighting = At<UInt16>(record, shadow::kRecordPass);
+	const UInt8 lights = At<UInt8>(record, shadow::kRecordLights);
+	NoteOnePassRecord(property, lighting, lights);
 	const bool drawn = shadow::ShadowPassesOn(At<UInt32>(shadow::kRenderPath, 0), At<UInt32>(shadow::kPassMask, 0));
-	const UInt16 pass = shadow::Receives(g_shadows, mark, drawn, At<UInt16>(record, shadow::kRecordPass));
+	const UInt16 pass = shadow::Receives(g_shadows, mark, drawn, lighting);
 	const UInt32 added = pass != 0 ? AddShadowRecords(property, At<UInt32>(record, shadow::kRecordGeometry), pass) : 0;
-	shadow::Count(g_shadowCounts, pass, added, At<UInt8>(record, shadow::kRecordLights));
+	shadow::Count(g_shadowCounts, pass, added, lights, Lighting30LightsDrawn(property, lighting));
 }
 
 // One call replaced by another: the bytes there must be the game's own call of `from`.
@@ -165,8 +170,12 @@ void InstallLighting30Kind(const char* iniPath, LogFn log) {
 	g_log = log;
 	g_on = true;
 	InstallLighting30Clip(iniPath, log, l30::On(g_bits));
+	InstallLighting30List(iniPath, log, l30::On(g_bits));
+	InstallLighting30Specular(iniPath, log, l30::On(g_bits));
+	// The record's call is taken for the list rule and the counts as well; the key decides the shadow records alone.
 	const bool wanted = shadow::On(static_cast<int>(GetPrivateProfileIntA("Probe", "Lighting30Shadows", shadow::Shipped(), iniPath)));
-	g_shadows = wanted && RedirectCall(shadow::kLightingRecordAdd, shadow::kAddHead, reinterpret_cast<std::uintptr_t>(&LightingRecordAdded));
+	const bool taken = RedirectCall(shadow::kLightingRecordAdd, shadow::kAddHead, reinterpret_cast<std::uintptr_t>(&LightingRecordAdded));
+	g_shadows = wanted && taken;
 	log("Probe: Lighting30 kinds - on at %08X: geometry the game gives %s%s%s is prepared with its one-pass Lighting30Shader instead "
 	    "(when the card's flag at %08X is set) and marked. Actor shadows on it: %s. The picture changes: a measuring run only",
 	    l30::kCallSite, (g_bits & l30::kMoveShadowLight) != 0 ? "ShadowLightShader " : "", (g_bits & l30::kMoveSkin) != 0 ? "SkinShader " : "",
@@ -204,12 +213,14 @@ void LogLighting30KindSummary() {
 	      g_counts.asked, g_counts.shadowLight, g_counts.skin, g_counts.parallax, g_counts.lighting30, g_counts.other, g_counts.moved, g_marked,
 	      g_counts.land, g_counts.treeBillboards, Has30() ? "set" : "clear - the game makes no Lighting30Shader, nothing is moved");
 	g_log("Probe: Lighting30 shadows (%s) - since the start %llu lists built for marked geometry, %llu of them with a lighting record that takes "
-	      "actor shadows, %llu with at least one shadow light, %llu shadow records added; %llu lists with more lights than the shader draws "
-	      "(%u), the most lights on one record %u",
+	      "actor shadows, %llu with at least one shadow light, %llu shadow records added; %llu one-pass lists built with more lights than "
+	      "their program draws (handed to the chain by the list rule, left out without it), the most lights on one record %u",
 	      g_shadows ? "on" : "off", g_shadowCounts.lists, g_shadowCounts.eligible, g_shadowCounts.withShadow, g_shadowCounts.records,
-	      g_shadowCounts.leftOut, shadow::kLightsDrawn, g_shadowCounts.mostLights);
+	      g_shadowCounts.leftOut, g_shadowCounts.mostLights);
 	LogFlagCounts();
+	LogLighting30ListSummary();
 	LogLighting30ClipSummary();
+	LogLighting30SpecularSummary();
 }
 
 }  // namespace obng::plugin

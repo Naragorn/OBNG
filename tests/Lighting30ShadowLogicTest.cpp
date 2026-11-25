@@ -44,6 +44,13 @@ int main() {
 
 	Section("Whose list gets shadow records");
 	Check(IsMark(kMark) && !IsMark(0) && !IsMark(0x3F800000), "the mark is the probe's word, not a tint's 0 or 1.0");
+	Check(IsMark(MarkWith(7)) && IsMark(MarkWith(8)) && IsMark(MarkWith(15)), "with the lights its program draws written into it, it is still the mark");
+	Check(!IsMark(kMark + 0x10) && !IsMark(kMark - 1), "a word beside the mark's sixteen is none");
+	Check(LightsKnown(kMark) == 0, "a fresh mark: no program seen yet");
+	Check(LightsKnown(MarkWith(7)) == 7 && LightsKnown(MarkWith(8)) == 8, "the lights seen come back");
+	Check(LightsKnown(MarkWith(40)) == 15, "more than the bits hold: the most they hold");
+	Check(LightsKnown(0) == 0 && LightsKnown(0x3F800007) == 0, "no mark: nothing known, whatever the low bits");
+	Check(MarkWith(0) == kMark, "nothing seen is the fresh mark");
 	Check(Receives(true, kMark, true, 0x135) == 0x14F, "on, marked, shadows drawn, a lighting record: the pass");
 	Check(Receives(false, kMark, true, 0x135) == 0, "off in OBNG.ini");
 	Check(Receives(true, 0, true, 0x135) == 0, "the game's own Lighting30 geometry (no mark) stays as the game has it");
@@ -52,17 +59,19 @@ int main() {
 
 	Section("The counts");
 	Counts counts;
-	Count(counts, 0x14F, 2, 4);
-	Count(counts, 0x150, 0, 9);
-	Count(counts, 0, 0, 7);
-	Check(counts.lists == 3, "every lighting record of a marked property");
-	Check(counts.eligible == 2, "those with a shadow pass");
+	Count(counts, 0x14F, 2, 4, 7);
+	Count(counts, 0x150, 0, 9, 8);
+	Count(counts, 0, 0, 7, 7);
+	Count(counts, 0x14E, 0, 8, 8);
+	Check(counts.lists == 4, "every lighting record of a marked property");
+	Check(counts.eligible == 3, "those with a shadow pass");
 	Check(counts.withShadow == 1 && counts.records == 2, "lists that got records, and how many");
-	Check(counts.leftOut == 1 && counts.mostLights == 9, "a record with more lights than the shader draws, and the most seen");
+	Check(counts.leftOut == 1 && counts.mostLights == 9, "one record with more lights than its program draws (nine for eight), and the most seen");
 
-	Section("Lights the shader does not draw");
-	Check(!LightsLeftOut(1) && !LightsLeftOut(7), "the scene's light and six more are drawn by every program");
-	Check(LightsLeftOut(8) && LightsLeftOut(20), "from the eighth on a light may be left out");
+	Section("Lights the program does not draw");
+	Check(!LightsLeftOut(1, 7) && !LightsLeftOut(7, 7), "the scene's light and six more are drawn by every program");
+	Check(LightsLeftOut(8, 7) && LightsLeftOut(20, 7), "the eighth is left out by a program of seven");
+	Check(!LightsLeftOut(8, 8) && LightsLeftOut(9, 8), "a program of eight draws the eighth, not the ninth");
 	Section("The flags seen on moved geometry");
 	FlagCounts flags;
 	CountFlags(flags, 0);

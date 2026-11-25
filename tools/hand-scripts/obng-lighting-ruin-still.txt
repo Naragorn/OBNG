@@ -1,0 +1,77 @@
+# The picture gate of a lighting change in an Ayleid ruin, run against run: the tutorial's save (OBNGPrisonTutorial),
+# then `coc Vilverin` - the first hall of the ruin at its door, with its blue glow - the AI stopped before the load
+# (console-menu tai), the game's time stopped, the menus closed, both eyes dumped at six marks looking ahead (d01 ..
+# d06) and six turned round (e01 .. e06). Made for the one-pass lighting's glow rule (knowledge/lighting-passes.md,
+# "With bloom"): with Oblivion.ini's bloom on (GAME_INI="BlurShader:bUseBlurShader=1"), a geometry whose material
+# glows has its pass list built by the game's chain, which writes the glow into the frame's alpha for the bloom.
+# Read two runs with tools/re/run-pictures.py <run A> <run B> --marks d0 (or e0) [--region ...]; check with
+# tools/re/run-menus.py <run> --from d01 --to e06 that no menu was open. With the capture, so exclusive by itself:
+#   SCENARIO=tools/hand-scripts/obng-lighting-ruin-still.txt SAVE=OBNGPrisonTutorial TIMEOUT=300 GAME_INI="BlurShader:bUseBlurShader=1" tools/measure-fight.sh <name> [keys]
+ini Render SinglePassStereo=1
+ini SelfCheck ShowPanel=0
+ini Render GameResolutionWidth=4036
+ini Render GameResolutionHeight=3376
+expect Single-pass stereo: OBNG took the eyes ok (0)
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Debug EyeDump=1
+ini Debug EyeDumpFrames=1
+ini Performance Enabled=1
+ini Performance StartAfterSeconds=22
+ini Performance CaptureSeconds=40
+ini Performance MaxRecords=262144
+console-menu tai
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at ready coc Vilverin
+console-at settle CloseAllMenus
+console-at settle set timescale to 0
+console-at d01 CloseAllMenus
+console-at d02 CloseAllMenus
+console-at d03 CloseAllMenus
+console-at d04 CloseAllMenus
+console-at d05 CloseAllMenus
+console-at d06 CloseAllMenus
+console-at e01 CloseAllMenus
+console-at e02 CloseAllMenus
+console-at e03 CloseAllMenus
+console-at e04 CloseAllMenus
+console-at e05 CloseAllMenus
+console-at e06 CloseAllMenus
+expect HandScript: finished
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 16
+mark settle
+head yaw 0
+wait 6
+mark d01
+wait 2
+mark d02
+wait 2
+mark d03
+wait 2
+mark d04
+wait 2
+mark d05
+wait 2
+mark d06
+wait 1
+head yaw 180
+wait 3
+mark e01
+wait 2
+mark e02
+wait 2
+mark e03
+wait 2
+mark e04
+wait 2
+mark e05
+wait 2
+mark e06
+wait 2
+mark done
+wait 2
+mark end

@@ -1,0 +1,72 @@
+# The picture gate of the one-pass lighting under many lights, run against run: obng-lighting-still.txt's room
+# (save OBNGPrisonTutorial, the AI stopped before the load, the game's time stopped, the head still, both eyes dumped
+# at twelve marks) with four more lights put into it by the console before the pictures - four static lights of
+# Oblivion.esm, radius 500 each, 450 to 900 units ahead of the player, towards the torch-lit room: CAMDaylightPinkAmb500
+# (000A59C6, orange), SewerDaylight500 (00083077, pale blue), fort500 (0003A9FF, pale green), BrumaWindowLightWhite500
+# (000052F1, white). The room's geometry then stands under up to eleven lights where the one-pass programs draw
+# seven (OBNG.log, "Probe: Lighting30 lists": the most lights on one list). Three runs make the gate:
+#   the game                                   Probe.Lighting30Kinds=0
+#   the one pass as it was (lights left out)   Probe.Lighting30Kinds=1 Probe.Lighting30MostLights=255
+#   the one pass with the rule                 Probe.Lighting30Kinds=1
+# Read them with tools/re/run-pictures.py <run A> <run B> --region ... ; the regions that hold still in this room
+# (fractions of the left eye's picture): litfloor=0.38,0.62,0.55,0.72 litarch=0.31,0.30,0.37,0.55
+# farroom=0.43,0.42,0.50,0.54 darkwall=0.72,0.20,0.95,0.60 nearfloor=0.30,0.85,0.70,0.98 pillar=0.555,0.50,0.585,0.62.
+# With the capture (the scene pass), so exclusive by itself. Run with the Windows mod list and the routes as played:
+#   SCENARIO=tools/hand-scripts/obng-lighting-still-lights.txt SAVE=OBNGPrisonTutorial TIMEOUT=300 tools/measure-fight.sh <name> [keys]
+ini Render SinglePassStereo=1
+ini SelfCheck ShowPanel=0
+ini Render GameResolutionWidth=4036
+ini Render GameResolutionHeight=3376
+expect Single-pass stereo: OBNG took the eyes ok (0)
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Debug EyeDump=1
+ini Debug EyeDumpFrames=1
+ini Performance Enabled=1
+ini Performance StartAfterSeconds=22
+ini Performance CaptureSeconds=40
+ini Performance MaxRecords=262144
+console-menu tai
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at ready set timescale to 0
+console-at ready player.placeatme 000A59C6 1 450 0
+console-at ready player.placeatme 00083077 1 600 0
+console-at ready player.placeatme 0003A9FF 1 750 0
+console-at ready player.placeatme 000052F1 1 900 0
+console-at settle CloseAllMenus
+expect HandScript: finished
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 8
+mark settle
+head yaw 0
+wait 6
+mark d01
+wait 2
+mark d02
+wait 2
+mark d03
+wait 2
+mark d04
+wait 2
+mark d05
+wait 2
+mark d06
+wait 2
+mark d07
+wait 2
+mark d08
+wait 2
+mark d09
+wait 2
+mark d10
+wait 2
+mark d11
+wait 2
+mark d12
+wait 2
+mark done
+wait 2
+mark end

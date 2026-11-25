@@ -48,7 +48,7 @@ for run in runs:
         frames.append([(a - marks['ride']) / 1e7, (b - a) / 1e4, (s - a) / 1e4, (e - a) / 1e4, (b - e) / 1e4, move])
     normal = [f for f in frames if f[1] < opts['--over']]
     wait_end, after = st.median(f[3] for f in normal), st.median(f[4] for f in normal)
-    room, hold = wait_end - opts['--margin'], st.median(holds)
+    room, hold = wait_end - opts['--margin'], st.median(holds) if holds else 0.0  # OBVR.dll from 2026-11-25 on writes no submit_hold
     count = dict.fromkeys(tally, 0)
     for k in range(10):
         at = 6.35 + 11.79 * k
