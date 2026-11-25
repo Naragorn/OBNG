@@ -2677,6 +2677,17 @@ lights), a pass per further pair of lights, a texture pass, a specular pass per 
   light's direction at every pixel, the chain at every vertex); outdoors no gain and no loss. Open: Windows and
   Nadi's look, a long session, SkinShader's and ParallaxShader's geometry, an instanced program for outdoors.
   So this rebuild is medium, not huge.
+  What it leaves in the fight's pass (run -224725, 2.9 ms): Oblivion.exe 1.15 ms, D3D9 0.74, OBNG.dll 0.50,
+  OBVR.dll 0.13 - every module by the same factor as the draws, so the next step there is again the draws (one
+  for both eyes), not a function.
+  Set aside around it, none built: an instanced vertex program for the one-pass shader, so that outdoors the
+  instancing's gain comes back on top (medium: the game's pixel programs can stay if the vertex program hands
+  them world-space positions and the lights are set in world space for a group with the same lights; the Gold
+  Road's pass is 2.2 - 3.2 ms either way today); the shader package's ps_3_0 builds of the same programs (ten
+  lights where the ps_2_a builds draw seven or eight; the fight had seven at most); SkinShader's and
+  ParallaxShader's geometry (about 30 records a frame in the fight); a one-pass program of OBNG's own that makes
+  the light's direction per vertex as the chain does - only if the floor's look beside a torch is wanted back
+  (large: a direction per light through the interpolators).
 - **One draw for both eyes** (the second eye made in the backend, not by a second draw; needs the vertex programs
   or DXVK itself changed): about a quarter of what is left (derived: DXVK's half, the eye switch, OBVR's hooks
   and the view re-apply for the second eye are about 1.9 of 7 ms).
