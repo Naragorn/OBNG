@@ -92,8 +92,9 @@ the shadow maps; run obng-profile-prison-fight-hold/20261124-130042).
 `src/engine/render/Lighting30KindLogic.h`, tests/Lighting30KindLogicTest.cpp, plugin/src/Lighting30Kind.{h,cpp}. The
 chooser's call at 0x007B8091 goes through the probe, which turns the game's answer 1 (bit 1 of the key), 0x0E (bit
 2) or 0x0F (bit 4) into 0x1A when the card's flag is set, and counts what it moved. Every geometry prepared after
-the plugin's start is concerned - all of them. It is a measuring instrument: moved geometry receives no actor
-shadow (above), so the picture changes.
+the plugin's start is concerned - all of them but the terrain's blocks, which the probe leaves to the game since
+2026-11-25 (build 9d91c7bf; "The picture gate outdoors" below). It is a measuring instrument: the picture
+changes. (As first built, moved geometry received no actor shadow; the shadow records came the same day, below.)
 
 ## Measured: the probe in the tutorial's fight and in the tutorial's first room (2026-11-24)
 
@@ -136,6 +137,12 @@ look in the headset.
 
 ## Measured outdoors: the Gold Road (2026-11-24)
 
+**Read this section with two corrections of 2026-11-25**: these runs moved the terrain too, which the one pass
+draws wrong (one texture, no LAND pass), and their pictures were taken behind an open menu - so "no gain and no
+loss" is a statement about the frame's cost with a wrongly drawn ground, and nothing in this section says what
+the one pass looks like outdoors. The outdoor numbers and pictures that hold are in "The picture gate outdoors"
+below.
+
 `tools/hand-scripts/obng-profile-gold-road-single-dreamair.txt` (save OBVRHarnessMOO, three spots, at each the head
 through eight directions and a walk east), the deployed OBNG.dll 852878c0, the routes as played, one run a side:
 obng-profile-gold-road-single-dreamair/20261124-222251 (the game) and -221838 (`[Probe] Lighting30Kinds=1`, 2 098 of
@@ -156,11 +163,19 @@ against 4.3 ms. Draw instancing groups nothing with the probe (0 groups against 
 SLS2003's programs only, and the moved geometry draws with SM3's - one record a geometry does about what the
 instancing did. An instanced SM3 vertex program would be the next step there (not built). No fault in the run.
 
-The outdoor picture, looked at afterwards (obng-profile-gold-road-eyedump/20261124-230907 the game, -230445 the
-probe; the eye dumps of both at four marks in artifacts/evidence/lighting30-road.jpg): rocks, the castle, tents and
-trees are lit from the same side and look alike in both. No pixel comparison there - after a `cow` two runs' cameras
-differ, the weather and the people on the road too (one run has rain at the second spot, the other a group of
-walkers at the third). The sepia tone is the save's look with this mod list, in both runs.
+**Menus in these two runs** (OBVR.log's `Hands: menu` lines against the marks, read 2026-11-25): after every `cow`
+Nadi's mod list opens a Message menu and, once that is closed, a Book menu; the scenario's CloseAllMenus at each
+mark closes them. The first spot's sweep had a menu open for about five of its 23 seconds in both runs, and the
+probe's run a Dialog and a Generic menu over most of the first spot's walk - that phase is not a comparison. The
+second spot is free of menus in both runs and the third nearly (two seconds in the game's run): the statement
+above rests on those.
+
+The outdoor pictures first taken (obng-profile-gold-road-eyedump/20261124-230907 and -230445,
+artifacts/evidence/lighting30-road.jpg) are no evidence: that scenario closes no menu, so the Message menu stayed
+open, the world was paused and OBVR's menu shade (Render.MenuShade, colour FFE3B2) lay over it - the sepia tone
+of those pictures, which this file first called the save's look (corrected by Nadi, 2026-11-25). The outdoor
+picture gate is `tools/hand-scripts/obng-lighting-road-still.txt` (below). `tools/re/run-menus.py <run> [--from
+<mark> --to <mark>]` lists a run's open menus against its marks and fails when one lies between the two marks.
 
 ## More of the two paths, read for the route (2026-11-24)
 
@@ -267,3 +282,145 @@ more than without them (-214421), against the game's 6.2 ms, 8.2 ms and 2 291 dr
 200 856 lists built (1 310 lists a second in the hold: the torches' flicker clears the lists' keys, as it does for
 the chain); no list had more lights than its program draws (the most on one record 7). No fault in the seven
 runs of this build.
+
+**The fight again with the deployed build 9d91c7bf** (2026-11-25, one run a side, OBVR.dll b7645e28, the DLL of
+OblivionWalkers parked): the game 6.1 ms (p90 6.8) of scene pass and 8.0 ms of own work (-093610), the one pass
+3.2 ms (3.7) and 5.1 ms (-093312; 783 geometries moved, no land block in the dungeon). The day before it was 2.9
+and 4.7 ms with another OBVR.dll; one run does not say whether the 0.3 ms are that. In 216 568 lists built for
+moved geometry 12 had eight lights on a record, one more than the program without specular draws - the first
+time a light is left out in a measured run. The flags counted on moved geometry there: 0x1 in 166 089 lists, 0x2
+in 118 509, 0x80 in 18 213, 0x100 in 21 943, 0x200 in 6 782, 0x20000 in 16 507, 0x200000 in 1 482 - none of the
+three bits only the chain's builder reads. (A first try of the game's run, -092604, ended in the runner's timeout
+"no 'OBVR ready' line within 240.0 s": the game had loaded the save and drawn 5 739 scene passes, but the run's
+folder has no OBVR.log - handed to the OBVR session.)
+
+## The picture gate outdoors: the Gold Road's camp from a fixed save (measured 2026-11-25)
+
+`tools/hand-scripts/obng-lighting-road-still.txt` from the save OBVRHarnessRoadStill
+(`tools/hand-scripts/obng-make-road-still-save.txt` writes it): the camp in the cell -21 -1, the AI stopped before
+the load, noon, the weather forced clear (`fw 38eee`), the game's time stopped, the menus closed, six pictures
+looking east (the marks d01 .. d06) and six with the head turned a quarter, to the camp (e01 .. e06).
+`tools/re/run-menus.py <run> --from d01 --to e06` says whether a menu was open (none in the runs below);
+`tools/re/run-pictures.py A B --marks e0 --region ...` compares one view. Runs obng-lighting-road-still/20261125-,
+Linux, the stand-in headset, the routes as played, the Windows mod list.
+
+**Why a save.** The camp is filled from levelled lists when its cell loads. Four runs that went there with `cow`
+(-082341, -082620, -083644, -083947, the script's first version) met a robed figure and a second one, the robed
+one alone, three bandits, a dog - and a region of two runs' pictures could not be compared for sure. The save
+holds one group: two people, one with a burning torch.
+
+**What two runs of the game differ by** (-085459 against -085756): 15 % of the pixels looking at the camp and
+36 % looking east - the grass is planted anew at every load and the trees sway, so that share says nothing here.
+The regions on what stands still agree to 0.1 %: the tent's roof, the near rock's top and side, the fallen log,
+the rack's post, a tree's trunk, the sky (the big rock to 0.3 %). The ground by the torch moves by up to 2.6 % at
+one mark - the flame.
+
+**The probe drew the terrain wrong until that day; these pictures found it.** With the builds before 9d91c7bf a
+frame with the probe had no LAND pass (the game's frame there: LANDAD_AShp 210 records, LANDAD_Shp 36, LANDLO_A
+36, LAND2xDIFF_A 13) and the ground was one bright texture instead of the land's blended layers (-082341,
+-083947; artifacts/evidence/lighting30-road-terrain.jpg). Read: the land's builder 0x004C2630 hangs a block's
+texture shares a vertex on the block's node as the extra data "tex %" (0x004C2763 .. 0x004C277C) and prepares
+the block with kind 1 like any geometry (0x004C2790); the lighting property's geometry step 0x007D7F80 takes the
+shares from the geometry's parent, keeps them at the property's +0xD8 and sets the property's flag 0x4000; and
+ShadowLightShader's list builder 0x0085AE20 sends a property with that flag to its land branch (0x00854380, the
+passes 0x048, 0x049, 0x168 .. 0x176). Lighting30's builder 0x008637D0 does not read the flag. **Since 9d91c7bf
+the probe leaves a geometry whose parent carries "tex %" to the game** (`IsLand` in plugin/src/Lighting30Kind.cpp,
+`KindFor(..., land)` in the logic header): in -085231 100 land blocks stayed the game's, 686 geometries moved,
+and the LAND passes are back with the game's counts.
+
+A first attempt missed, and its count is a finding: build d99a90ab left to the game every geometry that came to
+the chooser with a lighting property of kind 5 .. 9 (ShadowLightShader's attach 0x0080B190 keeps a property of
+kind 5 .. 10, Lighting30's 0x007FF350 only kind 10) - and met none in three scenes (0 of the 695, 769 and 783
+choices it would move: -083947, obng-lighting-still/20261125-084227, obng-profile-prison-fight-hold/20261125-
+084457; none came with kind 10 either). The preparation 0x007B7FC0 asks the chooser only for a geometry that
+lacks a property or a shader, and attaches one that has both to its shader again without asking; the land's
+property is made by ShadowLightShader's attach like any other and filled by the land's code afterwards.
+
+**Surfaces in the noon sun are brighter with the one pass** (9d91c7bf, two runs a side from the save: -085459 and
+-085756 the game, -085231 and -090021 the one pass; B against A, the median of six marks, for each pair):
+
+| region (looking at the camp unless said) | the game, mean colour | the one pass | B against A |
+|---|---|---|---:|
+| the near rock, its top | (63.0, 68.9, 57.7) | (86.7, 92.9, 79.9) | +36.9 %, +37.2 % |
+| the near rock, its side | (76.2, 79.5, 67.8) | (89.1, 92.4, 82.2) | +17.8 %, +18.5 % |
+| the tent's roof | (81.4, 80.3, 68.1) | (84.8, 84.8, 77.1) | +7.3 %, +7.5 % |
+| the big rock (looking east) | (42.4, 50.9, 49.7) | (43.5, 52.0, 51.9) | +3.1 %, +1.7 % |
+| the fallen log | (50.9, 60.2, 44.2) | (50.9, 60.2, 44.2) | 0.0 %, 0.0 % |
+| the rack's post | (74.2, 76.3, 63.2) | (73.4, 75.6, 62.8) | -0.8 %, +0.2 % |
+| the ground by the torch (terrain, the game's in both) | (78.6, 76.0, 52.4) | (78.1, 75.6, 52.2) | -0.6 %, +0.6 % |
+| a tree's trunk, the sky (looking east) | | | 0.0 % |
+
+artifacts/evidence/lighting30-road-still.jpg (both views side by side), lighting30-road-rock.jpg (the rock and
+the tent at full size), lighting30-road-ratio.jpg (where the one pass is brighter).
+
+- **Not specular and not the trees' canopy shadow**: with bDoSpecularPass=0 on both sides (-090521 the game,
+  -090255) and with bDoCanopyShadowPass=0 on both sides (-090817 the game, -091042) every region has the numbers
+  above to 0.2 %. (`GAME_INI="Section:Key=Value ..."` of tools/measure-fight.sh sets such a key for a run.)
+- **Read: the chain clips the light sum before the texture, the one pass does not.** SLS2003.pso - ambient, the
+  first light, the texture and the projected shadow in one pass, the program of a geometry under the sun (the
+  draw instancing's own finding, above) - ends its light sum with `mad_sat_pp r2.xyz, r3, r1, c1`: the first
+  light's N.L x colour x shadow plus the ambient colour, clipped at 1 a channel, and only then multiplied by the
+  texture. So do the chain's other first passes (one or two clipped sums in SLS2000, 2001, 2004, 2012, 2018,
+  2031). SM3000.pso, SM3010.pso (the one with the projected shadow) and SM3LL000.pso add the ambient colour and
+  all lights with `add_pp r1.xyz, r2, r1` and multiply by the texture unclipped; only the target clips the
+  product. Where ambient and sun together exceed 1 - a surface that faces the noon sun - the one pass is
+  brighter by that excess, a texture shown beyond its own colour; where they stay below 1 - the log's and the
+  post's steep sides - the two paths give the same.
+- **Confirmed at night** (the same script with `set gamehour to 1`, obng-lighting-road-still-night/20261125-092335
+  the game, -092107 the one pass; the DLL of OblivionWalkers out of the game by then): the near rock's top
+  +1.4 %, its side +2.1 %, the tent's roof +1.6 % - inside what the torch's flame moves there at night (-1.9 to
+  +4.7 % from mark to mark) -, the log +0.1 %, the post +0.4 %, the big rock +2.5 %. At night the light sums
+  stay below 1 (derived: the brightest of these regions is at 32 of 255), and the noon's differences are gone.
+- **Derived from the noon's numbers**: a region's ratio a channel is the unclipped light sum itself - the top's
+  (1.38, 1.35, 1.39), the side's (1.17, 1.16, 1.21), the roof's (1.04, 1.06, 1.13): more excess the more a surface
+  faces the sun, and a bluish excess where the sun's part is small, as a bluish ambient colour gives.
+- **What it means for a route**: with the one pass as it is, objects in the sun are brighter than the game shows
+  them and than the terrain they stand on, which stays the chain's. Matching the chain takes a clip in the
+  one-pass pixel programs - at least min(1, ambient + first light); whether the further lights belong inside it
+  differs by the chain's pass family (BSSM_AD3 sums three lights before its texture pass, ADT2 two, more lights
+  come by passes of their own) and has to be read first. The programs come out of the shader package, so that
+  is a change of their bytecode where the game loads them. Not built.
+
+**The frame's cost in this scene** (the phase d01 .. e06, both eyes dumped at every mark in it, so slower by
+itself; `[Probe] GpuPasses`: the mean of the summaries from the third on):
+
+| run | scene pass ms (p90) | records an eye pass | GPU ms a frame | GPU ms, the scene's target |
+|---|---:|---:|---:|---:|
+| -085459 the game | 2.7 (3.1) | 789 | 4.32 | 2.69 |
+| -085756 the game | 2.8 (3.2) | 789 | 4.20 | 2.61 |
+| -085231 the one pass | 2.9 (3.2) | 733 | 4.20 | 2.49 |
+| -090021 the one pass | 2.9 (3.3) | 732 | 4.25 | 2.57 |
+
+Nothing gained and nothing lost outdoors by day, as far as two runs a side can say: 56 records fewer of about
+790, the scene pass 0.1 to 0.2 ms more, the GPU the same. The terrain, the trees and the grass are most of this
+frame, and none of them is the probe's.
+
+**The flags of moved geometry** (`Probe: Lighting30 flags`, counted as each pass list is built, -085231): of 4 573
+lists 0x1 in 2 988, 0x2 in 1 402, 0x80 in 396, 0x100 in 446, 0x2000 in 231, 0x20000 in 394, 0x400000 in 49. Of
+the three bits only the chain's builder reads, 0x1000 and 0x4000 (the terrain) do not occur on moved geometry
+any more; **0x400000 does, in 49 lists - not read yet what the chain does with it.**
+
+**OblivionWalkers was loaded in every run of this file up to here**, its ESP through the Windows mod list and
+its DLL from the Linux game's plugin folder (the Walkers session's note of 2026-11-25: the DLL had been back in
+the Linux game since 2026-11-20). The DLL was parked at 09:13:22 that day; the night pair above and the runs
+after it are without the DLL, the ESP still in the list. Both sides of every comparison here had the same state.
+
+## A long session with the one pass (measured 2026-11-25)
+
+`tools/hand-scripts/obng-stress-ride-long.txt` (save OBVRHarnessMOO, fifteen minutes of flight over about sixty
+cell borders), the deployed dc68d66b, `[Probe] Memory=1`: obng-stress-ride-long/20261125-073812 with
+`Lighting30Kinds=1` and `Lighting30Shadows=1`, -080700 with `Lighting30Kinds=0`. Both PASS, no crash, no shader
+error line. With the probe 14 812 geometries chosen for, 13 141 moved and marked, 138 054 pass lists built for
+them, 1 089 shadow records, at most six lights on a record. This build still moved the terrain.
+
+| | the game | the one pass |
+|---|---:|---:|
+| commit MB at the 30th memory summary | 740 | 766 |
+| commit MB at the last (the 188th) | 860 | 884 |
+| growth | +120 | +118 |
+| address space MB at the 30th, at the last | 3 154, 3 346 | 3 095, 3 310 |
+| the first leg's scene pass ms (p90) | 1.4 (1.9) | 1.4 (1.9) |
+
+**The growth over a long flight is the game's with this mod list, not the probe's**: the two grow alike. The one
+pass holds 7 to 38 MB more commit at the same summary (every twentieth compared: a median of 18), from the start
+on. The address space reaches 3.3 of 4 GB in both.

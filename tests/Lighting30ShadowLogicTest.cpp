@@ -63,5 +63,25 @@ int main() {
 	Section("Lights the shader does not draw");
 	Check(!LightsLeftOut(1) && !LightsLeftOut(7), "the scene's light and six more are drawn by every program");
 	Check(LightsLeftOut(8) && LightsLeftOut(20), "from the eighth on a light may be left out");
+	Section("The flags seen on moved geometry");
+	FlagCounts flags;
+	CountFlags(flags, 0);
+	Check(flags.lists == 1, "a list without any flag is a list");
+	bool none = true;
+	for (int i = 0; i < kFlagBits; ++i) {
+		none = none && flags.bit[i] == 0;
+	}
+	Check(none, "and counts for no bit");
+	CountFlags(flags, 0x4001);
+	CountFlags(flags, 0x80000001);
+	Check(flags.lists == 3 && flags.bit[0] == 2, "a bit set in two lists counts twice");
+	Check(flags.bit[14] == 1 && flags.bit[31] == 1, "each bit by itself, the highest too");
+	Check(flags.bit[1] == 0 && flags.bit[13] == 0 && flags.bit[15] == 0 && flags.bit[30] == 0, "its neighbours untouched");
+	CountFlags(flags, 0xFFFFFFFF);
+	bool all = true;
+	for (int i = 0; i < kFlagBits; ++i) {
+		all = all && flags.bit[i] >= 1;
+	}
+	Check(all && flags.lists == 4 && flags.bit[0] == 3, "all bits at once");
 	return Failures();
 }

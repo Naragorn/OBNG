@@ -1,0 +1,47 @@
+# Not a test: writes OBVRHarnessRoadStill.ess, the save the outdoor picture gate starts from
+# (obng-lighting-road-still.txt). The Gold Road's camp in the cell -21 -1 is filled from levelled lists when the cell
+# loads: three runs that went there with `cow` met a mage, three bandits and a dog (2026-11-25), and no two runs'
+# pictures could be compared. This save fixes the scene once: from
+# OBVRHarnessMOO with the AI stopped before the load, to the camp, the menus the mod list opens closed, noon, the
+# weather forced clear, the game's time stopped, saved. The name starts with OBVRHarness so OBVR's runner keeps it
+# the oldest save (the player's Continue never lands in it).
+#
+# Run with the Windows mod list (the save is only good with the list it was made with):
+#   SCENARIO=tools/hand-scripts/obng-make-road-still-save.txt SAVE=OBVRHarnessMOO TIMEOUT=300 tools/measure-fight.sh make-road-still
+# Then check OBVRHarnessRoadStill.ess exists in the game's Saves folder, and look at a picture of
+# obng-lighting-road-still.txt: who stands in the camp is the save's.
+ini Render SinglePassStereo=1
+ini SelfCheck ShowPanel=0
+ini Render GameResolutionWidth=4036
+ini Render GameResolutionHeight=3376
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+console-menu tai
+console-at ready cow Tamriel -21 -1
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at placed CloseAllMenus
+console-at placed set gamehour to 12
+console-at placed fw 38eee
+console-at placed player.setangle z 90
+console-at closed CloseAllMenus
+console-at settle CloseAllMenus
+console-at settle set timescale to 0
+console-at save CloseAllMenus
+console-at saving save OBVRHarnessRoadStill
+expect HandScript: finished
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 16
+mark placed
+wait 4
+mark closed
+wait 4
+mark settle
+wait 6
+mark save
+wait 2
+mark saving
+wait 8
+mark end

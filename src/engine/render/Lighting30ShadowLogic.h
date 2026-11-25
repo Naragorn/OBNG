@@ -130,4 +130,25 @@ constexpr void Count(Counts& counts, std::uint16_t shadowPass, std::uint32_t add
 	}
 }
 
+// The flags of a moved geometry's property (its word +0x1C) as its pass list is built: how many lists were built
+// with each bit set. The two list builders do not read the same bits - ShadowLightShader's 0x0085AE20 reads 0x1000,
+// 0x4000 (the terrain) and 0x400000, Lighting30's 0x008637D0 none of the three - so a bit counted here on moved
+// geometry names a case to read before the route is taken.
+inline constexpr std::uint32_t kFlagsOfProperty = 0x1C;
+inline constexpr int kFlagBits = 32;
+
+struct FlagCounts {
+	std::uint64_t lists = 0;
+	std::uint64_t bit[kFlagBits] = {};
+};
+
+constexpr void CountFlags(FlagCounts& counts, std::uint32_t flags) {
+	++counts.lists;
+	for (int i = 0; i < kFlagBits; ++i) {
+		if (((flags >> i) & 1u) != 0) {
+			++counts.bit[i];
+		}
+	}
+}
+
 }  // namespace obng::engine::render::lighting30_shadow

@@ -10,6 +10,7 @@
 #                          put into the run's folder as perf/, for tools/re/perf-pass.py
 #   OBNG_DLL=<file>        run with this OBNG.dll instead of the game's (put back afterwards; no deploy)
 #   SPECULAR=0             bDoSpecularPass for the run (1)
+#   GAME_INI="Section:Key=Value ..."   more keys of Oblivion.ini for the run (Display:bDoCanopyShadowPass=0)
 #   RECORD=<seconds>       film the right eye for that long from every mark (the harness's --record); the run is
 #                          for its pictures then, not for its times
 #   SCENARIO=, SAVE=, TIMEOUT=   another hand script, its save, the run's timeout in seconds
@@ -44,7 +45,8 @@ fi
 run=(python3 tools/run-with-windows-mods.py -- tools/shadow-run.sh --ini "$ini" "$scenario" --save "$save" --run-timeout "${TIMEOUT:-420}" --no-steamvr --exclusive)
 [[ -n "${RECORD:-}" ]] && run+=(--record "$RECORD")
 [[ -n "${OBNG_DLL:-}" ]] && run=(tools/with-plugin-dll.sh OBNG.dll "$OBNG_DLL" -- "${run[@]}")
-tools/with-game-ini.sh Display:fSpecularLOD1=500.0000 Display:fSpecularLOD2=800.0000 Display:iActorShadowCountInt=4 "Display:bDoSpecularPass=${SPECULAR:-1}" -- \
+read -r -a more <<< "${GAME_INI:-}"
+tools/with-game-ini.sh Display:fSpecularLOD1=500.0000 Display:fSpecularLOD2=800.0000 Display:iActorShadowCountInt=4 "Display:bDoSpecularPass=${SPECULAR:-1}" "${more[@]}" -- \
 	"${run[@]}" > "$work/run.log" 2>&1
 status=$?
 kill "$watch" 2>/dev/null

@@ -4,7 +4,9 @@ by mark: the share of pixels that differ and the mean difference - between the r
 mark to the next (the scene's own noise). Optionally one mark's pictures side by side with their difference.
 
 Usage: run-pictures.py <run A> <run B> [--eye Left] [--threshold 8] [--sheet <out.png> [--mark d05] [--width 1500]]
-                       [--region <name>=<x0>,<y0>,<x1>,<y1> ...] [--alternate]
+                       [--region <name>=<x0>,<y0>,<x1>,<y1> ...] [--marks <prefix>] [--alternate]
+  --marks      only the marks whose names begin so: one view of a scenario that looks two ways (obng-lighting-road-
+               still.txt: d0 the marks looking east, e0 the ones with the head turned), so that a region is one surface
   --region     a part of the picture (fractions of its width and height): its mean colour in A and in B, the median
                over the marks, and B's brightness against A's - what a change does to one surface
   --alternate  both runs had [Probe] PassMaskAlternate on: the marks are split by the side their run was on (the
@@ -135,7 +137,8 @@ def report(marks, a, b, label):
     print('\n'.join(region_lines(marks, a, b)))
 
 
-a, b = pictures(a_run), pictures(b_run)
+prefix = opt('--marks', '')
+a, b = ({mark: path for mark, path in pictures(run).items() if mark.startswith(prefix)} for run in (a_run, b_run))
 common = sorted(set(a) & set(b))
 print(f'A {a_run}: {len(a)} pictures; B {b_run}: {len(b)}; {len(common)} marks in both; eye {eye}, threshold {threshold} of 255 after a 4x reduction')
 if '--alternate' in sys.argv:

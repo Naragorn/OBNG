@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 
 #include "Memory.h"
@@ -23,6 +24,7 @@ using AddHeadFn = void(__thiscall*)(UInt32 list, UInt32* slot);
 using LightFn = UInt32(__thiscall*)(UInt32 property);
 using AllocateFn = UInt32(__cdecl*)(UInt32 bytes);
 using RecordFn = UInt32(__cdecl*)(UInt32 memory, UInt32 geometry, UInt32 pass, UInt32 flag, UInt32 lights, UInt32 light);
+using GetExtraDataFn = UInt32(__thiscall*)(UInt32 object, const char* name);
 
 LogFn g_log = nullptr;
 bool g_on = false;
@@ -32,6 +34,7 @@ std::uint32_t g_bits = 0;
 l30::Counts g_counts;
 std::uint64_t g_marked = 0;
 shadow::Counts g_shadowCounts;  // the render thread alone builds pass lists
+shadow::FlagCounts g_flagCounts;
 
 template <typename T>
 T At(UInt32 base, std::uint32_t offset) {
@@ -54,6 +57,13 @@ bool Has30() {
 	return At<UInt8>(l30::kHas30, 0) != 0;
 }
 
+// Whether the geometry is one of the land's blocks: its node still carries the vertices' texture shares.
+bool IsLand(UInt32 geometry) {
+	const UInt32 parent = At<UInt32>(geometry, l30::kParentOfObject);
+	const char* name = reinterpret_cast<const char*>(static_cast<std::uintptr_t>(l30::kLandSharesName));
+	return parent != 0 && Game<GetExtraDataFn>(l30::kGetExtraData)(parent, name) != 0;
+}
+
 // The moved geometry's property is made here, by the game's own preparation with the kind given, so that it can be
 // marked as the probe's. Whether the game's attach succeeded is handed back: the caller's own attach would find the
 // property and answer yes for one that came out without a texture.
@@ -70,8 +80,10 @@ bool MakeMoved(UInt32 geometry, UInt32 a, UInt32 b) {
 // In place of the object preparation's call of the chooser 0x007D1920.
 int __cdecl ChooseKind(UInt32 geometry, UInt32 a, UInt32 b) {
 	const int chosen = Game<ChooserFn>(l30::kChooser)(geometry, a, b);
-	const int kind = l30::KindFor(chosen, Has30(), g_bits);
-	l30::Count(g_counts, chosen, kind);
+	const bool has30 = Has30();
+	const bool land = l30::WouldMove(chosen, has30, g_bits) && IsLand(geometry);
+	const int kind = l30::KindFor(chosen, has30, g_bits, land);
+	l30::Count(g_counts, chosen, kind, land);
 	if (kind == chosen) {
 		return kind;
 	}
@@ -108,6 +120,7 @@ void __fastcall LightingRecordAdded(UInt32 list, void*, UInt32* slot) {
 	if (!shadow::IsMark(mark)) {
 		return;
 	}
+	shadow::CountFlags(g_flagCounts, At<UInt32>(property, shadow::kFlagsOfProperty));
 	const UInt32 record = *slot;
 	const bool drawn = shadow::ShadowPassesOn(At<UInt32>(shadow::kRenderPath, 0), At<UInt32>(shadow::kPassMask, 0));
 	const UInt16 pass = shadow::Receives(g_shadows, mark, drawn, At<UInt16>(record, shadow::kRecordPass));
@@ -154,19 +167,39 @@ void InstallLighting30Kind(const char* iniPath, LogFn log) {
 	              : "none - off in OBNG.ini");
 }
 
+namespace {
+
+// The property flags counted on moved geometry, the bits that were seen only.
+void LogFlagCounts() {
+	char text[1024];
+	int used = 0;
+	for (int i = 0; i < shadow::kFlagBits && used < static_cast<int>(sizeof(text)) - 40; ++i) {
+		if (g_flagCounts.bit[i] != 0) {
+			used += std::snprintf(text + used, sizeof(text) - used, "%s%X: %llu", used != 0 ? ", " : "", 1u << i, g_flagCounts.bit[i]);
+		}
+	}
+	text[used] = 0;
+	g_log("Probe: Lighting30 flags - of %llu lists built for moved geometry, the lists with each property flag (+0x1C) set: %s",
+	      g_flagCounts.lists, used != 0 ? text : "none");
+}
+
+}  // namespace
+
 void LogLighting30KindSummary() {
 	if (!g_on) {
 		return;
 	}
 	g_log("Probe: Lighting30 kinds - since the start %llu geometries chosen for (the game's choice: ShadowLightShader %llu, SkinShader %llu, "
-	      "ParallaxShader %llu, Lighting30Shader %llu, others %llu), %llu moved to Lighting30Shader, %llu marked; the card's flag is %s",
+	      "ParallaxShader %llu, Lighting30Shader %llu, others %llu), %llu moved to Lighting30Shader, %llu marked, %llu land blocks left to "
+	      "the game; the card's flag is %s",
 	      g_counts.asked, g_counts.shadowLight, g_counts.skin, g_counts.parallax, g_counts.lighting30, g_counts.other, g_counts.moved, g_marked,
-	      Has30() ? "set" : "clear - the game makes no Lighting30Shader, nothing is moved");
+	      g_counts.land, Has30() ? "set" : "clear - the game makes no Lighting30Shader, nothing is moved");
 	g_log("Probe: Lighting30 shadows (%s) - since the start %llu lists built for marked geometry, %llu of them with a lighting record that takes "
 	      "actor shadows, %llu with at least one shadow light, %llu shadow records added; %llu lists with more lights than the shader draws "
 	      "(%u), the most lights on one record %u",
 	      g_shadows ? "on" : "off", g_shadowCounts.lists, g_shadowCounts.eligible, g_shadowCounts.withShadow, g_shadowCounts.records,
 	      g_shadowCounts.leftOut, shadow::kLightsDrawn, g_shadowCounts.mostLights);
+	LogFlagCounts();
 }
 
 }  // namespace obng::plugin

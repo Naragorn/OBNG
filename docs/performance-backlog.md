@@ -2677,6 +2677,18 @@ lights), a pass per further pair of lights, a texture pass, a specular pass per 
   light's direction at every pixel, the chain at every vertex); outdoors no gain and no loss. Open: Windows and
   Nadi's look, a long session, SkinShader's and ParallaxShader's geometry, an instanced program for outdoors.
   So this rebuild is medium, not huge.
+  **2026-11-25, the first pictures outdoors without a menu over them** (a still camp from a fixed save,
+  knowledge/lighting-passes.md "The picture gate outdoors"): the probe drew the terrain with one texture - a
+  land block is the chain's alone, and since build 9d91c7bf it stays there. And surfaces in the noon sun are
+  brighter with the one pass (a rock's top +37 %, its side +18 %, a tent's roof +7 %; nothing at night): the
+  chain clips ambient plus light at 1 before the texture, the one-pass programs do not. **That clip is the next
+  step of this route and its gate outdoors**: a saturate put into the one-pass pixel programs' bytecode where
+  the game makes them (class C; eight shader classes make theirs through 0x00801C90, where Lighting30Shader
+  makes its SM3 programs is not read yet). Small to medium for all one-pass geometry alike - which also changes
+  the hair and the heads the game gives this shader today -, medium to large for moved geometry only (a second
+  set of programs and a choice per record). A fifteen-minute
+  flight with the probe on grew as the game's own (+118 MB against +120). Outdoors by day still nothing gained:
+  2.9 ms against 2.7 - 2.8 in that camp, 56 records fewer of 790.
   What it leaves in the fight's pass (run -224725, 2.9 ms): Oblivion.exe 1.15 ms, D3D9 0.74, OBNG.dll 0.50,
   OBVR.dll 0.13 - every module by the same factor as the draws, so the next step there is again the draws (one
   for both eyes), not a function.

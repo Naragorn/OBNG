@@ -60,20 +60,47 @@ constexpr bool Moves(int chosen, std::uint32_t bits) {
 	       (chosen == kParallax && (bits & kMoveParallax) != 0);
 }
 
-// The kind the geometry is prepared with. Without the card's flag the game makes no Lighting30Shader and the
-// preparation would leave the geometry without a shader, so the game's choice stays.
-constexpr int KindFor(int chosen, bool has30, std::uint32_t bits) {
-	return has30 && Moves(chosen, bits) ? kLighting30 : chosen;
+// The terrain stays the game's. The land's builder 0x004C2630 hangs a block's texture shares a vertex on the
+// block's node as the extra data "tex %" (0x004C2763 .. 0x004C277C, with 0x006FF820) and prepares the block with
+// kind 1 (0x004C2790). The lighting property's geometry step 0x007D7F80 takes them from the geometry's parent
+// (0x007D7FE4 .. 0x007D7FF8, with 0x006FF9C0), keeps them at its +0xD8 and sets its flag 0x4000, and
+// ShadowLightShader's list builder 0x0085AE20 draws a property with that flag in the LAND passes (0x048, 0x049,
+// 0x168 .. 0x176): the land's texture layers, blended by the shares. Lighting30's builder 0x008637D0 does not
+// read the flag, so a land block moved to it is drawn with its first texture alone (measured 2026-11-25,
+// artifacts/shadow/obng-lighting-road-still: no LAND pass in the frame, the ground one bright texture). A
+// geometry whose parent carries "tex %" is therefore not moved; at the chooser the shares are still there.
+// The two sources for the three addresses: the writer's path and the reader's path in the same binary agree on
+// the name's address and on where the data hangs (the node the writer hands to the preparation is the parent the
+// reader takes at +0x1C), and 0x006FF9C0 is called a second time as a lookup by name, with "Tangent space
+// (binormal & tangent vectors)" (0x007B7710).
+inline constexpr std::uint32_t kParentOfObject = 0x1C;        // NiAVObject: the node it hangs on
+inline constexpr std::uint32_t kGetExtraData = 0x006FF9C0;    // extra data __thiscall (object, const char* name); 0: none
+inline constexpr std::uint32_t kLandSharesName = 0x00A46048;  // the game's string "tex %"
+
+// Whether the bits would move the game's choice. Without the card's flag the game makes no Lighting30Shader and
+// the preparation would leave the geometry without a shader, so nothing moves.
+constexpr bool WouldMove(int chosen, bool has30, std::uint32_t bits) {
+	return has30 && Moves(chosen, bits);
+}
+
+// The kind the geometry is prepared with: Lighting30Shader for a choice the bits move, unless it is a land block.
+constexpr int KindFor(int chosen, bool has30, std::uint32_t bits, bool land) {
+	return WouldMove(chosen, has30, bits) && !land ? kLighting30 : chosen;
 }
 
 struct Counts {
 	std::uint64_t asked = 0;
 	std::uint64_t shadowLight = 0, skin = 0, parallax = 0, lighting30 = 0, other = 0;  // by the game's choice
 	std::uint64_t moved = 0;
+	std::uint64_t land = 0;  // a choice the bits would move, left the game's: a land block
 };
 
-constexpr void Count(Counts& counts, int chosen, int result) {
+// One call of the chooser. leftAsLand: the bits would have moved the choice and the geometry is a land block.
+constexpr void Count(Counts& counts, int chosen, int result, bool leftAsLand = false) {
 	++counts.asked;
+	if (leftAsLand) {
+		++counts.land;
+	}
 	++(chosen == kShadowLight ? counts.shadowLight
 	   : chosen == kSkin      ? counts.skin
 	   : chosen == kParallax  ? counts.parallax

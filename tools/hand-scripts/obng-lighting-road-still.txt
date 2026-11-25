@@ -1,0 +1,88 @@
+# The picture gate of a lighting change outdoors, run against run: the Gold Road's camp in the cell -21 -1, from the
+# save OBVRHarnessRoadStill (tools/hand-scripts/obng-make-road-still-save.txt makes it: the camp's people and beasts
+# come from levelled lists, and three runs that went there with `cow` met three different groups - the save fixes
+# who stands there). The AI stopped before the save loads (console-menu tai), noon, the weather forced clear, the
+# game's time stopped, the menus closed before any picture: behind an open menu OBVR pauses the world and lays its
+# menu shade over it (the sepia tone of obng-profile-gold-road-eyedump.txt's pictures, 2026-11-24). Both eyes
+# dumped at six marks looking east (d01 .. d06) and six with the head turned a quarter, to the camp (e01 .. e06).
+#
+# Read two runs with tools/re/run-pictures.py <run A> <run B> --marks e0 --region name=x0,y0,x1,y1 ... (one view
+# at a time, so that a region is one surface): the grass is planted anew at every load and the trees sway, so the
+# share of differing pixels is large between two runs of the same game (15 % looking at the camp, 36 % looking
+# east, measured 2026-11-25) and says nothing here - the regions on the rocks, the tent, the log do, and they
+# agree to 0.1 % between two runs of the game. Check with tools/re/run-menus.py <run> --from d01 --to e06 that no
+# menu was open. With the capture (the scene pass), so exclusive by itself. Run with the Windows mod list and the
+# routes as played:
+#   SCENARIO=tools/hand-scripts/obng-lighting-road-still.txt SAVE=OBVRHarnessRoadStill TIMEOUT=300 tools/measure-fight.sh <name> [keys]
+# Another hour of the day is this script with its `set gamehour to 12` line changed (a copy made for the run:
+# sed 's/set gamehour to 12/set gamehour to 1/' ... > <folder>/obng-lighting-road-still-night.txt, SCENARIO=<that>).
+ini Render SinglePassStereo=1
+ini SelfCheck ShowPanel=0
+ini Render GameResolutionWidth=4036
+ini Render GameResolutionHeight=3376
+expect Single-pass stereo: OBNG took the eyes ok (0)
+ini Hands Enabled=1
+ini Hands ReachOpens=0
+ini Debug EyeDump=1
+ini Debug EyeDumpFrames=1
+ini Performance Enabled=1
+ini Performance StartAfterSeconds=24
+ini Performance CaptureSeconds=30
+ini Performance MaxRecords=262144
+console-menu tai
+console-at ready SetNumericINISetting "fAutoVanityModeDelay:Camera" 100000
+console-at ready CloseAllMenus
+console-at ready set gamehour to 12
+console-at ready fw 38eee
+console-at settle CloseAllMenus
+console-at settle set timescale to 0
+console-at d01 CloseAllMenus
+console-at d02 CloseAllMenus
+console-at d03 CloseAllMenus
+console-at d04 CloseAllMenus
+console-at d05 CloseAllMenus
+console-at d06 CloseAllMenus
+console-at e01 CloseAllMenus
+console-at e02 CloseAllMenus
+console-at e03 CloseAllMenus
+console-at e04 CloseAllMenus
+console-at e05 CloseAllMenus
+console-at e06 CloseAllMenus
+expect HandScript: finished
+reject HandScript: WARNING
+
+wait 12
+mark ready
+wait 8
+mark settle
+head yaw 0
+wait 6
+mark d01
+wait 2
+mark d02
+wait 2
+mark d03
+wait 2
+mark d04
+wait 2
+mark d05
+wait 2
+mark d06
+wait 1
+head yaw -90
+wait 3
+mark e01
+wait 2
+mark e02
+wait 2
+mark e03
+wait 2
+mark e04
+wait 2
+mark e05
+wait 2
+mark e06
+wait 2
+mark done
+wait 2
+mark end
