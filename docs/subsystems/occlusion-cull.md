@@ -524,8 +524,13 @@ lets modes 1 and 2 take turns every summary window, so one run compares them und
 the 2026-11-13 defect in full - 142 of 204 left-eye dumps with clear-colour pixels, 8.1 million in all (run
 obng-newgame-bars-sway/20261126-125840), against 120 and 7.8 million in mode 0 (-122136) and 1 and 2 pixels in mode 1
 (-131610 of 2026-11-13). So the see-through cover in the doorway is not a blended record, and mode 2 stays off; mode 1
-is the default and unchanged. Next: name the draw that writes the doorway's depth (it wrote depth without colour, the
-trace's controls of 2026-11-13), then let mode 2 keep that kind out of the cover as well and run the gate again.
+is the default and unchanged. **Checked again 2026-11-26 evening**: mode 1 still passes the gate (18 clear-colour
+pixels in 14 of 204 dumps, run obng-newgame-bars-sway/20261126-215514). In the prison it ends the tests before an
+NPC's "FaceGenHair" (pass id 303, alpha 00ED or 12ED) or a blended column piece "IDColumnShortQuarter01:17" (pass id
+309, 00ED), both with z-buffer flags 000F, after about 200 renderer draws (diagnostic builds 796c9f2a and 2c5a4b18,
+their diffs beside them, run -220201). Mode 2 reported no blended record kept at all in the same scene (run -214817),
+and the prison has no direct draw - so the records mode 2 should have kept never reach its check there; why (a nested
+finish, the node cull, or the order of the first frames) is not read yet. Mode 2 stays off.
 
 ## The culler's own cost: the quick decision and the stand-down (2026-11-14, class C)
 
