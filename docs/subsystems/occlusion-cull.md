@@ -529,8 +529,13 @@ pixels in 14 of 204 dumps, run obng-newgame-bars-sway/20261126-215514). In the p
 NPC's "FaceGenHair" (pass id 303, alpha 00ED or 12ED) or a blended column piece "IDColumnShortQuarter01:17" (pass id
 309, 00ED), both with z-buffer flags 000F, after about 200 renderer draws (diagnostic builds 796c9f2a and 2c5a4b18,
 their diffs beside them, run -220201). Mode 2 reported no blended record kept at all in the same scene (run -214817),
-and the prison has no direct draw - so the records mode 2 should have kept never reach its check there; why (a nested
-finish, the node cull, or the order of the first frames) is not read yet. Mode 2 stays off.
+and the prison has no direct draw. **Corrected the same evening** (diagnostic build 127846bf, runs -225215 mode 2,
+-225804 mode 1): that "none kept" was read from the run's last windows. In the bars phase mode 2 keeps about 3 blended
+records a pass (the NPCs' FaceGenTongue, FaceGenHair, FaceGenTeeth, the column pieces) and drops about 30 of 82 tests
+a pass, and still shows the defect in full (8.3 million clear-colour pixels; mode 1 in the same build 18). So the
+false cover is written by a draw that is no blended record and no direct draw: something drawn in the finish after
+mode 1's early end that the culler does not see as a record. Not named yet. Mode 2 stays off; the culler's town
+problem (backlog row 17) is parked at about 0.7 ms in its bad moments.
 
 ## The culler's own cost: the quick decision and the stand-down (2026-11-14, class C)
 
