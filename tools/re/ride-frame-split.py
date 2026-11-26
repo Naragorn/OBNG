@@ -14,7 +14,9 @@ after the mark the game loses one or two beats to it (measured 2026-11-25 in the
 mark). --skip-pictures leaves out the beats from 0.8 to 2.6 s after every mark - the instrument's, not the game's.
 
 Usage: ride-frame-split.py <run folder>... [--from MARK] [--to MARK] [--skip-pictures] [--lines N] [--samples <dir>]
-  --from, --to  the stretch (default ride, ride-120); e.g. --from arrived --to done for the fight's hold
+  --from, --to  the stretch (default ride, ride-120); e.g. --from arrived --to done for the fight's hold. Several
+             stretches as lists of the same length, counted together: --from s1,s2 --to s1-walk,s2-walk (the times
+             printed are from the first --from mark)
   --lines    how many of the missed beats to list per run (default: all)
   --samples  name what the render sampler caught in each missed beat's render and update, Oblivion.exe by the
              export's function starts, other code by module"""
@@ -28,8 +30,10 @@ def opt(name, default):
 CROSSINGS = [6.35 + 11.79 * k for k in range(10)]
 
 
-FROM, TO = opt('--from', 'ride'), opt('--to', 'ride-120')
-RIDE = FROM == 'ride'
+FROMS, TOS = opt('--from', 'ride').split(','), opt('--to', 'ride-120').split(',')
+if len(FROMS) != len(TOS):
+    sys.exit('--from and --to need as many marks each')
+RIDE = FROMS == ['ride']
 SKIP = '--skip-pictures' in sys.argv
 
 
@@ -45,9 +49,14 @@ def read(run):
         events[row['event_type']].append((int(row['start_tick']), int(row['end_tick'])))
     waits, presents = sorted(events['poses_wait']), sorted(events['present'])
     present_starts = [s for s, _ in presents]
-    beats, skipped = [], 0
+    # frames.csv has a row a present (the same start within a few ticks): delivered_mode live_menu is a frame drawn
+    # behind a menu, the world paused - not the game's play, left out like the pictures' beats.
+    frames = sorted((int(r['start_tick']), r['delivered_mode']) for r in csv.DictReader(open(os.path.join(cap, 'frames.csv'))))
+    frame_starts = [s for s, _ in frames]
+    stretches = [(marks[a], marks[b]) for a, b in zip(FROMS, TOS)]
+    beats, skipped, menu = [], 0, 0
     for (_, end0), (start1, end1) in zip(waits, waits[1:]):
-        if not marks[FROM] <= end0 <= marks[TO]:
+        if not any(a <= end0 <= b for a, b in stretches):
             continue
         if SKIP and any(0.8e7 <= end0 - m <= 2.6e7 for m in marks.values()):
             skipped += 1
@@ -55,10 +64,14 @@ def read(run):
         i = bisect.bisect_left(present_starts, end0)
         if i >= len(presents) or presents[i][0] >= start1:
             continue
+        j = bisect.bisect_left(frame_starts, presents[i][0] - 1000)
+        if j < len(frames) and frames[j][1] == 'live_menu' and abs(frames[j][0] - presents[i][0]) < 1000:
+            menu += 1
+            continue
         done = presents[i][1]
-        beats.append({'t': (end0 - marks[FROM]) / 1e7, 'beat': (end1 - end0) / 1e4, 'render': (done - end0) / 1e4,
+        beats.append({'t': (end0 - stretches[0][0]) / 1e7, 'beat': (end1 - end0) / 1e4, 'render': (done - end0) / 1e4,
                       'update': (start1 - done) / 1e4, 'ticks': (end0, done, start1)})
-    return cap, beats, skipped
+    return cap, beats, skipped, menu, sum(b - a for a, b in stretches) / 1e7
 
 
 def sampler(cap, export):
@@ -81,11 +94,12 @@ def sampler(cap, export):
 
 export = opt('--samples', '')
 for run in [a for a in sys.argv[1:] if os.path.isdir(a) and a != export]:
-    cap, beats, skipped = read(run)
+    cap, beats, skipped, menu, length = read(run)
     period = st.median(b['beat'] for b in beats)
     work = sorted(b['render'] + b['update'] for b in beats)
     missed = [b for b in beats if b['beat'] > period * 1.5]
-    print(f"{os.path.basename(os.path.normpath(run))}: {len(beats)} beats of {period:.2f} ms in the capture{f' ({skipped} left out after the pictures)' if SKIP else ''}; between two waits a render and an "
+    print(f"{os.path.basename(os.path.normpath(run))}: {len(beats)} beats of {period:.2f} ms in the capture{f' ({skipped} left out after the pictures)' if SKIP else ''}{f' ({menu} behind a menu left out)' if menu else ''}, "
+          f"from {beats[0]['t']:.1f} to {beats[-1]['t']:.1f} s ({len(FROMS)} stretch{'es' if len(FROMS) > 1 else ''} of {length:.1f} s); between two waits a render and an "
           f"update of {st.median(work):.2f} ms (median), p99 {work[int(len(work) * 0.99)]:.2f}, the longest {work[-1]:.1f}")
     for part in ('render', 'update'):
         values = sorted(b[part] for b in beats)

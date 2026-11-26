@@ -138,6 +138,11 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	if (!due) {
 		return;
 	}
+	// The summary's clock: QueryPerformanceCounter, the counter of OBVR's hand script marks ("tick N") and of its
+	// profiler capture, so a window can be cut by the marks (tools/re/gpu-summaries.py --from/--to).
+	LARGE_INTEGER now{};
+	QueryPerformanceCounter(&now);
+	g_log("Log: summary at tick %lld", static_cast<long long>(now.QuadPart));
 	char line[640];
 	int at = std::snprintf(line, sizeof(line), "Shadow:");
 	for (int i = 0; i < static_cast<int>(Shadowed::Count) && at < 600; ++i) {

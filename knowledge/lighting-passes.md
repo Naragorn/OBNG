@@ -772,11 +772,14 @@ five-second windows).
 | work between two waits, median (p99) | 6.65 (8.85) ms | 7.08 (9.75) | 4.56 (6.52) | 4.46 (6.48) |
 | the render (wait's end to present's end), median | 5.44 ms | 5.85 | 3.33 | 3.24 |
 | the update (to the next wait), median | 1.20 ms | 1.22 | 1.23 | 1.23 |
-| the GPU a frame, median | 4.88 ms | 5.31 | 3.44 | 3.48 |
+| the GPU's span a frame (an upper bound), median | 4.88 ms | 5.31 | 3.44 | 3.48 |
 | missed beats | 10 (0.17 %) | 16 (0.28 %) | 3 (0.05 %) | 2 (0.03 %) |
 
 - **At 90 Hz the fight as played keeps the beat** on this machine: of the 11.1 ms a beat the CPU needs 4.5 (p99
-  6.5) and the GPU 3.5. The one pass takes 2.1 - 2.6 ms off the render and 1.4 - 1.8 ms off the GPU.
+  6.5); the GPU's span is 3.5. The one pass takes 2.1 - 2.6 ms off the render and 1.4 - 1.8 ms off the GPU's span.
+  The span runs from the frame's first stamp to its last and holds the GPU's waits for the CPU, so it is an upper
+  bound of the GPU's work, not the work (the market of 2026-11-26 below: a whole period of span with the GPU a third
+  busy).
 - **With the game's lighting** the render spikes to 9 - 12 ms every 5.63 s (a strict period; 7 - 13 of its misses) -
   gone with the one pass. The cause is not read (the sampler caught D3D9, OBNG.dll, the chain's getter 0x007D85D0
   and others, two to five samples a spike).
@@ -787,3 +790,77 @@ five-second windows).
   the three rides whose capture reaches it). Which texture it is was not read.
 - **Not the Windows fight**: Nadi's fight of 2026-11-23 had 15.6 ms of own work on Windows (the live ambush, more
   records than this hold); derived with the same share, about 8.6 ms with the one pass - not measured there.
+- **Menus in the holds** (read 2026-11-26): each of the four holds had a menu (Generic) open for 1.2 s, 55 - 62 s
+  in. `ride-frame-split.py` leaves the beats behind a menu out since then; the medians above move by 0.02 ms at
+  most and the missed beats stay.
+
+## The Market District and the Gold Road at 90 Hz (measured 2026-11-26)
+
+`tools/measure-fight.sh` with `SCENARIO=tools/hand-scripts/obng-profile-market.txt` (the head through eight
+directions, then 40 s standing) and `obng-profile-gold-road-single-dreamair.txt` (three spots on the road, at each
+the head through eight directions and an 8 s walk), save OBVRHarnessMOO, `HZ=90`, bloom, `Probe.GpuPasses=1`. A is
+the game's lighting (`Probe.Lighting30Kinds=0`), B the one pass as played. Linux, the stand-in Dream Air at 90 Hz,
+no SteamVR, OBNG.dll 155501cd (main 7f8caf4 plus the summary's clock) through `OBNG_DLL`, OBVR.dll fc0e06a4 with the
+late pose wait. Read with `tools/re/ride-frame-split.py --skip-pictures` (the beats 0.8 - 2.6 s after every mark
+and the beats behind a menu left out) and `tools/re/gpu-summaries.py --from/--to`.
+
+Market runs obng-profile-market/20261126-091755 and -094843 (A; -092350 never started, no Direct3D device within
+30 s), -092053, -092850 and -095141 (B; -095141 with `tools/thread-sampler.py` and nvidia-smi beside it). Standing
+is "still" to "done" (40 s, about 3 300 beats); the head sweep is from the first turn ("s1-y0") to "still" (27 s,
+800 - 970 beats counted, the pictures' beats left out).
+
+| | A, -091755 | A, -094843 | B, -092053 | B, -092850 | B, -095141 |
+|---|---:|---:|---:|---:|---:|
+| standing: work between two waits, median (p99) | 7.40 (11.71) ms | 7.00 (10.54) | 8.58 (13.95) | 7.94 (11.48) | 7.90 (11.50) |
+| standing: the render, median | 4.87 ms | 4.63 | 5.45 | 5.24 | 5.34 |
+| standing: the update, median | 2.52 ms | 2.29 | 3.02 | 2.65 | 2.54 |
+| standing: missed beats | 50 (1.5 %) | 20 (0.6 %) | 185 (5.7 %) | 47 (1.4 %) | 46 (1.4 %) |
+| head sweep: missed beats | 87 (9.1 %) | 75 (7.7 %) | 46 (5.7 %) | 69 (7.5 %) | 91 (10.4 %) |
+
+Gold Road runs obng-profile-gold-road-single-dreamair/20261126-093149 and -094013 (A), -093602 and -094425 (B). At
+90 Hz the capture fills after about 110 s: it holds the three spots' sweeps (the third in part) and two of the three
+walks.
+
+| | A, -093149 | A, -094013 | B, -093602 | B, -094425 |
+|---|---:|---:|---:|---:|
+| sweeps: work between two waits, median (p99) | 5.03 (7.85) ms | 5.13 (8.41) | 5.16 (7.98) | 4.97 (7.23) |
+| sweeps: the render, median | 3.30 ms | 3.29 | 3.31 | 3.26 |
+| sweeps: the update, median | 1.75 ms | 1.83 | 1.81 | 1.68 |
+| missed beats, sweeps / walks | 4 / 1 | 2 / 1 | 6 / 0 | 0 / 1 |
+| the GPU's span at spots 1 / 2 / 3, median | 3.2 / 5.8 / 3.9 ms | 3.3 / 5.9 / 4.1 | 3.2 / 4.5 / 3.9 | 3.1 / 4.3 / 3.8 |
+
+- **The Gold Road keeps the beat at 90 Hz** with either lighting: at most 0.35 % of the beats missed, the work 5 ms
+  (p99 7 - 8.5). The one pass changes nothing on the CPU there; the GPU's span at the second spot is 1.4 ms lower.
+- **The Market District does not**: standing 0.6 - 1.5 % of the beats missed (one run 5.7 %), turning the head
+  6 - 10 %. The work between two waits is 7 - 8.6 ms at the median and 10.5 - 14 ms at p99, with either lighting.
+- **The wall is the main thread** (measured in -095141, standing): the game's main thread works 78 % of the time
+  (31.4 s of CPU in 40.2 s), DXVK's command thread (dxvk-cs) 27 %, the sound mix 7 %; the GPU is 33 - 37 % busy at
+  1.3 - 1.5 GHz and 91 - 101 W (nvidia-smi, five samples a second; an RTX 4090). Neither the GPU nor DXVK's thread.
+- **The GPU's span is not the GPU's work**: in the market it is a whole period (10.4 - 11.5 ms) in every window, A
+  and B, while the GPU is a third busy. It is the frame's GPU timeline from the first stamp to the last, waits
+  included - an upper bound (so read on 2026-11-12 already, docs/performance-backlog.md G1).
+- **Where the main thread's time goes standing** (B -092850, the render sampler, `tools/re/beat-profile.py`, ms a
+  beat): the render 5.37 - DXVK's d3d9 1.08, OBNG.dll 0.85, OBVR.dll 0.36, ntdll 0.25, OblivionFrameFixes.dll
+  0.19, FoliageAA.dll 0.12, the game's own code about 2.3 over many functions, none above 0.11; the update 2.83 -
+  OBNG.dll 0.22, OBVR.dll 0.16, ntdll 0.14, the game's code spread. Within OBNG.dll the eye switch
+  (stereo_eye_switch::Switch) is the largest, 21 % of its samples (about 0.19 ms a beat). No single function
+  stands out: the town's frame is about 1 000 draws a pass after the cull's 226 skips, and many actors.
+- **With the one pass the market loses its draw instancing**: 0 groups against 10 000 - 12 800 groups (31 000 -
+  41 700 records) a five-second window with the game's lighting. Draw instancing replaces SLS2003's programs only;
+  the one pass draws with its own SM3 programs, which are not instanced (as on the Gold Road on 2026-11-24). The
+  standing render is 0.4 - 0.8 ms longer with the one pass (4.6 - 4.9 against 5.2 - 5.5 ms); the update differs
+  between the runs as much (the crowds differ), so the render's difference is not settled per draw.
+- **Head turns**: the hand script turns the head 45 degrees in one frame. In the second after a turn 6 - 16 % of
+  the beats miss and the update is 0.6 - 1.3 ms longer than standing: main-thread waits in ntdll +0.2 ms, in one
+  run d3dx9_27 and zlib's inflate_fast 0x00745010 +0.1 (a texture read on the main thread, backlog row 13), the rest
+  spread. A real head turns over many frames; how much of this stays then is not measured.
+- **After a long menu**: a mod's message box holds the world for 14 s after the load (closed by the scenario's
+  CloseAllMenus at "s1"). Once it closes the market runs at half rate (45 Hz) for about 3 s in all five runs - the
+  render 6.9 and the update 5.8 ms a frame. 186 of the update's 233 ntdll samples there sit in the game's Sleep
+  wrapper 0x00498EE0, whose callers are the lock's retry loop 0x00496EA0 and the waits 0x00683420 / 0x00683490
+  (which one was not read; the stack words can be stale). The mod's scroll (a Book menu) that comes next costs 8 - 39
+  missed beats in its first second; a Dialog's close costs nothing. Not followed further.
+- **The harness**: the market scenario's capture ended 6 s after "done" and the runner read the log before the
+  capture's export line: FAIL in every market run with the capture complete (manifest status "complete"). The
+  scenario waits 15 s after "done" since this commit; run -100258 with it PASSed (its times are not used: a
+  Blade & Sorcery start of another session ran beside it for 12 s).

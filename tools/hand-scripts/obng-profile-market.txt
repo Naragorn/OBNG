@@ -99,3 +99,8 @@ wait 1
 mark still
 wait 40
 mark done
+# The capture (90 s from about 22 s into the script) ends some 6 s after "done" and writes its "Performance: export"
+# line after that; at 90 Hz the runner read the log before the line came and failed every run of 2026-11-26 with the
+# capture complete. The wait keeps the script going until the export is in the log.
+wait 15
+mark end
