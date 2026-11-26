@@ -849,7 +849,8 @@ walks.
   41 700 records) a five-second window with the game's lighting. Draw instancing replaces SLS2003's programs only;
   the one pass draws with its own SM3 programs, which are not instanced (as on the Gold Road on 2026-11-24). The
   standing render is 0.4 - 0.8 ms longer with the one pass (4.6 - 4.9 against 5.2 - 5.5 ms); the update differs
-  between the runs as much (the crowds differ), so the render's difference is not settled per draw.
+  between the runs as much (the crowds differ), so the render's difference is not settled per draw. Settled by the
+  timed runs below: the same 2.74 us a draw with either lighting - the lost instancing costs nothing measurable.
 - **Head turns**: the hand script turns the head 45 degrees in one frame. In the second after a turn 6 - 16 % of
   the beats miss and the update is 0.6 - 1.3 ms longer than standing: main-thread waits in ntdll +0.2 ms, in one
   run d3dx9_27 and zlib's inflate_fast 0x00745010 +0.1 (a texture read on the main thread, backlog row 13), the rest
@@ -864,3 +865,41 @@ walks.
   capture's export line: FAIL in every market run with the capture complete (manifest status "complete"). The
   scenario waits 15 s after "done" since this commit; run -100258 with it PASSed (its times are not used: a
   Blade & Sorcery start of another session ran beside it for 12 s).
+
+### The market's frame by stage (measured 2026-11-26, [Timed])
+
+The same scenario with OBNG's `[Timed]` probe on 35 functions: the update's stages of 2026-11-12 without the
+per-actor ones, and the render's steps read in 0x0040D4D0 and 0x0040C830 (`artifacts/shadow/_measure/market-90-timed.sh`,
+`Probe.GpuPasses=0` because it detours two of the entries). Read with `tools/re/timed-stages.py --from still --to
+done`, which cuts the probe's windows by the summary's clock and adds OBVR's pose wait from the capture (the wait sits
+inside the render frame). Runs obng-profile-market/20261126-111905 and -112534 (A), -112221 and -112847 (B). The scene
+render 0x0040C830 itself cannot be timed: OBVR hooks its entry for the single pass ("bytes at 0040C830 differ, the
+scene render will not be hooked", run -111508, no stereo, FAIL).
+
+Standing, ms a frame (inclusive):
+
+| | A, -111905 | B, -112221 | A, -112534 | B, -112847 |
+|---|---:|---:|---:|---:|
+| frames in the 40 s | 3 138 | 3 148 | 3 118 | 2 477 |
+| OBVR's pose wait | 4.17 | 4.05 | 3.53 | 3.97 |
+| the render frame less the wait | 4.87 | 4.99 | 5.09 | 6.75 |
+| of it the scene's cull and draw 0x0070C0B0 | 3.69 | 3.85 | 3.91 | 5.47 |
+| of it the present 0x007D7210 | 0.28 | 0.29 | 0.36 | 0.38 |
+| of it the actor shadows 0x004073D0 | 0.13 | 0.21 | 0.20 | 0.31 |
+| the update (the frame's step less the render frame) | 2.12 | 2.10 | 2.62 | 3.42 |
+| of it the high actors' loop 0x00677EC0 | 1.15 | 1.15 | 1.64 | 2.11 |
+| of it the grid's update and the references' animations | 0.32 | 0.31 | 0.33 | 0.53 |
+| eye pass: draws (skipped by the culler) | 1 193 (63) | 1 235 (99) | 1 218 (241) | 1 438 (7) |
+| eye pass: CPU a draw | 2.74 us | 2.74 us | 2.83 us | 3.22 us |
+
+- **The scene's cull and draw is the largest stage**: 3.7 - 5.5 ms, about half the work. The high actors' loop is
+  second with 1.15 - 2.1 ms. The rest is small: the grid and the references' animations 0.3 - 0.5, the present 0.3 -
+  0.4, the actor shadows 0.1 - 0.3, Havok's step 0.02 - 0.1, sound and input 0.02 each; the frame step's own code
+  0.5 and the render frame's own (less the wait) 0.7.
+- **The one pass costs nothing per draw in town**: 2.74 us a draw in both runs of the first pair. The lost draw
+  instancing does not show; the 0.4 - 0.8 ms of the render above were the runs' spread (the crowd), not the one pass.
+- **The runs differ by their crowd and by the culler**: the last run had more people near (the actors' loop 2.1 ms)
+  and its occlusion culler left out 7 draws a pass, against 63 - 241 in the others, at the same place and view. In
+  that run the culler sent about 40 tests a pass against about 300 and found 1 000 - 2 000 hidden a window against
+  about 100 000. Why it tested so little there was not read; a culler that left out 240 a pass in every run would
+  take about 0.7 ms off the scene (240 draws at 2.8 us).
