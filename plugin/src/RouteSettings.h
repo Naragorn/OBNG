@@ -101,7 +101,8 @@ struct RouteSettings {
 	int occlusionCullLod = 0;  // [Route] OcclusionCullLod: the far LOD is 0 never left out, 1 left out like the rest, 2 drawn and counted (OcclusionCullGuardLogic.h)
 	int occlusionCullQuick = 1;  // [Route] OcclusionCullQuick: a draw with a visible verdict and no test due is decided without its rectangles - 0 off, 1 on, 2 checked against the full decision, 3 on in every second summary window (OcclusionCullQuickLogic.h)
 	int occlusionCullStandDown = 0;  // [Route] OcclusionCullStandDown: the culler rests while its skips save less than it costs - 0 off, 1 on, 2 judged and counted only (OcclusionCullStandDownLogic.h)
-	bool occlusionCullBeforeBlend = true;  // [Route] OcclusionCullBeforeBlend: the tests read the opaque depth only (OcclusionCullLogic.h EndsTestsBefore)
+	bool occlusionCullBeforeBlendAlternate = false;  // [Route] OcclusionCullBeforeBlendAlternate: modes 1 and 2 take turns window by window
+	int occlusionCullBeforeBlend = 1;  // [Route] OcclusionCullBeforeBlend: 0 the tests at the finish's end, 1 before the first blended record, 2 see-through rectangles (OcclusionCullSeeThroughLogic.h)
 	UInt32 occlusionCullVisibleEvery = 1;  // [Route] OcclusionCullVisibleEvery: a draw found visible is tested again in one frame of this many (1 = every frame, 1..16; OcclusionCullLogic.h TestDue)
 	bool occlusionCullVisibleAlternate = false;  // [Route] OcclusionCullVisibleAlternate: the lower test rate only in every second summary window (a measurement)
 	UInt32 occlusionCullMargin = 2;     // [Route] OcclusionCullMargin: pixels the test rectangles grow on every side (0..64)

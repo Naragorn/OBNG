@@ -479,7 +479,10 @@ at z 0.99 and above) although the picture showed the clear colour there: somethi
 over the doorway. With the fix the controls read 1 988 436 pixels at 0.99 and 600 114 at 0.995.
 
 Cause (derived from those two readings; which mesh it is was not looked up): a blended surface with depth write in
-the cell's doorway. The tests ran after the whole finish, the blended records included, so they took a see-through
+the cell's doorway. **Corrected 2026-11-26**: not a blended record - mode 2 below keeps every blended record out of
+the tests' cover and still shows the defect in full (8.1 million clear-colour pixels in 142 of 204 dumps against 7.8
+million in mode 0). Mode 1 fixed it because the prison's first blended record comes before whatever writes the
+doorway's depth; what that is stays unread. The tests ran after the whole finish, the blended records included, so they took a see-through
 surface for cover - once what stood behind it was left out, nothing drew there and the clear colour showed through.
 The check inside the pass ("skips confirmed hidden") could not see it: it reads the same depth.
 
@@ -489,6 +492,40 @@ opaque geometry's depth alone. What is asked after that gets no test in the pass
 the prison the tests went out early in every pass (746-750 of 750 a window); 45 of 1 014 draws a pass were still left
 out there. Not measured yet: what the culler still saves in a town with this (the blended records come late in the
 finish, so most of the opaque depth is there), and Windows itself.
+
+## The tests cut short in a town, and mode 2 (2026-11-26)
+
+`[Route] OcclusionCullBeforeBlend` takes 0 (the tests at the finish's end), 1 (before the first blended record, the
+default, unchanged) and 2 (the see-through rectangles, `OcclusionCullSeeThroughLogic.h`). Measured in the Market
+District at 90 Hz (knowledge/lighting-passes.md, the market sections; runs under obng-profile-market/20261126-*).
+
+**Mode 1 in a town**: at the same place and view the culler left out 7 to 241 draws a pass in different runs. A
+diagnostic build (artifacts/builds/796c9f2a with its diff, not committed; run -114358, `OcclusionCullTrace=200`) named
+the record the tests ended before: in the good windows the far trees under "LOD Trees" (pass id 12, alpha flags 12ED)
+after 380 - 600 renderer draws and about 300 tests; in the bad ones an NPC's "FaceGenTeethLower" (pass id 314, 12ED,
+its z-buffer property 000F) after 130 - 290 draws and 40 - 60 tests, at other moments a notice ("Broadsheet01", 00ED)
+or an easel ("Easel01", 00ED). In the bad state the scene's cull and draw costs about 1.6 ms a frame more.
+
+**Mode 2**: a blended record (records and, in this mode, direct draws) does not end the tests; its rectangles are
+kept, the tests run to the finish's end, and a test whose rectangle meets a kept one where that surface is not behind
+the tested bound's nearest point is dropped (no verdict: drawn). A blended record without a rectangle (crossing the
+near plane, no bound) or beyond 256 kept ends the tests as in mode 1. `[Route] OcclusionCullBeforeBlendAlternate=1`
+lets modes 1 and 2 take turns every summary window, so one run compares them under one crowd.
+
+| alternating runs, ms / share a pass | mode 1 | mode 2 |
+|---|---:|---:|
+| -130432, head sweep: draws left out | 7.8 % | 14.7 % |
+| -130432, standing: draws left out, the eye pass | 19.6 %, 3.38 ms | 19.9 %, 3.40 ms |
+| -130747, head sweep: draws left out | 8.1 % | 14.5 % |
+| -130747, standing: draws left out, the eye pass | 0.3 %, 4.14 ms | 16.5 %, 3.43 ms |
+| -130747, standing: missed beats | 27 of 1 771 | 5 of 1 344 |
+
+**Mode 2 fails the picture gate**: the prison bars scenario (obng-newgame-bars-sway, `tools/re/clear-colour.py`) shows
+the 2026-11-13 defect in full - 142 of 204 left-eye dumps with clear-colour pixels, 8.1 million in all (run
+obng-newgame-bars-sway/20261126-125840), against 120 and 7.8 million in mode 0 (-122136) and 1 and 2 pixels in mode 1
+(-131610 of 2026-11-13). So the see-through cover in the doorway is not a blended record, and mode 2 stays off; mode 1
+is the default and unchanged. Next: name the draw that writes the doorway's depth (it wrote depth without colour, the
+trace's controls of 2026-11-13), then let mode 2 keep that kind out of the cover as well and run the gate again.
 
 ## The culler's own cost: the quick decision and the stand-down (2026-11-14, class C)
 

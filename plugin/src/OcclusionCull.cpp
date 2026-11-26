@@ -49,6 +49,7 @@
 #include "OcclusionCullGuardLogic.h"
 #include "OcclusionCullLogic.h"
 #include "OcclusionCullQuick.h"
+#include "OcclusionCullSeeThrough.h"
 #include "OcclusionCullStandDown.h"
 #include "OcclusionRectDevice.h"
 #include "ProbeLogic.h"
@@ -85,9 +86,6 @@ constexpr UInt32 kRendererDeviceOffset = 0x280;
 using cull::engine::kRendererInverseViewOffset, cull::engine::kRendererProjOffset, cull::engine::kRendererViewOffset;
 constexpr UInt32 kGeometryBoundOffset = 0x20;
 constexpr UInt32 kGeometrySkinOffset = 0xB8;
-constexpr UInt32 kGeometryPropertyStateOffset = 0xAC;  // NiGeometry's property state (DrawInstancing.cpp)
-constexpr UInt32 kPropertyStateSlotsOffset = 0x08;     // its property pointers by type; the alpha property is type 0
-constexpr UInt32 kPropertyFlagsOffset = 0x18;
 constexpr UInt32 kObjectParentOffset = 0x1C;  // NiAVObject's parent (the probe's)
 
 static_assert(sizeof(D3DVIEWPORT9) == sizeof(oc::Viewport), "the logic's viewport is D3DVIEWPORT9");
@@ -113,7 +111,6 @@ cull::TraceSettings g_trace;
 UInt32 g_traced = 0;  // passes traced so far
 cull::PassIds g_passIds;  // the traced pass's renderer draws by pass id
 cull::ListTracker g_lists;  // which record leads its pass list
-bool g_beforeBlend = true;  // [Route] OcclusionCullBeforeBlend: the tests go out before the first blended record
 bool g_testsEnded = false;  // this pass's tests are out
 std::uint64_t g_endedEarly = 0;
 bool g_forceDraw = false;   // a list's first record is being drawn whatever its verdict
@@ -214,7 +211,7 @@ void FlushSummaryIfRequested() {
 		return;
 	}
 	InterlockedExchange(&g_summaryRequested, 0);
-	if (g_beforeBlend) {
+	if (OcclusionCullSeeThroughMode() != cull::see_through::Mode::kAtFinishEnd) {
 		g_log("Route: occlusion cull tests - out before a blended record in %llu passes of this window", static_cast<unsigned long long>(g_endedEarly));
 		g_endedEarly = 0;
 	}
@@ -229,6 +226,7 @@ void FlushSummaryIfRequested() {
 	OcclusionCullGuardSummary(g_stats, g_settings.lodRule);
 	OcclusionCullQuickSummary(g_log, g_stats.eyePasses);
 	OcclusionCullStandDownSummary(g_log, g_stats, ticksPerMillisecond);
+	OcclusionCullSeeThroughSummary(g_log, g_stats.eyePasses);
 	g_stats.Reset();
 	if (g_visibleEvery > 1) {
 		g_log("Route: occlusion cull visible draws - tested in one frame of %u (%s in this window): %llu tests of draws found visible left out",
@@ -612,6 +610,7 @@ void IssueFarTests() {
 }
 
 void EndTests() {
+	OcclusionCullSeeThroughKeepTests(g_batch);  // [Route] OcclusionCullBeforeBlend=2: none reads through a blended surface
 	if (g_batch->traced) {
 		char ids[1400];
 		cull::FormatPassIds(g_frame, g_passIds, *g_batch, ids, sizeof(ids));
@@ -802,6 +801,7 @@ UInt32 __fastcall CullFinish(void* self, void* /*edx*/) {
 	g_notePass = g_groupStats && (g_frame % 8) == 0;
 	g_active = true;
 	g_testsEnded = false;
+	OcclusionCullSeeThroughBegin();
 	InterlockedExchange(&g_inEyePass, 1);
 	const UInt32 eax = g_finish(self, nullptr);
 	InterlockedExchange(&g_inEyePass, 0);
@@ -835,15 +835,10 @@ UInt32 __fastcall CullDrawRenderPass(void* self, void* /*edx*/, UInt32 record, U
 		return g_drawRenderPass(self, nullptr, record, pass);
 	}
 	const cull::DrawKind kind = ReadAt<UInt32>(geometry + kGeometrySkinOffset) != 0 ? cull::DrawKind::kSkinned : cull::DrawKind::kShape;
-	if (g_beforeBlend && !g_testsEnded) {
-		// The geometry's property state (+0xAC), its alpha property (slot 0 at +0x08... DrawInstancing.cpp's reading), flags +0x18.
-		const UInt32 state = ReadAt<UInt32>(geometry + kGeometryPropertyStateOffset);
-		const UInt32 alpha = state != 0 ? ReadAt<UInt32>(state + kPropertyStateSlotsOffset) : 0;
-		if (cull::EndsTestsBefore(true, alpha != 0, alpha != 0 ? ReadAt<UInt16>(alpha + kPropertyFlagsOffset) : 0, false)) {
-			EndTests();
-			g_testsEnded = true;
-			++g_endedEarly;
-		}
+	if (!g_testsEnded && OcclusionCullSeeThroughEnds(geometry, false, g_renderer, g_ports, g_eyes.secondEyeOffset, static_cast<float>(g_settings.margin), g_eyeCount)) {
+		EndTests();  // a blended record: the tests read the opaque depth only (OcclusionCullSeeThroughLogic.h)
+		g_testsEnded = true;
+		++g_endedEarly;
 	}
 	const bool first = g_lists.First(pass & 0xFFFFu);
 	if (DecideDraw(geometry, kind, true) == cull::Decision::kDraw) {
@@ -986,6 +981,11 @@ bool OcclusionCullDraws(UInt32 geometry, bool strips) {
 	if (!g_on || !g_active || g_inner != 0 || geometry == 0) {
 		return true;
 	}
+	if (!g_testsEnded && OcclusionCullSeeThroughEnds(geometry, true, g_renderer, g_ports, g_eyes.secondEyeOffset, static_cast<float>(g_settings.margin), g_eyeCount)) {
+		EndTests();
+		g_testsEnded = true;
+		++g_endedEarly;
+	}
 	return DecideDraw(geometry, strips ? cull::DrawKind::kDirectStrips : cull::DrawKind::kDirectShape, true) == cull::Decision::kDraw;
 }
 
@@ -999,8 +999,8 @@ UInt32 InstallOcclusionCull(const RouteSettings& settings, LogFn log) {
 	g_settings.maxAge = settings.occlusionCullMaxAge;
 	g_settings.margin = settings.occlusionCullMargin;
 	g_visibleEvery = settings.occlusionCullVisibleEvery;
-	g_beforeBlend = settings.occlusionCullBeforeBlend;
-	log("Route: occlusion cull - the tests go out %s", g_beforeBlend ? "before the pass's first blended record (opaque depth only)" : "at the finish's end");
+	OcclusionCullSeeThroughInstall(settings.occlusionCullBeforeBlend, settings.occlusionCullBeforeBlendAlternate);
+	log("Route: occlusion cull - the tests go out %s", cull::see_through::ModeName(OcclusionCullSeeThroughMode()));
 	g_visibleAlternate = settings.occlusionCullVisibleAlternate;
 	g_settings.maxMoveUnits = settings.occlusionCullMaxMove;
 	g_settings.maxTurnDegrees = settings.occlusionCullMaxTurn;

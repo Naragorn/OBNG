@@ -282,7 +282,8 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	r.occlusionCullMaxAge = obng::plugin::occlusion_cull::MaxAgeFromIni(GetPrivateProfileIntA("Route", "OcclusionCullMaxAge", 2, path));
 	r.occlusionCullMargin = obng::plugin::occlusion_cull::MarginFromIni(GetPrivateProfileIntA("Route", "OcclusionCullMargin", 2, path));
 	{
-		r.occlusionCullBeforeBlend = GetPrivateProfileIntA("Route", "OcclusionCullBeforeBlend", 1, path) != 0;
+		r.occlusionCullBeforeBlend = static_cast<int>(GetPrivateProfileIntA("Route", "OcclusionCullBeforeBlend", 1, path));
+		r.occlusionCullBeforeBlendAlternate = GetPrivateProfileIntA("Route", "OcclusionCullBeforeBlendAlternate", 0, path) != 0;
 		r.occlusionCullLod = static_cast<int>(GetPrivateProfileIntA("Route", "OcclusionCullLod", 0, path));
 		r.occlusionCullAct = static_cast<int>(GetPrivateProfileIntA("Route", "OcclusionCullAct", 1, path));
 		r.occlusionCullQuick = static_cast<int>(GetPrivateProfileIntA("Route", "OcclusionCullQuick", 1, path));

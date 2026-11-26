@@ -87,6 +87,11 @@ target_include_directories(OcclusionCullGuardLogicTest PRIVATE ../src ../../test
 target_compile_options(OcclusionCullGuardLogicTest PRIVATE -Wall -Wextra -Werror)
 add_test(NAME OcclusionCullGuardLogicTest COMMAND OcclusionCullGuardLogicTest)
 
+add_executable(OcclusionCullSeeThroughLogicTest OcclusionCullSeeThroughLogicTest.cpp)
+target_include_directories(OcclusionCullSeeThroughLogicTest PRIVATE ../src ../../tests)
+target_compile_options(OcclusionCullSeeThroughLogicTest PRIVATE -Wall -Wextra -Werror)
+add_test(NAME OcclusionCullSeeThroughLogicTest COMMAND OcclusionCullSeeThroughLogicTest)
+
 add_executable(OcclusionCullActLogicTest OcclusionCullActLogicTest.cpp)
 target_include_directories(OcclusionCullActLogicTest PRIVATE ../src ../../tests)
 target_compile_options(OcclusionCullActLogicTest PRIVATE -Wall -Wextra -Werror)
