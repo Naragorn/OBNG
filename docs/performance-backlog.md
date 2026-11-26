@@ -47,8 +47,20 @@ exclusive runs); the sections of 2026-11-19 below and knowledge/background-loadi
 
 ### Before a first public release
 
-- Windows measured: every route of 2026-11-19 is on in the Windows game, none is measured there; the Windows numbers
-  of _stat / _access are smaller than Proton's (unverified), so the gains may be smaller.
+- Windows measured (2026-11-26, Nadi's session, real SteamVR, the Dream Air at 90 Hz, OBNG.dll 155501cd with the one
+  pass, OBVR.dll a2d66933; OBVR's ring captures OBVR-performance-2-5 and -3-4 in the Windows game folder, the two
+  minutes before a save and before a crash, menu frames left out): 0.28 % and 0.16 % of the beats missed (22 of 7 850,
+  13 of 8 363), CPU work between two pose waits 6.5 and 6.6 ms at the median (p99 9.4 and 10.7), the GPU's frame time
+  by SteamVR (total_render_gpu_ms) 3.7 and 5.3 ms (p99 6.0 and 8.3), no dropped frame, 83 and 32 frames
+  mis-presented, reprojection only as the async and motion modes' flags (12), never for CPU or GPU. Nadi: "flüssig,
+  minimal ruckler selten, passt endlich"; the acceptance list 19 of 22 points passed, the quest marker not tested.
+  Open from it: a crash at the jail transition (Oblivion.exe 0x005F4406, Actor::ProcessMagicEffect reading [eax+0x68]
+  of what the NPC's process returned from its vtable slot 0x2D4, a freed object; called by Actor::UpdateVitals
+  0x005FAAE0 <- 0x00678750 <- 0x004455E0 <- PlayerCharacter::ChangeCellAndPosition; the NPC 140045D6 of
+  DLCSpellTomes.esp; no OBNG or OBVR code on the call trace; the first crash there in Nadi's crash logs), and mounted
+  guards that came falling after a crime (cause not read: the game's placement of pursuing guards, or OBNG's far-actor
+  rule, which lets an actor beyond 6000 units stand between its updates every 16th frame - one session with
+  `ActorFarEvery=1` would tell them apart).
 - A profile for players without OBVR (flat), and the Dream Air at 90 Hz in the headset.
 - The class B gates: PoolPageRelease (a long run done, Nadi's look open), TextureLockSkip (Nadi's look at textures
   at crossings open).
