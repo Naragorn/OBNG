@@ -19,6 +19,7 @@
 #include "PassListKeep.h"
 #include "ShadowReceiverFilter.h"
 #include "ActorThreads.h"
+#include "ScaledTime.h"
 #include "ProcessProbe.h"
 #include "VoiceDecode.h"
 #include "VoiceProbe.h"
@@ -211,6 +212,7 @@ void SummaryIfDue(UInt32 tick, const shadow::PlannerSample* planner, bool resetP
 	LogPassListKeepSummary();
 	LogShadowReceiverFilterSummary();
 	LogActorThreadsSummary();
+	LogScaledTimeSummary();
 	LogTimedCallsSummary();
 	LogConstantArrangeSummary();
 	LogOcclusionCullSummary();

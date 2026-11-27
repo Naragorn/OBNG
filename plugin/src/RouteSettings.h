@@ -126,6 +126,8 @@ struct RouteSettings {
 	float actorFarDistance = 6000.0f;  // [Route] ActorFarDistance, game units
 	bool actorFarAlternate = false;  // [Route] ActorFarAlternate: the lower rate only in every second summary window, for measuring it inside one run
 	bool collisionWrites = false;  // [Probe] CollisionWrites: in the actors' route every collision object's update is checked for writing its own node (ProbeLogic.h CollisionWrites); a measurement
+	bool actorBatchAlternate = false;  // [Route] ActorBatchAlternate: the batch in every second summary window only (the frame timed with and without it in one run)
+	bool actorBatchProcessGone = true;  // [Route] ActorBatchProcessGone: everything noted is run before a high process is destroyed inside the loop (0 only to show the defect it closes)
 	bool actorBatchTicks = false;  // [Route] ActorBatchTicks: the batched loops' clock readings logged, for cutting a sampler capture by them
 	bool actorUpdate = false;  // [Route] ActorUpdate: the call from ApplyAnimData 0x00471F20 runs the flat subtree update - the same transforms and bounds bit for bit without the recursion's virtual calls (FastSceneUpdate.cpp); off until measured
 	bool sqrt = false;  // [Route] Sqrt: _CIsqrt 0x00982C30 runs the generated dispatch - FSQRT without the CRT's exception path for the common case (FastSqrt.cpp); off until measured

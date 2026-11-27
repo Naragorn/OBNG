@@ -1,26 +1,29 @@
 #pragma once
-// The actors' down passes on threads, inside the actors' batch ([Route]
+// The actors' down passes in two parts, inside the actors' batch ([Route]
 // ActorBatch=1, which needs [Route] ActorUpdate=1; engine/scene/
-// ActorThreadsLogic.h has the reading).
+// ActorDownSplitLogic.h has the two parts and what they keep).
 //
 //   [Route] ActorThreads=n (1..7, 0 = off): n worker threads beside the
-//     loop's thread run the down passes of the skeletons whose collision
-//     objects are all in a safe class (the nodes left to the down pass);
-//     their collision updates wait and run on the loop's thread before each
-//     skeleton's upward pass, in the batch's order. A skeleton with any other
-//     collision object, or with collision objects under a subtree the engine
-//     runs itself, runs its down pass there too. The workers get the loop
-//     thread's x87 control word and MXCSR. ActorThreadsAlternate=1 runs the
-//     threads in every second batch only (the down phase's time by side).
-//   [Probe] ActorThreadsCheck=1: no threads; every collision update of the
-//     batch's down passes classified and its node's transforms compared
-//     before and after (which classes write their node, and whether a
-//     skeleton called safe ever did), and in one batch of 16 the EXE's .data
-//     copied before and after the down passes (which statics they write).
+//     loop's thread run every skeleton's first part - the controllers, the
+//     world transforms, the plain geometry bounds. The collision objects'
+//     updates, the subtrees the engine runs itself (a FaceGen head, a light,
+//     particles) and the nodes' bounds follow on the loop's thread before
+//     each skeleton's upward pass, in the batch's order; a node a collision
+//     update wrote gets its subtree composed again there. A skeleton whose
+//     root hangs below another skeleton of the batch runs whole on the loop's
+//     thread. The workers get the loop thread's x87 control word and MXCSR.
+//     ActorThreadsAlternate=1 runs every second batch flat on one thread (the
+//     down phase's time by side).
+//   [Probe] ActorThreadsCheck=1: no threads; both parts on the loop's thread,
+//     with the classes of the controllers the first part runs counted, in one
+//     batch of 16 the EXE's .data copied before and after the first parts
+//     (the statics they write), and every world held against its parent's
+//     world times its local after the sweep.
 //
-// Class B: the down passes are bit for bit the one-thread batch's per
-// skeleton; what changes is when a collision update runs against the others'
-// down passes.
+// Class B: a skeleton ends as the one-thread batch leaves it, bit for bit,
+// except where something reads a later entry's world (the logic header's
+// note); what changes beyond that is when a collision update runs against
+// the other skeletons' first parts.
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -44,8 +47,8 @@ using OrderOf = const void* (*)(std::uint32_t root);
 void RunDowns(const std::vector<obng::engine::scene::actor_batch::Job>& jobs, const std::vector<std::size_t>& split, OrderOf orderOf);
 
 // Before a split job's upward pass, in the batch's order (the loop's
-// thread): its waiting collision updates, or its down pass when the threads
-// did not run it.
+// thread): its sweep and its nodes' bounds, or its whole down pass when it
+// was held back.
 void BeforeUp(const obng::engine::scene::actor_batch::Job& job, const void* order);
 
 }  // namespace actor_threads

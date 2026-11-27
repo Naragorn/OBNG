@@ -24,6 +24,7 @@
 #include "PassListKeep.h"
 #include "ShadowReceiverFilter.h"
 #include "ActorThreads.h"
+#include "ScaledTime.h"
 #include "ProcessProbe.h"
 #include "VoiceDecode.h"
 #include "VoiceProbe.h"
@@ -236,6 +237,8 @@ bool ReadSettings(obng::plugin::Settings* settings) {
 	r.actorBatch = GetPrivateProfileIntA("Route", "ActorBatch", 0, path) != 0;
 	r.constantArrange = GetPrivateProfileIntA("Route", "ConstantArrange", 0, path) != 0;
 	r.actorBatchTicks = GetPrivateProfileIntA("Route", "ActorBatchTicks", 0, path) != 0;
+	r.actorBatchAlternate = GetPrivateProfileIntA("Route", "ActorBatchAlternate", 0, path) != 0;
+	r.actorBatchProcessGone = GetPrivateProfileIntA("Route", "ActorBatchProcessGone", 1, path) != 0;
 	r.collisionWrites = GetPrivateProfileIntA("Probe", "CollisionWrites", 0, path) != 0;
 	r.actorUnusedBones = GetPrivateProfileIntA("Route", "ActorUnusedBones", 0, path) != 0;
 	r.actorFarEvery = GetPrivateProfileIntA("Route", "ActorFarEvery", 1, path);
@@ -422,6 +425,7 @@ uint32_t InstallProbesSideEffect(const obng::plugin::ShadowSettings& settings) {
 		obng::plugin::InstallPassListKeep(path, &Log);      // the relight's two call sites and three vtable slots, no entry
 		obng::plugin::InstallShadowReceiverFilter(path, &Log);  // AddGeometry's entry (not with [Shadow] RangeWalk)
 		obng::plugin::InstallActorThreads(path, &Log);           // inside the actors' batch (needs it installed: the routes come first)
+		obng::plugin::InstallScaledTime(path, &Log);             // every time controller's scaled time, without its lock
 	}
 	obng::plugin::InstallActorCensus(settings, &Log);
 	obng::plugin::InstallLockProbe(settings, &Log);  // its two detours are not among the counted ones

@@ -78,6 +78,20 @@ struct LoopTicks {
 	UInt32 deferred;
 };
 bool g_keepTicks = false;
+bool g_alternate = false;  // [Route] ActorBatchAlternate: the batch in every second summary window, for timing it against the loop as it is
+bool g_windowOff = false;
+// HighProcess's destructor 0x00634A30 (the body under the deleting one, vtable 0x00A71814 slot 0 = 0x00640000; read).
+// In the original an actor's skeleton update runs inside the actor's own turn, while its high process exists. A
+// process that goes during the loop (a demotion in a later turn or in the loop's end 0x00677500, a death, a script)
+// must not leave a noted body behind: everything noted is run before it goes.
+constexpr const char* kProcessGoneName = "HighProcess::~HighProcess";
+constexpr UInt32 kProcessGoneAddress = 0x00634A30;
+constexpr UInt8 kProcessGoneBytes[] = {0x6A, 0xFF, 0x68, 0xB6, 0x36, 0x9C, 0x00};  // push -1; push 9C36B6h (read)
+void* g_processGoneOriginal = nullptr;
+bool g_flushing = false;
+volatile LONG64 g_goneInLoop = 0;      // high processes destroyed inside a batched loop, on its thread
+volatile LONG64 g_goneFlushes = 0;     // of them: with bodies noted, run at once
+volatile LONG64 g_goneFlushedJobs = 0;
 SRWLOCK g_ticksLock = SRWLOCK_INIT;
 std::vector<LoopTicks> g_ticks;
 
@@ -414,6 +428,7 @@ const void* OrderOf(std::uint32_t root) {
 
 void RunBatch() {
 	EnginePort port;
+	g_flushing = true;
 	g_orders.clear();
 	HoldActorOrders(true);
 	g_batch.Flush(port, [&](const std::vector<std::size_t>& split) {
@@ -431,13 +446,29 @@ void RunBatch() {
 		InterlockedAdd64(&g_downTicks, end.QuadPart - start.QuadPart);
 	});
 	HoldActorOrders(false);
+	g_flushing = false;
+}
+
+void __fastcall ProcessGoneReplacement(void* self, void* /*edx*/) {
+	if (g_batching != 0 && GetCurrentThreadId() == g_loopThread) {
+		InterlockedIncrement64(&g_goneInLoop);
+		if (!g_flushing && g_batch.Size() != 0) {
+			InterlockedIncrement64(&g_goneFlushes);
+			InterlockedAdd64(&g_goneFlushedJobs, static_cast<LONG64>(g_batch.Size()));
+			RunBatch();
+		}
+	}
+	reinterpret_cast<ApplyFn>(g_processGoneOriginal)(self, nullptr);
 }
 
 void __fastcall LoopReplacement(void* self, void* /*edx*/, UInt32 timeBits, UInt32 flag) {
 	const auto original = reinterpret_cast<LoopFn>(g_loopOriginal);
-	if (g_batching != 0 || !ab::LoopBatches(timeBits, flag)) {
+	if (g_batching != 0 || g_windowOff || !ab::LoopBatches(timeBits, flag)) {
 		InterlockedIncrement64(&g_otherLoops);
 		original(self, nullptr, timeBits, flag);
+		if (g_windowOff && g_batching == 0 && ab::LoopBatches(timeBits, flag)) {
+			g_known.EndFrame();  // a frame without the batch knows no root: the first batched frame after it runs every body in place
+		}
 		return;
 	}
 	const UInt32 player = Dword(kPlayerPointer);
@@ -492,6 +523,11 @@ UInt32 InstallRouteActorBatch(const RouteSettings& settings, LogFn log) {
 	++made;
 	g_installed = true;
 	g_keepTicks = settings.actorBatchTicks;
+	g_alternate = settings.actorBatchAlternate;
+	if (settings.actorBatchProcessGone) {
+		InstallEntryDetour(kProcessGoneName, kProcessGoneAddress, kProcessGoneBytes, sizeof(kProcessGoneBytes),
+		                   reinterpret_cast<const void*>(&ProcessGoneReplacement), &g_processGoneOriginal, log, DetourRole::Route);
+	}
 	if (g_keepTicks) {
 		InstallEntryDetour(kControllerName, kControllerAddress, kControllerBytes, sizeof(kControllerBytes), reinterpret_cast<const void*>(&ControllerReplacement),
 		                   &g_controllerOriginal, log, DetourRole::Shadow);
@@ -625,10 +661,16 @@ void LogActorBatchSummary() {
 	}
 	const double perMs = g_frequency.QuadPart > 0 && loops > 0 ? 1000.0 / static_cast<double>(g_frequency.QuadPart) / static_cast<double>(loops) : 0.0;
 	const double perLoop = loops > 0 ? 1.0 / static_cast<double>(loops) : 0.0;
-	g_log("Route: actor batch - %lld loops (%lld not batched): %.1f bodies deferred a loop (%.2f of them whole in the original), in place %.2f the "
+	if (g_processGoneOriginal != nullptr) {
+		g_log("Route: actor batch - high processes destroyed inside a batched loop: %lld, %lld of them with bodies noted (%lld bodies run at once)",
+		      InterlockedExchange64(&g_goneInLoop, 0), InterlockedExchange64(&g_goneFlushes, 0), InterlockedExchange64(&g_goneFlushedJobs, 0));
+	}
+	const bool wasOff = g_windowOff;
+	g_windowOff = g_alternate && !g_windowOff;
+	g_log("Route: actor batch%s - %lld loops (%lld not batched): %.1f bodies deferred a loop (%.2f of them whole in the original), in place %.2f the "
 	      "player's, %.2f new roots, %.2f a root again, %.2f batch full; %lld bodies outside the loop; the loop %.3f ms, the run after it %.3f ms "
 	      "(of it the down passes %.3f ms)",
-	      loops, otherLoops, static_cast<double>(deferred) * perLoop, static_cast<double>(whole) * perLoop, static_cast<double>(player) * perLoop,
+	      !g_alternate ? "" : wasOff ? " (off in this window)" : " (on in this window)", loops, otherLoops, static_cast<double>(deferred) * perLoop, static_cast<double>(whole) * perLoop, static_cast<double>(player) * perLoop,
 	      static_cast<double>(fresh) * perLoop, static_cast<double>(again) * perLoop, static_cast<double>(full) * perLoop, outside,
 	      static_cast<double>(loopTicks) * perMs, static_cast<double>(runTicks) * perMs, static_cast<double>(downTicks) * perMs);
 }
