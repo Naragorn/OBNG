@@ -388,3 +388,49 @@ controller's timing INI. The first step then is the census of the indirect calls
 **Backlog (T3, class A):** the proxy's manifold update 0x008AD150 with its score 0x008ABF70 - the same computation,
 faster, on one thread (the matching is m x n with a dedupe of m x m / 2, 18 % of the controller's samples);
 at most 0.5 to 0.8 ms a frame in a horde. One slice, a rebuild with the shadow comparison.
+
+## The Market District: what threads could gain in a town (measured 2026-11-27)
+
+Asked again on 2026-11-27 for the town: the high actors' loop on several threads. Measured first, with `[Timed]` on the
+loop's parts, standing in the Market District at 90 Hz (runs obng-profile-market/20261127-092952 and -093304, the
+stretch "still" to "done", 40 s, 3 135 and 3 139 frames; the driver `artifacts/shadow/_measure/market-90-actors.sh`
+has the 23 timed functions; the one pass, bloom on; the timers' own cost is in the numbers).
+
+| ms a frame | run 1 | run 2 |
+|---|---|---|
+| the frame's work between two pose waits (median) | 7.16 | 6.93 |
+| the high actors' loop 0x00677EC0 | 1.33 | 1.41 |
+| - high updates 0x00605770 a frame | 26.4 | 29.2 |
+| - skeleton updates 0x00471F20 (18 - 21 a frame) | 0.52 | 0.53 |
+| - character controllers 0x00896000 (17 - 19.5 a frame) | 0.33 | 0.39 |
+| - detection 0x005F6540 (of it line of sight 0x005F2820 0.12) | 0.15 | 0.15 |
+| - head tracking 0x00603500 | 0.10 | 0.10 |
+| - 0x00471C00 | 0.10 | 0.10 |
+| - package 0x0063A210 | 0.09 | 0.09 |
+| - vitals 0x005FAAE0 | 0.03 | 0.03 |
+| - the high update's own | 0.07 | 0.06 |
+
+What threads could take of it (derived from the table and the map above, nothing built):
+
+- the two parts free of statics (head tracking, 0x00471C00): 0.20 ms together, about 0.15 ms on four threads;
+- the skeletons' down passes with the collision updates kept on the loop's thread and a repair: of 0.52 ms at most
+  about 0.3 ms, and nothing if the repaired subtrees are most of a skeleton (the blended collision objects sit on the
+  ragdoll's bones);
+- the controllers (parked above): of 0.33 - 0.39 ms at most about 0.3 ms.
+
+All of it together is about 0.7 ms of a 7 ms frame, for one small, one medium and one large piece of work in class B
+and C. **Not built; the parking above holds for the town as well.** A town has a quarter of the gate horde's actors
+(26 - 29 high updates against 122), so every per-actor part is a quarter as large.
+
+What the misses are made of: standing, 33 and 28 of about 3 570 beats were missed (0.93 and 0.78 %). 17 and 11 of
+them ran less than 0.7 ms over the period - the misses sit close above the beat, so any 0.7 ms off the frame's mean
+would take about half of them (derived, as if the saving held in those frames). In the missed beats the render (6 - 8
+ms against a median of 4.4) and the update (4 - 6 ms against 2.5) are both long, a few frames in a row; the sampler
+names no single function in them (D3D9, OBNG.dll, the game's render code, ntdll in three of them).
+
+Seen beside it, not read: one call of the loop took 49.5 ms (run 1) and 46.4 ms (run 2) during the head sweep, in
+both runs at the same place of the script (the update 52.0 and 53.6 ms long, six beats lost), with one vitals call
+0x005FAAE0 of 14.2 and 12.5 ms inside; in the same window NPCs began to talk (11 voice lines against 1, 12 sound
+files read whole on the main thread, 13.5 ms). And one update of 83 ms in both runs ten seconds after the arrival,
+in no timed actor function. The sweep's first stretches also run at the half rate after the arrival's menu
+(backlog row 16), which is what their missed beats are.
